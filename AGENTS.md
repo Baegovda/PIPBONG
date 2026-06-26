@@ -1,6 +1,6 @@
 # AGENTS.md — SuckbongMachine Master Document
 
-**Current version:** `0.5.44` (from `project(SuckbongMachine VERSION 0.5.44)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
+**Current version:** `0.5.45` (from `project(SuckbongMachine VERSION 0.5.45)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
 
 **Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
 
@@ -12,7 +12,7 @@ This is the **only project document** — AI handover, user quick start, develop
 
 1. [Project Overview](#1-project-overview)
 2. [Stack and Dependencies](#2-stack-and-dependencies)
-3. [Build and Run](#3-build-and-run)
+3. [Build and Run](#3-build-and-run) — includes [GitHub backup and release](#36-github-backup-and-release)
 4. [Repository Map](#4-repository-map)
 5. [Architecture and Key Subsystems](#5-architecture-and-key-subsystems)
 6. [UX Flows](#6-ux-flows)
@@ -133,6 +133,73 @@ Distribution build: `.\dist\SuckbongMachine.exe`
 - **LNK1104:** Kill any running `SuckbongMachine.exe` before linking (only when building).
 - **Slow closes:** Do not run `cmake --preset default` on every task — use incremental `--build` only.
 - **vcpkg path:** `CMakePresets.json` may reference a machine-specific `CMAKE_TOOLCHAIN_FILE`; adjust if vcpkg is installed elsewhere.
+
+### 3.6 GitHub backup and release
+
+**Handover:** Any new AI agent must read this subsection before git push, release, or in-app update work. Do not create separate handover docs.
+
+#### Two repositories (mandatory)
+
+| Repo | Visibility | URL | Purpose |
+|------|------------|-----|---------|
+| **`Baegovda/SBM`** | **Private** | `https://github.com/Baegovda/SBM.git` | Source code; `git remote origin` on the dev machine |
+| **`Baegovda/SBM-releases`** | **Public** | `https://github.com/Baegovda/SBM-releases` | **exe only** — in-app **파일 → 업데이트** reads this repo |
+
+- Private **`SBM`**: code backup; user does not want public source.
+- Public **`SBM-releases`**: only `SuckbongMachine.exe` + `SuckbongMachineUpdater.exe` on [Releases](https://github.com/Baegovda/SBM-releases/releases). No source.
+- In-app update API target: compile define `SBM_UPDATE_GITHUB_REPO="Baegovda/SBM-releases"` in `CMakeLists.txt` / `UpdateChecker.cpp`. **Never** point updates at private `SBM`.
+
+#### One-time machine setup (human)
+
+1. GitHub account (owner: **Baegovda**).
+2. Git for Windows (already on dev PC).
+3. **GitHub CLI** (`gh`) + login once: `gh auth login` → GitHub.com → HTTPS → browser login. Required for `scripts/create-github-release.ps1`.
+
+#### What the user says → what AI does
+
+| User (Korean) | AI action |
+|---------------|-----------|
+| **“백업해줘”** / **“커밋해줘”** | `git add`, `git commit`, `git push origin main` → private **`SBM`** |
+| **“릴리즈 해줘”** | Version bump if needed → `scripts/create-github-release.ps1` → public **`SBM-releases`** Release with both exe assets |
+| **“빌드해줘”** | Incremental `cmake --build build --config Release` (not static unless user asked for distribution) |
+
+User does **not** need to use GitHub web UI for routine backup or release.
+
+#### AI release workflow (`릴리즈 해줘`)
+
+1. Finish code + changelog + version bump per [§10](#10-versioning-policy).
+2. Kill `SuckbongMachine.exe` if linking.
+3. Run `.\scripts\create-github-release.ps1` from repo root (static build → `dist/`, then `gh release create` on **`Baegovda/SBM-releases`**).
+4. Push source + tag to private **`SBM`** if not already pushed.
+5. Tell user: [SBM-releases latest](https://github.com/Baegovda/SBM-releases/releases/latest) — download **both** exe files into the same folder.
+
+**Release assets (both required):** `SuckbongMachine.exe`, `SuckbongMachineUpdater.exe`. Without the updater, **파일 → 업데이트** one-click replace fails.
+
+#### AI backup workflow (every task or on request)
+
+1. `git status` / `git diff` — commit only project files (respect `.gitignore`; no `build/`, `dist/`, user `project.json`).
+2. Commit message: English, one line summary of *why*.
+3. `git push origin main` to **`Baegovda/SBM`**.
+4. **Do not** commit unless user asked **or** governance requires handover at task end — follow [user git rule]: commits only when user requests unless clearly implied (“백업해줘”).
+
+#### Git / release pitfalls
+
+| Issue | Fix |
+|-------|-----|
+| `gh: not logged in` | User runs `gh auth login` once |
+| Release to empty **`SBM-releases`** | Repo needs at least one commit on `main` (README is enough) before first `gh release create` |
+| Private **`SBM`** only | In-app update **breaks** — must publish exe to public **`SBM-releases`** |
+| Old releases on **`SBM`** (v0.5.41) | Legacy; current pipeline uses **`SBM-releases`** only |
+| `LNK1104` on static build | Kill `SuckbongMachine.exe` |
+
+#### Key files
+
+| Path | Role |
+|------|------|
+| `scripts/create-github-release.ps1` | Static build + upload to **`SBM-releases`** |
+| `src/app/UpdateChecker.cpp` | GitHub Releases latest check + download |
+| `src/updater/main.cpp` | `SuckbongMachineUpdater.exe` — replaces running exe |
+| `.gitignore` | Excludes `build/`, `dist/`, local templates |
 
 ---
 
@@ -712,6 +779,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.5.45] - 2026-06-26
+
+### Added
+
+- **AGENTS.md §3.6 GitHub backup and release**: handover for private `Baegovda/SBM` (source push), public `Baegovda/SBM-releases` (exe release), `gh auth`, `create-github-release.ps1`, and user phrases (“백업해줘”, “릴리즈 해줘”).
 
 ## [0.5.44] - 2026-06-26
 
@@ -1604,4 +1677,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-26. Current application version: 0.5.44.*
+*Last consolidated: 2026-06-26. Current application version: 0.5.45.*
