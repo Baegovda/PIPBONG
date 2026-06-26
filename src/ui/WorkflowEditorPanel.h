@@ -22,7 +22,6 @@ class QSplitter;
 class QHeaderView;
 class Feature;
 class Block;
-class BlockEditorDialog;
 
 class WorkflowEditorPanel : public QWidget {
     Q_OBJECT
@@ -74,23 +73,14 @@ private slots:
     void onLoopRegionPickCancelled();
     void onLoopRegionEditRequested(const QString& regionId);
     void onLoopRegionDeleteRequested(const QString& regionId);
-    void onIfBlockEditRequested(int mainBlockRow);
-    void onIfBlockDeleteRequested(int mainBlockRow);
-    void onIfGotoBlockPicked(int blockRow);
-    void onIfGotoPickCancelled();
     void onLoopRegionsButtonContextMenu(const QPoint& pos);
     void openLoopRegionsListDialog();
     void setLoopRegionPickMode(bool active);
-    void setIfGotoPickMode(bool active);
-    void connectBlockEditorDialog(BlockEditorDialog* dialog);
-    void beginIfGotoBlockPick(BlockEditorDialog* dialog, int branch);
-    void finishIfGotoBlockPick(int blockRow, bool apply);
 
 private:
     void setupUi();
     void addBlockOfType(BlockType type);
     bool editBlockAt(int row);
-    bool editIfBranchBlock(int ifBlockRow, bool isThenBranch, int branchBlockIndex);
     void editLoopRegion(const QString& regionId);
     void deleteLoopRegion(const QString& regionId);
     void deleteBlockAt(int row);
@@ -139,9 +129,6 @@ private:
     QPushButton* m_insertWaitBetweenButton = nullptr;
     QPushButton* m_loopRegionsButton = nullptr;
     bool m_loopRegionPickActive = false;
-    bool m_ifGotoPickActive = false;
-    BlockEditorDialog* m_ifGotoPickDialog = nullptr;
-    int m_ifGotoPickBranch = 0;
 
     bool m_editingEnabled = true;
 

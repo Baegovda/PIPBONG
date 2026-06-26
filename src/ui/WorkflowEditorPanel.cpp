@@ -4,7 +4,6 @@
 #include "core/workflow/blocks/ClickBlock.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "core/workflow/blocks/KeyPressBlock.h"
-#include "core/workflow/blocks/IfBlock.h"
 #include "core/workflow/blocks/WaitBlock.h"
 #include "core/workflow/WorkflowLoopRegion.h"
 #include "core/input/HotkeyBinding.h"
@@ -342,35 +341,6 @@ QPixmap loopBlockPreviewIcon() {
     return pixmap;
 }
 
-QPixmap ifBlockPreviewIcon() {
-    QPixmap pixmap(kThumbnailSize, kThumbnailSize);
-    pixmap.fill(Qt::transparent);
-
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    const QColor accent(74, 144, 217);
-    const QRectF diamond(8.0, 8.0, 16.0, 16.0);
-    QPolygonF shape;
-    shape << QPointF(diamond.center().x(), diamond.top())
-          << QPointF(diamond.right(), diamond.center().y())
-          << QPointF(diamond.center().x(), diamond.bottom())
-          << QPointF(diamond.left(), diamond.center().y());
-
-    painter.setPen(QPen(accent, 1.6));
-    painter.setBrush(QColor(245, 248, 255));
-    painter.drawPolygon(shape);
-
-    QFont font = painter.font();
-    font.setBold(true);
-    font.setPixelSize(11);
-    painter.setFont(font);
-    painter.setPen(accent);
-    painter.drawText(pixmap.rect(), Qt::AlignCenter, QStringLiteral("?"));
-
-    return pixmap;
-}
-
 QPixmap mouseMovePreviewIcon() {
     QPixmap pixmap(kThumbnailSize, kThumbnailSize);
     pixmap.fill(Qt::transparent);
@@ -414,10 +384,6 @@ QPixmap loadBlockThumbnail(const Block& block, const QString& projectDirectory) 
 
     if (block.type() == BlockType::Wait) {
         return waitBlockPreviewIcon();
-    }
-
-    if (block.type() == BlockType::If) {
-        return ifBlockPreviewIcon();
     }
 
     if (block.type() == BlockType::Loop) {
@@ -474,18 +440,6 @@ void WorkflowEditorPanel::setupUi() {
                 const QString regionId = m_blockList->loopRegionIdForTableRow(row);
                 if (!regionId.isEmpty()) {
                     editLoopRegion(regionId);
-                    return;
-                }
-                int mainBlockRow = -1;
-                bool isThenBranch = true;
-                int branchBlockIndex = -1;
-                if (m_blockList->ifBranchBlockAtTableRow(row, mainBlockRow, isThenBranch, branchBlockIndex)) {
-                    editIfBranchBlock(mainBlockRow, isThenBranch, branchBlockIndex);
-                    return;
-                }
-                const int ifMainRow = m_blockList->ifMainBlockRowForTableRow(row);
-                if (ifMainRow >= 0) {
-                    editBlockAt(ifMainRow);
                 }
             });
     connect(m_blockList, &BlockListWidget::blockRowsReordered, this,
@@ -508,8 +462,7 @@ void WorkflowEditorPanel::setupUi() {
     const BlockType addTypes[] = {BlockType::ImageFind,
                                   BlockType::Click,
                                   BlockType::KeyPress,
-                                  BlockType::Wait,
-                                  BlockType::If};
+                                  BlockType::Wait};
     for (const BlockType type : addTypes) {
         auto* button = new QPushButton(blockTypeDisplayName(type), addGroup);
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -582,18 +535,6 @@ void WorkflowEditorPanel::setupUi() {
             &BlockListWidget::loopRegionDeleteRequested,
             this,
             &WorkflowEditorPanel::onLoopRegionDeleteRequested);
-    connect(m_blockList,
-            &BlockListWidget::ifBlockEditRequested,
-            this,
-            &WorkflowEditorPanel::onIfBlockEditRequested);
-    connect(m_blockList,
-            &BlockListWidget::ifGotoBlockPicked,
-            this,
-            &WorkflowEditorPanel::onIfGotoBlockPicked);
-    connect(m_blockList,
-            &BlockListWidget::ifGotoPickCancelled,
-            this,
-            &WorkflowEditorPanel::onIfGotoPickCancelled);
 }
 
 QHeaderView* WorkflowEditorPanel::blockListHeader() const {
@@ -769,7 +710,6 @@ void WorkflowEditorPanel::setFeature(Feature* feature) {
     if (m_feature && m_feature != feature) {
         saveRunFeedbackForFeature(m_feature->id());
         setLoopRegionPickMode(false);
-        setIfGotoPickMode(false);
     }
 
     m_feature = feature;
@@ -781,7 +721,6 @@ void WorkflowEditorPanel::setFeature(Feature* feature) {
         clearBlockMatchResults();
         clearExecutionHighlight();
         setLoopRegionPickMode(false);
-        setIfGotoPickMode(false);
     }
 
     refresh();
@@ -855,33 +794,6 @@ void WorkflowEditorPanel::refresh() {
 
     const auto& blocks = m_feature->workflow().blocks();
     m_blockList->setBlockCount(static_cast<int>(blocks.size()));
-
-    std::vector<IfBlockDisplay> ifDisplays;
-    for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
-        if (blocks[i]->type() != BlockType::If) {
-            continue;
-        }
-        const auto* ifBlock = static_cast<const IfBlock*>(blocks[i].get());
-        IfBlockDisplay display;
-        display.blockRow = i;
-        display.conditionText = ifConditionDisplayLabel(ifBlock->condition, ifBlock->negate);
-        for (const auto& branchBlock : ifBlock->thenBranch.blocks()) {
-            IfBranchBlockDisplay branchDisplay;
-            branchDisplay.type = blockTypeWorkflowActionName(branchBlock->type());
-            branchDisplay.summary = QString::fromStdString(branchBlock->summary());
-            branchDisplay.thumbnail = loadBlockThumbnail(*branchBlock, m_projectDirectory);
-            display.thenBlocks.push_back(branchDisplay);
-        }
-        for (const auto& branchBlock : ifBlock->elseBranch.blocks()) {
-            IfBranchBlockDisplay branchDisplay;
-            branchDisplay.type = blockTypeWorkflowActionName(branchBlock->type());
-            branchDisplay.summary = QString::fromStdString(branchBlock->summary());
-            branchDisplay.thumbnail = loadBlockThumbnail(*branchBlock, m_projectDirectory);
-            display.elseBlocks.push_back(branchDisplay);
-        }
-        ifDisplays.push_back(display);
-    }
-    m_blockList->setIfBlockDisplays(ifDisplays);
 
     m_blockList->setLoopRegions(m_feature->workflow().loopRegions());
     for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
@@ -957,7 +869,6 @@ void WorkflowEditorPanel::setEditingEnabled(bool enabled) {
     m_blockList->setReorderEnabled(enabled);
     if (!enabled) {
         setLoopRegionPickMode(false);
-        setIfGotoPickMode(false);
     }
 }
 
@@ -968,11 +879,6 @@ void WorkflowEditorPanel::addBlockOfType(BlockType type) {
 
     auto draft = BlockFactory::create(type);
     BlockEditorDialog dialog(draft.get(), m_projectDirectory, this);
-    if (m_feature) {
-        dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()) + 1,
-                                        static_cast<int>(m_feature->workflow().blocks().size()));
-    }
-    connectBlockEditorDialog(&dialog);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -994,18 +900,9 @@ void WorkflowEditorPanel::onEditBlock() {
 QList<int> WorkflowEditorPanel::selectedBlockRows() const {
     QSet<int> rowSet;
     for (const QTableWidgetItem* item : m_blockList->selectedItems()) {
-        const int tableRow = item->row();
-        const int blockRow = m_blockList->blockRowForTableRow(tableRow);
+        const int blockRow = m_blockList->blockRowForTableRow(item->row());
         if (blockRow >= 0) {
             rowSet.insert(blockRow);
-            continue;
-        }
-        if (m_blockList->tableRowKind(tableRow) == BlockListRowKind::IfBranchBlock) {
-            continue;
-        }
-        const int ifMainRow = m_blockList->ifMainBlockRowForTableRow(tableRow);
-        if (ifMainRow >= 0) {
-            rowSet.insert(ifMainRow);
         }
     }
     QList<int> rows = rowSet.values();
@@ -1085,81 +982,26 @@ void WorkflowEditorPanel::removeSelectedBlocks() {
     }
 
     const QList<int> rows = selectedBlockRows();
-    struct IfBranchSelection {
-        int ifBlockRow = -1;
-        int branchBlockIndex = -1;
-        bool isThen = true;
-    };
-    QList<IfBranchSelection> branchSelections;
-    for (const QTableWidgetItem* item : m_blockList->selectedItems()) {
-        int ifBlockRow = -1;
-        bool isThen = true;
-        int branchBlockIndex = -1;
-        if (m_blockList->ifBranchBlockAtTableRow(item->row(), ifBlockRow, isThen, branchBlockIndex)) {
-            branchSelections.append({ifBlockRow, branchBlockIndex, isThen});
-        }
-    }
-
-    if (rows.isEmpty() && branchSelections.isEmpty()) {
+    if (rows.isEmpty()) {
         return;
     }
 
     pushUndoSnapshot();
 
-    if (!rows.isEmpty()) {
-        for (int i = rows.size() - 1; i >= 0; --i) {
-            m_feature->workflow().removeBlock(rows[i]);
-        }
-
-        clearBlockMatchResults();
-
-        const int blockCount = static_cast<int>(m_feature->workflow().blocks().size());
-        refresh();
-
-        if (blockCount > 0) {
-            const int anchorRow = qMin(rows.first(), blockCount - 1);
-            m_blockList->selectBlockRow(anchorRow);
-        }
-
-        emit workflowModified();
-        return;
+    for (int i = rows.size() - 1; i >= 0; --i) {
+        m_feature->workflow().removeBlock(rows[i]);
     }
 
-    std::sort(branchSelections.begin(),
-              branchSelections.end(),
-              [](const IfBranchSelection& a, const IfBranchSelection& b) {
-                  if (a.ifBlockRow != b.ifBlockRow) {
-                      return a.ifBlockRow > b.ifBlockRow;
-                  }
-                  if (a.isThen != b.isThen) {
-                      return a.isThen > b.isThen;
-                  }
-                  return a.branchBlockIndex > b.branchBlockIndex;
-              });
+    clearBlockMatchResults();
 
-    int anchorIfRow = -1;
-    for (const IfBranchSelection& selection : branchSelections) {
-        if (selection.ifBlockRow < 0
-            || selection.ifBlockRow >= static_cast<int>(m_feature->workflow().blocks().size())) {
-            continue;
-        }
-        auto* ifBlock = dynamic_cast<IfBlock*>(m_feature->workflow().blocks()[selection.ifBlockRow].get());
-        if (!ifBlock) {
-            continue;
-        }
-        Workflow& branch = selection.isThen ? ifBlock->thenBranch : ifBlock->elseBranch;
-        if (selection.branchBlockIndex < 0
-            || selection.branchBlockIndex >= static_cast<int>(branch.blocks().size())) {
-            continue;
-        }
-        branch.removeBlock(selection.branchBlockIndex);
-        anchorIfRow = selection.ifBlockRow;
-    }
-
+    const int blockCount = static_cast<int>(m_feature->workflow().blocks().size());
     refresh();
-    if (anchorIfRow >= 0) {
-        m_blockList->selectBlockRow(anchorIfRow);
+
+    if (blockCount > 0) {
+        const int anchorRow = qMin(rows.first(), blockCount - 1);
+        m_blockList->selectBlockRow(anchorRow);
     }
+
     emit workflowModified();
 }
 
@@ -1223,71 +1065,12 @@ void WorkflowEditorPanel::setLoopRegionPickMode(bool active) {
     if (m_loopRegionPickActive == active) {
         return;
     }
-    if (active) {
-        setIfGotoPickMode(false);
-    }
     m_loopRegionPickActive = active;
     m_blockList->setLoopRegionPickMode(active);
     if (m_loopRegionsButton) {
         m_loopRegionsButton->setChecked(active);
         m_loopRegionsButton->setText(active ? tr("구간 드래그…") : tr("구간 반복"));
     }
-}
-
-void WorkflowEditorPanel::setIfGotoPickMode(bool active) {
-    if (m_ifGotoPickActive == active) {
-        return;
-    }
-    if (active) {
-        setLoopRegionPickMode(false);
-        setIfGotoPickMode(false);
-    }
-    m_ifGotoPickActive = active;
-    m_blockList->setIfGotoPickMode(active);
-}
-
-void WorkflowEditorPanel::connectBlockEditorDialog(BlockEditorDialog* dialog) {
-    if (!dialog) {
-        return;
-    }
-    dialog->setGotoBlockPickAvailable(true);
-    connect(dialog, &BlockEditorDialog::requestIfGotoBlockPick, this, [this, dialog](int branch) {
-        beginIfGotoBlockPick(dialog, branch);
-    });
-}
-
-void WorkflowEditorPanel::beginIfGotoBlockPick(BlockEditorDialog* dialog, int branch) {
-    if (!m_editingEnabled || !dialog || m_ifGotoPickDialog) {
-        return;
-    }
-    m_ifGotoPickDialog = dialog;
-    m_ifGotoPickBranch = branch;
-    dialog->hide();
-    setIfGotoPickMode(true);
-}
-
-void WorkflowEditorPanel::finishIfGotoBlockPick(int blockRow, bool apply) {
-    BlockEditorDialog* dialog = m_ifGotoPickDialog;
-    const int branch = m_ifGotoPickBranch;
-    m_ifGotoPickDialog = nullptr;
-    setIfGotoPickMode(false);
-    if (!dialog) {
-        return;
-    }
-    dialog->show();
-    dialog->raise();
-    dialog->activateWindow();
-    if (apply && blockRow >= 0) {
-        dialog->applyIfGotoBlockPick(branch, blockRow + 1);
-    }
-}
-
-void WorkflowEditorPanel::onIfGotoBlockPicked(int blockRow) {
-    finishIfGotoBlockPick(blockRow, true);
-}
-
-void WorkflowEditorPanel::onIfGotoPickCancelled() {
-    finishIfGotoBlockPick(-1, false);
 }
 
 void WorkflowEditorPanel::onLoopRegionPickCancelled() {
@@ -1376,14 +1159,6 @@ void WorkflowEditorPanel::onLoopRegionEditRequested(const QString& regionId) {
 
 void WorkflowEditorPanel::onLoopRegionDeleteRequested(const QString& regionId) {
     deleteLoopRegion(regionId);
-}
-
-void WorkflowEditorPanel::onIfBlockEditRequested(int mainBlockRow) {
-    editBlockAt(mainBlockRow);
-}
-
-void WorkflowEditorPanel::onIfBlockDeleteRequested(int mainBlockRow) {
-    deleteBlockAt(mainBlockRow);
 }
 
 void WorkflowEditorPanel::onLoopRegionsButtonContextMenu(const QPoint& pos) {
@@ -1545,8 +1320,6 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
 
     Block* block = m_feature->workflow().blocks()[row].get();
     BlockEditorDialog dialog(block, m_projectDirectory, this);
-    dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()), row);
-    connectBlockEditorDialog(&dialog);
     if (dialog.exec() != QDialog::Accepted) {
         return false;
     }
@@ -1555,36 +1328,6 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
     m_feature->workflow().replaceBlock(row, dialog.takeBlock());
     refresh();
     m_blockList->selectBlockRow(row);
-    emit workflowModified();
-    return true;
-}
-
-bool WorkflowEditorPanel::editIfBranchBlock(int ifBlockRow, bool isThenBranch, int branchBlockIndex) {
-    if (!m_feature || ifBlockRow < 0 || ifBlockRow >= static_cast<int>(m_feature->workflow().blocks().size())) {
-        return false;
-    }
-
-    Block* block = m_feature->workflow().blocks()[ifBlockRow].get();
-    auto* ifBlock = dynamic_cast<IfBlock*>(block);
-    if (!ifBlock) {
-        return false;
-    }
-
-    Workflow& branch = isThenBranch ? ifBlock->thenBranch : ifBlock->elseBranch;
-    if (branchBlockIndex < 0 || branchBlockIndex >= static_cast<int>(branch.blocks().size())) {
-        return editBlockAt(ifBlockRow);
-    }
-
-    BlockEditorDialog dialog(branch.blocks()[branchBlockIndex].get(), m_projectDirectory, this);
-    dialog.setWorkflowEditorContext(static_cast<int>(branch.blocks().size()), branchBlockIndex);
-    if (dialog.exec() != QDialog::Accepted) {
-        return false;
-    }
-
-    pushUndoSnapshot();
-    branch.replaceBlock(branchBlockIndex, dialog.takeBlock());
-    refresh();
-    m_blockList->selectBlockRow(ifBlockRow);
     emit workflowModified();
     return true;
 }

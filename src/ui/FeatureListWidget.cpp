@@ -4,6 +4,7 @@
 #include <QDragLeaveEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
+#include <QKeyEvent>
 #include <QPainter>
 #include <QResizeEvent>
 #include <QTimer>
@@ -243,4 +244,13 @@ void FeatureListWidget::dropEvent(QDropEvent* event) {
     }
     event->setDropAction(Qt::IgnoreAction);
     event->accept();
+}
+
+void FeatureListWidget::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Delete) {
+        emit deleteRequested();
+        event->accept();
+        return;
+    }
+    QListWidget::keyPressEvent(event);
 }

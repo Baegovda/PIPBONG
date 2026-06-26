@@ -46,14 +46,10 @@ public:
     void setBlockImageFindMatchDuration(int row, qint64 matchDurationMs);
     void clearBlockMatchResults();
     void setLoopRegions(const std::vector<WorkflowLoopRegion>& regions);
-    void setIfBlockDisplays(const std::vector<IfBlockDisplay>& displays);
     void clearLoopRegionVisuals();
     void setLoopRegionPickMode(bool active);
     bool isLoopRegionPickMode() const { return m_loopRegionPickActive; }
     void cancelLoopRegionPick();
-    void setIfGotoPickMode(bool active);
-    bool isIfGotoPickMode() const { return m_ifGotoPickActive; }
-    void cancelIfGotoPick();
     void setReorderEnabled(bool enabled);
     bool isReorderEnabled() const { return m_reorderEnabled; }
     void setActiveRow(int row, ExecutionHighlight highlight = ExecutionHighlight::Running);
@@ -67,8 +63,6 @@ public:
     const std::vector<WorkflowLoopRegion>& loopRegions() const { return m_loopRegions; }
     QString loopRegionIdForTableRow(int tableRow) const;
     BlockListRowKind tableRowKind(int tableRow) const;
-    bool ifBranchBlockAtTableRow(int tableRow, int& mainBlockRow, bool& isThenBranch, int& branchBlockIndex) const;
-    int ifMainBlockRowForTableRow(int tableRow) const;
     const BlockListRowMeta& rowMeta(int tableRow) const;
     void selectBlockRow(int blockRow);
 
@@ -76,12 +70,8 @@ signals:
     void blockRowsReordered(int fromRow, int toRow);
     void loopRegionRangePicked(int startRow, int endRow);
     void loopRegionPickCancelled();
-    void ifGotoBlockPicked(int blockRow);
-    void ifGotoPickCancelled();
     void loopRegionEditRequested(const QString& regionId);
     void loopRegionDeleteRequested(const QString& regionId);
-    void ifBlockEditRequested(int mainBlockRow);
-    void ifBlockDeleteRequested(int mainBlockRow);
     void copyRequested();
     void pasteRequested();
     void deleteRequested();
@@ -112,21 +102,9 @@ private:
     void onFlashAnimationFinished();
     void triggerRowFlash(int row, ExecutionHighlight highlight, int durationMs);
     void updateLoopRegionPickPreview();
-    void updateIfGotoPickPreview();
     void updateLoopRegionChrome();
-    void updateIfBranchChrome();
     void rebuildTableRows();
     void populateLoopRegionHeaderRow(int tableRow, const WorkflowLoopRegion& region);
-    void populateIfHeaderRow(int tableRow, const IfBlockDisplay& display);
-    void populateIfBranchHeaderRow(int tableRow,
-                                  bool isThen,
-                                  const QString& label,
-                                  int mainBlockRow);
-    void populateIfBranchBlockRow(int tableRow,
-                                  const IfBranchBlockDisplay& display,
-                                  int branchIndex,
-                                  int mainBlockRow,
-                                  bool isThen);
     QString loopRegionIdAtViewportPos(const QPoint& viewportPos) const;
     int rowAtViewportY(int viewportY) const;
     int blockRowAtViewportY(int viewportY) const;
@@ -162,17 +140,11 @@ private:
     QVector<bool> m_loopRegionStart;
     QVector<bool> m_loopRegionEnd;
     std::vector<WorkflowLoopRegion> m_loopRegions;
-    std::vector<IfBlockDisplay> m_ifDisplays;
     QWidget* m_loopRegionChrome = nullptr;
-    QWidget* m_ifBranchChrome = nullptr;
     bool m_loopRegionPickActive = false;
     bool m_loopRegionPickDragging = false;
     int m_loopRegionPickAnchorRow = -1;
     int m_loopRegionPickCurrentRow = -1;
     QVector<bool> m_loopRegionPickPreview;
-    bool m_ifGotoPickActive = false;
-    bool m_ifGotoPickDragging = false;
-    int m_ifGotoPickHoverRow = -1;
-    QVector<bool> m_ifGotoPickPreview;
     QString m_defaultToolTip;
 };

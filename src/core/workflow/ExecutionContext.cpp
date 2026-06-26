@@ -1,7 +1,7 @@
 #include "core/workflow/ExecutionContext.h"
 
 #include "core/input/InputSimulator.h"
-#include "core/workflow/blocks/IfBlock.h"
+#include "core/workflow/blocks/LoopBlock.h"
 
 #include <chrono>
 #include <filesystem>
@@ -57,7 +57,7 @@ void ExecutionContext::resetStop() {
     m_stopRequested.store(false);
     m_paused.store(false);
     m_detectionFailedThisRun = false;
-    m_ifNestingDepth = 0;
+    m_nestedScopeDepth = 0;
     clearLastMatch();
     clearLastMatchAttempt();
     clearConsumedMatchRegions();
@@ -123,22 +123,22 @@ bool ExecutionContext::detectionFailedThisRun() const {
     return m_detectionFailedThisRun;
 }
 
-bool ExecutionContext::enterIfScope() {
-    if (m_ifNestingDepth >= IfBlock::kMaxNestingDepth) {
+bool ExecutionContext::enterNestedScope() {
+    if (m_nestedScopeDepth >= LoopBlock::kMaxNestingDepth) {
         return false;
     }
-    ++m_ifNestingDepth;
+    ++m_nestedScopeDepth;
     return true;
 }
 
-void ExecutionContext::leaveIfScope() {
-    if (m_ifNestingDepth > 0) {
-        --m_ifNestingDepth;
+void ExecutionContext::leaveNestedScope() {
+    if (m_nestedScopeDepth > 0) {
+        --m_nestedScopeDepth;
     }
 }
 
-int ExecutionContext::ifNestingDepth() const {
-    return m_ifNestingDepth;
+int ExecutionContext::nestedScopeDepth() const {
+    return m_nestedScopeDepth;
 }
 
 bool ExecutionContext::hasLastMatch() const {

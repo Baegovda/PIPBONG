@@ -14,17 +14,24 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <windowsx.h>
 #endif
 
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
 #ifdef _WIN32
 constexpr wchar_t kPreviewClassName[] = L"SbmRoiPreviewOverlay";
 constexpr int kEscHotkeyId = 0x5052;
+
+constexpr int kToolbarHeight = 28;
+constexpr int kToolbarGap = 4;
+constexpr int kChromeSpacing = 4;
+constexpr int kButtonPadX = 10;
 
 struct PreviewState {
     HWND hwnd = nullptr;
@@ -35,8 +42,25 @@ struct PreviewState {
     };
     std::vector<RoiItem> roiItems;
     int selectedRoiIndex = 0;
+    bool interactive = false;
     std::wstring hintText;
     RoiPreviewOverlay::VisibilityHandler onVisibilityChanged;
+    RoiPreviewOverlay::RoiIndexHandler onRoiSelected;
+    RoiPreviewOverlay::RoiActionHandler onRoiAdd;
+    RoiPreviewOverlay::RoiIndexHandler onRoiEdit;
+    RoiPreviewOverlay::RoiIndexHandler onRoiDelete;
+    int hoveredRoiIndex = 0;
+    enum class HoveredControl { None, Add, Edit, Delete };
+    HoveredControl hoveredControl = HoveredControl::None;
+};
+
+struct RoiChromeLayout {
+    int roiIndex = 0;
+    QRect roiRect;
+    QRect labelRect;
+    QRect addRect;
+    QRect editRect;
+    QRect deleteRect;
 };
 
 std::unique_ptr<PreviewState> g_state;
@@ -83,73 +107,172 @@ QRect roiClientRectOnTargetWindow(const QRect& roiPhysical, const QRect& targetP
     return roiClient.intersected(targetClient);
 }
 
-void drawRoiIndexBadge(HDC hdc, const QRect& roiRect, int roiIndex, bool selected) {
+HFONT createUiFont(int heightPx, int weight) {
+    return CreateFontW(heightPx,
+                       0,
+                       0,
+                       0,
+                       weight,
+                       FALSE,
+                       FALSE,
+                       FALSE,
+                       DEFAULT_CHARSET,
+                       OUT_DEFAULT_PRECIS,
+                       CLIP_DEFAULT_PRECIS,
+                       CLEARTYPE_QUALITY,
+                       DEFAULT_PITCH | FF_DONTCARE,
+                       L"Segoe UI");
+}
+
+SIZE measureText(HDC hdc, const wchar_t* text, int length) {
+    SIZE size{};
+    if (length < 0) {
+        length = static_cast<int>(wcslen(text));
+    }
+    GetTextExtentPoint32W(hdc, text, length, &size);
+    return size;
+}
+
+RECT qRectToRect(const QRect& rect) {
+    return {rect.left(), rect.top(), rect.right(), rect.bottom()};
+}
+
+bool pointInRect(const QPoint& point, const QRect& rect) {
+    return rect.contains(point);
+}
+
+void drawToolbarButton(HDC hdc,
+                       const QRect& rect,
+                       const wchar_t* text,
+                       bool hovered,
+                       bool destructive) {
+    const COLORREF face = hovered ? (destructive ? RGB(92, 38, 38) : RGB(68, 72, 78))
+                                  : (destructive ? RGB(72, 32, 32) : RGB(52, 56, 60));
+    const COLORREF border = hovered ? (destructive ? RGB(220, 90, 90) : RGB(150, 156, 166))
+                                    : (destructive ? RGB(150, 70, 70) : RGB(110, 116, 126));
+    const COLORREF textColor = RGB(245, 245, 245);
+
+    RECT faceRect = qRectToRect(rect);
+    HBRUSH faceBrush = CreateSolidBrush(face);
+    FillRect(hdc, &faceRect, faceBrush);
+    DeleteObject(faceBrush);
+
+    HPEN borderPen = CreatePen(PS_SOLID, 1, border);
+    HGDIOBJ oldPen = SelectObject(hdc, borderPen);
+    HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
+    Rectangle(hdc, rect.left(), rect.top(), rect.right(), rect.bottom());
+    SelectObject(hdc, oldBrush);
+    SelectObject(hdc, oldPen);
+    DeleteObject(borderPen);
+
+    const int textLen = static_cast<int>(wcslen(text));
+    SIZE textSize = measureText(hdc, text, textLen);
+    const int textX = rect.left() + (std::max)(0, (rect.width() - static_cast<int>(textSize.cx)) / 2);
+    const int textY = rect.top() + (std::max)(0, (rect.height() - static_cast<int>(textSize.cy)) / 2);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, textColor);
+    TextOutW(hdc, textX, textY, text, textLen);
+}
+
+void drawIndexLabel(HDC hdc, const QRect& rect, int roiIndex, bool selected) {
     wchar_t label[16]{};
     swprintf_s(label, L"#%d", roiIndex);
-    const int labelLen = static_cast<int>(wcslen(label));
-
-    HFONT font = CreateFontW(-22,
-                             0,
-                             0,
-                             0,
-                             FW_BOLD,
-                             FALSE,
-                             FALSE,
-                             FALSE,
-                             DEFAULT_CHARSET,
-                             OUT_DEFAULT_PRECIS,
-                             CLIP_DEFAULT_PRECIS,
-                             CLEARTYPE_QUALITY,
-                             DEFAULT_PITCH | FF_DONTCARE,
-                             L"Segoe UI");
-    HGDIOBJ oldFont = SelectObject(hdc, font);
-
-    SIZE textSize{};
-    GetTextExtentPoint32W(hdc, label, labelLen, &textSize);
-
-    constexpr int kPadX = 6;
-    constexpr int kPadY = 4;
-    int textX = roiRect.left() + 6;
-    int textY = roiRect.top() + 6;
-    if (textX + textSize.cx + kPadX * 2 > roiRect.right()) {
-        textX = std::max(roiRect.left() + 2,
-                         roiRect.right() - static_cast<int>(textSize.cx) - kPadX * 2 - 2);
-    }
-    if (textY + textSize.cy + kPadY * 2 > roiRect.bottom()) {
-        textY = std::max(roiRect.top() + 2,
-                         roiRect.bottom() - static_cast<int>(textSize.cy) - kPadY * 2 - 2);
-    }
-
-    RECT bgRect{textX,
-                textY,
-                textX + textSize.cx + kPadX * 2,
-                textY + textSize.cy + kPadY * 2};
 
     const COLORREF badgeBorder = selected ? RGB(255, 214, 90) : RGB(80, 255, 120);
     const COLORREF badgeBg = selected ? RGB(48, 38, 12) : RGB(24, 24, 24);
     const COLORREF badgeText = selected ? RGB(255, 244, 200) : RGB(255, 255, 255);
 
+    RECT labelBgRect = qRectToRect(rect);
     HBRUSH bgBrush = CreateSolidBrush(badgeBg);
-    FillRect(hdc, &bgRect, bgBrush);
+    FillRect(hdc, &labelBgRect, bgBrush);
     DeleteObject(bgBrush);
 
     HPEN borderPen = CreatePen(PS_SOLID, selected ? 2 : 1, badgeBorder);
     HGDIOBJ oldPen = SelectObject(hdc, borderPen);
     HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
-    Rectangle(hdc, bgRect.left, bgRect.top, bgRect.right, bgRect.bottom);
+    Rectangle(hdc, rect.left(), rect.top(), rect.right(), rect.bottom());
     SelectObject(hdc, oldBrush);
     SelectObject(hdc, oldPen);
     DeleteObject(borderPen);
 
+    const int textLen = static_cast<int>(wcslen(label));
+    SIZE textSize = measureText(hdc, label, textLen);
+    const int textX = rect.left() + (std::max)(0, (rect.width() - static_cast<int>(textSize.cx)) / 2);
+    const int textY = rect.top() + (std::max)(0, (rect.height() - static_cast<int>(textSize.cy)) / 2);
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, badgeText);
-    TextOutW(hdc, bgRect.left + kPadX, bgRect.top + kPadY, label, labelLen);
-
-    SelectObject(hdc, oldFont);
-    DeleteObject(font);
+    TextOutW(hdc, textX, textY, label, textLen);
 }
 
-void paintPreview(HDC hdc, const PreviewState& state) {
+std::vector<RoiChromeLayout> buildChromeLayouts(const PreviewState& state, HDC hdc) {
+    std::vector<RoiChromeLayout> layouts;
+    layouts.reserve(state.roiItems.size());
+
+    HFONT buttonFont = createUiFont(-14, FW_NORMAL);
+    HGDIOBJ oldFont = SelectObject(hdc, buttonFont);
+
+    const SIZE addSize = measureText(hdc, L"\ucd94\uac00", 2);
+    const SIZE editSize = measureText(hdc, L"\uc218\uc815", 2);
+    const SIZE deleteSize = measureText(hdc, L"\uc0ad\uc81c", 2);
+    const int addWidth = addSize.cx + kButtonPadX * 2;
+    const int editWidth = editSize.cx + kButtonPadX * 2;
+    const int deleteWidth = deleteSize.cx + kButtonPadX * 2;
+
+    HFONT labelFont = createUiFont(-16, FW_BOLD);
+    SelectObject(hdc, labelFont);
+
+    for (const PreviewState::RoiItem& roiItem : state.roiItems) {
+        if (roiItem.clientRect.width() < 2 || roiItem.clientRect.height() < 2) {
+            continue;
+        }
+
+        RoiChromeLayout layout;
+        layout.roiIndex = roiItem.index;
+        layout.roiRect = roiItem.clientRect;
+
+        wchar_t indexLabel[16]{};
+        swprintf_s(indexLabel, L"#%d", roiItem.index);
+        const SIZE labelSize = measureText(hdc, indexLabel, static_cast<int>(wcslen(indexLabel)));
+        const int labelWidth = labelSize.cx + kButtonPadX * 2;
+
+        const int toolbarY = std::max(4, layout.roiRect.top() - kToolbarHeight - kToolbarGap);
+        int cursorX = layout.roiRect.left();
+
+        layout.labelRect = QRect(cursorX, toolbarY, labelWidth, kToolbarHeight);
+        cursorX = layout.labelRect.right() + kChromeSpacing;
+
+        if (state.interactive) {
+            layout.addRect = QRect(cursorX, toolbarY, addWidth, kToolbarHeight);
+            cursorX = layout.addRect.right() + kChromeSpacing;
+            layout.editRect = QRect(cursorX, toolbarY, editWidth, kToolbarHeight);
+            cursorX = layout.editRect.right() + kChromeSpacing;
+            layout.deleteRect = QRect(cursorX, toolbarY, deleteWidth, kToolbarHeight);
+        }
+
+        layouts.push_back(layout);
+    }
+
+    SelectObject(hdc, oldFont);
+    DeleteObject(buttonFont);
+    DeleteObject(labelFont);
+    return layouts;
+}
+
+void invokeRoiHandler(RoiPreviewOverlay::RoiIndexHandler handler, int roiIndex) {
+    if (!handler) {
+        return;
+    }
+    QTimer::singleShot(0, qApp, [handler = std::move(handler), roiIndex]() { handler(roiIndex); });
+}
+
+void invokeRoiAction(RoiPreviewOverlay::RoiActionHandler handler) {
+    if (!handler) {
+        return;
+    }
+    QTimer::singleShot(0, qApp, [handler = std::move(handler)]() { handler(); });
+}
+
+void paintPreview(HDC hdc, PreviewState& state) {
     RECT clientRect{};
     GetClientRect(state.hwnd, &clientRect);
 
@@ -172,14 +295,14 @@ void paintPreview(HDC hdc, const PreviewState& state) {
         if (selected) {
             HPEN haloPen = CreatePen(PS_SOLID, 6, RGB(255, 244, 170));
             HGDIOBJ oldHaloPen = SelectObject(hdc, haloPen);
-            HGDIOBJ oldHaloBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
+            HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
             const int haloInset = 3;
             Rectangle(hdc,
                       roiRect.left() - haloInset,
                       roiRect.top() - haloInset,
                       roiRect.right() + haloInset + 1,
                       roiRect.bottom() + haloInset + 1);
-            SelectObject(hdc, oldHaloBrush);
+            SelectObject(hdc, oldBrush);
             SelectObject(hdc, oldHaloPen);
             DeleteObject(haloPen);
         }
@@ -201,34 +324,49 @@ void paintPreview(HDC hdc, const PreviewState& state) {
         FillRect(hdc, &inner, fillBrush);
         DeleteObject(fillBrush);
 
-        drawRoiIndexBadge(hdc, roiRect, roiItem.index, selected);
-
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, selected ? RGB(255, 248, 220) : RGB(200, 230, 205));
-        HFONT sizeFont = CreateFontW(-16,
-                                     0,
-                                     0,
-                                     0,
-                                     FW_NORMAL,
-                                     FALSE,
-                                     FALSE,
-                                     FALSE,
-                                     DEFAULT_CHARSET,
-                                     OUT_DEFAULT_PRECIS,
-                                     CLIP_DEFAULT_PRECIS,
-                                     CLEARTYPE_QUALITY,
-                                     DEFAULT_PITCH | FF_DONTCARE,
-                                     L"Segoe UI");
+        HFONT sizeFont = createUiFont(-16, FW_NORMAL);
         HGDIOBJ oldFont = SelectObject(hdc, sizeFont);
         const std::wstring sizeText =
             std::to_wstring(roiRect.width()) + L" x " + std::to_wstring(roiRect.height());
-        const int sizeY = roiRect.top() + 38;
-        if (sizeY + 16 <= roiRect.bottom()) {
+        const int sizeY = roiRect.bottom() - 22;
+        if (sizeY > roiRect.top() + 8) {
             TextOutW(hdc, roiRect.left() + 8, sizeY, sizeText.c_str(), static_cast<int>(sizeText.size()));
         }
         SelectObject(hdc, oldFont);
         DeleteObject(sizeFont);
     }
+
+    const std::vector<RoiChromeLayout> chromeLayouts = buildChromeLayouts(state, hdc);
+    HFONT buttonFont = createUiFont(-14, FW_NORMAL);
+    HGDIOBJ oldButtonFont = SelectObject(hdc, buttonFont);
+    HFONT labelFont = createUiFont(-16, FW_BOLD);
+    HGDIOBJ oldLabelFont = SelectObject(hdc, labelFont);
+
+    for (const RoiChromeLayout& layout : chromeLayouts) {
+        const bool selected =
+            state.selectedRoiIndex > 0 && layout.roiIndex == state.selectedRoiIndex;
+        drawIndexLabel(hdc, layout.labelRect, layout.roiIndex, selected);
+
+        if (state.interactive) {
+            const bool addHovered = state.hoveredRoiIndex == layout.roiIndex
+                                    && state.hoveredControl == PreviewState::HoveredControl::Add;
+            const bool editHovered = state.hoveredRoiIndex == layout.roiIndex
+                                     && state.hoveredControl == PreviewState::HoveredControl::Edit;
+            const bool deleteHovered = state.hoveredRoiIndex == layout.roiIndex
+                                       && state.hoveredControl == PreviewState::HoveredControl::Delete;
+            SelectObject(hdc, buttonFont);
+            drawToolbarButton(hdc, layout.addRect, L"\ucd94\uac00", addHovered, false);
+            drawToolbarButton(hdc, layout.editRect, L"\uc218\uc815", editHovered, false);
+            drawToolbarButton(hdc, layout.deleteRect, L"\uc0ad\uc81c", deleteHovered, true);
+        }
+    }
+
+    SelectObject(hdc, oldLabelFont);
+    SelectObject(hdc, oldButtonFont);
+    DeleteObject(buttonFont);
+    DeleteObject(labelFont);
 
     if (!state.hintText.empty()) {
         SetBkMode(hdc, TRANSPARENT);
@@ -236,6 +374,62 @@ void paintPreview(HDC hdc, const PreviewState& state) {
         RECT textRect{16, 16, clientRect.right - 16, clientRect.bottom - 16};
         DrawTextW(hdc, state.hintText.c_str(), -1, &textRect, DT_LEFT | DT_TOP | DT_WORDBREAK);
     }
+}
+
+bool hitTestInteractive(const PreviewState& state,
+                        const QPoint& point,
+                        HDC hdc,
+                        int* outRoiIndex,
+                        PreviewState::HoveredControl* outControl) {
+    const std::vector<RoiChromeLayout> layouts = buildChromeLayouts(state, hdc);
+    for (const RoiChromeLayout& layout : layouts) {
+        if (state.interactive) {
+            if (pointInRect(point, layout.deleteRect)) {
+                *outRoiIndex = layout.roiIndex;
+                *outControl = PreviewState::HoveredControl::Delete;
+                return true;
+            }
+            if (pointInRect(point, layout.editRect)) {
+                *outRoiIndex = layout.roiIndex;
+                *outControl = PreviewState::HoveredControl::Edit;
+                return true;
+            }
+            if (pointInRect(point, layout.addRect)) {
+                *outRoiIndex = layout.roiIndex;
+                *outControl = PreviewState::HoveredControl::Add;
+                return true;
+            }
+        }
+    }
+    for (const RoiChromeLayout& layout : layouts) {
+        if (pointInRect(point, layout.roiRect) || pointInRect(point, layout.labelRect)) {
+            *outRoiIndex = layout.roiIndex;
+            *outControl = PreviewState::HoveredControl::None;
+            return true;
+        }
+    }
+    return false;
+}
+
+void updateHoverFromPoint(PreviewState& state, const QPoint& point) {
+    if (!state.interactive || !state.hwnd) {
+        return;
+    }
+
+    HDC hdc = GetDC(state.hwnd);
+    int roiIndex = 0;
+    PreviewState::HoveredControl control = PreviewState::HoveredControl::None;
+    const bool hit = hitTestInteractive(state, point, hdc, &roiIndex, &control);
+    ReleaseDC(state.hwnd, hdc);
+
+    const int nextRoiIndex = hit ? roiIndex : 0;
+    const auto nextControl = hit ? control : PreviewState::HoveredControl::None;
+    if (state.hoveredRoiIndex == nextRoiIndex && state.hoveredControl == nextControl) {
+        return;
+    }
+    state.hoveredRoiIndex = nextRoiIndex;
+    state.hoveredControl = nextControl;
+    InvalidateRect(state.hwnd, nullptr, FALSE);
 }
 
 LRESULT CALLBACK previewWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -257,6 +451,85 @@ LRESULT CALLBACK previewWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
         HDC hdc = BeginPaint(hwnd, &ps);
         paintPreview(hdc, *state);
         EndPaint(hwnd, &ps);
+        return 0;
+    }
+    case WM_MOUSEMOVE: {
+        if (!state || !state->interactive) {
+            break;
+        }
+        const int x = GET_X_LPARAM(lParam);
+        const int y = GET_Y_LPARAM(lParam);
+        updateHoverFromPoint(*state, QPoint(x, y));
+        TRACKMOUSEEVENT track{};
+        track.cbSize = sizeof(track);
+        track.dwFlags = TME_LEAVE;
+        track.hwndTrack = hwnd;
+        TrackMouseEvent(&track);
+        return 0;
+    }
+    case WM_MOUSELEAVE: {
+        if (!state || !state->interactive) {
+            break;
+        }
+        if (state->hoveredRoiIndex != 0 || state->hoveredControl != PreviewState::HoveredControl::None) {
+            state->hoveredRoiIndex = 0;
+            state->hoveredControl = PreviewState::HoveredControl::None;
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
+        return 0;
+    }
+    case WM_SETCURSOR: {
+        if (!state || !state->interactive) {
+            break;
+        }
+        POINT pt{};
+        GetCursorPos(&pt);
+        ScreenToClient(hwnd, &pt);
+        HDC hdc = GetDC(hwnd);
+        int roiIndex = 0;
+        PreviewState::HoveredControl control = PreviewState::HoveredControl::None;
+        const bool hit = hitTestInteractive(*state, QPoint(pt.x, pt.y), hdc, &roiIndex, &control);
+        ReleaseDC(hwnd, hdc);
+        if (hit) {
+            SetCursor(LoadCursorW(nullptr, IDC_HAND));
+            return TRUE;
+        }
+        SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+        return TRUE;
+    }
+    case WM_LBUTTONDOWN: {
+        if (!state || !state->interactive) {
+            break;
+        }
+        const int x = GET_X_LPARAM(lParam);
+        const int y = GET_Y_LPARAM(lParam);
+        HDC hdc = GetDC(hwnd);
+        int roiIndex = 0;
+        PreviewState::HoveredControl control = PreviewState::HoveredControl::None;
+        const bool hit = hitTestInteractive(*state, QPoint(x, y), hdc, &roiIndex, &control);
+        ReleaseDC(hwnd, hdc);
+        if (!hit) {
+            break;
+        }
+
+        if (control == PreviewState::HoveredControl::Delete) {
+            invokeRoiHandler(state->onRoiDelete, roiIndex);
+            return 0;
+        }
+        if (control == PreviewState::HoveredControl::Edit) {
+            invokeRoiHandler(state->onRoiEdit, roiIndex);
+            return 0;
+        }
+        if (control == PreviewState::HoveredControl::Add) {
+            invokeRoiAction(state->onRoiAdd);
+            return 0;
+        }
+
+        if (state->selectedRoiIndex != roiIndex) {
+            state->selectedRoiIndex = roiIndex;
+            InvalidateRect(hwnd, nullptr, TRUE);
+        }
+        invokeRoiHandler(state->onRoiSelected, roiIndex);
         return 0;
     }
     case WM_HOTKEY:
@@ -299,18 +572,23 @@ bool createPreviewOverlay(PreviewState& state) {
     const int w = state.physicalBounds.width();
     const int h = state.physicalBounds.height();
 
-    state.hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT,
-                                 kPreviewClassName,
-                                 L"",
-                                 WS_POPUP,
-                                 x,
-                                 y,
-                                 w,
-                                 h,
-                                 nullptr,
-                                 nullptr,
-                                 GetModuleHandleW(nullptr),
-                                 &state);
+    DWORD exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED;
+    if (!state.interactive) {
+        exStyle |= WS_EX_TRANSPARENT;
+    }
+
+    state.hwnd = CreateWindowExW(exStyle,
+                               kPreviewClassName,
+                               L"",
+                               WS_POPUP,
+                               x,
+                               y,
+                               w,
+                               h,
+                               nullptr,
+                               nullptr,
+                               GetModuleHandleW(nullptr),
+                               &state);
 
     if (!state.hwnd) {
         return false;
@@ -341,7 +619,12 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
                              const std::vector<CaptureRegion>& customRegions,
                              QWidget* hostWidget,
                              VisibilityHandler onVisibilityChanged,
-                             int selectedRoiIndex) {
+                             int selectedRoiIndex,
+                             bool interactive,
+                             RoiIndexHandler onRoiSelected,
+                             RoiActionHandler onRoiAdd,
+                             RoiIndexHandler onRoiEdit,
+                             RoiIndexHandler onRoiDelete) {
 #ifdef _WIN32
     MatchTestOverlay::dismissAll();
     dismissAll();
@@ -413,9 +696,20 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
     g_state->physicalBounds = targetPhysical;
     g_state->roiItems = std::move(roiItems);
     g_state->selectedRoiIndex = std::max(0, selectedRoiIndex);
+    g_state->interactive = interactive;
     g_state->onVisibilityChanged = std::move(onVisibilityChanged);
-    g_state->hintText =
-        QObject::tr("탐색 ROI 미리보기 (클릭 통과)\nROI 미리보기 끄기 또는 Esc로 닫기").toStdWString();
+    g_state->onRoiSelected = std::move(onRoiSelected);
+    g_state->onRoiAdd = std::move(onRoiAdd);
+    g_state->onRoiEdit = std::move(onRoiEdit);
+    g_state->onRoiDelete = std::move(onRoiDelete);
+    if (interactive) {
+        g_state->hintText = QObject::tr("탐색 ROI 미리보기\n"
+                                        "ROI 또는 번호를 클릭해 선택 · 추가/수정/삭제 · Esc로 닫기")
+                                .toStdWString();
+    } else {
+        g_state->hintText =
+            QObject::tr("탐색 ROI 미리보기 (클릭 통과)\nROI 미리보기 끄기 또는 Esc로 닫기").toStdWString();
+    }
 
     if (!createPreviewOverlay(*g_state)) {
         g_state.reset();
@@ -434,6 +728,11 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
     (void)hostWidget;
     (void)onVisibilityChanged;
     (void)selectedRoiIndex;
+    (void)interactive;
+    (void)onRoiSelected;
+    (void)onRoiAdd;
+    (void)onRoiEdit;
+    (void)onRoiDelete;
     return false;
 #endif
 }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(SuckbongMachine VERSION 0.5.48 LANGUAGES CXX)
+project(SuckbongMachine VERSION 0.5.53 LANGUAGES CXX)
 
 option(SBM_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
 
@@ -51,7 +51,6 @@ set(SBM_SOURCES
     src/core/workflow/blocks/ClickBlock.cpp
     src/core/workflow/blocks/KeyPressBlock.cpp
     src/core/workflow/blocks/WaitBlock.cpp
-    src/core/workflow/blocks/IfBlock.cpp
     src/core/workflow/blocks/LoopBlock.cpp
     src/core/workflow/blocks/CommentBlock.cpp
     src/storage/JsonSerializer.cpp
@@ -72,8 +71,6 @@ set(SBM_SOURCES
     src/ui/widgets/HintLabel.cpp
     src/ui/editors/BlockEditorDialog.cpp
     src/ui/editors/ImageFindEditor.cpp
-    src/ui/editors/RoiPreviewWidget.cpp
-    src/ui/editors/ImageFindPreviewDialog.cpp
     src/ui/editors/MatchTestOverlay.cpp
     src/ui/editors/WorkflowMatchFeedbackOverlay.cpp
     src/ui/OpenCvQtUtil.cpp
@@ -81,7 +78,6 @@ set(SBM_SOURCES
     src/ui/editors/KeyPressEditor.cpp
     src/ui/editors/HotkeyCaptureDialog.cpp
     src/ui/editors/WaitEditor.cpp
-    src/ui/editors/IfEditor.cpp
     src/ui/editors/LoopEditor.cpp
     src/ui/editors/WorkflowLoopRegionsDialog.cpp
     src/ui/editors/BranchWorkflowEditor.cpp
@@ -89,8 +85,6 @@ set(SBM_SOURCES
     src/ui/editors/ScreenRegionOverlay.cpp
     src/ui/editors/RoiPreviewOverlay.cpp
     src/ui/editors/CaptureConfirmDialog.cpp
-    src/ui/editors/TemplateCaptureDialog.cpp
-    src/ui/editors/CaptureCanvas.cpp
     resources/app.qrc
 )
 

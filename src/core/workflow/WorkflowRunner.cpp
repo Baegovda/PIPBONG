@@ -2,7 +2,6 @@
 
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/WorkflowLoopRegion.h"
-#include "core/workflow/blocks/IfBlock.h"
 
 #include "ui/OpenCvQtUtil.h"
 
@@ -157,7 +156,7 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
                                 const WorkflowLoopRegion& region,
                                 ExecutionContext& ctx,
                                 const WorkflowRunHooks* hooks) {
-    if (!ctx.enterIfScope()) {
+    if (!ctx.enterNestedScope()) {
         WorkflowRunResult result;
         result.success = false;
         result.message = "구간 반복 중첩 깊이 초과";
@@ -168,14 +167,14 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
     int iteration = 0;
     while (true) {
         if (!ctx.waitWhilePaused()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestedScope();
             WorkflowRunResult result;
             result.success = false;
             result.message = "사용자에 의해 중지됨";
             return result;
         }
         if (ctx.shouldStop()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestedScope();
             WorkflowRunResult result;
             result.success = false;
             result.message = "사용자에 의해 중지됨";
@@ -196,7 +195,7 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
         ctx.setImageFindMaxMissAttempts(savedMissLimit);
 
         if (ctx.shouldStop()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestedScope();
             WorkflowRunResult result;
             result.success = false;
             result.message = "사용자에 의해 중지됨";
@@ -208,7 +207,7 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
                     + std::to_string(region.endIndex + 1) + " "
                     + loopExitConditionToString(region.exitCondition) + " (" + std::to_string(iteration)
                     + "회)");
-            ctx.leaveIfScope();
+            ctx.leaveNestedScope();
             WorkflowRunResult result;
             result.success = true;
             result.message = "구간 반복 완료";
@@ -216,13 +215,13 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
         }
 
         if (!runResult.success && region.exitCondition != LoopExitCondition::DetectionFailed) {
-            ctx.leaveIfScope();
+            ctx.leaveNestedScope();
             return runResult;
         }
 
         if (!runResult.success && region.exitCondition == LoopExitCondition::DetectionFailed
             && !ctx.detectionFailedThisRun()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestedScope();
             return runResult;
         }
     }

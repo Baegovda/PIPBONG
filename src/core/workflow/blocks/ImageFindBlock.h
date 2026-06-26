@@ -8,12 +8,6 @@
 
 #include "core/vision/ImageMatcher.h"
 
-
-
-#include <QRect>
-
-
-
 #include <string>
 
 #include <unordered_map>
@@ -38,22 +32,6 @@ struct ImageFindMatchTestResult {
 
     /// Populated when multiple custom ROIs are searched; each entry is haystack-local matches.
     std::vector<std::pair<CaptureRegion, std::vector<MatchResult>>> matchesPerCustomRegion;
-
-};
-
-
-
-struct ImageFindRoiPreviewData {
-
-    bool captureOk = false;
-
-    std::string errorMessage;
-
-    cv::Mat displayImage;
-
-    QRect roiRect;
-
-    bool editableRoi = false;
 
 };
 
@@ -160,14 +138,6 @@ public:
                                                        const MatchOptions& options,
 
                                                        const std::string& projectDirectory);
-
-
-
-    static ImageFindRoiPreviewData captureRoiPreview(SearchArea searchArea,
-
-                                                     const CaptureRegion& customRegion,
-
-                                                     const PercentRegion& percentRegion);
 
 
 

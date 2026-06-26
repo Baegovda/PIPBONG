@@ -13,6 +13,8 @@
 class RoiPreviewOverlay {
 public:
     using VisibilityHandler = std::function<void(bool visible)>;
+    using RoiIndexHandler = std::function<void(int roiIndex)>;
+    using RoiActionHandler = std::function<void()>;
 
     static bool isVisible();
     static bool show(SearchArea searchArea,
@@ -21,7 +23,12 @@ public:
                      const std::vector<CaptureRegion>& customRegions,
                      QWidget* hostWidget = nullptr,
                      VisibilityHandler onVisibilityChanged = {},
-                     int selectedRoiIndex = 0);
+                     int selectedRoiIndex = 0,
+                     bool interactive = false,
+                     RoiIndexHandler onRoiSelected = {},
+                     RoiActionHandler onRoiAdd = {},
+                     RoiIndexHandler onRoiEdit = {},
+                     RoiIndexHandler onRoiDelete = {});
     static void setSelectedRoiIndex(int selectedRoiIndex);
     static bool hide();
     static bool toggle(SearchArea searchArea,

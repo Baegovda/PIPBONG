@@ -4,7 +4,6 @@
 #include "core/workflow/blocks/ClickBlock.h"
 #include "core/workflow/blocks/CommentBlock.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
-#include "core/workflow/blocks/IfBlock.h"
 #include "core/workflow/blocks/LoopBlock.h"
 #include "core/workflow/blocks/KeyPressBlock.h"
 #include "core/workflow/blocks/WaitBlock.h"
@@ -21,7 +20,6 @@ class QShowEvent;
 class QStackedWidget;
 class ClickEditor;
 class CommentEditor;
-class IfEditor;
 class LoopEditor;
 class ImageFindEditor;
 class KeyPressEditor;
@@ -32,13 +30,7 @@ class BlockEditorDialog : public QDialog {
 public:
     BlockEditorDialog(Block* block, const QString& projectDirectory, QWidget* parent = nullptr);
 
-    void setWorkflowEditorContext(int blockCount, int editingBlockIndex);
-    void setGotoBlockPickAvailable(bool available);
-    void applyIfGotoBlockPick(int branch, int blockNumber);
     std::unique_ptr<Block> takeBlock();
-
-signals:
-    void requestIfGotoBlockPick(int branch);
 
 private:
     void setupUi();
@@ -59,8 +51,6 @@ protected:
     FeatureHotkeyGateScope m_featureHotkeyGate;
     std::unique_ptr<Block> m_block;
     QString m_projectDirectory;
-    int m_workflowBlockCount = 0;
-    int m_editingBlockIndex = -1;
 
     QButtonGroup* m_typeButtonGroup = nullptr;
     QLabel* m_typeChangeNote = nullptr;
@@ -70,7 +60,6 @@ protected:
     ClickEditor* m_clickEditor = nullptr;
     KeyPressEditor* m_keyPressEditor = nullptr;
     WaitEditor* m_waitEditor = nullptr;
-    IfEditor* m_ifEditor = nullptr;
     LoopEditor* m_loopEditor = nullptr;
     CommentEditor* m_commentEditor = nullptr;
 
@@ -78,7 +67,6 @@ protected:
     std::unique_ptr<Block> m_clickFormBlock;
     std::unique_ptr<Block> m_keyPressFormBlock;
     std::unique_ptr<Block> m_waitFormBlock;
-    std::unique_ptr<Block> m_ifFormBlock;
     std::unique_ptr<Block> m_loopFormBlock;
     std::unique_ptr<Block> m_commentFormBlock;
 };

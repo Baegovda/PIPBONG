@@ -52,9 +52,9 @@ public:
     void clearDetectionFailedFlag();
     bool detectionFailedThisRun() const;
 
-    bool enterIfScope();
-    void leaveIfScope();
-    int ifNestingDepth() const;
+    bool enterNestedScope();
+    void leaveNestedScope();
+    int nestedScopeDepth() const;
 
     bool hasLastMatch() const;
     cv::Point lastMatchPoint() const;
@@ -116,7 +116,7 @@ private:
     std::atomic<bool> m_paused{false};
     int m_imageFindMaxMissAttempts = 0;
     bool m_detectionFailedThisRun = false;
-    int m_ifNestingDepth = 0;
+    int m_nestedScopeDepth = 0;
     bool m_hasLastMatch = false;
     cv::Point m_lastMatchPoint;
     bool m_hasLastMatchScreenPoint = false;

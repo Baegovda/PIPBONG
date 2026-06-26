@@ -10,7 +10,6 @@ enum class BlockType {
     Click,
     KeyPress,
     Wait,
-    If,
     Loop,
     Comment
 };

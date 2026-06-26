@@ -616,6 +616,7 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
     }
 
     QPointer<ImageFindEditor> self = this;
+    const bool interactive = true;
     const bool visible = RoiPreviewOverlay::show(
         m_block->searchArea,
         m_block->customRegion,
@@ -627,7 +628,43 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
                 self->updateRoiPreviewButton(overlayVisible);
             }
         },
-        selectedRoiPreviewIndex());
+        selectedRoiPreviewIndex(),
+        interactive,
+        [self](int roiIndex) {
+            if (!self || !self->m_roiList) {
+                return;
+            }
+            const int row = roiIndex - 1;
+            if (row >= 0 && row < self->m_roiList->count()) {
+                self->m_roiList->setCurrentRow(row);
+                self->syncRoiPreviewSelection();
+            }
+        },
+        [self]() {
+            if (self) {
+                self->onPickRoi();
+            }
+        },
+        [self](int roiIndex) {
+            if (!self || !self->m_roiList) {
+                return;
+            }
+            const int row = roiIndex - 1;
+            if (row >= 0 && row < self->m_roiList->count()) {
+                self->m_roiList->setCurrentRow(row);
+                self->onEditRoi();
+            }
+        },
+        [self](int roiIndex) {
+            if (!self || !self->m_roiList) {
+                return;
+            }
+            const int row = roiIndex - 1;
+            if (row >= 0 && row < self->m_roiList->count()) {
+                self->m_roiList->setCurrentRow(row);
+                self->onRemoveRoi();
+            }
+        });
     updateRoiPreviewButton(visible);
 }
 

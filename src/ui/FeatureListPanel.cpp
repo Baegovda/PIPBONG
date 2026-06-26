@@ -694,6 +694,7 @@ void FeatureListPanel::setupUi() {
     m_list->setSpacing(0);
     m_list->setItemDelegate(new FeatureListItemDelegate(this));
     connect(m_list, &FeatureListWidget::featureRowsReordered, this, &FeatureListPanel::onFeatureRowsReordered);
+    connect(m_list, &FeatureListWidget::deleteRequested, this, &FeatureListPanel::onRemoveFeature);
     m_list->viewport()->installEventFilter(this);
 
     tableLayout->addWidget(m_headerRow);

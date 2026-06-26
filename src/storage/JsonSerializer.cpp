@@ -146,7 +146,10 @@ void JsonSerializer::workflowFromJson(const nlohmann::json& json, Workflow& work
     workflow.clear();
     if (json.is_array()) {
         for (const auto& blockJson : json) {
-            workflow.addBlock(BlockFactory::fromJson(blockJson));
+            auto block = BlockFactory::fromJson(blockJson);
+            if (block) {
+                workflow.addBlock(std::move(block));
+            }
         }
         return;
     }
@@ -155,7 +158,10 @@ void JsonSerializer::workflowFromJson(const nlohmann::json& json, Workflow& work
     }
     if (json.contains("blocks") && json["blocks"].is_array()) {
         for (const auto& blockJson : json["blocks"]) {
-            workflow.addBlock(BlockFactory::fromJson(blockJson));
+            auto block = BlockFactory::fromJson(blockJson);
+            if (block) {
+                workflow.addBlock(std::move(block));
+            }
         }
     }
     if (json.contains("loopRegions")) {

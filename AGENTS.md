@@ -1,6 +1,6 @@
 # AGENTS.md — SuckbongMachine Master Document
 
-**Current version:** `0.5.48` (from `project(SuckbongMachine VERSION 0.5.48)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
+**Current version:** `0.5.53` (from `project(SuckbongMachine VERSION 0.5.53)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
 
 **Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
 
@@ -281,7 +281,7 @@ poez/                          # repo root (legacy folder name)
 
 ### 5.5 Workflow engine
 
-- **Block types (UI):** `ImageFind`, `Click`, `KeyPress`, `Wait`, `If`, `Loop`. Legacy `Comment` blocks still load from JSON but are hidden from add/type UI.
+- **Block types (UI):** `ImageFind`, `Click`, `KeyPress`, `Wait`, `Loop`. Legacy `Comment` blocks still load from JSON but are hidden from add/type UI. Legacy JSON `"type": "If"` blocks are skipped on load.
 - **`WorkflowEngine`**: Runs workflow on **`QThread` worker**; emits `started`, `blockStarted`, `blockFinished` (with ImageFind match confidence + preview pixmap), `logMessage`, `finished`.
 - **`ExecutionContext`**: Stop flag, last match point/confidence/preview, logging callback.
 - **ImageFind execution:** Poll loop until match, timeout, or stop; sets last match for subsequent `Click` blocks (`LastMatch` target).
@@ -429,19 +429,6 @@ poez/                          # repo root (legacy folder name)
 | `randomRange` | `false` | Use min/max instead |
 | `minMs`, `maxMs` | `0` | Random range bounds (5 ms step) |
 
-#### `If`
-
-| Field | Default | Notes |
-|-------|---------|-------|
-| `condition` | `"LastMatchSuccess"` | `LastMatchSuccess`, `LastMatchFailed`, `DetectionFailed` |
-| `negate` | `false` | Invert condition result |
-| `then` | `[]` | Nested workflow when condition is true |
-| `else` | `[]` | Nested workflow when false; omit or empty for no-op |
-| `thenGotoBlock` | omitted (`0`) | 1-based `#` column in the **parent** workflow to jump to after a successful `then` branch |
-| `elseGotoBlock` | omitted (`0`) | Same after a successful `else` branch |
-
-`then` / `else` arrays use the same block JSON schema as the root `workflow` array. Nested `If` blocks are allowed (max depth 8 at runtime).
-
 #### `Loop`
 
 | Field | Default | Notes |
@@ -450,7 +437,7 @@ poez/                          # repo root (legacy folder name)
 | `detectionMissLimit` | `1` | Consecutive ImageFind poll misses inside the body before detection counts as failed (`DetectionFailed` only); omitted when default |
 | `body` | `[]` | Nested workflow repeated until the exit condition is met |
 
-`body` uses the same block JSON schema as the root `workflow` array. Nested `Loop` / `If` blocks share the max depth 8 runtime limit.
+`body` uses the same block JSON schema as the root `workflow` array. Nested `Loop` blocks share the max depth 8 runtime limit. Legacy JSON `"type": "If"` blocks are skipped on load.
 
 #### Workflow loop regions (feature `workflow` document)
 
@@ -795,6 +782,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.5.53] - 2026-06-27
+
+### Changed
+
+- ROI preview overlay toolbar adds **추가** before **수정** / **삭제** (same order as block editor); starts ROI region pick (`RoiPreviewOverlay`, `ImageFindEditor`).
+
+## [0.5.52] - 2026-06-27
+
+### Added
+
+- Feature list: **Delete** key deletes the selected feature (same confirm dialog as **삭제** button) (`FeatureListWidget`, `FeatureListPanel`).
+
+## [0.5.51] - 2026-06-27
+
+### Removed
+
+- **If (만약)** workflow block removed end-to-end: `IfBlock`, `IfEditor`, `BlockType::If`, branch list chrome, goto-block pick mode, and block-editor If page (`WorkflowEditorPanel`, `BlockListWidget`, `BlockEditorDialog`, `BlockFactory`, `WorkflowRunner`, `ExecutionContext`). Legacy JSON `"type": "If"` blocks are skipped on project load.
+
+## [0.5.50] - 2026-06-26
+
+### Changed
+
+- ROI preview overlay: `#` index badge and **수정** / **삭제** buttons sit on a toolbar above each ROI box; clicking an ROI or badge selects it in the block editor list (amber highlight sync); overlay buttons invoke the same edit/delete actions (`RoiPreviewOverlay`, `ImageFindEditor`).
+
+## [0.5.49] - 2026-06-26
+
+### Removed
+
+- Dead legacy ImageFind UI: `ImageFindPreviewDialog`, `RoiPreviewWidget`, `TemplateCaptureDialog`, `CaptureCanvas`, and unused `ImageFindBlock::captureRoiPreview` / `ImageFindRoiPreviewData` (replaced by `RoiPreviewOverlay`, `ScreenRegionOverlay`, `MatchTestOverlay`).
+- Duplicate root `Sbm.ico` (build uses `resources/Sbm.ico` only).
 
 ## [0.5.48] - 2026-06-26
 
@@ -1717,4 +1735,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-26. Current application version: 0.5.48.*
+*Last consolidated: 2026-06-27. Current application version: 0.5.53.*

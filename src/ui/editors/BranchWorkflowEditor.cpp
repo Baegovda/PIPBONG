@@ -56,7 +56,6 @@ void BranchWorkflowEditor::setupUi(const QString& title) {
                                    BlockType::Click,
                                    BlockType::KeyPress,
                                    BlockType::Wait,
-                                   BlockType::If,
                                    BlockType::Loop};
         for (const BlockType type : types) {
             QAction* action = menu.addAction(blockTypeDisplayName(type));
@@ -111,10 +110,6 @@ void BranchWorkflowEditor::addBlockOfType(BlockType type) {
 
     auto draft = BlockFactory::create(type);
     BlockEditorDialog dialog(draft.get(), m_projectDirectory, this);
-    if (m_workflow) {
-        dialog.setWorkflowEditorContext(static_cast<int>(m_workflow->blocks().size()) + 1,
-                                        static_cast<int>(m_workflow->blocks().size()));
-    }
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -136,7 +131,6 @@ void BranchWorkflowEditor::editSelectedBlock() {
     }
 
     BlockEditorDialog dialog(m_workflow->blocks()[row].get(), m_projectDirectory, this);
-    dialog.setWorkflowEditorContext(static_cast<int>(m_workflow->blocks().size()), row);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
