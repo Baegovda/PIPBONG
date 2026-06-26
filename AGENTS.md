@@ -1673,6 +1673,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 - **Default:** do **not** build at task close; run `cmake --build build --config Release` **only when the user explicitly asks**.
 - **Distribution:** static single exe → `dist/SuckbongMachine.exe` **only when the user explicitly asks**.
+- **User release:** `scripts/create-github-release.ps1` → public **`Baegovda/SBM-releases`** ([§3.6](#36-github-backup-and-release)).
 - Full policy in [§3](#3-build-and-run).
 
 ---
