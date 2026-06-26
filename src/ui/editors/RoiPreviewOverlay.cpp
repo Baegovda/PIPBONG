@@ -112,10 +112,12 @@ void drawRoiIndexBadge(HDC hdc, const QRect& roiRect, int roiIndex, bool selecte
     int textX = roiRect.left() + 6;
     int textY = roiRect.top() + 6;
     if (textX + textSize.cx + kPadX * 2 > roiRect.right()) {
-        textX = std::max(roiRect.left() + 2, roiRect.right() - textSize.cx - kPadX * 2 - 2);
+        textX = std::max(roiRect.left() + 2,
+                         roiRect.right() - static_cast<int>(textSize.cx) - kPadX * 2 - 2);
     }
     if (textY + textSize.cy + kPadY * 2 > roiRect.bottom()) {
-        textY = std::max(roiRect.top() + 2, roiRect.bottom() - textSize.cy - kPadY * 2 - 2);
+        textY = std::max(roiRect.top() + 2,
+                         roiRect.bottom() - static_cast<int>(textSize.cy) - kPadY * 2 - 2);
     }
 
     RECT bgRect{textX,
