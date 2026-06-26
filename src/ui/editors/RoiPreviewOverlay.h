@@ -20,7 +20,9 @@ public:
                      const PercentRegion& percentRegion,
                      const std::vector<CaptureRegion>& customRegions,
                      QWidget* hostWidget = nullptr,
-                     VisibilityHandler onVisibilityChanged = {});
+                     VisibilityHandler onVisibilityChanged = {},
+                     int selectedRoiIndex = 0);
+    static void setSelectedRoiIndex(int selectedRoiIndex);
     static bool hide();
     static bool toggle(SearchArea searchArea,
                        const CaptureRegion& customRegion,

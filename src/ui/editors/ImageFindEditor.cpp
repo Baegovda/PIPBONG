@@ -352,6 +352,7 @@ void ImageFindEditor::setupUi() {
         if (m_editRoiButton) {
             m_editRoiButton->setEnabled(row >= 0);
         }
+        syncRoiPreviewSelection();
     });
     connect(m_roiPreviewButton, &QPushButton::clicked, this, &ImageFindEditor::onRoiPreview);
     connect(clearHotkeyButton, &QPushButton::clicked, this, [this]() {
@@ -545,6 +546,22 @@ void ImageFindEditor::refreshRoiList() {
     if (m_editRoiButton) {
         m_editRoiButton->setEnabled(m_roiList->currentRow() >= 0);
     }
+    syncRoiPreviewSelection();
+}
+
+int ImageFindEditor::selectedRoiPreviewIndex() const {
+    if (!m_roiList || m_roiList->count() <= 0) {
+        return 1;
+    }
+    const int row = m_roiList->currentRow();
+    return row >= 0 ? row + 1 : 0;
+}
+
+void ImageFindEditor::syncRoiPreviewSelection() {
+    if (!RoiPreviewOverlay::isVisible()) {
+        return;
+    }
+    RoiPreviewOverlay::setSelectedRoiIndex(selectedRoiPreviewIndex());
 }
 
 void ImageFindEditor::updateRoiPreviewButton(bool overlayVisible) {
@@ -609,7 +626,8 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
             if (self) {
                 self->updateRoiPreviewButton(overlayVisible);
             }
-        });
+        },
+        selectedRoiPreviewIndex());
     updateRoiPreviewButton(visible);
 }
 

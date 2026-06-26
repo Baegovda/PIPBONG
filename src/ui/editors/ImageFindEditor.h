@@ -128,6 +128,10 @@ private:
 
     void dismissRoiPreviewOverlay();
 
+    int selectedRoiPreviewIndex() const;
+
+    void syncRoiPreviewSelection();
+
     void updatePickRoiButton(bool pickActive);
 
     void updateEditRoiButton(bool pickActive);

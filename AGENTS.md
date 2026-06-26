@@ -1,6 +1,6 @@
 # AGENTS.md — SuckbongMachine Master Document
 
-**Current version:** `0.5.47` (from `project(SuckbongMachine VERSION 0.5.47)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
+**Current version:** `0.5.48` (from `project(SuckbongMachine VERSION 0.5.48)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
 
 **Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
 
@@ -795,6 +795,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.5.48] - 2026-06-26
+
+### Changed
+
+- ROI preview overlay highlights the editor-selected ROI with amber border/halo and badge; list selection updates overlay via `RoiPreviewOverlay::setSelectedRoiIndex` (`ImageFindEditor`, `RoiPreviewOverlay`).
 
 ## [0.5.47] - 2026-06-26
 
@@ -1711,4 +1717,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-26. Current application version: 0.5.47.*
+*Last consolidated: 2026-06-26. Current application version: 0.5.48.*

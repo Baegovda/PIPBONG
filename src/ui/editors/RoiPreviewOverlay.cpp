@@ -34,6 +34,7 @@ struct PreviewState {
         int index = 1;
     };
     std::vector<RoiItem> roiItems;
+    int selectedRoiIndex = 0;
     std::wstring hintText;
     RoiPreviewOverlay::VisibilityHandler onVisibilityChanged;
 };
@@ -82,7 +83,7 @@ QRect roiClientRectOnTargetWindow(const QRect& roiPhysical, const QRect& targetP
     return roiClient.intersected(targetClient);
 }
 
-void drawRoiIndexBadge(HDC hdc, const QRect& roiRect, int roiIndex) {
+void drawRoiIndexBadge(HDC hdc, const QRect& roiRect, int roiIndex, bool selected) {
     wchar_t label[16]{};
     swprintf_s(label, L"#%d", roiIndex);
     const int labelLen = static_cast<int>(wcslen(label));
@@ -122,11 +123,15 @@ void drawRoiIndexBadge(HDC hdc, const QRect& roiRect, int roiIndex) {
                 textX + textSize.cx + kPadX * 2,
                 textY + textSize.cy + kPadY * 2};
 
-    HBRUSH bgBrush = CreateSolidBrush(RGB(24, 24, 24));
+    const COLORREF badgeBorder = selected ? RGB(255, 214, 90) : RGB(80, 255, 120);
+    const COLORREF badgeBg = selected ? RGB(48, 38, 12) : RGB(24, 24, 24);
+    const COLORREF badgeText = selected ? RGB(255, 244, 200) : RGB(255, 255, 255);
+
+    HBRUSH bgBrush = CreateSolidBrush(badgeBg);
     FillRect(hdc, &bgRect, bgBrush);
     DeleteObject(bgBrush);
 
-    HPEN borderPen = CreatePen(PS_SOLID, 1, RGB(80, 255, 120));
+    HPEN borderPen = CreatePen(PS_SOLID, selected ? 2 : 1, badgeBorder);
     HGDIOBJ oldPen = SelectObject(hdc, borderPen);
     HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
     Rectangle(hdc, bgRect.left, bgRect.top, bgRect.right, bgRect.bottom);
@@ -135,7 +140,7 @@ void drawRoiIndexBadge(HDC hdc, const QRect& roiRect, int roiIndex) {
     DeleteObject(borderPen);
 
     SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, RGB(255, 255, 255));
+    SetTextColor(hdc, badgeText);
     TextOutW(hdc, bgRect.left + kPadX, bgRect.top + kPadY, label, labelLen);
 
     SelectObject(hdc, oldFont);
@@ -155,7 +160,29 @@ void paintPreview(HDC hdc, const PreviewState& state) {
         if (roiRect.width() < 2 || roiRect.height() < 2) {
             continue;
         }
-        HPEN pen = CreatePen(PS_SOLID, 3, RGB(80, 255, 120));
+
+        const bool selected =
+            state.selectedRoiIndex > 0 && roiItem.index == state.selectedRoiIndex;
+        const COLORREF borderColor = selected ? RGB(255, 214, 90) : RGB(60, 150, 85);
+        const COLORREF fillColor = selected ? RGB(70, 170, 95) : RGB(28, 72, 48);
+        const int borderWidth = selected ? 4 : 2;
+
+        if (selected) {
+            HPEN haloPen = CreatePen(PS_SOLID, 6, RGB(255, 244, 170));
+            HGDIOBJ oldHaloPen = SelectObject(hdc, haloPen);
+            HGDIOBJ oldHaloBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
+            const int haloInset = 3;
+            Rectangle(hdc,
+                      roiRect.left() - haloInset,
+                      roiRect.top() - haloInset,
+                      roiRect.right() + haloInset + 1,
+                      roiRect.bottom() + haloInset + 1);
+            SelectObject(hdc, oldHaloBrush);
+            SelectObject(hdc, oldHaloPen);
+            DeleteObject(haloPen);
+        }
+
+        HPEN pen = CreatePen(PS_SOLID, borderWidth, borderColor);
         HGDIOBJ oldPen = SelectObject(hdc, pen);
         HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
         Rectangle(hdc, roiRect.left(), roiRect.top(), roiRect.right() + 1, roiRect.bottom() + 1);
@@ -163,18 +190,19 @@ void paintPreview(HDC hdc, const PreviewState& state) {
         SelectObject(hdc, oldPen);
         DeleteObject(pen);
 
-        HBRUSH fillBrush = CreateSolidBrush(RGB(40, 180, 90));
-        const RECT inner = {roiRect.left() + 2,
-                            roiRect.top() + 2,
-                            roiRect.right() - 1,
-                            roiRect.bottom() - 1};
+        HBRUSH fillBrush = CreateSolidBrush(fillColor);
+        const int fillInset = selected ? 3 : 2;
+        const RECT inner = {roiRect.left() + fillInset,
+                            roiRect.top() + fillInset,
+                            roiRect.right() - fillInset + 1,
+                            roiRect.bottom() - fillInset + 1};
         FillRect(hdc, &inner, fillBrush);
         DeleteObject(fillBrush);
 
-        drawRoiIndexBadge(hdc, roiRect, roiItem.index);
+        drawRoiIndexBadge(hdc, roiRect, roiItem.index, selected);
 
         SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, RGB(230, 255, 235));
+        SetTextColor(hdc, selected ? RGB(255, 248, 220) : RGB(200, 230, 205));
         HFONT sizeFont = CreateFontW(-16,
                                      0,
                                      0,
@@ -310,7 +338,8 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
                              const PercentRegion& percentRegion,
                              const std::vector<CaptureRegion>& customRegions,
                              QWidget* hostWidget,
-                             VisibilityHandler onVisibilityChanged) {
+                             VisibilityHandler onVisibilityChanged,
+                             int selectedRoiIndex) {
 #ifdef _WIN32
     MatchTestOverlay::dismissAll();
     dismissAll();
@@ -381,6 +410,7 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
     g_state = std::make_unique<PreviewState>();
     g_state->physicalBounds = targetPhysical;
     g_state->roiItems = std::move(roiItems);
+    g_state->selectedRoiIndex = std::max(0, selectedRoiIndex);
     g_state->onVisibilityChanged = std::move(onVisibilityChanged);
     g_state->hintText =
         QObject::tr("탐색 ROI 미리보기 (클릭 통과)\nROI 미리보기 끄기 또는 Esc로 닫기").toStdWString();
@@ -401,7 +431,24 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
     (void)customRegions;
     (void)hostWidget;
     (void)onVisibilityChanged;
+    (void)selectedRoiIndex;
     return false;
+#endif
+}
+
+void RoiPreviewOverlay::setSelectedRoiIndex(int selectedRoiIndex) {
+#ifdef _WIN32
+    if (!g_state || !g_state->hwnd) {
+        return;
+    }
+    const int normalized = std::max(0, selectedRoiIndex);
+    if (g_state->selectedRoiIndex == normalized) {
+        return;
+    }
+    g_state->selectedRoiIndex = normalized;
+    InvalidateRect(g_state->hwnd, nullptr, TRUE);
+#else
+    (void)selectedRoiIndex;
 #endif
 }
 
