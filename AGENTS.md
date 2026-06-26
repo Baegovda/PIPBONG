@@ -1,6 +1,6 @@
 # AGENTS.md — SuckbongMachine Master Document
 
-**Current version:** `0.5.53` (from `project(SuckbongMachine VERSION 0.5.53)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
+**Current version:** `0.5.54` (from `project(SuckbongMachine VERSION 0.5.54)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
 
 **Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
 
@@ -180,7 +180,7 @@ User does **not** need to use GitHub web UI for routine backup or release.
 #### AI backup workflow (every task or on request)
 
 1. `git status` / `git diff` — commit only project files (respect `.gitignore`; no `build/`, `dist/`, user `project.json`).
-2. Commit message: English, one line summary of *why*.
+2. **Commit message (bilingual):** one subject line with **English then Korean**, separated by ` — ` (em dash). English: one-line summary of *why*; Korean: same meaning for local readability and Cursor commit-message learning. Example: `Add ROI overlay Add button — ROI 미리보기 오버레이에 추가 버튼`. Do not use English-only or Korean-only subjects unless the user explicitly requests it for that commit.
 3. `git push origin main` to **`Baegovda/SBM`**.
 4. **Do not** commit unless user asked **or** governance requires handover at task end — follow [user git rule]: commits only when user requests unless clearly implied (“백업해줘”).
 
@@ -693,6 +693,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 | Artifact | Language |
 |----------|----------|
 | Code, comments, docs, rules, changelog | English |
+| **Git commit subject** | **English ` — ` Korean** (bilingual; see [§3.6](#36-github-backup-and-release) backup workflow) |
 | User chat replies | Korean |
 | In-app UI strings | Korean (`tr()`, `QStringLiteral`) |
 | JSON block `type` and enum strings | English (serialization stability) |
@@ -782,6 +783,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.5.54] - 2026-06-27
+
+### Changed
+
+- Git commit policy: subject line is bilingual `English — 한글` ([AGENTS.md](../../AGENTS.md) §3.6, §9; `.cursor/rules/ai-governance.mdc`).
 
 ## [0.5.53] - 2026-06-27
 
@@ -1686,7 +1693,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 ### `ai-governance.mdc`
 
 - **100% AI-maintained** codebase.
-- User replies: Korean. Code/docs/changelog: English. UI: Korean. JSON types: English.
+- User replies: Korean. Code/docs/changelog: English. UI: Korean. JSON types: English. **Git commits:** English ` — ` Korean on one subject line.
 - After every task: append `[Unreleased]` bullets, **same-task handover** in AGENTS.md procedural sections when infra/ops change, then **bump version before closing** ([§10](#10-versioning-policy)); minimal diffs.
 - Primary documentation: **this file (`AGENTS.md`) only**.
 
@@ -1735,4 +1742,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-27. Current application version: 0.5.53.*
+*Last consolidated: 2026-06-27. Current application version: 0.5.54.*

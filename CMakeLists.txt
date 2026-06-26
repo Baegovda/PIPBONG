@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(SuckbongMachine VERSION 0.5.53 LANGUAGES CXX)
+project(SuckbongMachine VERSION 0.5.54 LANGUAGES CXX)
 
 option(SBM_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
 

@@ -14,6 +14,7 @@ alwaysApply: true
 
 - **User replies**: Korean only.
 - **Code, comments, docs, rules, changelog, handover**: English only.
+- **Git commit subject** (backup / `git commit`): bilingual — `English summary — 한글 요약` on one line ([AGENTS.md](../../AGENTS.md) §3.6).
 - **In-app UI**: Korean via `tr()` / `QStringLiteral`. Keep JSON block `type` values in English.
 
 ## After Every Completed Task
