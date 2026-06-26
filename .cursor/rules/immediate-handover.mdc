@@ -1,0 +1,50 @@
+---
+description: Mandatory same-task handover — document infra/ops in AGENTS.md before closing (not changelog-only)
+alwaysApply: true
+---
+
+# Immediate Handover (Mandatory — Same Task, Not Later)
+
+**Status:** Policy strengthened 2026-06 after GitHub/release docs were implemented in code but not written to **AGENTS.md** until the user asked — a new agent would not have known private `SBM` vs public `SBM-releases`, `gh auth`, or release scripts.
+
+## Rule
+
+When work touches **infrastructure, operations, or agent workflow** (not only C++ features), update **AGENTS.md in the same task** before closing. **Changelog §11 bullets alone are not sufficient** for handover.
+
+Do **not** defer handover to a follow-up chat or assume the user will ask “document it later.”
+
+## Triggers — document immediately when any of these happen
+
+| Trigger | Where to record (AGENTS.md) |
+|---------|------------------------------|
+| Git init, remote URL, branch policy | [§3.6 GitHub backup and release](../../AGENTS.md#36-github-backup-and-release) |
+| New/changed GitHub repo (name, public/private split) | §3.6 + update `SBM_UPDATE_GITHUB_REPO` / scripts |
+| Release / update / deploy scripts or URLs | §3.6 + changelog |
+| `gh`, CI, signing, hosting, credentials one-time setup | §3.6 (human steps + AI steps) |
+| User phrase → AI action (“백업해줘”, “릴리즈 해줘”) | §3.6 table |
+| New mandatory build preset or close-out policy | §3 + `.cursor/rules/static-single-exe-build.mdc` |
+| New subsystem / critical pattern (overlay, input, etc.) | §8 + dedicated `.cursor/rules/*.mdc` if always-applied |
+| New scripts in `scripts/` that agents must run | §3 or §4 path table |
+
+## Same-task checklist (before closing)
+
+1. **Code/scripts** implemented and committed when user asked for backup.
+2. **AGENTS.md** updated — not only §11 changelog: add or extend the **relevant section** (e.g. §3.6, §8.x).
+3. **`.cursor/rules`** — if the rule must be always-applied for every future agent, add or update an `alwaysApply: true` rule.
+4. **§13 Cursor Rules Summary** — one-line pointer if a new rule file was added.
+5. Version bump per [changelog-versioning.mdc](./changelog-versioning.mdc).
+
+If any trigger row applied and AGENTS.md section is still empty → **task is not done**.
+
+## Anti-patterns (failures)
+
+| Do not | Why |
+|--------|-----|
+| Put repo URLs only in chat | Next agent never sees chat |
+| Put ops detail only in §11 changelog | Changelog is history, not procedure |
+| “User can ask later to document” | Violates same-task handover |
+| Create `HANDOVER.md`, `README.md`, etc. | [AGENTS.md](../../AGENTS.md) is the **only** project doc |
+
+## Reference
+
+Full GitHub/release handover: [AGENTS.md §3.6](../../AGENTS.md#36-github-backup-and-release).

@@ -16,6 +16,8 @@ Add bullet(s) under `[Unreleased]` in **AGENTS.md** section **11. Changelog and 
 
 Use English. Be specific (file/behavior), not vague.
 
+**Changelog ≠ handover:** §11 records *what changed*; procedures for the next agent (GitHub, release, scripts, URLs) belong in **AGENTS.md §3 / §8 / §9** in the **same task**. See `.cursor/rules/immediate-handover.mdc`.
+
 ## Version Bump (mandatory — every completed user task)
 
 **Before closing the task**, bump version. Do **not** leave work only under `[Unreleased]` with an unchanged `CMakeLists.txt` version.

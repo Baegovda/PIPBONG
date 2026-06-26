@@ -1,6 +1,6 @@
 # AGENTS.md — SuckbongMachine Master Document
 
-**Current version:** `0.5.45` (from `project(SuckbongMachine VERSION 0.5.45)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
+**Current version:** `0.5.46` (from `project(SuckbongMachine VERSION 0.5.46)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
 
 **Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
 
@@ -137,6 +137,8 @@ Distribution build: `.\dist\SuckbongMachine.exe`
 ### 3.6 GitHub backup and release
 
 **Handover:** Any new AI agent must read this subsection before git push, release, or in-app update work. Do not create separate handover docs.
+
+**Policy:** Document changes here **in the same task** as the code/scripts — see [§9 task-close gate](#task-close-gate-agent-self-check) and `.cursor/rules/immediate-handover.mdc`. Changelog-only bullets are not enough.
 
 #### Two repositories (mandatory)
 
@@ -711,9 +713,23 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 ### After every completed task
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
-2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave an empty `[Unreleased]`. **Do not** run `cmake --build` at task close unless the user explicitly asks to build. Static `dist/SuckbongMachine.exe` **only when the user explicitly requests** distribution. **Never** leave shipped work only under `[Unreleased]` with an unchanged version.
-3. Keep diffs minimal; match existing C++ / Qt conventions.
-4. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
+2. **Immediate handover (mandatory — same task):** Any infrastructure or agent-workflow change (git/GitHub, release/deploy, new `scripts/`, repo visibility split, update URLs, user phrase → AI action, CI/`gh`, build policy) must update **AGENTS.md procedural sections** (e.g. [§3.6](#36-github-backup-and-release), [§8](#8-critical-implementation-patterns)) **before task close** — not §11 changelog alone. Add or update an `alwaysApply: true` `.cursor/rules/*.mdc` when future agents must not miss it. Full policy: `.cursor/rules/immediate-handover.mdc`.
+3. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave an empty `[Unreleased]`. **Do not** run `cmake --build` at task close unless the user explicitly asks to build. Static `dist/SuckbongMachine.exe` **only when the user explicitly requests** distribution. **Never** leave shipped work only under `[Unreleased]` with an unchanged version.
+4. Keep diffs minimal; match existing C++ / Qt conventions.
+5. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
+
+### Task-close gate (agent self-check)
+
+Before telling the user the task is done, confirm:
+
+| Question | If “yes” and doc missing → **not done** |
+|----------|----------------------------------------|
+| Did git remote, GitHub repo, or visibility change? | §3.6 updated? |
+| Did release/update/deploy scripts or URLs change? | §3.6 + changelog? |
+| Did a new always-applied pattern or policy start? | §8 + `.cursor/rules`? |
+| Would a **new agent with only AGENTS.md** know how to backup/release? | §3.6 complete? |
+
+**Failure example (2026-06):** GitHub private `SBM` + public `SBM-releases`, `create-github-release.ps1`, and in-app update were shipped in code while §3.6 was empty until the user asked — unacceptable handover gap.
 
 ### Diff conventions
 
@@ -779,6 +795,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.5.46] - 2026-06-26
+
+### Added
+
+- **Immediate handover policy:** `.cursor/rules/immediate-handover.mdc` (always applied); AGENTS.md §9 task-close gate; strengthened `ai-governance.mdc` and `changelog-versioning.mdc` — infra/ops (GitHub, release, scripts) must be documented in AGENTS.md procedural sections **in the same task**, not changelog-only or deferred.
 
 ## [0.5.45] - 2026-06-26
 
@@ -1635,8 +1657,13 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 - **100% AI-maintained** codebase.
 - User replies: Korean. Code/docs/changelog: English. UI: Korean. JSON types: English.
-- After every task: append `[Unreleased]` bullets, then **bump version before closing** ([§10](#10-versioning-policy)); minimal diffs.
+- After every task: append `[Unreleased]` bullets, **same-task handover** in AGENTS.md procedural sections when infra/ops change, then **bump version before closing** ([§10](#10-versioning-policy)); minimal diffs.
 - Primary documentation: **this file (`AGENTS.md`) only**.
+
+### `immediate-handover.mdc`
+
+- **Same task, not later:** git/GitHub, release/deploy, scripts, URLs, user phrase workflows → update **AGENTS.md §3 / §8 / §9** before close; changelog §11 alone is insufficient.
+- Task-close gate: [§9](#task-close-gate-agent-self-check).
 
 ### `changelog-versioning.mdc`
 
@@ -1678,4 +1705,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-26. Current application version: 0.5.45.*
+*Last consolidated: 2026-06-26. Current application version: 0.5.46.*
