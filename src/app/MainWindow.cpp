@@ -20,6 +20,7 @@
 #include "ui/BlockListWidget.h"
 #include "ui/WorkflowEditorPanel.h"
 #include "ui/TargetWindowDetailPanel.h"
+#include "app/UpdateChecker.h"
 #include "ui/CustomTitleBar.h"
 #include "ui/UiStateManager.h"
 #include "ui/editors/MatchTestOverlay.h"
@@ -267,6 +268,8 @@ void MainWindow::setupMenus() {
     fileMenu->addAction(tr("프로젝트 저장(&S)"), this, &MainWindow::onSaveProject);
     fileMenu->addAction(tr("다른 이름으로 저장(&A)..."), this, &MainWindow::onSaveProjectAs);
     fileMenu->addSeparator();
+    fileMenu->addAction(tr("업데이트(&U)..."), this, &MainWindow::onCheckForUpdates);
+    fileMenu->addSeparator();
     fileMenu->addAction(tr("종료(&X)"), this, &MainWindow::onExitRequested);
 }
 
@@ -309,6 +312,19 @@ void MainWindow::connectSignals() {
 
 void MainWindow::onExitRequested() {
     close();
+}
+
+void MainWindow::onCheckForUpdates() {
+    if (hasAnyRunningSession()) {
+        QMessageBox::warning(this,
+                             tr("업데이트"),
+                             tr("워크플로 실행 중에는 업데이트할 수 없습니다. 먼저 실행을 중지하세요."));
+        return;
+    }
+
+    auto* checker = new UpdateChecker(this);
+    connect(checker, &UpdateChecker::readyToRestartForUpdate, this, &MainWindow::prepareForShutdown);
+    checker->checkForUpdates();
 }
 
 void MainWindow::onProgramSettings() {

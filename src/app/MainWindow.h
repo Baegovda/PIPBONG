@@ -59,6 +59,7 @@ private slots:
     void onFeatureRunRequested(const QString& featureId);
     void onStopWorkflow();
     void onExitRequested();
+    void onCheckForUpdates();
     void onProgramSettings();
     void onAlwaysOnTopToggled(bool checked);
     void onPickTargetWindow();

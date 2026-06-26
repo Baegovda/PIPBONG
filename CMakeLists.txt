@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(SuckbongMachine VERSION 0.5.40 LANGUAGES CXX)
+project(SuckbongMachine VERSION 0.5.41 LANGUAGES CXX)
 
 option(SBM_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
 
@@ -13,7 +13,7 @@ if(SBM_STATIC_BUILD)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
@@ -27,6 +27,7 @@ set(SBM_SOURCES
     src/app/FeatureHotkeyGate.cpp
     src/app/UserInputInterruptMonitor.cpp
     src/app/ProgramSettings.cpp
+    src/app/UpdateChecker.cpp
     src/model/Feature.cpp
     src/model/FeatureRunMode.cpp
     src/model/UserInputInterruptMode.cpp
@@ -107,6 +108,7 @@ target_include_directories(SuckbongMachine PRIVATE
 
 target_link_libraries(SuckbongMachine PRIVATE
     Qt6::Widgets
+    Qt6::Network
     opencv_core
     opencv_imgproc
     opencv_imgcodecs
@@ -130,10 +132,12 @@ if(SBM_STATIC_BUILD)
         INCLUDE Qt6::QGifPlugin
         INCLUDE Qt6::QICOPlugin
         INCLUDE Qt6::QJpegPlugin
+        INCLUDE Qt6::QSchannelBackendPlugin
     )
     add_custom_command(TARGET SuckbongMachine POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/dist"
         COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:SuckbongMachine>" "${CMAKE_SOURCE_DIR}/dist/SuckbongMachine.exe"
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:SuckbongMachineUpdater>" "${CMAKE_SOURCE_DIR}/dist/SuckbongMachineUpdater.exe"
         COMMENT "Copying single-exe build to dist/"
     )
 endif()
@@ -148,8 +152,26 @@ target_compile_definitions(SuckbongMachine PRIVATE
     UNICODE
     _UNICODE
     SBM_VERSION="${PROJECT_VERSION}"
+    SBM_UPDATE_GITHUB_REPO="Baegovda/sbm"
+    SBM_UPDATE_ASSET_NAME="SuckbongMachine.exe"
 )
 
 if(SBM_STATIC_BUILD)
     target_compile_definitions(SuckbongMachine PRIVATE QT_STATIC_BUILD)
+endif()
+
+if(WIN32)
+    add_executable(SuckbongMachineUpdater WIN32 src/updater/main.cpp)
+    target_link_libraries(SuckbongMachineUpdater PRIVATE shell32)
+    target_compile_definitions(SuckbongMachineUpdater PRIVATE
+        WIN32_LEAN_AND_MEAN
+        UNICODE
+        _UNICODE
+    )
+
+    add_custom_command(TARGET SuckbongMachine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:SuckbongMachineUpdater>"
+                "$<TARGET_FILE_DIR:SuckbongMachine>/SuckbongMachineUpdater.exe"
+        COMMENT "Copying SuckbongMachineUpdater next to main executable"
+    )
 endif()
