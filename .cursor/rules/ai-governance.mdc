@@ -1,0 +1,30 @@
+---
+description: AI governance — language, ownership, and doc standards
+alwaysApply: true
+---
+
+# AI Governance
+
+## Ownership
+
+- This codebase is **100% AI-maintained**. Implement, refactor, document, and changelog all changes via AI.
+- The human user directs work in Korean chat only.
+
+## Language
+
+- **User replies**: Korean only.
+- **Code, comments, docs, rules, changelog, handover**: English only.
+- **In-app UI**: Korean via `tr()` / `QStringLiteral`. Keep JSON block `type` values in English.
+
+## After Every Completed Task
+
+1. Append entries under `[Unreleased]` in **AGENTS.md** section **11. Changelog and Version History** as you implement.
+2. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. **Do not** run `cmake --build` at task close unless the user explicitly asks. Static `dist/SuckbongMachine.exe` **only when the user explicitly requests** distribution. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
+3. Keep diffs minimal; match existing C++ / Qt conventions in surrounding code.
+
+## References
+
+- **Single master document:** [AGENTS.md](../../AGENTS.md) — handover, changelog, build, JSON format, governance, patterns
+- Changelog + version bump: `.cursor/rules/changelog-versioning.mdc`
+- Incremental / static build: `.cursor/rules/static-single-exe-build.mdc`
+- Screen capture overlay (Win32 — do not regress): `.cursor/rules/screen-capture-overlay.mdc`

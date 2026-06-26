@@ -1,0 +1,43 @@
+---
+description: Default numeric input widgets — no spin arrows; horizontal drag to adjust
+alwaysApply: true
+---
+
+# Drag-Adjust Numeric Input (Mandatory Default)
+
+**Status:** Program-wide policy (2026-06). All block-editor and dialog numeric fields use drag-adjust spin boxes instead of stock `QSpinBox` / `QDoubleSpinBox` with up/down arrows.
+
+## Required widgets
+
+| Type | Widget | Use for |
+|------|--------|---------|
+| Integer | `DragAdjustSpinBox` | ms delays, coordinates, repeat counts, poll intervals |
+| Decimal | `DragAdjustDoubleSpinBox` | thresholds, fractional values |
+
+Both live in `src/ui/widgets/`. **Do not** add raw `QSpinBox` / `QDoubleSpinBox` in UI code unless the user explicitly requests stock spinners.
+
+## Behavior
+
+1. `setButtonSymbols(QAbstractSpinBox::NoButtons)` — no stepper arrows.
+2. `Qt::SizeHorCursor` on the field.
+3. **Single click** (no drag past threshold) enters text input on the line edit; **horizontal drag** anywhere on the field adjusts the value.
+4. Line edit installs an `eventFilter` on the spin box so drags work over the text area too; use `QApplication::startDragDistance()` before drag starts.
+5. Modifier multipliers per drag step (every 4 horizontal px by default), based on `singleStep()`:
+ - Default: `singleStep()` (int) or `singleStep()` (double)
+ - Shift: ×10
+ - Ctrl: ×100
+5. Keyboard typing and wheel still work via base class; suffix labels (e.g. `ms`, `회`) stay on separate labels where used (`WaitEditor::makeMsInputRow`).
+
+## Anti-patterns
+
+- Stock `QSpinBox` / `QDoubleSpinBox` in editors or feature dialogs
+- Re-enabling up/down buttons on drag-adjust widgets
+- Custom one-off drag logic instead of extending the shared widgets
+
+## Key files
+
+- `src/ui/widgets/DragAdjustSpinBox.*`
+- `src/ui/widgets/DragAdjustDoubleSpinBox.*`
+- Reference editors: `WaitEditor`, `ImageFindEditor`, `ClickEditor`, `FeatureEditDialog`
+
+Full policy: [AGENTS.md](../../AGENTS.md) — **§8.7 Drag-adjust numeric input**.

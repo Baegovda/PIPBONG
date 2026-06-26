@@ -1,0 +1,9 @@
+{
+  "name": "suckbongmachine",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "qtbase",
+    "opencv4",
+    "nlohmann-json"
+  ]
+}

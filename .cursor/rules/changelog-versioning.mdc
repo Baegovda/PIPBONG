@@ -1,0 +1,43 @@
+---
+description: Changelog and mandatory version bump checklist for AI agents
+alwaysApply: true
+---
+
+# Changelog and Versioning
+
+## Every Task (required)
+
+Add bullet(s) under `[Unreleased]` in **AGENTS.md** section **11. Changelog and Version History** as you implement:
+
+- `Added` — new features
+- `Changed` — behavior or UX changes
+- `Fixed` — bug fixes
+- `Removed` — deleted features
+
+Use English. Be specific (file/behavior), not vague.
+
+## Version Bump (mandatory — every completed user task)
+
+**Before closing the task**, bump version. Do **not** leave work only under `[Unreleased]` with an unchanged `CMakeLists.txt` version.
+
+| Step | Action |
+|------|--------|
+| 1 | Increment `project(SuckbongMachine VERSION ...)` in `CMakeLists.txt` |
+| 2 | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in **AGENTS.md** §11 |
+| 3 | Leave empty `[Unreleased]` section |
+| 4 | Update **Current version** at top of **AGENTS.md** |
+| 5 | **Build only if the user explicitly asked** → `cmake --build build --config Release` (incremental; no `--preset` unless `build/` missing). Otherwise skip. Static `dist/` only if user asked for distribution. |
+
+### Which segment to increment
+
+| Type | Example |
+|------|---------|
+| **Patch** `0.3.0 → 0.3.1` | **Default — every completed user task** |
+| **Minor** `0.3.x → 0.4.0` | New block type, major subsystem, user-facing milestone |
+| **Major** `1.0.0` | Breaking project JSON format |
+
+When in doubt, **patch bump**.
+
+`Application.cpp` reads `SBM_VERSION` from CMake; do not hardcode version strings elsewhere.
+
+Full policy: [AGENTS.md](../../AGENTS.md) — **§10 Versioning Policy** and **§11 Changelog**.

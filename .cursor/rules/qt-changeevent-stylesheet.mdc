@@ -1,0 +1,48 @@
+---
+description: Prevent Qt startup crash from setStyleSheet reentrancy in changeEvent
+alwaysApply: true
+---
+
+# Qt changeEvent + setStyleSheet (Mandatory — No Startup Crash)
+
+**Status:** Verified failure on Windows (2026-06). Calling `setStyleSheet()` (or `setPalette()` on self/children) from `changeEvent` on `QEvent::StyleChange` causes **infinite recursion → stack overflow `0xC00000FD`** — app exits silently after a few seconds with no window.
+
+## Root cause
+
+1. `changeEvent` handles `StyleChange` → calls `setStyleSheet()`
+2. `setStyleSheet()` posts another `StyleChange`
+3. Loop until stack overflow
+
+Same risk when `setStyleSheet` runs inside a theme helper invoked from `StyleChange`. `PaletteChange` + child `setPalette` can also recurse unless guarded.
+
+## Required pattern
+
+| Do | Don't |
+|----|--------|
+| Call `setStyleSheet()` **once** in constructor / `setupUi` | Call `setStyleSheet()` from `changeEvent` on `StyleChange` |
+| Use `palette(...)` in static stylesheet for theme-aware chrome | Re-apply full stylesheet on every palette/style change |
+| On `PaletteChange` / `ApplicationPaletteChange` only: update label colors via `QPalette` with `m_updatingTheme` guard | Handle `StyleChange` in `changeEvent` when handler touches stylesheet or palette |
+| Reference `TargetWindowDetailPanel`, `CustomTitleBar` | Add new widgets that refresh stylesheet from `changeEvent` without review |
+
+## Safe changeEvent template
+
+```cpp
+void MyWidget::changeEvent(QEvent* event) {
+    QFrame::changeEvent(event);
+    switch (event->type()) {
+    case QEvent::PaletteChange:
+    case QEvent::ApplicationPaletteChange:
+        updateThemeColors(); // must NOT call setStyleSheet; use guard if setPalette
+        break;
+    default:
+        break;
+    }
+}
+```
+
+## Before merging UI theme work
+
+- Grep for `StyleChange` + `setStyleSheet` / `applyTheme` in the same widget.
+- Run `SuckbongMachine.exe` and confirm process stays alive >10 s (crash reproduces in ~3–6 s when broken).
+
+Full policy: [AGENTS.md](../../AGENTS.md) — **§8.4 Qt stylesheet and changeEvent**.

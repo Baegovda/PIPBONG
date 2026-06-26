@@ -1,0 +1,37 @@
+---
+description: Build only on user request; static single-exe distribution when user asks
+alwaysApply: true
+---
+
+# Build Policy — On User Request Only
+
+**Status:** Project policy (2026-06). **Do not** run `cmake --build` at task close by default. Build **only when the user explicitly asks** (e.g. “빌드해줘”, “빌드해”, “컴파일 확인”).
+
+## Incremental build (when user asks)
+
+| Do | Don't |
+|----|-------|
+| `cmake --build build --config Release` when the user requests a build | Auto-build at every task close |
+| Re-use existing `build/` — only changed `.cpp` recompile | `cmake --preset default` on every task |
+| Run `--preset default` only when `build/` missing and user asked to build | Build during implementation unless user asks |
+| Kill `SuckbongMachine.exe` before link **only when actually building** (`LNK1104`) | Assume exe is fresh without a build |
+
+Version bump in `CMakeLists.txt` does **not** require a build. Next user-requested `--build` re-configures automatically if needed.
+
+## Distribution — user request only
+
+| Do | Don't |
+|----|-------|
+| `cmake --preset static` then `cmake --build build-static --config Release` | Run static build automatically after code changes |
+| Ship **`dist/SuckbongMachine.exe`** only (~55 MB, no DLLs) | Assume static is the default close-out build |
+
+First `cmake --preset static` may install static vcpkg packages (long one-time step).
+
+## CMake presets
+
+| Preset | Purpose |
+|--------|---------|
+| **`default`** | `x64-windows`, `build/`, fast incremental — use when user asks to build |
+| `static` | `x64-windows-static`, `build-static/`, copies to `dist/` — **user-request distribution only** |
+
+Full build docs: [AGENTS.md](../../AGENTS.md) — **§3 Build and Run**.

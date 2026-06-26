@@ -1,0 +1,34 @@
+---
+description: Manual UX regression checklist for capture, overlays, and modal flows
+alwaysApply: true
+---
+
+# UX Regression Checklist (required before closing UI tasks)
+
+After any change to **screen-region overlay**, **template capture**, **modal dialogs after pick**, or **Win32 input/cursor** code, verify manually on Windows:
+
+## Template capture (화면에서 캡처)
+
+1. Drag-select on target window → release mouse.
+2. **Capture confirm dialog** appears **near the cursor**, fully on-screen (not off-screen or on a parked editor).
+3. Move mouse over confirm dialog, then over **main window** and **block editor** — **cursor stays visible** everywhere.
+4. Saved PNG has **no overlay dim**, **no selection rectangle**, **no mouse cursor**.
+
+## Overlay pick teardown order
+
+1. BitBlt capture runs **synchronously** right after overlay `DestroyWindow`.
+2. Template/ROI picks from `ImageFindEditor` use **`parkHostDuringPick = false`** — do not move the block editor off-screen (no visible teleport).
+3. Post-pick modals: `ScreenRegionOverlay::deferUntilHostRestored` after any host restore when parking is enabled.
+4. **Block editor Cancel / close (X)** must call `ScreenRegionOverlay::dismissAll()` so capture overlay does not stay active.
+
+## Win32 cursor (never regress)
+
+- **Do not** call `ShowCursor(FALSE)` loops in capture helpers unless paired with guaranteed restore in all paths (prefer: omit — screen BitBlt excludes the pointer).
+- After modal flows, spot-check cursor visibility on main window client area.
+
+## Dialog placement
+
+- Post-pick modals use `positionDialogNearGlobalPoint` with `QCursor::pos()` at pick completion, clamped to `QScreen::availableGeometry()`.
+- Do not rely on parent widget geometry while the host is parked off-screen.
+
+Full patterns: [AGENTS.md](../../AGENTS.md) §8.5 and §9.

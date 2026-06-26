@@ -1,0 +1,705 @@
+#include "core/input/InputSimulator.h"
+
+#include "core/workflow/ExecutionContext.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#include <chrono>
+#include <cstring>
+#include <thread>
+
+namespace {
+
+#ifdef _WIN32
+constexpr auto kMultiClickGap = std::chrono::milliseconds(1);
+constexpr auto kWheelRepeatGap = std::chrono::milliseconds(10);
+
+thread_local ExecutionContext* g_activeExecutionContext = nullptr;
+
+void trackSyntheticKey(int virtualKey, bool down) {
+    if (!g_activeExecutionContext) {
+        return;
+    }
+    if (down) {
+        g_activeExecutionContext->noteSyntheticKeyDown(virtualKey);
+    } else {
+        g_activeExecutionContext->noteSyntheticKeyUp(virtualKey);
+    }
+}
+#endif
+
+#ifdef _WIN32
+DWORD mouseDownFlag(MouseButton button) {
+    switch (button) {
+    case MouseButton::Left:
+        return MOUSEEVENTF_LEFTDOWN;
+    case MouseButton::Right:
+        return MOUSEEVENTF_RIGHTDOWN;
+    case MouseButton::Middle:
+        return MOUSEEVENTF_MIDDLEDOWN;
+    case MouseButton::Back:
+    case MouseButton::Forward:
+    case MouseButton::WheelUp:
+    case MouseButton::WheelDown:
+        break;
+    }
+    return MOUSEEVENTF_LEFTDOWN;
+}
+
+DWORD mouseUpFlag(MouseButton button) {
+    switch (button) {
+    case MouseButton::Left:
+        return MOUSEEVENTF_LEFTUP;
+    case MouseButton::Right:
+        return MOUSEEVENTF_RIGHTUP;
+    case MouseButton::Middle:
+        return MOUSEEVENTF_MIDDLEUP;
+    case MouseButton::Back:
+    case MouseButton::Forward:
+    case MouseButton::WheelUp:
+    case MouseButton::WheelDown:
+        break;
+    }
+    return MOUSEEVENTF_LEFTUP;
+}
+
+DWORD xButtonData(MouseButton button) {
+    return button == MouseButton::Back ? XBUTTON1 : XBUTTON2;
+}
+
+void sendInputs(const INPUT* inputs, UINT count) {
+    SendInput(count, const_cast<INPUT*>(inputs), sizeof(INPUT));
+}
+
+void setCursorScreenPos(int screenX, int screenY) {
+    SetCursorPos(screenX, screenY);
+}
+
+bool isStandardClickButton(MouseButton button) {
+    return button == MouseButton::Left || button == MouseButton::Right
+           || button == MouseButton::Middle;
+}
+
+void sendStandardButtonDown(MouseButton button) {
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = mouseDownFlag(button);
+    sendInputs(&input, 1);
+}
+
+void sendStandardButtonUp(MouseButton button) {
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = mouseUpFlag(button);
+    sendInputs(&input, 1);
+}
+
+void sendStandardButtonTap(MouseButton button) {
+    INPUT inputs[2]{};
+    inputs[0].type = INPUT_MOUSE;
+    inputs[0].mi.dwFlags = mouseDownFlag(button);
+    inputs[1].type = INPUT_MOUSE;
+    inputs[1].mi.dwFlags = mouseUpFlag(button);
+    sendInputs(inputs, 2);
+}
+
+void sendXButtonDown(MouseButton button) {
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = MOUSEEVENTF_XDOWN;
+    input.mi.mouseData = xButtonData(button);
+    sendInputs(&input, 1);
+}
+
+void sendXButtonUp(MouseButton button) {
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = MOUSEEVENTF_XUP;
+    input.mi.mouseData = xButtonData(button);
+    sendInputs(&input, 1);
+}
+
+void sendXButtonTap(MouseButton button) {
+    INPUT inputs[2]{};
+    inputs[0].type = INPUT_MOUSE;
+    inputs[0].mi.dwFlags = MOUSEEVENTF_XDOWN;
+    inputs[0].mi.mouseData = xButtonData(button);
+    inputs[1].type = INPUT_MOUSE;
+    inputs[1].mi.dwFlags = MOUSEEVENTF_XUP;
+    inputs[1].mi.mouseData = xButtonData(button);
+    sendInputs(inputs, 2);
+}
+
+void clickStandardAtScreen(int screenX,
+                           int screenY,
+                           MouseButton button,
+                           ClickAction action,
+                           int count) {
+    setCursorScreenPos(screenX, screenY);
+    switch (action) {
+    case ClickAction::Down:
+        sendStandardButtonDown(button);
+        break;
+    case ClickAction::Up:
+        sendStandardButtonUp(button);
+        break;
+    case ClickAction::Tap:
+    default:
+        for (int i = 0; i < count; ++i) {
+            sendStandardButtonTap(button);
+            if (i + 1 < count) {
+                std::this_thread::sleep_for(kMultiClickGap);
+            }
+        }
+        break;
+    }
+}
+
+void clickXButtonAtScreen(int screenX,
+                          int screenY,
+                          MouseButton button,
+                          ClickAction action,
+                          int count) {
+    setCursorScreenPos(screenX, screenY);
+    switch (action) {
+    case ClickAction::Down:
+        sendXButtonDown(button);
+        break;
+    case ClickAction::Up:
+        sendXButtonUp(button);
+        break;
+    case ClickAction::Tap:
+    default:
+        for (int i = 0; i < count; ++i) {
+            sendXButtonTap(button);
+            if (i + 1 < count) {
+                std::this_thread::sleep_for(kMultiClickGap);
+            }
+        }
+        break;
+    }
+}
+
+void sendXButton(MouseButton button, ClickAction action, int count) {
+    const DWORD data = xButtonData(button);
+    switch (action) {
+    case ClickAction::MoveOnly:
+        break;
+    case ClickAction::Down: {
+        INPUT input{};
+        input.type = INPUT_MOUSE;
+        input.mi.dwFlags = MOUSEEVENTF_XDOWN;
+        input.mi.mouseData = data;
+        sendInputs(&input, 1);
+        break;
+    }
+    case ClickAction::Up: {
+        INPUT input{};
+        input.type = INPUT_MOUSE;
+        input.mi.dwFlags = MOUSEEVENTF_XUP;
+        input.mi.mouseData = data;
+        sendInputs(&input, 1);
+        break;
+    }
+    case ClickAction::Tap:
+    default:
+        for (int i = 0; i < count; ++i) {
+            INPUT inputs[2]{};
+            inputs[0].type = INPUT_MOUSE;
+            inputs[0].mi.dwFlags = MOUSEEVENTF_XDOWN;
+            inputs[0].mi.mouseData = data;
+            inputs[1].type = INPUT_MOUSE;
+            inputs[1].mi.dwFlags = MOUSEEVENTF_XUP;
+            inputs[1].mi.mouseData = data;
+            sendInputs(inputs, 2);
+            if (i + 1 < count) {
+                std::this_thread::sleep_for(kMultiClickGap);
+            }
+        }
+        break;
+    }
+}
+
+void sendWheelScroll(MouseButton button, int count) {
+    const int delta = button == MouseButton::WheelUp ? WHEEL_DELTA : -WHEEL_DELTA;
+    for (int i = 0; i < count; ++i) {
+        INPUT input{};
+        input.type = INPUT_MOUSE;
+        input.mi.dwFlags = MOUSEEVENTF_WHEEL;
+        input.mi.mouseData = static_cast<DWORD>(delta);
+        sendInputs(&input, 1);
+        if (i + 1 < count) {
+            std::this_thread::sleep_for(kWheelRepeatGap);
+        }
+    }
+}
+
+void pressModifier(int vk, bool down) {
+    INPUT input{};
+    input.type = INPUT_KEYBOARD;
+    input.ki.wVk = static_cast<WORD>(vk);
+    input.ki.dwFlags = down ? 0 : KEYEVENTF_KEYUP;
+    sendInputs(&input, 1);
+    trackSyntheticKey(vk, down);
+}
+
+struct AppliedKeyModifiers {
+    bool ctrl = false;
+    bool alt = false;
+    bool shift = false;
+};
+
+struct ModifierSnapshot {
+    bool shift = false;
+    bool ctrl = false;
+    bool alt = false;
+};
+
+bool isAsyncKeyDown(int vk) {
+    return (GetAsyncKeyState(vk) & 0x8000) != 0;
+}
+
+bool isShiftPhysicallyDown() {
+    return isAsyncKeyDown(VK_SHIFT) || isAsyncKeyDown(VK_LSHIFT) || isAsyncKeyDown(VK_RSHIFT);
+}
+
+bool isCtrlPhysicallyDown() {
+    return isAsyncKeyDown(VK_CONTROL) || isAsyncKeyDown(VK_LCONTROL) || isAsyncKeyDown(VK_RCONTROL);
+}
+
+bool isAltPhysicallyDown() {
+    return isAsyncKeyDown(VK_MENU) || isAsyncKeyDown(VK_LMENU) || isAsyncKeyDown(VK_RMENU);
+}
+
+ModifierSnapshot captureModifierSnapshot() {
+    return {isShiftPhysicallyDown(), isCtrlPhysicallyDown(), isAltPhysicallyDown()};
+}
+
+bool isModifierVirtualKey(int virtualKey) {
+    switch (virtualKey) {
+    case VK_SHIFT:
+    case VK_LSHIFT:
+    case VK_RSHIFT:
+    case VK_CONTROL:
+    case VK_LCONTROL:
+    case VK_RCONTROL:
+    case VK_MENU:
+    case VK_LMENU:
+    case VK_RMENU:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool isModifierVirtualKeyPhysicallyDown(int virtualKey) {
+    switch (virtualKey) {
+    case VK_SHIFT:
+    case VK_LSHIFT:
+    case VK_RSHIFT:
+        return isShiftPhysicallyDown();
+    case VK_CONTROL:
+    case VK_LCONTROL:
+    case VK_RCONTROL:
+        return isCtrlPhysicallyDown();
+    case VK_MENU:
+    case VK_LMENU:
+    case VK_RMENU:
+        return isAltPhysicallyDown();
+    default:
+        return false;
+    }
+}
+
+AppliedKeyModifiers pressModifiersIfNeeded(const KeyModifiers& mods,
+                                           const ModifierSnapshot& beforeBlock) {
+    AppliedKeyModifiers applied;
+    if (mods.ctrl && !beforeBlock.ctrl) {
+        pressModifier(VK_CONTROL, true);
+        applied.ctrl = true;
+    }
+    if (mods.alt && !beforeBlock.alt) {
+        pressModifier(VK_MENU, true);
+        applied.alt = true;
+    }
+    if (mods.shift && !beforeBlock.shift) {
+        pressModifier(VK_SHIFT, true);
+        applied.shift = true;
+    }
+    return applied;
+}
+
+WPARAM physicalMouseMoveWParam() {
+    WPARAM wParam = 0;
+    if (isShiftPhysicallyDown()) {
+        wParam |= MK_SHIFT;
+    }
+    if (isCtrlPhysicallyDown()) {
+        wParam |= MK_CONTROL;
+    }
+    if (isAsyncKeyDown(VK_LBUTTON)) {
+        wParam |= MK_LBUTTON;
+    }
+    if (isAsyncKeyDown(VK_RBUTTON)) {
+        wParam |= MK_RBUTTON;
+    }
+    if (isAsyncKeyDown(VK_MBUTTON)) {
+        wParam |= MK_MBUTTON;
+    }
+    return wParam;
+}
+
+void releaseAppliedModifiers(const AppliedKeyModifiers& applied,
+                             const ModifierSnapshot& beforeBlock) {
+    // Release only modifiers SBM pressed for this block. Never KEYUP keys the user
+    // already held before the block started (beforeBlock snapshot).
+    if (applied.shift && !beforeBlock.shift) {
+        pressModifier(VK_SHIFT, false);
+    }
+    if (applied.alt && !beforeBlock.alt) {
+        pressModifier(VK_MENU, false);
+    }
+    if (applied.ctrl && !beforeBlock.ctrl) {
+        pressModifier(VK_CONTROL, false);
+    }
+}
+#endif
+
+} // namespace
+
+void InputSimulator::moveMouse(int screenX, int screenY) {
+#ifdef _WIN32
+    setCursorScreenPos(screenX, screenY);
+#endif
+}
+
+void InputSimulator::moveAt(int screenX, int screenY) {
+    moveMouse(screenX, screenY);
+}
+
+void InputSimulator::click(MouseButton button, int count) {
+    mouseButton(button, ClickAction::Tap, count);
+}
+
+void InputSimulator::mouseButton(MouseButton button, ClickAction action, int count) {
+#ifdef _WIN32
+    if (isWheelScrollButton(button)) {
+        sendWheelScroll(button, count);
+        return;
+    }
+    if (button == MouseButton::Back || button == MouseButton::Forward) {
+        sendXButton(button, action, count);
+        return;
+    }
+
+    switch (action) {
+    case ClickAction::MoveOnly:
+        break;
+    case ClickAction::Down: {
+        INPUT input{};
+        input.type = INPUT_MOUSE;
+        input.mi.dwFlags = mouseDownFlag(button);
+        sendInputs(&input, 1);
+        break;
+    }
+    case ClickAction::Up: {
+        INPUT input{};
+        input.type = INPUT_MOUSE;
+        input.mi.dwFlags = mouseUpFlag(button);
+        sendInputs(&input, 1);
+        break;
+    }
+    case ClickAction::Tap:
+    default:
+        for (int i = 0; i < count; ++i) {
+            INPUT inputs[2]{};
+            inputs[0].type = INPUT_MOUSE;
+            inputs[0].mi.dwFlags = mouseDownFlag(button);
+            inputs[1].type = INPUT_MOUSE;
+            inputs[1].mi.dwFlags = mouseUpFlag(button);
+            sendInputs(inputs, 2);
+            if (i + 1 < count) {
+                std::this_thread::sleep_for(kMultiClickGap);
+            }
+        }
+        break;
+    }
+#endif
+}
+
+void InputSimulator::clickAt(int screenX,
+                             int screenY,
+                             MouseButton button,
+                             int count,
+                             KeyModifiers mods) {
+    clickAt(screenX, screenY, button, ClickAction::Tap, count, mods);
+}
+
+void InputSimulator::clickAt(int screenX,
+                             int screenY,
+                             MouseButton button,
+                             ClickAction action,
+                             int count,
+                             KeyModifiers mods) {
+#ifdef _WIN32
+    if (action == ClickAction::MoveOnly) {
+        moveAt(screenX, screenY);
+        return;
+    }
+
+    const bool needsModifiers = mods.any();
+    ModifierSnapshot beforeBlock{};
+    AppliedKeyModifiers appliedMods{};
+    if (needsModifiers) {
+        beforeBlock = captureModifierSnapshot();
+        if (action == ClickAction::Tap || action == ClickAction::Down) {
+            appliedMods = pressModifiersIfNeeded(mods, beforeBlock);
+        }
+    }
+
+    if (isWheelScrollButton(button)) {
+        setCursorScreenPos(screenX, screenY);
+        sendWheelScroll(button, count);
+    } else if (button == MouseButton::Back || button == MouseButton::Forward) {
+        clickXButtonAtScreen(screenX, screenY, button, action, count);
+    } else if (isStandardClickButton(button)) {
+        clickStandardAtScreen(screenX, screenY, button, action, count);
+    }
+
+    if (needsModifiers && action == ClickAction::Tap) {
+        releaseAppliedModifiers(appliedMods, beforeBlock);
+    }
+#endif
+}
+
+#ifdef _WIN32
+bool InputSimulator::clientToScreen(HWND hwnd, int clientX, int clientY, int& screenX, int& screenY) {
+    POINT pt{clientX, clientY};
+    if (!ClientToScreen(hwnd, &pt)) {
+        return false;
+    }
+    screenX = pt.x;
+    screenY = pt.y;
+    return true;
+}
+
+bool InputSimulator::getCursorScreenPosition(int& screenX, int& screenY) {
+    POINT pt{};
+    if (!GetCursorPos(&pt)) {
+        return false;
+    }
+    screenX = pt.x;
+    screenY = pt.y;
+    return true;
+}
+
+bool InputSimulator::screenToClient(HWND hwnd, int screenX, int screenY, int& clientX, int& clientY) {
+    POINT pt{screenX, screenY};
+    if (!ScreenToClient(hwnd, &pt)) {
+        return false;
+    }
+    clientX = pt.x;
+    clientY = pt.y;
+    return true;
+}
+
+void InputSimulator::clickAtClient(HWND hwnd,
+                                   int clientX,
+                                   int clientY,
+                                   MouseButton button,
+                                   int count,
+                                   KeyModifiers mods) {
+    clickAtClient(hwnd, clientX, clientY, button, ClickAction::Tap, count, mods);
+}
+
+void InputSimulator::clickAtClient(HWND hwnd,
+                                   int clientX,
+                                   int clientY,
+                                   MouseButton button,
+                                   ClickAction action,
+                                   int count,
+                                   KeyModifiers mods) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+
+    if (action == ClickAction::MoveOnly) {
+        moveAtClient(hwnd, clientX, clientY);
+        return;
+    }
+
+    int screenX = 0;
+    int screenY = 0;
+    if (!clientToScreen(hwnd, clientX, clientY, screenX, screenY)) {
+        return;
+    }
+
+    // SetCursorPos + SendInput button events at screen coords. SendMessage-only clicks
+    // let games miss input; MOUSEEVENTF_ABSOLUTE without VIRTUALDESK mis-maps multi-monitor coords.
+    clickAt(screenX, screenY, button, action, count, mods);
+}
+
+void InputSimulator::moveAtClient(HWND hwnd, int clientX, int clientY) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    const LPARAM lParam = MAKELPARAM(static_cast<WORD>(clientX & 0xFFFF),
+                                     static_cast<WORD>(clientY & 0xFFFF));
+    SendMessage(hwnd, WM_MOUSEMOVE, physicalMouseMoveWParam(), lParam);
+}
+#endif
+
+void InputSimulator::sendKey(int virtualKey,
+                             KeyAction action,
+                             const KeyPressModifierActions& mods,
+                             bool sendMainKey) {
+#ifdef _WIN32
+    if (sendMainKey && action == KeyAction::Tap && isModifierVirtualKey(virtualKey)
+        && isModifierVirtualKeyPhysicallyDown(virtualKey)) {
+        return;
+    }
+
+    const ModifierSnapshot beforeBlock = captureModifierSnapshot();
+    AppliedKeyModifiers applied;
+
+    const auto applyModifierDownOrTap = [&](ModifierKeyAction modAction,
+                                          bool beforeHeld,
+                                          int vk,
+                                          bool AppliedKeyModifiers::* appliedField) {
+        if (modAction == ModifierKeyAction::None || modAction == ModifierKeyAction::Up) {
+            return;
+        }
+        if (beforeHeld) {
+            return;
+        }
+        if (modAction == ModifierKeyAction::Down) {
+            pressModifier(vk, true);
+            applied.*appliedField = true;
+            return;
+        }
+        INPUT inputs[2]{};
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].ki.wVk = static_cast<WORD>(vk);
+        inputs[1].type = INPUT_KEYBOARD;
+        inputs[1].ki.wVk = static_cast<WORD>(vk);
+        inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+        sendInputs(inputs, 2);
+        trackSyntheticKey(vk, true);
+        trackSyntheticKey(vk, false);
+    };
+
+    const auto applyModifierUp = [&](ModifierKeyAction modAction, bool beforeHeld, int vk) {
+        if (modAction != ModifierKeyAction::Up || beforeHeld) {
+            return;
+        }
+        if (vk == VK_CONTROL && isCtrlPhysicallyDown()) {
+            pressModifier(VK_CONTROL, false);
+        } else if (vk == VK_MENU && isAltPhysicallyDown()) {
+            pressModifier(VK_MENU, false);
+        } else if (vk == VK_SHIFT && isShiftPhysicallyDown()) {
+            pressModifier(VK_SHIFT, false);
+        }
+    };
+
+    applyModifierDownOrTap(mods.ctrl, beforeBlock.ctrl, VK_CONTROL, &AppliedKeyModifiers::ctrl);
+    applyModifierDownOrTap(mods.alt, beforeBlock.alt, VK_MENU, &AppliedKeyModifiers::alt);
+    applyModifierDownOrTap(mods.shift, beforeBlock.shift, VK_SHIFT, &AppliedKeyModifiers::shift);
+
+    if (sendMainKey) {
+        auto sendVk = [&](bool down) {
+            INPUT input{};
+            input.type = INPUT_KEYBOARD;
+            input.ki.wVk = static_cast<WORD>(virtualKey);
+            input.ki.dwFlags = down ? 0 : KEYEVENTF_KEYUP;
+            sendInputs(&input, 1);
+            trackSyntheticKey(virtualKey, down);
+        };
+
+        switch (action) {
+        case KeyAction::Down:
+            sendVk(true);
+            break;
+        case KeyAction::Up:
+            sendVk(false);
+            break;
+        case KeyAction::Tap: {
+            INPUT inputs[2]{};
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].ki.wVk = static_cast<WORD>(virtualKey);
+            inputs[1].type = INPUT_KEYBOARD;
+            inputs[1].ki.wVk = static_cast<WORD>(virtualKey);
+            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            sendInputs(inputs, 2);
+            trackSyntheticKey(virtualKey, true);
+            trackSyntheticKey(virtualKey, false);
+            break;
+        }
+        }
+    }
+
+    applyModifierUp(mods.ctrl, beforeBlock.ctrl, VK_CONTROL);
+    applyModifierUp(mods.alt, beforeBlock.alt, VK_MENU);
+    applyModifierUp(mods.shift, beforeBlock.shift, VK_SHIFT);
+
+    if (sendMainKey && action == KeyAction::Tap) {
+        releaseAppliedModifiers(applied, beforeBlock);
+    }
+#endif
+}
+
+void InputSimulator::sendText(const std::wstring& text) {
+#ifdef _WIN32
+    for (wchar_t ch : text) {
+        INPUT inputs[2]{};
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].ki.wScan = ch;
+        inputs[0].ki.dwFlags = KEYEVENTF_UNICODE;
+        inputs[1].type = INPUT_KEYBOARD;
+        inputs[1].ki.wScan = ch;
+        inputs[1].ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+        sendInputs(inputs, 2);
+    }
+#endif
+}
+
+#ifdef _WIN32
+SessionModifierSnapshot InputSimulator::captureSessionModifierSnapshot() {
+    const ModifierSnapshot snap = captureModifierSnapshot();
+    return {snap.shift, snap.ctrl, snap.alt};
+}
+
+void InputSimulator::setActiveExecutionContext(ExecutionContext* context) {
+    g_activeExecutionContext = context;
+}
+
+int normalizeModifierVirtualKey(int virtualKey) {
+    switch (virtualKey) {
+    case VK_LSHIFT:
+    case VK_RSHIFT:
+        return VK_SHIFT;
+    case VK_LCONTROL:
+    case VK_RCONTROL:
+        return VK_CONTROL;
+    case VK_LMENU:
+    case VK_RMENU:
+        return VK_MENU;
+    default:
+        return virtualKey;
+    }
+}
+
+void InputSimulator::restoreTrackedKeyboard(std::unordered_set<int>& heldKeys,
+                                            const SessionModifierSnapshot& /*sessionStart*/) {
+    const auto keysToRelease = heldKeys;
+    for (int virtualKey : keysToRelease) {
+        INPUT input{};
+        input.type = INPUT_KEYBOARD;
+        input.ki.wVk = static_cast<WORD>(normalizeModifierVirtualKey(virtualKey));
+        input.ki.dwFlags = KEYEVENTF_KEYUP;
+        sendInputs(&input, 1);
+        heldKeys.erase(virtualKey);
+    }
+}
+#endif

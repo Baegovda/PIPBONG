@@ -1,0 +1,1579 @@
+# AGENTS.md — SuckbongMachine Master Document
+
+**Current version:** `0.5.40` (from `project(SuckbongMachine VERSION 0.5.40)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
+
+**Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
+
+This is the **only project document** — AI handover, user quick start, development governance, version history, and implementation patterns. Append changelog entries to [§11](#11-changelog-and-version-history) under `[Unreleased]`. Do not create any other doc files.
+
+---
+
+## Table of Contents
+
+1. [Project Overview](#1-project-overview)
+2. [Stack and Dependencies](#2-stack-and-dependencies)
+3. [Build and Run](#3-build-and-run)
+4. [Repository Map](#4-repository-map)
+5. [Architecture and Key Subsystems](#5-architecture-and-key-subsystems)
+6. [UX Flows](#6-ux-flows)
+7. [JSON and Project Format](#7-json-and-project-format)
+8. [Critical Implementation Patterns](#8-critical-implementation-patterns)
+9. [Development Governance](#9-development-governance)
+10. [Versioning Policy](#10-versioning-policy)
+11. [Changelog and Version History](#11-changelog-and-version-history)
+12. [Risk and Legal Notices](#12-risk-and-legal-notices)
+13. [Cursor Rules Summary](#13-cursor-rules-summary)
+
+---
+
+## 1. Project Overview
+
+**SuckbongMachine** is a C++17 / Qt6 Windows desktop automation utility with a visual block workflow editor. It targets any application window by title — not a single game. There is **no Python** or external script runtime.
+
+| Aspect | Detail |
+|--------|--------|
+| **Purpose** | Define automation “features” (macros) as ordered block workflows; capture screen templates; match images; simulate mouse/keyboard input |
+| **Target OS** | Windows 10/11 only (Win32 capture, `SendInput`, DWM APIs) |
+| **UI language** | Korean in-app (`tr()`, `QStringLiteral`) |
+| **Doc/code language** | English |
+| **Maintenance model** | 100% AI-maintained; human user directs work in Korean chat only |
+
+**Legacy naming:** The project was originally named **poez**. The executable, Qt org/app name, and display name are now **SuckbongMachine**. Auto-save data migrates from `%LOCALAPPDATA%/poez/poez/` on first launch when the new folder is empty (see [§5.7 Persistence](#57-persistence)).
+
+**Warning:** Automation may violate target application Terms of Service. Use at your own risk.
+
+---
+
+## 2. Stack and Dependencies
+
+| Layer | Technology |
+|-------|------------|
+| Language | C++17 |
+| GUI | Qt 6 Widgets |
+| Vision | OpenCV 4 (`opencv_core`, `opencv_imgproc`, `opencv_imgcodecs`) — template matching |
+| Serialization | nlohmann/json |
+| Platform | Win32 (`user32`, `gdi32`, `dwmapi`) — `SendInput`, GDI BitBlt, DWM extended frame bounds |
+| Package manager | [vcpkg](https://github.com/microsoft/vcpkg) via `vcpkg.json` |
+
+**vcpkg dependencies** (`vcpkg.json`):
+
+- `qtbase`
+- `opencv4`
+- `nlohmann-json`
+
+**CMake:** 3.20+, Visual Studio 2022 generator (see `CMakePresets.json`).
+
+---
+
+## 3. Build and Run
+
+### Requirements
+
+- Windows 10/11
+- Visual Studio 2022 (Desktop development with C++)
+- CMake 3.20+
+- vcpkg (toolchain path configured in `CMakePresets.json`)
+
+### Configure and build (default — fast dev)
+
+**Default for AI and daily work.** Dynamic DLL linking; **incremental** compiles (changed `.cpp` only) are much faster than re-running configure or static builds.
+
+#### First time on a machine (once)
+
+```powershell
+cmake --preset default
+cmake --build build --config Release
+```
+
+#### Everyday / when the user asks to build (incremental)
+
+```powershell
+cmake --build build --config Release
+```
+
+Only re-run `cmake --preset default` when `build/` does not exist yet, or after changing `CMakeLists.txt` (new sources), `CMakePresets.json`, or `vcpkg.json`. CMake re-configures automatically on the next `--build` when `CMakeLists.txt` changes (e.g. version bump) — **do not** run `--preset` again just for a version number change.
+
+**Output:** `build/Release/SuckbongMachine.exe` (run with the `build/Release/` folder — `windeployqt` deploys Qt/OpenCV DLLs on link).
+
+#### AI build policy
+
+| When | Build? | Command |
+|------|--------|---------|
+| Task close (default) | **No** — do not build automatically | — |
+| User explicitly asks (e.g. “빌드해줘”, “빌드해”, “컴파일 확인”) | **Yes** — incremental build | `cmake --build build --config Release` |
+| Compile verification needed and user did not forbid | **Yes** | same as above |
+| `build/` missing and user asked to build | Configure once, then build | `cmake --preset default` then `--build` |
+| Distribution exe requested | Static preset | `cmake --preset static` then `cmake --build build-static --config Release` |
+
+Before link, kill a running `SuckbongMachine.exe` only when a build is actually run (`LNK1104`).
+
+### Distribution — single portable exe (user request only)
+
+Build this **only when the user explicitly asks** for a release / single-exe / distribution build. Static link via vcpkg `x64-windows-static`; first configure may take a long time.
+
+```powershell
+cmake --preset static
+cmake --build build-static --config Release
+```
+
+**Ship:** `dist/SuckbongMachine.exe` only (~55 MB, no DLLs). Post-build copies from `build-static/Release/SuckbongMachine.exe`.
+
+### Run
+
+```powershell
+.\build\Release\SuckbongMachine.exe
+```
+
+**One-click build (Windows):** double-click `빌드.bat` in the repo root, or in Cursor press **Ctrl+Shift+B** (default build task → `scripts/build-release.ps1`). Kills a running `SuckbongMachine.exe` before link when building.
+
+Distribution build: `.\dist\SuckbongMachine.exe`
+
+### Build pitfalls
+
+- **LNK1104:** Kill any running `SuckbongMachine.exe` before linking (only when building).
+- **Slow closes:** Do not run `cmake --preset default` on every task — use incremental `--build` only.
+- **vcpkg path:** `CMakePresets.json` may reference a machine-specific `CMAKE_TOOLCHAIN_FILE`; adjust if vcpkg is installed elsewhere.
+
+---
+
+## 4. Repository Map
+
+```
+poez/                          # repo root (legacy folder name)
+├── AGENTS.md                  # this file — sole project documentation
+├── CMakeLists.txt             # version source of truth, source list
+├── CMakePresets.json          # VS2022 + vcpkg preset
+├── vcpkg.json                 # dependency manifest
+├── .cursor/rules/             # always-applied Cursor agent rules
+└── src/
+    ├── main.cpp               # DPI awareness before QApplication
+    ├── app/                   # Application, MainWindow, HotkeyManager
+    ├── model/                 # Project, Feature domain models
+    ├── core/
+    │   ├── capture/           # ScreenCapture — window find, multi-strategy capture
+    │   ├── vision/            # ImageMatcher — OpenCV template matching
+    │   ├── input/             # InputSimulator, HotkeyBinding
+    │   └── workflow/          # Engine, blocks, execution context
+    ├── storage/               # JsonSerializer — project JSON I/O
+    └── ui/                    # Feature list, workflow editor, block editors, overlay
+        └── editors/
+            ├── ScreenRegionOverlay.*   # Win32 screen-region picker (mandatory pattern)
+            ├── ImageFindEditor.*       # template capture, ROI, match test
+            ├── BlockEditorDialog.*     # modal block editor host
+            └── ...
+```
+
+### Path reference
+
+| Path | Purpose |
+|------|---------|
+| `src/app/` | `Application`, `MainWindow`, menus, auto-save, run/stop, shutdown |
+| `src/core/capture/` | `ScreenCapture` — window find, PrintWindow/BitBlt fallbacks, DPI mapping |
+| `src/core/vision/` | `ImageMatcher` — `PreparedTemplate`, multi-scale matching, NMS |
+| `src/core/input/` | `InputSimulator` — mouse/keyboard via Win32; `HotkeyBinding` |
+| `src/core/workflow/` | `WorkflowEngine`, `Workflow`, `ExecutionContext`, block types |
+| `src/ui/` | `FeatureListPanel`, `WorkflowEditorPanel`, `BlockListWidget`, editors |
+| `src/ui/editors/ScreenRegionOverlay.*` | Win32 overlay for in-game template capture |
+| `src/storage/` | `JsonSerializer` |
+| `src/model/` | `Project`, `Feature` |
+
+---
+
+## 5. Architecture and Key Subsystems
+
+### 5.1 Application layer (`src/app/`)
+
+- **`Application`**: Qt app subclass; sets org/name/version; migrates legacy `poez` data; exposes `dataDirectory()`, `autoSaveFilePath()`, `ensureDpiAwareness()`.
+- **`MainWindow`**: Main UI shell — target window title, feature list, workflow editor, run control, exit/shutdown (`prepareForShutdown` stops worker, dismisses overlays, flush auto-save).
+- **`HotkeyManager`**: Global hotkeys via `RegisterHotKey` / `WM_HOTKEY` on a hidden message-only Win32 host; restores previous foreground window before running workflow (no focus steal to SuckbongMachine).
+
+### 5.2 Screen capture (`ScreenCapture`)
+
+- Finds target window by title; stores `HWND`.
+- **DWM extended frame bounds** for accurate borderless/windowed game window rect.
+- **Multi-strategy capture:** PrintWindow, screen BitBlt, full-screen crop (GPU-rendered game fallback).
+- **Search areas:** `FullScreen`, `TargetWindow`, `CustomRegion`, `ScreenPercent` (virtual desktop %).
+- **Physical vs logical pixels:** `capturePhysicalRect`, `getTargetWindowScreenRect`, Win32 `PhysicalToLogicalPointForPerMonitorDPI` / `LogicalToPhysicalPointForPerMonitorDPI`.
+
+### 5.3 Vision (`ImageMatcher`)
+
+- `PreparedTemplate`: cached BGR + grayscale.
+- `MatchOptions`: threshold (default 0.85), `multiScale` (default false), `minScale`/`maxScale` (default 0.9–1.1).
+- `MatchResult`: location, center, matched size, confidence, scale.
+- **Selection policy:** When multiple hits exceed threshold, choose **top-leftmost** (smallest Y, then X), not highest confidence; overlapping duplicates suppressed via NMS.
+- `findAllTemplates` for match-test UI.
+
+### 5.4 Input (`InputSimulator`, `HotkeyBinding`)
+
+- Mouse clicks (left/right/middle, count, client vs screen coords).
+- Keyboard via virtual key + modifiers (`SendInput`); modifier press/release guarded by `GetAsyncKeyState` so physically held keys are not cleared when a workflow loop ends ([§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress)).
+- Client-coordinate clicks on target `HWND` use `SendMessage`; feature hotkeys use low-level hooks that swallow consumed events.
+- Feature hotkeys serialized under feature `hotkey` in JSON; duplicate-binding warning in UI.
+
+### 5.5 Workflow engine
+
+- **Block types (UI):** `ImageFind`, `Click`, `KeyPress`, `Wait`, `If`, `Loop`. Legacy `Comment` blocks still load from JSON but are hidden from add/type UI.
+- **`WorkflowEngine`**: Runs workflow on **`QThread` worker**; emits `started`, `blockStarted`, `blockFinished` (with ImageFind match confidence + preview pixmap), `logMessage`, `finished`.
+- **`ExecutionContext`**: Stop flag, last match point/confidence/preview, logging callback.
+- **ImageFind execution:** Poll loop until match, timeout, or stop; sets last match for subsequent `Click` blocks (`LastMatch` target).
+
+### 5.6 UI
+
+- **Feature list:** Create/delete/rename features; hotkey binding (button, double-click, context menu).
+- **Workflow editor:** Block list with drag-and-drop reorder; per-type **블록 추가** buttons (템플릿 매칭, 마우스, 키보드, 딜레이); template thumbnails (48×48); block editors in `BlockEditorDialog`.
+- **ImageFind editor:** ROI preview, match test, screen capture overlay, `CaptureConfirmDialog`.
+- **Run feedback:** ImageFind match confidence and cropped match thumbnail appear in the workflow block list row (**매칭 점수**, **매칭** columns) during execution.
+
+### 5.7 Persistence
+
+| Item | Location |
+|------|----------|
+| Auto-save file | `%LOCALAPPDATA%/SuckbongMachine/SuckbongMachine/project.json` via `QStandardPaths::AppDataLocation` |
+| Legacy auto-save | `%LOCALAPPDATA%/poez/poez/project.json` — migrated on first launch if new path empty |
+| Templates | `{projectDirectory}/templates/*.png` |
+| Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
+| Debounce | 800 ms after edits; also on window close |
+| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); bottom **설정** button opens program settings dialog |
+
+---
+
+## 6. UX Flows
+
+### Primary workflow
+
+1. Use **창 지정** in **대상 창** to pick the target window.
+2. Create a **feature** in the left panel.
+3. Add blocks on the right; edit each block (ImageFind supports **화면에서 캡처** / Capture from Screen).
+4. Optionally bind a **global hotkey** per feature.
+5. **Run** via **실행** menu or feature hotkey — executes selected feature on worker thread.
+6. Changes **auto-save**; manual File menu for export/open.
+
+### ImageFind template capture
+
+1. Open ImageFind block editor → **화면에서 캡처**.
+2. Win32 overlay over target window; drag-select region; Esc cancels.
+3. `CaptureConfirmDialog` shows preview/metadata → save to `templates/`.
+4. Template path stored relative to project directory.
+
+### Shutdown
+
+- **종료** button (bottom-right) or window close → `prepareForShutdown`: stop worker, `ScreenRegionOverlay::dismissAll()`, flush auto-save; confirm if workflow running.
+
+### Run controls
+
+- Run/stop: **실행** menu and feature hotkeys (main toolbar run/stop buttons removed).
+- Title bar: `SuckbongMachine {version}` or `SuckbongMachine {version} - {filename}` when project file open.
+
+---
+
+## 7. JSON and Project Format
+
+### Root `project.json`
+
+```json
+{
+  "version": 1,
+  "targetWindowTitle": "",
+  "projectDirectory": "C:/path/to/project/data",
+  "features": [ /* ... */ ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `version` | Project format version (`Project::version()`) |
+| `targetWindowTitle` | Target window title for `FindWindow` |
+| `projectDirectory` | Base path for relative template paths |
+| `features` | Array of feature objects |
+
+### Feature object
+
+```json
+{
+  "id": "uuid-string",
+  "name": "Feature name",
+  "enabled": true,
+  "runMode": "Toggle",
+  "repeatCount": 1,
+  "hotkey": { "virtualKey": 112, "ctrl": false, "alt": false, "shift": false },
+  "workflow": [ /* blocks */ ]
+}
+```
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `runMode` | `"Toggle"` | `Toggle`, `Hold`, `RepeatInfinite`, `RepeatCount` |
+| `repeatCount` | `1` | Used when `runMode` is `RepeatCount` |
+| `infiniteExitAfterConsecutiveMisses` | `0` (omitted) | When `> 0` with `RepeatInfinite` or `Hold`, stop after this many consecutive loop iterations where template matching fails |
+| `userInputInterrupt` | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run. Legacy `"None"` loads as `"Stop"`. Excludes mouse movement, injected input, and the feature's own hotkey |
+
+`hotkey` is optional. `virtualKey` is Win32 VK code.
+
+### Block types (JSON `type` — always English)
+
+#### `ImageFind`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `templates` | `[]` | Relative paths under `templates/`; multiple entries per block |
+| `template` | `""` | Legacy single path; loaded when `templates` is empty; first `templates` entry is also written for backward compat |
+| `templateMatchMode` | `"Any"` | `"Any"` (one hit succeeds) or `"All"` (every template must match on the same capture) |
+| `threshold` | `0.85` | Match confidence threshold |
+| `pollIntervalMs` | `200` | Delay between retries when no match (5–60000 ms, 5 ms step); block polls until success or workflow stop |
+| `searchArea` | `"TargetWindow"` | `FullScreen`, `TargetWindow`, `CustomRegion`, `ScreenPercent` |
+| `customRegion` | `{x,y,width,height}` | Legacy single ROI; first entry mirror when `customRegions` is set |
+| `customRegions` | `[{x,y,width,height}, …]` | Optional multiple screen-pixel ROIs when `CustomRegion`; tried in list order |
+| `percentRegion` | `{x,y,width,height}` | 0–100 % of virtual desktop when `ScreenPercent` |
+| `multiScale` | `false` | Written as `true` when enabled |
+| `minScale` / `maxScale` | `0.9` / `1.1` | Written only when non-default |
+
+#### `Click`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `target` | `"LastMatch"` | `"Fixed"`, `"LastMatch"`, or `"CurrentPosition"` |
+| `x`, `y` | `0` | For `Fixed` target; offset from last match center when `lastMatchRelativeOffset` is true |
+| `lastMatchRelativeOffset` | `false` | When true with `LastMatch`, click at match center plus `x`/`y` offset (client coords) |
+| `button` | `"Left"` | `Left`, `Right`, `Middle`, `Back`, `Forward`, `WheelUp`, `WheelDown` |
+| `action` | `"Tap"` | `Tap`, `Down` (hold), `Up` (release), `MoveOnly` (cursor move only); omitted when `Tap` |
+| `count` | `1` | Click count (`Tap` only) |
+| `useClientCoordinates` | `true` | Client vs screen coords |
+| `ctrl`, `alt`, `shift` | `false` | Keyboard modifiers held during the click |
+
+#### `KeyPress`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `virtualKey` | `0x20` (Space) | Omitted when `useMainKey` is false |
+| `useMainKey` | `true` | When `false`, only `ctrlAction` / `altAction` / `shiftAction` run |
+| `action` | `"Tap"` | Main key action; omitted when `useMainKey` is false |
+| `ctrlAction` | omitted (`None`) | `None`, `Tap`, `Down`, `Up` for Ctrl |
+| `altAction` | omitted (`None`) | Same for Alt |
+| `shiftAction` | omitted (`None`) | Same for Shift |
+| `ctrl`, `alt`, `shift` | legacy | Legacy `true` loads as `Down`; omitted on save |
+
+#### `Wait`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `ms` | `500` | Fixed delay (0–600000 ms, 5 ms step) |
+| `randomRange` | `false` | Use min/max instead |
+| `minMs`, `maxMs` | `0` | Random range bounds (5 ms step) |
+
+#### `If`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `condition` | `"LastMatchSuccess"` | `LastMatchSuccess`, `LastMatchFailed`, `DetectionFailed` |
+| `negate` | `false` | Invert condition result |
+| `then` | `[]` | Nested workflow when condition is true |
+| `else` | `[]` | Nested workflow when false; omit or empty for no-op |
+| `thenGotoBlock` | omitted (`0`) | 1-based `#` column in the **parent** workflow to jump to after a successful `then` branch |
+| `elseGotoBlock` | omitted (`0`) | Same after a successful `else` branch |
+
+`then` / `else` arrays use the same block JSON schema as the root `workflow` array. Nested `If` blocks are allowed (max depth 8 at runtime).
+
+#### `Loop`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `exitCondition` | `"DetectionFailed"` | `DetectionFailed`, `DetectionSucceeded`, `LastMatchSuccess`, `LastMatchFailed` — stop repeating and continue when met after a body iteration |
+| `detectionMissLimit` | `1` | Consecutive ImageFind poll misses inside the body before detection counts as failed (`DetectionFailed` only); omitted when default |
+| `body` | `[]` | Nested workflow repeated until the exit condition is met |
+
+`body` uses the same block JSON schema as the root `workflow` array. Nested `Loop` / `If` blocks share the max depth 8 runtime limit.
+
+#### Workflow loop regions (feature `workflow` document)
+
+Root feature `workflow` may be a **block array** (legacy) or an **object** when loop regions are used:
+
+```json
+"workflow": {
+  "blocks": [ /* block objects */ ],
+  "loopRegions": [
+    {
+      "id": "uuid",
+      "startBlock": 2,
+      "endBlock": 4,
+      "exitCondition": "DetectionFailed",
+      "detectionMissLimit": 1
+    }
+  ]
+}
+```
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `startBlock` / `endBlock` | — | **1-based inclusive** block numbers matching the workflow list `#` column; regions must not overlap |
+| `exitCondition` | `"DetectionFailed"` | Same values as `Loop` block |
+| `detectionMissLimit` | `1` | Same as `Loop` block; omitted when default |
+
+When `loopRegions` is empty, `workflow` saves as a plain block array for backward compatibility. `WorkflowRunner` repeats each region until its exit condition is met, then continues with the next block after `endBlock`.
+
+#### `Comment`
+
+| Field | Default |
+|-------|---------|
+| `text` | `""` |
+
+**Stability rule:** Never localize JSON `type` values or enum strings used in serialization.
+
+---
+
+## 8. Critical Implementation Patterns
+
+### 8.1 Win32 screen-region overlay (mandatory — do not regress)
+
+**Status:** Verified working on Windows (2026-06). **Do not** replace with a Qt `QWidget` overlay without explicit user approval and full regression testing.
+
+**Purpose:** Drag-select a template region over the POE game window from **화면에서 캡처** in `ImageFindEditor`.
+
+#### Why not Qt `QWidget`?
+
+Mixing Qt logical geometry, `WA_TranslucentBackground`, and `SetWindowPos` in physical pixels caused wrong overlay placement, click-through to the game (Windows error beep), and unreliable Esc handling.
+
+#### Architecture
+
+| Layer | Responsibility |
+|-------|----------------|
+| `ScreenRegionOverlay` | Static API only — **not** a `QWidget` subclass |
+| Win32 popup `HWND` | Topmost layered window over POE bounds; owns input during pick |
+| `ScreenCapture::getTargetWindowScreenRect()` | POE bounds via DWM `DWMWA_EXTENDED_FRAME_BOUNDS` (physical pixels) |
+| `ImageFindEditor` callback | BitBlt via `ScreenCapture::capturePhysicalRect` **before** host restore |
+| `MainWindow::prepareForShutdown` | Calls `ScreenRegionOverlay::dismissAll()` |
+
+#### Win32 overlay rules
+
+1. **Create** with `CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED, …, WS_POPUP, x, y, w, h, …)` using **physical** bounds from `getTargetWindowScreenRect()`.
+2. **Do not** mix Qt `setGeometry()` / `SetWindowPos()` on a Qt widget for overlay placement.
+3. **Hit testing:** `SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA)` on `WM_CREATE`. **Never** `WS_EX_TRANSPARENT`.
+4. **Input:** `WM_LBUTTONDOWN` / `WM_MOUSEMOVE` / `WM_LBUTTONUP` with `SetCapture` / `ReleaseCapture`. Selection in **physical** screen coordinates (`ClientToScreen`).
+5. **Esc cancel:** `RegisterHotKey(hwnd, id, 0, VK_ESCAPE)` + `WM_KEYDOWN`.
+6. **Paint:** GDI in `WM_PAINT` (dim fill + selection rect). Hint text from `tr()` as `std::wstring` at pick start.
+7. **Teardown:** `UnregisterHotKey`, `DestroyWindow`, invoke pick callback **immediately** (BitBlt capture must see the game, not the overlay), then defer host restore via `QTimer::singleShot(0, qApp, …)`.
+
+#### Host dialog during pick (`BlockEditorDialog`)
+
+- Opened with `exec()`. **`hide()` or `setVisible(false)` terminates `exec()` with `Rejected`** — do not use.
+- Use **`parkHostOffScreen()`** / **`restoreHost()`** instead.
+- Run pick **callback before `restoreHost()`** so BitBlt captures the game, not the editor.
+
+#### DPI
+
+- `Application::ensureDpiAwareness()` in `main()` **before** `QApplication` (`PER_MONITOR_AWARE_V2`).
+- Overlay placement stays in Win32 physical pixels.
+
+#### Entry points
+
+- `ScreenRegionOverlay::startPick(hostWidget, callback)` — from `ImageFindEditor`
+- `ScreenRegionOverlay::dismissAll()` — shutdown, cancel, or before new pick
+
+#### Anti-patterns (known failures)
+
+- Qt frameless translucent `QWidget` + `WA_TranslucentBackground` for game overlay
+- `grabMouse()` / `grabKeyboard()` on Qt widget instead of native mouse messages
+- `WM_NCHITTEST` / `HTCLIENT` hacks on Qt layered widgets without coordinate sync
+- Restoring host window before BitBlt in pick callback
+- Replacing `parkHostOffScreen` with `hide()`
+
+#### Known limitation
+
+If POE runs **as administrator**, a non-elevated SuckbongMachine process may not receive input over the game window. Fix: run SuckbongMachine with matching elevation.
+
+#### Key files
+
+- `src/ui/editors/ScreenRegionOverlay.h` / `.cpp`
+- `src/ui/editors/ImageFindEditor.cpp`
+- `src/core/capture/ScreenCapture.cpp`
+- `src/main.cpp`
+- `src/app/MainWindow.cpp`
+
+### 8.2 Workflow block list drag-and-drop
+
+- Defer `blockRowsReordered` until after `QTableWidget::startDrag` returns.
+- Disable `Qt::ItemIsDropEnabled` on row items so drops target between rows.
+- Disable reorder while workflow is running.
+
+### 8.3 Code conventions
+
+- Match surrounding C++/Qt style; minimal diffs.
+- UI strings: Korean via `tr()` / `QStringLiteral`.
+- Block log messages: Korean.
+- No hardcoded version strings — use `SBM_VERSION` / `QCoreApplication::applicationVersion()`.
+
+### 8.4 Qt stylesheet and changeEvent (mandatory — no startup crash)
+
+**Never** call `setStyleSheet()` from `changeEvent` on `QEvent::StyleChange`. Qt re-posts `StyleChange` after every `setStyleSheet`, causing infinite recursion and stack overflow (`0xC00000FD`) — the app exits after a few seconds with no visible window.
+
+| Rule | Detail |
+|------|--------|
+| Stylesheet | Apply **once** in constructor / `setupUi`; use `palette(...)` in QSS for theme-aware colors |
+| `changeEvent` | React only to `PaletteChange` / `ApplicationPaletteChange` when updating colors |
+| Dynamic colors | Use `QPalette` on labels (`setPalette`, `setStyleSheet` on children avoided) with `m_updatingTheme` reentrancy guard |
+| Never | `StyleChange` → `setStyleSheet` / unguarded `setPalette` cascade |
+
+Reference implementations: `TargetWindowDetailPanel`, `CustomTitleBar`. Cursor rule: `.cursor/rules/qt-changeevent-stylesheet.mdc`.
+
+### 8.5 Template capture and post-pick UX (mandatory — manual verify)
+
+After overlay pick or template capture changes, **manually test on Windows** before marking the task done:
+
+| Check | Expected |
+|-------|----------|
+| Confirm dialog position | Near release cursor, clamped on-screen (`positionDialogNearGlobalPoint`, `deferUntilHostRestored`) |
+| Cursor visibility | Pointer visible over confirm dialog, main window, and block editor after pick |
+| PNG content | No overlay dim, no selection chrome, no cursor in saved template |
+| Teardown order | Overlay destroyed → sync BitBlt (`capturePhysicalRectForTemplate`) → restore parked host → modal UI |
+
+**Never** use `ShowCursor(FALSE)` loops in `capturePhysicalRectForTemplate` — corrupts global display count and hides the cursor over the app.
+
+Post-pick modals: `ScreenRegionOverlay::deferUntilHostRestored` (not a bare `QTimer::singleShot` that races host restore).
+
+Cursor rule: `.cursor/rules/ux-regression-checklist.mdc`.
+
+### 8.6 Physical keyboard state during workflow runs (mandatory — do not regress)
+
+**Status:** Verified working on Windows (2026-06). Ending a workflow loop must **not** release Shift/Ctrl/Alt the user was already holding **before the feature session started**. Keys SBM pressed during the run (KeyPress **누름**, modifier **누름**, Click block modifiers left down) are **released automatically** when each loop iteration or the feature session ends.
+
+#### Symptom (user-held modifiers — do not regress)
+
+User holds **Shift** (run/walk in games) while a feature runs — often **click-only** blocks, **Hold** run mode, mouse side-button hotkey (**앞으로 가기** / XButton2), or infinite repeat. When the loop stops, the game behaves as if Shift was released even though the finger is still on the key. Workflow blocks may not include any KeyPress or modifier Click blocks.
+
+#### Run-end keyboard restore (default)
+
+| Rule | Detail |
+|------|--------|
+| Track | `InputSimulator` records synthetic KEYDOWN/KEYUP into `ExecutionContext::m_sbmHeldVirtualKeys` while the worker runs |
+| Restore | `ExecutionContext::restoreRunKeyboard()` after each `WorkflowRunner::run` and `endRunKeyboardSession()` in `finishRunSession` |
+| Scope | Only virtual keys SBM actually sent DOWN and did not later UP — not keys the user held before the session (those never get a synthetic DOWN) |
+| Per-block guards unchanged | `GetAsyncKeyState` + pre-block `ModifierSnapshot` still prevent duplicate DOWN/UP during blocks |
+
+#### Root causes (historical bugs — user-held modifiers)
+
+| Cause | Why it breaks physical holds |
+|-------|------------------------------|
+| `AttachThreadInput` in focus restore | Detach clears modifier state Windows tracks for keys still held physically |
+| Unconditional `SendInput` KEYUP | Synthetic KEYUP cancels a real hold, not only SBM’s own synthetic DOWN |
+| `reassertPhysicallyHeldModifiers` on run finish | End-of-loop KEYDOWN/KEYUP “sync” disturbed real keyboard state — **removed** |
+| Hold hotkey UP delivered to game | Feature binding release (e.g. side button UP) reaches target app when loop ends |
+| Global `SendInput` for client clicks | Keyboard/mouse input queue pollution vs. in-window `SendMessage` |
+
+#### Architecture (required)
+
+| Layer | Responsibility |
+|-------|----------------|
+| `restoreForegroundWindow` | `AllowSetForegroundWindow(ASFW_ANY)` + `SetForegroundWindow` only — **never** `AttachThreadInput` (`HotkeyManager.cpp`, `ScreenCapture.cpp`) |
+| `InputSimulator` | Modifier KEYDOWN/KEYUP guarded by `GetAsyncKeyState` (generic + L/R VK); track `AppliedKeyModifiers` per block; track session `m_sbmHeldVirtualKeys` for run-end restore |
+| `HotkeyManager` | Low-level keyboard/mouse hooks swallow consumed feature hotkeys (`return 1`); ignore `LLKHF_INJECTED` / `LLMHF_INJECTED` |
+| Run teardown | `WorkflowEngine` worker calls `restoreRunKeyboard()` after each loop; `finishRunSession` calls `endRunKeyboardSession()` — releases **SBM-held keys only**, never blind sync of full keyboard state |
+
+#### InputSimulator rules
+
+1. **`pressModifiersIfNeeded`**: Send KEYDOWN for Ctrl/Alt/Shift only when the Click/KeyPress block requests it **and** `GetAsyncKeyState` reports the modifier is **not** already down (check `VK_SHIFT` / `VK_LSHIFT` / `VK_RSHIFT`, same pattern for Ctrl and Alt).
+2. **`releaseAppliedModifiers`**: After Tap actions, send KEYUP only for modifiers in `AppliedKeyModifiers` that were **not** already down in a pre-block `ModifierSnapshot` — never KEYUP keys the user held before the block started.
+3. **`sendKey` (KeyPress block)**: For modifier virtual keys, skip Tap entirely when `isModifierVirtualKeyPhysicallyDown`.
+4. **`clickAtClient`**: Convert client coords to screen, then `SetCursorPos` plus `SendInput` button down/up (no `SendMessage` clicks — games swallow those). Skip modifier snapshot when the block requests no Ctrl/Alt/Shift (`InputSimulator::clickAt`).
+5. **Screen-coordinate fallback** (`clickAt` without valid client path): still uses `SendInput` for mouse; modifier press/release follows the same `AppliedKeyModifiers` guards.
+
+#### HotkeyManager rules
+
+1. **`holdKeyboardHookProc` / `mouseHookProc`**: When `handleHoldKeyEvent` / `handleMouseButtonEvent` returns true, return **`1`** so the event is **not** forwarded to other apps (`CallNextHookEx` must not run for swallowed events).
+2. **Injected input**: Ignore events with `LLKHF_INJECTED` (keyboard) or `LLMHF_INJECTED` (mouse) so SBM’s own `SendInput` does not re-enter hotkey handling.
+3. **Hold mode bindings**: Swallow both DOWN and UP for the bound key or mouse button so the target app never sees the feature hotkey as a click/keypress when starting or stopping the loop.
+4. **Foreground**: Before emitting hold/trigger signals, restore previous foreground with the same `restoreForegroundWindow` helper (no `AttachThreadInput`).
+
+#### Explicit removals (do not reintroduce)
+
+- `reassertPhysicallyHeldModifiers` (was in `InputSimulator`, `HotkeyManager`, `MainWindow::finishRunSession`, `WorkflowEngine` — deleted)
+- `AttachThreadInput` / `DetachThreadInput` in any focus-restore path
+- Blind run-end keyboard sync (KEYUP every modifier regardless of who pressed it)
+
+#### Manual verification (required for input / hotkey / workflow changes)
+
+| Step | Expected |
+|------|----------|
+| Hold **Shift** in target app; run click-only feature on **Hold** + side-button hotkey; release hotkey | Shift remains held in-game |
+| Stop infinite / N-repeat mid-loop while Shift held | Same — no modifier drop |
+| Click block with **Shift** checked while user already holds Shift | No spurious release when loop ends |
+| KeyPress **누름** (or modifier **누름**) during run; stop feature | SBM-pressed key is released in target app |
+
+#### Key files
+
+- `src/core/input/InputSimulator.cpp` — modifier guards, session key tracking, `restoreTrackedKeyboard`
+- `src/core/workflow/ExecutionContext.cpp` — `restoreRunKeyboard`, `endRunKeyboardSession`
+- `src/core/workflow/WorkflowEngine.cpp` — restore after each loop iteration
+- `src/app/HotkeyManager.cpp` — hooks, swallow, `restoreForegroundWindow`
+- `src/core/capture/ScreenCapture.cpp` — shared `restoreForegroundWindow`
+- `src/app/MainWindow.cpp` — `finishRunSession` → `endRunKeyboardSession`
+
+Cursor rule: `.cursor/rules/physical-keyboard-preservation.mdc`.
+
+### 8.7 Drag-adjust numeric input (mandatory default)
+
+**Status:** Program-wide policy (2026-06). Numeric fields in block editors and feature dialogs use **`DragAdjustSpinBox`** (integer) or **`DragAdjustDoubleSpinBox`** (decimal) — not stock `QSpinBox` / `QDoubleSpinBox` with up/down arrows.
+
+| Rule | Detail |
+|------|--------|
+| Widgets | `src/ui/widgets/DragAdjustSpinBox.*`, `DragAdjustDoubleSpinBox.*` |
+| Interaction | Single click → text input; horizontal drag anywhere on field; `NoButtons`; `SizeHorCursor` (I-beam while editing) |
+| Step | Every 4 horizontal px: `singleStep()` (int and double); Shift ×10; Ctrl ×100 |
+| Drag threshold | `QApplication::startDragDistance()` before drag steals the click |
+| Labels | Put unit suffixes (`ms`, `회`) on adjacent labels when possible (`WaitEditor::makeMsInputRow`) |
+| Never | Add raw spin boxes in UI unless user explicitly requests stock arrows |
+
+Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
+
+---
+
+## 9. Development Governance
+
+### Ownership
+
+- Codebase is **100% AI-maintained**: implement, refactor, document, changelog via AI.
+- Human user directs work in **Korean chat only**; does not hand-edit unless coordinating with AI.
+
+### Language policy
+
+| Artifact | Language |
+|----------|----------|
+| Code, comments, docs, rules, changelog | English |
+| User chat replies | Korean |
+| In-app UI strings | Korean (`tr()`, `QStringLiteral`) |
+| JSON block `type` and enum strings | English (serialization stability) |
+
+### After every completed task
+
+1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
+2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave an empty `[Unreleased]`. **Do not** run `cmake --build` at task close unless the user explicitly asks to build. Static `dist/SuckbongMachine.exe` **only when the user explicitly requests** distribution. **Never** leave shipped work only under `[Unreleased]` with an unchanged version.
+3. Keep diffs minimal; match existing C++ / Qt conventions.
+4. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
+
+### Diff conventions
+
+- Focused changes only; no drive-by refactors.
+- Reuse existing abstractions (`ScreenCapture`, `ImageMatcher`, `BlockFactory`, etc.).
+- Comments only for non-obvious logic.
+
+---
+
+## 10. Versioning Policy
+
+**Single source of truth:** `project(SuckbongMachine VERSION x.y.z)` in `CMakeLists.txt` → `SBM_VERSION` compile definition → `QCoreApplication::applicationVersion()`.
+
+**Do not** hardcode version strings elsewhere.
+
+### Mandatory bump every completed user task
+
+When the user’s request is **done** (code merged, changelog written, version bumped):
+
+| Step | Action |
+|------|--------|
+| 1 | Increment version in `CMakeLists.txt` (see table below) |
+| 2 | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history) |
+| 3 | Leave empty `[Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` headers only, or blank) |
+| 4 | Update **Current version** at the top of this file |
+| 5 | **Build only if the user explicitly asked** — incremental `cmake --build build --config Release` (static `dist/` only if user asked for distribution). Otherwise do not build. |
+
+**Do not** accumulate many tasks under `[Unreleased]` without bumping. **Do not** finish a chat task with changelog entries still unreleased and the same version number.
+
+### Which segment to increment
+
+| Bump | When |
+|------|------|
+| **Patch** `0.3.0 → 0.3.1` | **Default — every completed user task** (bugfixes, UX, docs, small features, rule updates) |
+| **Minor** `0.3.x → 0.4.0` | New block type, major subsystem, or many related features in one milestone the user treats as a release |
+| **Major** `1.0.0` | Breaking JSON/project format or stable release milestone |
+
+When in doubt, **patch bump**.
+
+### When bumping (checklist)
+
+1. Update `project(SuckbongMachine VERSION ...)` in `CMakeLists.txt`.
+2. Move `[Unreleased]` items into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history).
+3. Leave empty `[Unreleased]` section.
+4. **Do not** build at task close unless the user asked. When they ask: incremental `cmake --build build --config Release`. Static `dist/SuckbongMachine.exe` only when the user requests distribution.
+
+### Changelog format
+
+Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Use English; be specific (file/behavior). **All changelog entries live in §11 of this file only.**
+
+---
+
+## 11. Changelog and Version History
+
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [§10](#10-versioning-policy).
+
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.5.40] - 2026-06-24
+
+### Changed
+
+- ImageFind block editor auto-shows **ROI 미리보기** on the target window when the editor opens and a search ROI is configured; overlay dismisses when the editor closes or the page is hidden (`ImageFindEditor`, `BlockEditorDialog`).
+
+## [0.5.39] - 2026-06-24
+
+### Added
+
+- If block **이후 이동**: **목록에서 선택** opens workflow block-list pick mode (click or drag to a block, like loop-region selection); Esc cancels (`IfEditor`, `BlockListWidget`, `WorkflowEditorPanel`, `BlockEditorDialog`).
+
+## [0.5.38] - 2026-06-24
+
+### Changed
+
+- Workflow block list **구간 반복** / **만약** header rows: **편집** / **삭제** buttons sit inline immediately after the chip label instead of the far-right columns (`BlockListWidget`).
+
+## [0.5.37] - 2026-06-24
+
+### Changed
+
+- Workflow block list **구간 반복** and **만약** header rows show inline **편집** / **삭제** buttons (right columns); double-click still opens edit (`BlockListWidget`, `WorkflowEditorPanel`).
+
+## [0.5.36] - 2026-06-24
+
+### Added
+
+- If block **이후 이동**: optional jump to a `#` column block in the parent workflow after a successful `then` or `else` branch (`thenGotoBlock` / `elseGotoBlock` JSON, `IfEditor`, `WorkflowRunner`).
+
+## [0.5.35] - 2026-06-24
+
+### Changed
+
+- ImageFind workflow matching: one grayscale conversion per capture poll shared across all templates; skip full `findAllTemplates` enumeration when no prior match regions were consumed (peak match is sufficient); `captureSearchAreaForImageFind` reuses cached target `HWND` without `GetWindowTextW` each poll (`ImageFindBlock`, `ScreenCapture`).
+- `isMostlyBlack` uses sparse pixel sampling instead of full-frame `cvtColor` + mean (`ScreenCapture`).
+
+## [0.5.34] - 2026-06-24
+
+### Changed
+
+- Mouse click input uses `SetCursorPos` + batched button `SendInput` again (instant cursor teleport, accurate coords); **직전 매칭** clicks skip `targetWindow()` lookup (`InputSimulator`, `ClickBlock`).
+
+## [0.5.33] - 2026-06-24
+
+### Changed
+
+- Screen capture speed: DXGI Desktop Duplication keeps a cached desktop frame, uses 5 ms `AcquireNextFrame` timeout (was 100 ms), reuses cache on `WAIT_TIMEOUT` for static-screen polls; GDI fallback uses `CreateDIBSection` direct buffer (`DxgiScreenCapture`, `ScreenCapture`).
+
+## [0.5.32] - 2026-06-24
+
+### Fixed
+
+- Workflow editor run feedback (동작 시간, 매칭 시간, match score/thumbnail, loop title timing) persists when switching to another feature and back; per-feature cache in `WorkflowEditorPanel` instead of clearing on `setFeature`.
+
+## [0.5.31] - 2026-06-24
+
+### Fixed
+
+- Workflow mouse click **동작 시간** inflated by per-click `GetWindowTextW` on the target window: `findTargetWindow` now trusts cached `HWND` until `IsWindow` fails; title changes still clear cache via `setTargetWindowTitle` (`ScreenCapture`).
+- **직전 매칭** clicks reuse cached physical screen coords from template match instead of `ClientToScreen` every block (`ExecutionContext::lastMatchScreenPoint`, `ImageFindBlock`, `ClickBlock`).
+
+### Changed
+
+- Screen-coordinate clicks batch absolute move + button in one `SendInput` with `MOUSEEVENTF_VIRTUALDESK` (`InputSimulator`).
+
+## [0.5.30] - 2026-06-24
+
+### Fixed
+
+- Workflow mouse clicks no longer jump the cursor toward the bottom-right: restored `SetCursorPos` for screen moves instead of `MOUSEEVENTF_ABSOLUTE` without `MOUSEEVENTF_VIRTUALDESK`, which mis-mapped virtual-screen coordinates (`InputSimulator`).
+
+## [0.5.29] - 2026-06-24
+
+### Changed
+
+- Mouse/keyboard input latency: batched `SendInput` absolute move + button/key tap in one syscall; removed legacy 30 ms key-tap and 50 ms multi-click sleeps on `mouseButton` / `sendXButton`; wheel repeat gap 50 ms → 10 ms; workflow worker raises timer resolution with `timeBeginPeriod(1)` during runs (`InputSimulator`, `WorkflowEngine`).
+
+## [0.5.28] - 2026-06-24
+
+### Fixed
+
+- Workflow **만약** block delete (Delete key): selecting the If header, branch headers, or main row now removes the If block; selecting only a branch inline row removes that branch block (`WorkflowEditorPanel::selectedBlockRows`, `removeSelectedBlocks`).
+
+## [0.5.27] - 2026-06-24
+
+### Changed
+
+- Workflow **만약** blocks use loop-region-style list chrome: condition header row, green **맞으면** / amber **아니면** branch sections with inline branch block rows, tinted overlays, and double-click to edit the If block or a branch block (`BlockListWidget`, `WorkflowEditorPanel`, `ifConditionDisplayLabel`).
+
+## [0.5.26] - 2026-06-24
+
+### Changed
+
+- Workflow loop region fill uses a lighter overlay tint (no duplicate row cell tint); drag-select preview and header chip tint reduced for better block-list text readability (`BlockListWidget`).
+
+## [0.5.25] - 2026-06-24
+
+### Changed
+
+- Feature list run control moved from toolbar to a per-row ▶/■ button on the left of each feature; click runs or stops that feature; Hold mode rows show a disabled play button; context menu **실행** / **중지** uses the clicked row (`FeatureListPanel`, `MainWindow::onFeatureRunRequested`).
+
+## [0.5.24] - 2026-06-24
+
+### Added
+
+- Feature list toolbar **실행** button runs or stops the selected feature (same as hotkey toggle); context menu adds **실행** / **중지** (`FeatureListPanel`, `MainWindow::onRunWorkflow`).
+
+## [0.5.23] - 2026-06-24
+
+### Changed
+
+- Mouse **뒤로 가기** / **앞으로 가기** icons: both thumb paddles on the left side of the mouse; upper paddle = back with ← badge, lower = forward with → badge (`HotkeyBindingIcon::drawMouseSideNavigationIcon`).
+
+## [0.5.22] - 2026-06-24
+
+### Changed
+
+- Workflow loop region header row: custom `LoopRegionHeaderRowDelegate` paints accent bar, ↻ badge chip, bold title, and muted exit-condition text; selection uses stronger highlight tint (`BlockListWidget`).
+
+## [0.5.21] - 2026-06-24
+
+### Fixed
+
+- Workflow block list empty after loop-region header rows: `refresh()` now builds table rows via `setLoopRegions` before `setBlockInfo` and no longer rebuilds the table after populating cells (`WorkflowEditorPanel`).
+
+## [0.5.20] - 2026-06-24
+
+### Changed
+
+- Workflow loop region label: dedicated header row inserted above each region’s start block (between rows) instead of an overlay chip on the first block row (`BlockListWidget` table-row mapping, `WorkflowEditorPanel` selection/double-click).
+- Loop region delete from header double-click menu no longer shows a confirmation dialog (`WorkflowEditorPanel::onLoopRegionLabelDoubleClicked`).
+
+## [0.5.19] - 2026-06-24
+
+### Added
+
+- One-click Release build: repo-root `빌드.bat` and Cursor default task **Ctrl+Shift+B** via `scripts/build-release.ps1` (auto-configure if `build/` missing, kill running exe before link).
+
+## [0.5.18] - 2026-06-24
+
+### Fixed
+
+- Grayscale templates no longer match saturated color UI: auto-detect low-chroma templates and reject haystack hits whose match region exceeds a channel-spread threshold (`ImageMatcher`, `ImageFindBlock` workflow + match test).
+
+## [0.5.17] - 2026-06-24
+
+### Added
+
+- Workflow loop regions show grouped chrome on the block list: left accent bar, top/bottom bracket lines, row tint, and **구간 반복 · {condition}** label chip; double-click label opens edit/delete menu (`BlockListWidget`, `WorkflowEditorPanel`).
+
+## [0.5.16] - 2026-06-24
+
+### Changed
+
+- Wait block UI terminology **지연** → **딜레이**: block type label, editor title, bulk **전체 딜레이 추가/삭제**, and run log messages (`UiStrings`, `WaitEditor`, `WorkflowEditorPanel`, `WaitBlock`).
+
+## [0.5.15] - 2026-06-24
+
+### Changed
+
+- Workflow **구간 반복**: click **구간 반복** to enter drag-pick mode on the block list (highlight preview, `↻` on range start); release opens exit-condition dialog with locked range; Esc or button toggles off; right-click button opens **구간 반복 목록** for edit/delete (`BlockListWidget`, `WorkflowEditorPanel`, `WorkflowLoopRegionEditDialog`).
+
+## [0.5.14] - 2026-06-24
+
+### Changed
+
+- Mouse click input path optimized: `SetCursorPos` plus button-only `SendInput` (replaces 3-event absolute move batch); skip modifier `GetAsyncKeyState` snapshot when the block has no Ctrl/Alt/Shift; multi-click gap 10 ms → 1 ms (`InputSimulator::clickAt`, `clickAtClient`).
+
+## [0.5.13] - 2026-06-24
+
+### Changed
+
+- AI build policy: **do not** run `cmake --build` at task close by default; build **only when the user explicitly requests** (`AGENTS.md` §3/§9/§10, `.cursor/rules/static-single-exe-build.mdc`, `changelog-versioning.mdc`, `ai-governance.mdc`).
+
+## [0.5.12] - 2026-06-24
+
+### Changed
+
+- **항상 위** checkbox moved to custom title bar beside minimize; **설정** button added left of bottom **종료** (opens program settings); title bar **설정** menu removed (`CustomTitleBar`, `MainWindow`).
+
+## [0.5.11] - 2026-06-24
+
+### Changed
+
+- Main window bottom area: **로그** and **대상 창** panels side by side in a horizontal splitter (resizable; state persisted as `main/bottomHorizontal`) (`MainWindow`).
+
+## [0.5.10] - 2026-06-24
+
+### Changed
+
+- Wait block delay fields use 5 ms steps (`ms`, `minMs`, `maxMs`); legacy JSON values snap on load; editor drag/wheel/typing and **전체 지연 추가** dialog use `snapWaitDelayMs` (`WaitBlock`, `WaitEditor`, `WorkflowEditorPanel`).
+
+## [0.5.9] - 2026-06-24
+
+### Changed
+
+- ImageFind **탐색 ROI** toolbar buttons renamed **미리보기** / **추가** / **수정** / **삭제** (removed **ROI** prefix); order is preview → add → edit → delete (`ImageFindEditor`).
+
+## [0.5.8] - 2026-06-24
+
+### Added
+
+- Shared theme-aware secondary text colors and `HintLabel` widget (`UiThemeColors.h`, `HintLabel`); dark-mode hints use readable sky-blue tint instead of `palette(mid)` / `#666`.
+
+### Changed
+
+- ImageFind ROI/template hints, Click editor hints, program settings, loop-region dialog, and block type-change note use `HintLabel`.
+- Hotkey binding chip idle/capture styles are theme-aware on dark backgrounds (`FeatureEditDialog`, `HotkeyCaptureDialog`, `ClickEditor`, `ImageFindEditor`).
+- Feature list muted column text and target-window detail captions use `secondaryHintTextColor` (`FeatureListPanel`, `TargetWindowDetailPanel`).
+- `AnimatedTwoWaySwitch` inactive label uses readable secondary hint color.
+
+## [0.5.7] - 2026-06-24
+
+### Changed
+
+- ImageFind **ROI 미리보기** button keeps label **ROI 미리보기** when overlay is on (checked state only; no **끄기** suffix) (`ImageFindEditor::updateRoiPreviewButton`).
+
+## [0.5.6] - 2026-06-24
+
+### Changed
+
+- ImageFind **탐지 재시도** interval uses 5 ms steps (min 5 ms); legacy JSON values snap on load; drag/wheel/typing snap via `snapImageFindPollIntervalMs` (`ImageFindBlock`, `ImageFindEditor`).
+- `DragAdjustSpinBox` drag step now uses `singleStep()` with Shift ×10 and Ctrl ×100 (aligned with `DragAdjustDoubleSpinBox`).
+
+## [0.5.5] - 2026-06-24
+
+### Changed
+
+- Drag-adjust numeric fields require 4 horizontal pixels per step (was 1 px); Shift/Ctrl multipliers unchanged (`DragAdjustSpinMouse.h`).
+
+## [0.5.4] - 2026-06-24
+
+### Changed
+
+- Workflow editor bulk wait buttons renamed **광역 지연 추가** / **광역 지연 삭제** → **전체 지연 추가** / **전체 지연 삭제** (`WorkflowEditorPanel`).
+
+## [0.5.3] - 2026-06-24
+
+### Added
+
+- **프로그램 설정** dialog (**설정** menu): option **기능 실행 시 해당 기능을 자동으로 선택** (default on) persisted in `QSettings` `program/autoSelectRunningFeature` (`ProgramSettings`, `ProgramSettingsDialog`, `MainWindow::selectRunningFeatureForDisplay`).
+
+## [0.5.2] - 2026-06-24
+
+### Added
+
+- Workflow-level **구간 반복**: `#` block range loop regions on the feature workflow (not a separate block) with exit conditions; **구간 반복** dialog in workflow editor; list row `↻` marker and tint; JSON `workflow.loopRegions` with 1-based `startBlock`/`endBlock` (`Workflow`, `WorkflowLoopRegion`, `WorkflowRunner`, `WorkflowLoopRegionsDialog`, `BlockListWidget`, `JsonSerializer`).
+
+### Changed
+
+- Workflow **블록 추가** toolbar no longer includes the legacy **구간 반복** block type (existing `Loop` blocks in saved projects still load and run).
+
+## [0.5.1] - 2026-06-24
+
+### Changed
+
+- AI build policy: prefer incremental `cmake --build build --config Release` at task close only when C++/UI changed; no mid-task builds; no `cmake --preset` on every close; skip build for docs/rules-only or when user requests skip (`AGENTS.md` §3/§9/§10, `.cursor/rules/static-single-exe-build.mdc`, `changelog-versioning.mdc`, `ai-governance.mdc`).
+
+## [0.5.0] - 2026-06-24
+
+### Added
+
+- **구간 반복** workflow block (`Loop`): nested `body` workflow repeats until an exit condition is met, then execution continues to the next block; conditions `DetectionFailed` / `DetectionSucceeded` / `LastMatchSuccess` / `LastMatchFailed`; `detectionMissLimit` for fail-fast ImageFind inside the loop (`LoopBlock`, `LoopEditor`, `BlockFactory`, `WorkflowEditorPanel`, `BranchWorkflowEditor`).
+- `ExecutionContext::clearDetectionFailedFlag()` for per-iteration loop exit checks.
+
+## [0.4.29] - 2026-06-24
+
+### Changed
+
+- Feature **사용자 입력 시** default is **완전 정지** (`Stop`); **사용 안 함** removed from the editor combo; legacy JSON `"None"` loads as `Stop` (`Feature`, `FeatureEditDialog`, `UserInputInterruptMode`, `JsonSerializer`).
+
+## [0.4.28] - 2026-06-24
+
+### Added
+
+- Run keyboard restore: SBM tracks synthetic KEYDOWN/KEYUP during workflow runs and releases any still-held keys when each loop iteration or feature session ends; user-held modifiers at session start are never tracked and stay down (`ExecutionContext`, `InputSimulator`, `WorkflowEngine`, `MainWindow::finishRunSession`).
+
+## [0.4.27] - 2026-06-24
+
+### Added
+
+- KeyPress block **수정키만** mode: run Ctrl/Alt/Shift actions without a main key; **지우기** clears key input; JSON `useMainKey: false` (`KeyPressBlock`, `KeyPressEditor`, `InputSimulator::sendKey`).
+
+## [0.4.26] - 2026-06-24
+
+### Added
+
+- KeyPress block modifier keys (Ctrl/Alt/Shift) support per-modifier **사용 안 함** / **탭** / **누름** / **뗌** actions; JSON `ctrlAction` / `altAction` / `shiftAction` (`KeyPressModifierActions`, `KeyPressEditor`, `InputSimulator::sendKey`); legacy `ctrl`/`alt`/`shift` booleans load as `Down`.
+
+## [0.4.25] - 2026-06-24
+
+### Fixed
+
+- Workflow ImageFind match-feedback pulse overlay no longer affects template matching: `hideBeforeCapture()` clears and hides the Win32 overlay synchronously before each poll capture (`WorkflowMatchFeedbackOverlay`, `ImageFindBlock::execute`).
+
+## [0.4.24] - 2026-06-24
+
+### Fixed
+
+- Drag-adjust numeric fields no longer crash on single click: removed synthetic mouse events that re-entered the line-edit `eventFilter` recursively (stack overflow); click now focuses the line edit directly (`DragAdjustSpinBox`, `DragAdjustDoubleSpinBox`).
+
+## [0.4.23] - 2026-06-24
+
+### Changed
+
+- Drag-adjust numeric fields: single click enters text input; horizontal drag works anywhere on the field (including the line-edit area) after `startDragDistance`; shared mouse logic in `DragAdjustSpinMouse.h` (`DragAdjustSpinBox`, `DragAdjustDoubleSpinBox`).
+
+## [0.4.22] - 2026-06-24
+
+### Fixed
+
+- ImageFind **ROI 수정** pick overlay now ghosts all existing ROIs including the one being edited (was excluded, so single-ROI edits showed no guide) (`ImageFindEditor::startRoiPick`).
+
+## [0.4.21] - 2026-06-24
+
+### Added
+
+- `DragAdjustDoubleSpinBox`: decimal drag-adjust input without stepper arrows; Shift ×10 and Ctrl ×100 step multipliers per pixel (`ui/widgets/DragAdjustDoubleSpinBox`).
+- Program-wide numeric-input policy: [§8.7](#87-drag-adjust-numeric-input-mandatory-default), `.cursor/rules/drag-adjust-numeric-input.mdc`.
+
+### Changed
+
+- All block-editor and feature-dialog numeric fields now use drag-adjust spin boxes (no up/down arrows): ImageFind **임계값** (`DragAdjustDoubleSpinBox`), Click X/Y, Wait ms, feature repeat/exit counts (`DragAdjustSpinBox` in `ImageFindEditor`, `ClickEditor`, `FeatureEditDialog`, `FeatureRunModeDialog`).
+
+## [0.4.20] - 2026-06-24
+
+### Changed
+
+- Click block editor coordinate pick button label **마우스로 좌표 지정** → **좌표 기록 (3초)** (`ClickEditor`).
+
+### Added
+
+- ImageFind block editor **ROI 수정** button: re-pick selected ROI in the list; other ROIs shown as ghosts during edit (`ImageFindEditor`).
+
+## [0.4.19] - 2026-06-24
+
+### Fixed
+
+- Click coordinate pick cancel (Esc or **마우스로 좌표 지정 취소**): countdown tooltip now hides immediately; block editor no longer parks off-screen during pick (`CursorPositionPicker`, `ClickEditor`).
+
+## [0.4.18] - 2026-06-24
+
+### Changed
+
+- Click block editor: **직전 매칭** + **매칭 중심 기준 상대 좌표** now shows the same **좌표** group as **고정 좌표** (X/Y, mouse pick, cursor hotkey, live cursor, client-coords toggle) (`ClickEditor`).
+
+## [0.4.17] - 2026-06-24
+
+### Changed
+
+- ImageFind block editor layout reorganized: **매칭 설정** group, template list with side preview and toolbar row, compact ROI section with hint (`ImageFindEditor`).
+
+## [0.4.16] - 2026-06-24
+
+### Added
+
+- ImageFind multi-ROI search: `customRegions` JSON array, ROI list in editor (**ROI 추가** / **삭제**), ordered try-all-ROIs execution, multi-rect pick ghost + preview + match-test overlay (`ImageFindBlock`, `ImageFindEditor`, `ScreenRegionOverlay`, `RoiPreviewOverlay`, `MatchTestOverlay`).
+
+## [0.4.15] - 2026-06-24
+
+### Changed
+
+- Feature list toolbar button label **수정** → **편집** (`FeatureListPanel`).
+
+## [0.4.14] - 2026-06-24
+
+### Changed
+
+- Feature edit dialog: **연속 실패 허용** spin row is shown only when **연속 감지 실패 시 종료** is checked (무한 반복 / 누를 동안 modes) (`FeatureEditDialog`).
+
+## [0.4.13] - 2026-06-24
+
+### Added
+
+- Click block editor **좌표 입력 단축키** (default **F1**, rebindable via `QSettings` `hotkeys/clickCursorPosition`): while the mouse block editor is open, presses fill current cursor coordinates into fixed/offset fields (`ClickCursorHotkeySettings`, `ClickEditor`).
+
+## [0.4.12] - 2026-06-24
+
+### Changed
+
+- ImageFind block editor **탐지 재시도** interval: 1 ms minimum and 1 ms step (was 50 ms minimum / 50 ms step); uses `DragAdjustSpinBox` (`ImageFindEditor`); legacy JSON values below 1 ms clamp to 1 on load (`ImageFindBlock`).
+
+## [0.4.11] - 2026-06-24
+
+### Added
+
+- Feature option **사용자 입력 시** (`userInputInterrupt` JSON): **일시정지** toggles workflow pause/resume on physical keyboard or mouse-button input (excluding movement and injected/SBM input); **완전 정지** stops the run (`UserInputInterruptMonitor`, `FeatureEditDialog`, `ExecutionContext`, `MainWindow`).
+
+## [0.4.10] - 2026-06-24
+
+### Added
+
+- Workflow block list **매칭 시간** column beside **동작 시간**: cumulative screen capture + template-match work for ImageFind blocks, excluding poll-interval sleep (`BlockResult::imageFindMatchDurationMs`, `ImageFindBlock`, `BlockListWidget`, `WorkflowEditorPanel`).
+
+## [0.4.9] - 2026-06-24
+
+### Changed
+
+- ImageFind **ROI 영역 지정** pick overlay ghosts the current custom ROI as a faint dotted gray region (`ScreenRegionOverlay::StartPickOptions::existingRoiPhysical`, `ImageFindEditor`).
+
+## [0.4.8] - 2026-06-24
+
+### Added
+
+- Workflow ImageFind run feedback: semi-transparent pulse animation on the target window at each detection attempt (peak match location), green on success and red on miss (`WorkflowMatchFeedbackOverlay`, `ExecutionContext`, `ImageFindBlock`, `MainWindow`).
+
+## [0.4.7] - 2026-06-24
+
+### Changed
+
+- Workflow block list **기준/감지** column shows detected match confidence to 2 decimal places instead of 3 (`BlockListWidget`).
+
+## [0.4.6] - 2026-06-24
+
+### Added
+
+- ImageFind block supports multiple templates per block with `templates` JSON array and `templateMatchMode` (`Any` = 하나라도, `All` = 모두); editor list UI with add/remove, animated mode switch, and combined match test (`ImageFindBlock`, `ImageFindEditor`).
+
+## [0.4.5] - 2026-06-24
+
+### Changed
+
+- ImageFind ROI button renamed **ROI 선택** → **ROI 영역 지정**; toggles to **ROI 영역 지정 취소** while pick overlay is active and a second click dismisses the pick (`ImageFindEditor`).
+
+## [0.4.4] - 2026-06-22
+
+### Changed
+
+- Click block editor: **이동만** moved from action combo to checkbox beside **대상**; hides **동작 설정** group when checked (`ClickEditor`).
+- Click block editor action group title **마우스** → **동작 설정**; live cursor label uses theme sky-blue accent via `QPalette` (`ClickEditor`).
+
+## [0.4.3] - 2026-06-22
+
+### Added
+
+- Click block **이동만** action (`MoveOnly`): moves cursor to target without button press; JSON `action: "MoveOnly"`; client path uses `WM_MOUSEMOVE` (`ClickBlock`, `InputSimulator`, `ClickEditor`).
+
+## [0.4.2] - 2026-06-22
+
+### Changed
+
+- Feature edit dialog: **반복 횟수** row hidden for **무한 반복** and **누를 동안**; shown only for **N회 반복** (`FeatureEditDialog`, `FeatureRunModeDialog`).
+
+## [0.4.1] - 2026-06-22
+
+### Added
+
+- Click block editor shows live cursor position (`현재 커서: X …, Y …`) updated every 50 ms; respects **클라이언트 좌표** toggle and target-window lookup (`ClickEditor`).
+
+## [0.4.0] - 2026-06-22
+
+### Added
+
+- **If (만약)** workflow block: nested `then` / `else` branch workflows, conditions `LastMatchSuccess` / `LastMatchFailed` / `DetectionFailed` with optional `negate` (`IfBlock`, `BlockFactory`, JSON `type: "If"`).
+- `WorkflowRunner`: shared linear workflow execution loop with optional UI hooks; used by `WorkflowEngine` and `IfBlock` branch execution.
+- `IfEditor` + `BranchWorkflowEditor`: condition UI and mini branch block lists in `BlockEditorDialog`; **만약** add button and diamond preview icon in `WorkflowEditorPanel`.
+
+### Changed
+
+- Workflow block list **동작** column shows **분기** for If blocks (`UiStrings::blockTypeWorkflowActionName`).
+
+## [0.3.21] - 2026-06-22
+
+### Changed
+
+- Mouse **뒤로 가기** / **앞으로 가기** icons: browser-style chevron badge on the side-button paddle instead of a plain side tab (`HotkeyBindingIcon::drawMouseSideNavigationIcon`, `WorkflowEditorPanel` click preview).
+
+## [0.3.20] - 2026-06-22
+
+### Added
+
+- `HotkeyBindingIcon`: drawn key-cap and mouse-button icons for feature hotkeys (`ui/HotkeyBindingIcon`).
+
+### Changed
+
+- Feature list **키** column shows hotkey icons instead of text labels; unbound rows still show `—` (`FeatureListPanel`, `FeatureListItemDelegate`).
+
+## [0.3.19] - 2026-06-22
+
+### Added
+
+- `DragAdjustSpinBox`: spin box without stepper arrows; drag horizontally to adjust value (Shift ×10, Ctrl ×100 per pixel) (`ui/widgets/DragAdjustSpinBox`).
+
+### Changed
+
+- Wait block editor delay inputs use `DragAdjustSpinBox` with separate `ms` label beside the field instead of a spin-box suffix (`WaitEditor`).
+
+## [0.3.18] - 2026-06-22
+
+### Changed
+
+- KeyPress block editor: **키보드** key field and **동작** combo on one row; **조합키** (Ctrl/Alt/Shift) on the row below (`KeyPressEditor`).
+
+## [0.3.17] - 2026-06-22
+
+### Added
+
+- Infinite-repeat exit condition: optional **연속 감지 실패 시 종료** in feature editor (`Feature::infiniteExitAfterConsecutiveMisses`, `FeatureEditDialog`); when enabled for **무한 반복** or **누를 동안**, stops after N consecutive loop iterations where template matching fails (`MainWindow`, `ExecutionContext::imageFindMaxMissAttempts`, `ImageFindBlock`); persisted as JSON `infiniteExitAfterConsecutiveMisses`.
+
+## [0.3.16] - 2026-06-22
+
+### Added
+
+- `AnimatedTwoWaySwitch`: pill track with sliding circular thumb and `QPropertyAnimation` between two labeled sides (`ui/widgets/AnimatedTwoWaySwitch`).
+
+### Changed
+
+- Wait block editor: **고정** / **랜덤** mode uses the animated two-way switch; input row below shows `[ms]` for fixed or `[ms]~[ms]` for random (`WaitEditor`).
+
+## [0.3.15] - 2026-06-22
+
+### Changed
+
+- Block type UI labels: **클릭** → **마우스**, **이미지 찾기** → **템플릿 매칭**, **대기** → **지연** in block editor type buttons, editor window titles, workflow add buttons, and bulk-wait tools (`UiStrings`, `ClickEditor`, `ImageFindEditor`, `WaitEditor`, `WorkflowEditorPanel`, `ImageFindBlock::summary`); workflow **동작** column shows **템플릿** for ImageFind blocks.
+
+## [0.3.14] - 2026-06-22
+
+### Fixed
+
+- Click/KeyPress block modifiers no longer stay down into the next workflow step: `releaseAppliedModifiers` compares against a pre-block `ModifierSnapshot` so SBM-applied Ctrl/Alt/Shift are released after Tap while user-held keys are not (`InputSimulator`).
+
+## [0.3.13] - 2026-06-22
+
+### Changed
+
+- KeyPress block editor: label **키** → **키보드**; block picker **키 입력** → **키보드**; Ctrl/Alt/Shift on one row (`KeyPressEditor`, `UiStrings.h`).
+
+## [0.3.12] - 2026-06-22
+
+### Changed
+
+- Build policy: default preset is fast dynamic (`build/Release/`); static single-exe `dist/` build only when the user explicitly requests distribution (`CMakePresets.json`, `.cursor/rules/static-single-exe-build.mdc`, AGENTS.md §3 / §9 / §10).
+
+## [0.3.11] - 2026-06-22
+
+### Changed
+
+- Click block editor: **뒤로 가기** / **앞으로 가기** use dedicated button categories with **동작** 클릭/누름/뗌; side-button X1/X2 down/up/tap batched with cursor move in `InputSimulator::clickAt` (`ClickEditor`, `ClickBlock::summary`).
+
+## [0.3.10] - 2026-06-22
+
+### Changed
+
+- Click block editor: **버튼** `휠` unifies wheel click/scroll; **동작** shows 올림/내림/클릭/누름/뗌 for wheel and 클릭/누름/뗌 for other buttons (홀드/릴리즈 renamed) (`ClickEditor`, `ClickBlock::summary`).
+
+## [0.3.9] - 2026-06-22
+
+### Changed
+
+- Distribution build policy: `default` CMake preset is static single-exe (`x64-windows-static`, `build-static/`); ship `dist/SuckbongMachine.exe` only. Optional `dynamic-dev` preset for local DLL builds (`CMakePresets.json`, `.cursor/rules/static-single-exe-build.mdc`, AGENTS.md §3 / §9 / §10).
+
+## [0.3.8] - 2026-06-22
+
+### Fixed
+
+- Client-coordinate clicks no longer swallow input: `clickAtClient` converts to screen coords and uses atomic `SendInput` move+click via `clickAt` instead of a separate cursor move plus `SendMessage` (`InputSimulator`).
+
+## [0.3.7] - 2026-06-22
+
+### Fixed
+
+- Client-coordinate clicks (including **직전 매칭**) now move the physical cursor to the target before `SendMessage` button events (`InputSimulator::clickAtClient`).
+
+## [0.3.6] - 2026-06-22
+
+### Added
+
+- Static single-exe build preset: `cmake --preset static` with vcpkg `x64-windows-static`, `SBM_STATIC_BUILD`, `qt_import_plugins`, and post-build copy to `dist/SuckbongMachine.exe` (`CMakePresets.json`, `CMakeLists.txt`).
+
+## [0.3.5] - 2026-06-22
+
+### Added
+
+- Application icon from `Sbm.ico`: Windows executable resource (`resources/SuckbongMachine.rc`), Qt embedded resource (`resources/app.qrc`), `QApplication::setWindowIcon`, and custom title bar badge pixmap (`Application`, `CustomTitleBar`).
+
+## [0.3.4] - 2026-06-22
+
+### Changed
+
+- Feature list rows use a uniform background; removed alternating zebra striping and per-row running accent hues (`paintFeatureListRowChrome`).
+
+## [0.3.3] - 2026-06-22
+
+### Fixed
+
+- Feature list **기능|방식** header divider drag moved opposite to the cursor: `modeColumnWidth` now decreases when dragging right (mode column right edge is anchored at the hotkey boundary) (`FeatureListHeaderWidget::applyDrag`).
+
+## [0.3.2] - 2026-06-22
+
+### Changed
+
+- Feature list panel full visual redesign: grouped **기능 목록** layout with rounded table frame, styled toolbar buttons, custom row/header chrome (zebra rows, selection bar, running hue accent), and transparent list styling (`FeatureListPanel::setupUi`, `applyFeatureListPanelStyle`, `paintFeatureListRowChrome`, `paintFeatureListHeaderChrome`).
+- Feature list **기능** / **방식** / **키** header labels and all row cell text center-aligned (`FeatureListHeaderWidget`, `FeatureListItemDelegate`, `drawCellText`, `paintFeatureName`).
+
+## [0.3.1] - 2026-06-22
+
+### Changed
+
+- Feature list column resize simplified: fixed 4 px column gap; only two draggable header dividers (**기능|방식** → mode width, **방식|키** → hotkey width) plus row height; removed separate gap handles and overlapping hit zones (`FeatureListColumnLayout`, `FeatureListHeaderWidget`).
+
+## [0.3.0] - 2026-06-22
+
+### Added
+
+- Feature list drag-and-drop reorder: row drag with blue insertion line; `Project::moveFeature`, `FeatureListWidget`, persisted feature order in project JSON (`FeatureListPanel`).
+- Feature list panel column layout: drag header dividers to adjust **기능|방식** and **방식|키** gaps independently, **방식** / **키** column widths, and row height; values persist via `UiStateManager` (`ui/state/featureList/columns/*`, `FeatureListHeaderWidget`, `FeatureListColumnLayout`).
+- Click block modifier keys: optional Ctrl/Alt/Shift during mouse actions (`ClickBlock::modifiers`, `ClickEditor`, `InputSimulator`); JSON `ctrl` / `alt` / `shift` on `Click` blocks.
+- Concurrent feature runs: per-feature `WorkflowEngine` session (`FeatureRunSession`, `MainWindow::m_runSessions`); multiple features via hotkeys; per-feature repeat/hold loops; log lines prefixed with `[feature name]`.
+- Custom frameless title bar (`CustomTitleBar`): **파일** menu, centered project title, SB badge, window controls, drag/double-click maximize, DWM rounded corners, edge resize hit-testing (`MainWindow`, `Qt::FramelessWindowHint`).
+- Workflow panel title shows last completed loop timing (`루프 N: X ms (성공|실패)`) via `WorkflowEditorPanel::setLoopTiming`.
+- Physical keyboard preservation policy: [§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress), `.cursor/rules/physical-keyboard-preservation.mdc`.
+- UX regression checklist for overlay/template capture: [§8.5](#85-template-capture-and-post-pick-ux-mandatory--manual-verify), `.cursor/rules/ux-regression-checklist.mdc`.
+
+### Changed
+
+- Versioning policy: **mandatory patch bump at end of every completed user task** — move `[Unreleased]` into a version section and update `CMakeLists.txt` before closing work ([§10](#10-versioning-policy), `.cursor/rules/changelog-versioning.mdc`, `.cursor/rules/ai-governance.mdc`).
+- KeyPress block summary uses compact key names (e.g. `Ctrl+Space` tab) instead of raw VK codes (`HotkeyBinding::keyDisplayName`, `KeyPressBlock::summary`).
+- Feature list column headers (**기능** / **방식** / **키**): theme-aware accent text, bold font, `AlternateBase` strip, divider line (`FeatureListHeaderWidget`).
+- Custom title bar displays the same text as the Windows taskbar: status merged into `setWindowTitle()`; `CustomTitleBar` mirrors `windowTitle()` (`MainWindow::syncWindowTitleDisplay`, `CustomTitleBar::syncFromWindowTitle`).
+- Feature list panel width no longer capped at 220 px; horizontal splitter can widen the panel.
+- Custom title bar: removed **실행** menu (run/stop via feature hotkeys); **파일** menu layout margins adjusted.
+- Feature list compact three-column layout with elided text and compact run-mode glyphs (`FeatureListPanel`, `FeatureListItemDelegate`).
+- Workflow block list **동작** column: ImageFind shown as **이미지**; workflow editor tool row consolidated (`WorkflowEditorPanel`).
+- Workflow block list run feedback: `QVariantAnimation` glass flash; removed continuous sin-wave glow (`BlockListWidget`).
+- Log panel **로그** `QGroupBox` styling matches **대상 창** detail panel (`MainWindow::setupUi`).
+- ImageFind match selection: top-leftmost threshold hit; peak used for fast miss detection (`ImageFindBlock::trySelectImageFindMatch`).
+- Status messages (**자동 저장됨**, **실행 중**, etc.) in window title (taskbar + custom title bar) instead of bottom status bar (`MainWindow::showTransientStatus`, `setPersistentStatus`).
+
+### Fixed
+
+- Feature list header column resize: independent `nameModeGap` / `modeHotkeyGap`; one handle per property; closest-handle hit testing; dotted guide lines (`FeatureListColumnLayout`, `FeatureListHeaderWidget`).
+- Custom title bar project title invisible: `QSizePolicy::Ignored` zero-width label fixed; explicit sync on title change (`CustomTitleBar`, `MainWindow`).
+- Click/KeyPress modifier release no longer clears physically held Shift/Ctrl/Alt (`GetAsyncKeyState` guards, `InputSimulator`).
+- Hold/click workflows no longer drop physically held Shift on loop end: no `AttachThreadInput`; client `SendMessage` clicks; hotkey swallow in LL hooks; removed `reassertPhysicallyHeldModifiers` (`HotkeyManager`, `InputSimulator`, `MainWindow`).
+- Template capture UX: no off-screen editor park for capture path; overlay dismiss on editor close; cursor visibility after pick; BitBlt-only template PNG (`ImageFindEditor`, `ScreenRegionOverlay`, `ScreenCapture`, `BlockEditorDialog`).
+- Application startup crash after custom title bar (`0xC00000FD`): no `setStyleSheet` from `changeEvent` (`CustomTitleBar`).
+
+## [0.2.0] - 2026-06-22
+
+### Added
+
+- Main window bottom bar: **항상 위** checkbox left of **종료** toggles `Qt::WindowStaysOnTopHint`; preference persisted in `QSettings` (`ui/state/mainWindow/alwaysOnTop`, `MainWindow::applyAlwaysOnTop`).
+### Changed
+
+- Target window UI: removed title text field and **창 찾기** button; **창 지정** only, aligned to the right of the detail panel on one row (`MainWindow::setupUi`); target title stored via pick + project JSON only.
+- Run launch warmup: `RunWarmup::prefetch` runs after app startup and **창 지정** (`MainWindow::scheduleRunWarmup`).
+- Click block **직전 매칭** target: optional **매칭 중심 기준 상대 좌표** offset from the last match center (`lastMatchRelativeOffset`, `ClickEditor`, `ClickBlock::execute`).
+- ImageFind block editor: optional **템플릿 캡처 단축키 (전역)** starts **화면에서 캡처** via a low-level keyboard hook only while the ImageFind editor page is visible in `BlockEditorDialog` (`TemplateCaptureHotkeySettings`, `ImageFindEditor`).
+- Workflow block list **동작 시간** column (left of **기준/감지**): records each block's elapsed ms from start until completion before advancing to the next block (`WorkflowEngine::blockFinished`, `BlockListWidget`, `WorkflowEditorPanel`); cleared at each new run start.
+- Workflow run log: each completed loop prints **루프 N: X ms (성공|실패)** on every iteration including repeat/hold sessions (`MainWindow::logLoopCompletion`, `QElapsedTimer` from `onEngineStarted` to `onEngineFinished`).
+- Main window target-window detail line: HWND, title, class, DWM bounds, client size, process name, and visibility state after **창 지정** (`ScreenCapture::queryTargetWindowInfo`, `MainWindow::updateTargetWindowDetails`).
+- Workflow block list clipboard: **Ctrl+C** / **Ctrl+V** copy and paste one or more selected blocks; paste inserts below the bottommost selected row (append when nothing selected); **Delete** removes selected blocks; extended row selection in `BlockListWidget`.
+- Workflow undo/redo: **Ctrl+Z** / **Ctrl+Y** (or **Ctrl+Shift+Z**) per-feature workflow history in `WorkflowEditorPanel` (`Workflow::assignFrom`, up to 100 snapshots); history clears when switching features.
+- Click block button types: **오른쪽**, **휠 클릭**, **휠 올림**, **휠 내림**, **뒤로 가기**, **앞으로 가기** (`MouseButton`, `InputSimulator`, `ClickEditor`); JSON `button`: `Back`, `Forward`, `WheelUp`, `WheelDown`; workflow **미리보기** icons for each button type (`WorkflowEditorPanel`).
+- KeyPress block workflow **미리보기** icons: key-cap badge with compact key label (letters, digits, F-keys, arrows, specials) and modifier prefix (`C`/`A`/`S`) in `WorkflowEditorPanel`.
+- Wait block workflow **미리보기** icon: drawn analog clock in `WorkflowEditorPanel::waitBlockPreviewIcon`.
+- ImageFind **매칭 테스트** shows results on the target window via Win32 semi-transparent `MatchTestOverlay` (green hit boxes with confidence labels, click-through, Esc to close); `ImageFindBlock::testMatch` returns all threshold hits via `findAllTemplates`.
+- ImageFind **매칭 테스트** toggle: second **매칭 테스트** click or **매칭 테스트 끄기** dismisses overlay without re-running; Esc uses low-level keyboard hook (`MatchTestOverlay`) when `RegisterHotKey` cannot receive focus.
+- Workflow editor **광역 대기 삭제** button (was **대기 전부 삭제**) removes all Wait blocks from the current feature in one action with undo support (`WorkflowEditorPanel::onRemoveAllWaitBlocks`).
+- Workflow editor **광역 대기 추가** button (was **사이에 대기 추가**) prompts for wait duration in ms and inserts that fixed delay between every adjacent pair of blocks (`WorkflowEditorPanel::onInsertWaitBetweenBlocks`, `QInputDialog`).
+
+### Fixed
+
+- Application startup crash (~4 s, exit `0xC00000FD` stack overflow): `TargetWindowDetailPanel::updateThemeColors()` reentrancy guard — `setStyleSheet` / child `setPalette` fired `StyleChange`/`PaletteChange` back into `changeEvent`, causing infinite recursion.
+- Target window detail chip panel text unreadable in dark theme: replace stylesheet `palette()` text colors (often rendered black) with explicit `QPalette::WindowText` / muted caption colors and theme-aware state accents (`TargetWindowDetailPanel::updateThemeColors`).
+- Target window detail panel background followed `QPalette::Base` / `AlternateBase` (white input-field colors in OS dark mode); panel/chip surfaces now use stylesheet `palette(window)` / `palette(button)` so they match the rest of the UI (`TargetWindowDetailPanel`).
+- **항상 위** toggle no longer flashes the whole UI white: use Win32 `SetWindowPos` (`HWND_TOPMOST` / `HWND_NOTOPMOST`) instead of `setWindowFlags` + `show()` (`MainWindow::applyAlwaysOnTop`).
+- First-run / hotkey launch stutter: `workflow.clone()` and `activateTargetWindow()` moved to the workflow worker via `WorkflowEngine::runPrepared`; hotkey first launch skips duplicate foreground activation (relies on `HotkeyManager::restoreForegroundWindow`); hotkey runs no longer call `selectFeatureById`/`refreshWorkflowEditor` during execution; repeat iterations reuse session clone with `ensureRunSessionResources(..., false)` (`MainWindow`, `WorkflowEngine`).
+- ImageFind workflow success no longer leaves red miss visuals: match success is locked per row (miss updates ignored after success), completed blocks keep green ✓ styling when the next block starts, and success is committed on progress/finish (`BlockListWidget`, `WorkflowEditorPanel`, `MainWindow`).
+- ImageFind workflow stuck on red miss despite **감지** peak **1.000**: consumed-region skip now applies only when multiple distinct on-screen instances exist (physical overlap merge), not when multi-scale duplicates inflate candidate count; single-target workflows accept the peak match without consumed rejection (`ImageFindBlock::trySelectImageFindMatch`, `countDistinctMatchInstances`).
+- ImageFind workflow miss despite peak score above threshold: consumed match regions now use physical screen coordinates (consistent across TargetWindow vs CustomRegion haystacks), CustomRegion haystack capture uses `capturePhysicalRect`, saved ROI dimensions auto-enable `CustomRegion` on load/execute/match test, session workflow clone refreshes before every run iteration, and match test activates the target window like workflow runs (`ImageFindBlock`, `ScreenCapture`, `MainWindow`).
+- Feature global hotkeys do not run workflows while the block editor dialog is open (`FeatureHotkeyGate`, `BlockEditorDialog`, `HotkeyManager`).
+- Repeat/hold run restart stalls: reuse a persistent workflow worker thread (`WorkflowEngine`), cache cloned workflow/context for the run session (`MainWindow`), skip repeat-iteration log/UI churn, and cache ImageFind templates across iterations (`ImageFindBlock::cachedTemplateFor`).
+- Workflow block execution highlight and match columns no longer apply to the currently selected feature when a different feature is running; block visuals update only when the displayed feature matches `m_runningFeatureId`, with state restored when switching back (`MainWindow`, `WorkflowEditorPanel::setFeature`).
+- Adding a workflow block no longer registers the block when the editor is cancelled: `WorkflowEditorPanel::addBlockOfType` opens `BlockEditorDialog` first and adds to the workflow only on accept (was add-then-edit, leaving a default block on cancel).
+- Feature run end stutter: `WorkflowEngine::stop()` no longer blocks the UI thread with `QThread::wait()`; shutdown paths use new `stopAndWait()` instead (`MainWindow::prepareForShutdown`, destructor). ImageFind poll sleep is interruptible in 50 ms steps so stop/hold-release responds within ~50 ms instead of up to `pollIntervalMs`; duplicate ImageFind miss highlight updates are skipped in `BlockListWidget::setActiveRow`.
+- Workflow block list **기준/감지** baseline no longer stuck after ImageFind threshold edit: `WorkflowEditorPanel::refresh` reads `ImageFindBlock::threshold` from the model (with `setBlockMatchBaseline` when no run result yet) instead of cached `m_rowMatchThresholds` only.
+- ImageFind retry feedback: each miss/retry emits `ImageFindMiss` and toggles the active block row flash (`BlockListWidget::notifyImageFindRetry`) instead of skipping visuals when highlight state is unchanged.
+- ImageFind miss/retry row flash colors: much lower brightness and higher saturation crimson tones with light foreground text (`BlockListWidget::applyActiveRowVisuals`).
+- ImageFind workflow detection mismatch vs **매칭 테스트**: use shared `ScreenCapture::captureSearchAreaForImageFind` (screen BitBlt first for TargetWindow — matches `capturePhysicalRect` templates; PrintWindow client buffer no longer used when BitBlt succeeds), activate target window on UI thread before workflow run (`MainWindow::launchWorkflowRun`), map TargetWindow match centers to client coords via DWM bounds (`ImageFindBlock::matchCenterToClickPoint`); preserve **창 지정** HWND when title unchanged, re-clone workflow each run start.
+- ImageFind workflow **기준/감지** column updates on every miss retry with the peak template-match score from that attempt (`ImageMatcher::findPeakMatch`, `ExecutionContext::setLastMatchAttempt`, `WorkflowEngine` emits `blockMatchResult` on `ImageFindMiss` without thumbnail).
+- ImageFind workflow match failure while peak score rounds to 1.00: `ImageMatcher::meetsThreshold` applies epsilon for OpenCV `TM_CCOEFF_NORMED` float peaks (strict `< threshold` rejected ~0.9999); workflow selection uses `trySelectImageFindMatch` with peak fallback and logs when hits are already consumed; **기준/감지** green/red follows actual match success (`blockMatchResult` `matched` flag, not threshold comparison alone); detected score shows 3 decimal places (`BlockListWidget`).
+- Target window detail line not appearing after **창 지정** / **창 찾기**: moved controls into a dedicated **대상 창** group above the log (was nested under **실행**), show multi-line details with normal text color and minimum height, resolve HWND from **창 지정** even when the title field is empty (`ScreenCapture::queryWindowInfo`, `MainWindow::updateTargetWindowDetails`).
+- ImageFind **ROI 선택** no longer parks the block editor off-screen (`ScreenRegionOverlay::StartPickOptions::parkHostDuringPick`); **화면에서 캡처** still parks the host before BitBlt.
+- Match test overlay: confidence score labels render above each hit box in larger bold text (22 px Segoe UI) with a dark badge (`MatchTestOverlay::drawConfidenceLabel`).
+- Workflow **매칭 결과** side panel removed entirely; ImageFind run feedback is shown only in the block list **매칭 점수** / **매칭** columns (`WorkflowEditorPanel`, simplified `WorkflowEngine::blockFinished` signal).
+
+### Removed
+
+- Block optional `label` field and editor **라벨** inputs for ImageFind and KeyPress; legacy JSON `label` keys are ignored on load and no longer written (`ImageFindBlock`, `KeyPressBlock`, `ImageFindEditor`, `KeyPressEditor`).
+- ImageFind mouse-cursor ignore before template matching: removed `ScreenCapture::captureSearchAreaForMatching`, `eraseCursorFromCapture`, and cursor-region fill; `ImageFindBlock` execute and match test use `captureSearchArea` again.
+- ImageFind **`ImageFindMatchTestDialog`** modal preview; replaced by in-game `MatchTestOverlay`.
+
+### Changed
+
+- Target window detail panel: replaced three-row metric chips with two compact inline lines (HWND/상태/프로세스/제목 · 클래스/DWM/클라/모니터); removed value elision that truncated monitor scale as `...` (`TargetWindowDetailPanel`).
+- ImageFind performance: default `multiScale` is now **false** (1.0× only); workflow matching uses peak-first selection with `findAllTemplates` only when consumed regions require enumeration; miss feedback reuses the same peak (no duplicate `matchTemplate`); template scale grays and haystack grayscale are cached per poll (`ImageMatcher`, `ImageFindBlock`).
+- Screen capture: DXGI Desktop Duplication is tried before GDI BitBlt for physical rect and target-window haystack capture, with BitBlt fallback (`DxgiScreenCapture`, `ScreenCapture`).
+- ImageFind workflow match-success row feedback: fast glass glow pulse (~100 ms cycle, ~460 ms total) with specular vertical gradient and luminous left-edge accent on `#` column (`BlockListWidget`); removed infinite slow sine-wave fill.
+- Click block execution no longer waits 30 ms after mouse move: `InputSimulator::clickAt` batches move + button down/up in one `SendInput` call (multi-click gap reduced from 50 ms to 10 ms).
+- ImageFind **템플릿 캡처 단축키 (전역)** is stored in `QSettings` (`TemplateCaptureHotkeySettings`, key `hotkeys/templateCapture`); legacy `hotkeys/matchTest` and per-block JSON `matchTestHotkey` migrate once when unset; starts **화면에서 캡처** only while the ImageFind editor page is open in `BlockEditorDialog`.
+- Target window detail line below **대상 창** controls redesigned as a three-row metric chip panel (`TargetWindowDetailPanel`: HWND/상태/프로세스, 제목/클래스, DWM/클라이언트/모니터) instead of a multi-line text block (`MainWindow::updateTargetWindowDetails`).
+- Target window detail line adds **창 해상도(클라이언트)**, monitor number, monitor resolution, and effective DPI with scale percent for the display hosting the target window (`ScreenCapture::queryWindowInfo`, `MainWindow::updateTargetWindowDetails`).
+- Feature list selection persists per project file in `QSettings` and restores on load/app start; list refresh tracks selection by feature id; hotkey runs no longer restore pre-run selection (avoids editor refresh during execution; running feature shown via rainbow highlight) (`FeatureListPanel`, `MainWindow::startFeatureRun`).
+- Wait block editor: **랜덤 범위 사용** toggle shows a single **대기** ms field when off, or min~max ms range fields when on (`WaitEditor`, `BlockEditorDialog::fitToCurrentPage` on layout change).
+- Feature run feedback: removed whole-panel dimming during execution (`FeatureListPanel::setEnabled`, `BlockListWidget::setEnabled`); running feature name shows a bold rainbow glow animation in the feature list (`FeatureListItemDelegate`); add/edit/delete buttons still disable while a workflow runs.
+- Feature Hold run mode UI label **홀드를 누르는 동안** → **누를 동안** in `FeatureEditDialog`, `FeatureRunModeDialog`, `FeatureListPanel`, and run menu hint in `MainWindow`.
+- Feature list toolbar button order: **추가**, **수정**, **삭제** in `FeatureListPanel`.
+- Workflow block list column **유형** renamed to **동작**; **#**, **미리보기**, and **동작** column headers and cell text/icons center-aligned in `BlockListWidget` (preview icons via centered icon delegate).
+- Removed hotkey capture hint labels from `FeatureEditDialog` and `HotkeyCaptureDialog`; binding label only.
+- Mouse side-button hotkey labels: **측면 1/2** → **뒤로 가기** / **앞으로 가기** (`HotkeyBinding::displayString`, Win32 `VK_XBUTTON1` / `VK_XBUTTON2`).
+- Workflow block list **미리보기** column shows drawn mouse icons for all Click block button types (`WorkflowEditorPanel`).
+- Feature Hold run mode UI label renamed from **홀드** to **홀드를 누르는 동안** in `FeatureEditDialog`, `FeatureRunModeDialog`, and feature list run-mode column (`FeatureListPanel`); menu run hint updated in `MainWindow`.
+- Merged **토글** run mode into **N회 반복**: 1회 equals former toggle (run once; same hotkey stops mid-run); removed **토글** from run-mode UI; JSON `"Toggle"` loads as `"RepeatCount"` and saves as `"RepeatCount"` (`FeatureRunMode`, `JsonSerializer`, `FeatureEditDialog`).
+- Feature list toolbar simplified to **추가** / **삭제** / **수정**; double-click or **수정** opens **`FeatureEditDialog`** (name, hotkey, run mode) instead of separate rename/hotkey buttons and context-menu entries.
+- Main window bottom panel order: **로그** above **대상 창** (swapped); removed idle **준비** label from target row; workflow/status hints use a hidden-until-needed status bar (`MainWindow::showTransientStatus`, `setPersistentStatus`).
+- Main window bottom area (log + run controls) separated by a vertical splitter so log height can be adjusted and saved.
+- ImageFind block editor: template preview shows pixel resolution (`해상도: W × H px`); template-capture hotkey binding and **단축키 지우기** on one row (3:1 stretch); form, template, and ROI sections center-aligned (`ImageFindEditor`).
+- ImageFind block editor simplified: removed template path field, search-area combo, custom-region spin boxes, and screen-percent controls from the form; **탐색 ROI** group contains only **ROI 선택** and toggle **ROI 미리보기** buttons (Win32 semi-transparent overlay on the target window; inline thumbnail and ROI metadata label removed); template section uses **화면에서 캡처** only with **매칭 테스트**.
+- Repositioned as a general-purpose window automation utility: main UI label **POE 창** → **대상 창**; default target title empty (placeholder **대상 창 제목**); overlay strings use **대상 창** instead of game-specific wording.
+- Comment block removed from workflow add buttons and block-type picker; legacy `Comment` blocks in saved projects still load and edit.
+- Application renamed from **poez** to **SuckbongMachine** (display name, executable `SuckbongMachine.exe`, Qt org/app name, `SBM_VERSION`); legacy `%LOCALAPPDATA%/poez/poez` auto-save migrates on first launch when the new data folder is empty.
+- Image matching pipeline rebuilt (`ImageMatcher`): `PreparedTemplate` with cached grayscale, `MatchOptions` / expanded `MatchResult` (center, matched size, scale), multi-scale template matching (default 0.9×/1.0×/1.1×), bounds validation, and consistent preprocessing; `ImageFindBlock` uses new API with optional JSON `multiScale` / `minScale` / `maxScale`; match-test UI shows scale and matched region size.
+- ImageFind match selection: when multiple template hits exceed the confidence threshold in the search region, the top-leftmost match (smallest Y, then X) is chosen instead of the highest-confidence peak; overlapping duplicates are suppressed via non-maximum suppression; within a single workflow run, later ImageFind blocks skip already-selected regions and advance to the next top-left match (log shows `[n/total]` when multiple hits exist).
+- Feature global hotkeys no longer steal focus to SuckbongMachine: hotkeys register on a hidden message-only Win32 host window and the previous foreground window is restored before the workflow runs; pressing the same feature hotkey again while that workflow is running stops it (`MainWindow::onHotkeyTriggered`).
+- Block editor dialog: block-type selector changed from combo box to a horizontal row of toggle buttons at the top (**이미지 찾기**, **클릭**, **키 입력**, **대기**; legacy **주석** button only when editing a Comment block); `fitToCurrentPage()` sizes the stack to the **current** editor page only (fixes QStackedWidget using the largest hidden page width/height).
+- Workflow block list row height reduced: template thumbnails **32×32** (was 48×48), default row height **36 px** with tighter cell padding in `BlockListWidget`.
+- ImageFind block list summary no longer shows the template file path; uses label, screen-percent ROI text, or **이미지 찾기** fallback (`ImageFindBlock::summary`).
+- Workflow block list: **기준/감지** column shows ImageFind threshold and detected confidence as `0.85 / 0.93` (매칭 기준 / 감지 점수) with a 32×32 cropped in-game match thumbnail in **매칭** when detection succeeds.
+- Workflow block list drag reorder: animated blue insertion line with end markers shows the drop gap between rows while dragging; dragged row is dimmed until release (`BlockListWidget`).
+- ImageFind execution: polls continuously until a match is found or the workflow is stopped; each miss reports **ImageFindMiss** progress to the UI; success reports **ImageFindSuccess**; workflow block list shows red **pulse** highlight (⌕) while searching, green highlight (✓) on match; removed unused `timeoutMs` / `failOnNotFound` fields; editor **재시도 간격** replaces **타임아웃**.
+- Workflow editor: replaced **블록 추가** popup menu with per-type add buttons (**이미지 찾기**, **클릭**, **키 입력**, **대기**); edit/move controls grouped below; feature list panel narrowed; log panel height reduced; workflow area given more horizontal and vertical space.
+- Main window run control bar: removed **실행** / **중지** buttons; run/stop remain on **실행** menu and feature hotkeys; **종료** moved to bottom-right below the target window controls.
+- Main window title bar shows application version from `SBM_VERSION` via `QCoreApplication::applicationVersion()` (e.g. `SuckbongMachine 0.1.0` or `SuckbongMachine 0.1.0 - project.json` when a file is open); removed **자동 저장** suffix.
+- Project documentation consolidated into this single `AGENTS.md` file; removed separate `CHANGELOG.md`, `HANDOVER.md`, and `README.md`.
+
+### Added
+
+- **`FeatureEditDialog`**: unified feature editor (name, hotkey capture, run mode, repeat count); opened on list double-click or **수정** button; feature list toolbar reduced to **추가** / **삭제** / **수정** only; **홀드** run mode repeats the workflow while the bound key is held and stops on key release.
+- Feature hotkeys support **mouse buttons** (left/right/middle/side) with optional Ctrl/Alt/Shift; click the hotkey label in **`FeatureEditDialog`** to arm capture, then the next key or mouse button is bound (`HotkeyCaptureDialog` uses the same label-click pattern); mouse-only bindings ignore unrelated keyboard modifiers at runtime and do not store accidental modifiers on capture; global mouse bindings use a low-level mouse hook (`HotkeyManager`) because `RegisterHotKey` is keyboard-only.
+- **`UiStateManager`**: persists main-window geometry/maximize state, splitter positions (feature/workflow, main/log, block-list/tools), and block-list column widths via `QSettings` (`ui/state/*`); debounced auto-save on layout changes and flush on exit.
+- Click block editor UX: **직전 매칭** hides the coordinate group and shows a short hint; **고정 좌표** uses a compact **좌표** group; **클릭** group puts **버튼** and **동작** on one row; count control removed from the editor; embedded layout uses content-sized width (no forced stretch); `BlockEditorDialog::fitToCurrentPage()` resizes the dialog to the active editor page.
+- ImageFind ROI preview overlay: **ROI 미리보기** toggles `RoiPreviewOverlay` — semi-transparent Win32 overlay on the target window with green ROI highlight (click-through, Esc to close); `ScreenCapture::searchAreaPhysicalRect` resolves ROI bounds.
+- Workflow run visual feedback: executing block row highlighted in amber with **▶** prefix and bold text; failed block shows red highlight with **✕**; active row scrolls into view; highlight restored after list refresh and cleared when the run finishes.
+- Workflow block list run feedback: fast ~100 ms glass glow pulse for ImageFind miss/success/failed; success/failed highlights auto-clear (~460–640 ms); vertical specular gradients and luminous edge accents replace flat row fills (`BlockListWidget`).
+- Workflow block list execution/drag feedback colors desaturated to softer pastels (running, miss pulse, success, failed, drop insertion line).
+- Target window click-to-pick: **창 지정** button on the main window runs `WindowPicker` (crosshair cursor, global click selects top-level window, Esc cancels); fills **대상 창** title and caches `HWND` via `ScreenCapture::setTargetWindow` for capture and workflows.
+- Click block **현재 위치** target (`ClickTarget::CurrentPosition`, JSON `target: "CurrentPosition"`): clicks at the mouse cursor position when the block runs; optional client-coordinate mode via `useClientCoordinates` (`ClickEditor`, `InputSimulator::getCursorScreenPosition`).
+- Click block mouse action selector: **클릭** / **홀드** / **릴리즈** in `ClickEditor` (`ClickAction` in `InputSimulator`, JSON `action`: `Tap`/`Down`/`Up`); hold/release move to target then send button down/up only.
+- ImageFind **화면 비율 (%)** search area: define detection ROI as X/Y/W/H percentages of the virtual desktop; JSON `searchArea: "ScreenPercent"` with `percentRegion`; ROI preview and match test supported.
+- Agent docs for Win32 screen-region overlay: `.cursor/rules/screen-capture-overlay.mdc` (mandatory pattern — no Qt widget overlay regression).
+- Workflow block list template thumbnails: **미리보기** column in `BlockListWidget` shows a 48×48 scaled preview for ImageFind blocks with a resolved template PNG; empty when no template or file is missing; refreshes on edit, capture, and project-directory change.
+- Workflow block list drag-and-drop reordering: row drag in `BlockListWidget` with drop indicator and tooltip, `Workflow::moveBlock`, model sync via `workflowModified`, disabled while a workflow is running.
+- ImageFind ROI and match-test preview (`RoiPreviewWidget`, `ImageFindPreviewDialog`, `ImageFindMatchTestDialog`): inline haystack preview with green ROI overlay, **ROI 미리보기** dialog with draggable custom region on full-screen capture, **매칭 테스트** dialog with success/failure indicator, confidence score, and match rectangle; `ImageFindBlock::captureRoiPreview` / `testMatch` helpers and `OpenCvQtUtil` for cv::Mat display.
+- `CaptureConfirmDialog` after screen-region overlay pick: scaled template preview, selection metadata (dimensions, channels, estimated PNG size, average brightness), OK/Cancel before saving to `templates/`.
+- Per-feature global hotkey binding to run workflows: `HotkeyManager` (`RegisterHotKey` / `WM_HOTKEY`), `HotkeyCaptureDialog`, feature list **단축키** button / double-click / context menu, hotkey display in list, JSON persistence under `hotkey`, duplicate-binding warning.
+- Exit button in the run control bar and unified shutdown path (`MainWindow::onExitRequested` / `prepareForShutdown`: stop workflow worker, dismiss capture overlays, flush auto-save); confirm exit only when a workflow is running.
+- AI governance docs: this file, `.cursor/rules/`, and changelog baseline.
+- Single version source via `SBM_VERSION` compile definition from CMake.
+
+### Fixed
+
+- Feature **홀드** run mode now repeats the workflow while the hotkey stays pressed and stops on release; fixed repeat restart blocked because `WorkflowEngine::finished` fired before `m_running` was cleared (`WorkflowEngine::onWorkerFinished`); fixed release stutter from a race where `onEngineFinished` restarted the workflow after the hook had already cleared hold state — hold continuation now defers via `QTimer::singleShot(0)` and reads synchronous hook `keyDown`/`buttonDown` via `HotkeyManager::isHoldBindingDown` instead of `GetAsyncKeyState`.
+- ImageFind `CustomRegion` / `FullScreen` / `ScreenPercent` last-match click coordinates: map haystack-relative match centers to target-window client coordinates (or screen coordinates when no target window) so **직전 매칭** clicks land on the correct instance after ROI search.
+- Screen region overlay Esc cancel: `ScreenRegionOverlay` installs a low-level keyboard hook during pick and posts cancel to the overlay HWND so Esc works when the target game steals focus; `RegisterHotKey` failure is handled; `dismissAll()` routes through `finishPick(false)` to restore the parked host.
+- Workflow block drag-and-drop row vanishing: `BlockListWidget::dropEvent` now accepts with `Qt::IgnoreAction` so Qt `InternalMove` does not `clearOrRemove()` the source row; `blockRowsReordered` always fires after `startDrag` and `WorkflowEditorPanel` always `refresh()`es (model move only when indices differ).
+- Screen capture overlay click-through and misplacement: replace Qt translucent widget with a Win32 topmost layered popup positioned in physical pixels over the POE DWM bounds; `RegisterHotKey` for reliable Esc cancel; native mouse capture for drag selection.
+- Workflow block list drag reorder: defer `blockRowsReordered` until after `QTableWidget::startDrag` returns so Qt's post-drop `clearOrRemove()` no longer strips a row after `WorkflowEditorPanel::refresh()`; disable `Qt::ItemIsDropEnabled` on row items so drops target between rows.
+- Screen capture overlay misplacement and dead mouse input: set per-monitor DPI awareness before `QApplication` init, position the overlay with native `SetWindowPos` in physical pixels over the POE window (instead of mismatched Qt `setGeometry` conversion), hide the host top-level editor dialog during pick, and map selection drawing via widget `devicePixelRatio()`.
+- Screen capture overlay architectural rewrite: replaced nested `QEventLoop` / modal hide-restore hacks with async `ScreenRegionOverlay::startPick(host, callback)` — modeless top-level overlay over POE window bounds only, synchronous overlay teardown, host editor restored before confirm dialog; ESC and drag selection work without leaving invisible windows or blocking clicks.
+- DPI mismatch between overlay selection and saved template capture: convert Win32 physical window bounds to Qt logical geometry for overlay placement, then map drag selection back to physical pixels via per-monitor `devicePixelRatio()` before `ScreenCapture::captureScreenRect` BitBlt.
+- Residual screen capture position offset after Qt `devicePixelRatio()` conversion: centralize physical↔logical mapping in `ScreenCapture` via Win32 `PhysicalToLogicalPointForPerMonitorDPI` / `LogicalToPhysicalPointForPerMonitorDPI` (target window as DPI reference), track overlay selection in physical pixels with `GetCursorPos`, and capture through `capturePhysicalRect`.
+- Screen capture template not saved after overlay pick: run `ScreenCapture::capturePhysicalRect` before restoring the hidden block editor host (BitBlt was capturing the editor window instead of the game), defer `CaptureConfirmDialog` and PNG save to the next event-loop tick after host restore, and call `ImageFindEditor::apply()` immediately after a successful capture save.
+- Block editor closing after screen capture: `ScreenRegionOverlay::startPick` called `hide()` on `BlockEditorDialog` during `exec()`, which exits Qt's modal event loop with `Rejected`; park the host off-screen instead (`parkHostOffScreen` / `restoreHost`) so the editor stays open and template preview updates persist.
+
+## [0.1.0] - 2026-06-21
+
+### Added
+
+- Initial C++/Qt6 desktop app for Path of Exile block-based automation.
+- Feature list and workflow editor with block types: ImageFind, Click, KeyPress, Wait, Comment.
+- Workflow engine with threaded execution, stop support, and runtime logging.
+- Screen capture with multi-strategy fallback (PrintWindow, screen BitBlt, full-screen crop) for GPU-rendered games.
+- Screen region overlay picker for in-game template capture (`ScreenRegionOverlay`).
+- Template storage under project `templates/` directory.
+- JSON project save/load via `JsonSerializer`.
+- Korean UI localization (`QLocale::Korean`, `tr()` strings, Korean block log messages).
+- Auto-save to `%LOCALAPPDATA%/poez/project.json` with 800 ms debounce and restore on startup.
+- CMake preset and vcpkg dependencies (Qt6, OpenCV4, nlohmann-json).
+
+### Fixed
+
+- Black screen capture for borderless/windowed POE via DWM extended frame bounds and capture fallbacks.
+- Overlay capture freeze by deferring confirm/capture out of mouse-release reentrancy.
+- Immediate template confirm on mouse release (no Enter key required).
+
+### Changed
+
+- Default project directory moved from Documents to `QStandardPaths::AppDataLocation`.
+
+---
+
+## 12. Risk and Legal Notices
+
+Using automation tools with Path of Exile may violate the game's **Terms of Service** and can result in account penalties. **Use at your own risk.**
+
+This warning must remain in [§1 Project Overview](#1-project-overview) and user-facing materials. Do not remove it.
+
+**Technical risk:** Administrator-elevated POE blocks input from non-elevated SuckbongMachine (see [overlay limitation](#known-limitation)).
+
+---
+
+## 13. Cursor Rules Summary
+
+Always-applied rules live in `.cursor/rules/`. Essential content is inlined here and in sections above.
+
+### `ai-governance.mdc`
+
+- **100% AI-maintained** codebase.
+- User replies: Korean. Code/docs/changelog: English. UI: Korean. JSON types: English.
+- After every task: append `[Unreleased]` bullets, then **bump version before closing** ([§10](#10-versioning-policy)); minimal diffs.
+- Primary documentation: **this file (`AGENTS.md`) only**.
+
+### `changelog-versioning.mdc`
+
+- Append `[Unreleased]` bullets in [AGENTS.md §11](#11-changelog-and-version-history) while implementing; **mandatory patch bump** before closing every completed user task ([§10](#10-versioning-policy)).
+- Version source: `CMakeLists.txt` only.
+
+### `screen-capture-overlay.mdc`
+
+- Win32 overlay pattern is **mandatory** for in-game template capture.
+- Full rules in [§8.1](#81-win32-screen-region-overlay-mandatory--do-not-regress).
+- Do not regress to Qt widget overlay without explicit approval and regression testing.
+
+### `ux-regression-checklist.mdc`
+
+- Manual Windows checks for template capture, cursor visibility, dialog placement, and teardown order.
+- Full checklist in [§8.5](#85-template-capture-and-post-pick-ux-mandatory--manual-verify).
+
+### `qt-changeevent-stylesheet.mdc`
+
+- Never call `setStyleSheet` from `changeEvent` on `StyleChange` (stack overflow `0xC00000FD`).
+- Full rules in [§8.4](#84-qt-stylesheet-and-changeevent-mandatory--no-startup-crash).
+
+### `physical-keyboard-preservation.mdc`
+
+- User-held modifiers before a feature session must not be released on loop end; SBM-applied keys are restored via tracked `m_sbmHeldVirtualKeys`.
+- Full rules in [§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress): no `AttachThreadInput`, guarded modifier `SendInput`, session key tracking + `restoreRunKeyboard`, hotkey swallow in hooks, no blind keyboard sync.
+
+### `drag-adjust-numeric-input.mdc`
+
+- Default numeric inputs: `DragAdjustSpinBox` / `DragAdjustDoubleSpinBox` — no arrows; horizontal drag to adjust.
+- Full rules in [§8.7](#87-drag-adjust-numeric-input-mandatory-default).
+
+### `static-single-exe-build.mdc`
+
+- **Default:** do **not** build at task close; run `cmake --build build --config Release` **only when the user explicitly asks**.
+- **Distribution:** static single exe → `dist/SuckbongMachine.exe` **only when the user explicitly asks**.
+- Full policy in [§3](#3-build-and-run).
+
+---
+
+*Last consolidated: 2026-06-24. Current application version: 0.5.40.*

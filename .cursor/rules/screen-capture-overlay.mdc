@@ -1,0 +1,70 @@
+---
+description: Mandatory Win32 screen-region overlay pattern for in-game template capture — do not regress to Qt widget overlay
+alwaysApply: true
+---
+
+# Screen Region Overlay (Mandatory Pattern)
+
+**Status**: Verified working on Windows (2026-06). Do **not** replace with a Qt `QWidget` overlay without explicit user request and full regression testing.
+
+## Purpose
+
+`ScreenRegionOverlay` lets the user drag-select a template region over the POE game window from **화면에서 캡처** in `ImageFindEditor`.
+
+## Architecture (required)
+
+| Layer | Responsibility |
+|-------|----------------|
+| `ScreenRegionOverlay` | Static API only — **not** a `QWidget` subclass |
+| Win32 popup `HWND` | Topmost layered window over POE bounds; owns all mouse/keyboard input during pick |
+| `ScreenCapture::getTargetWindowScreenRect()` | POE window bounds via DWM `DWMWA_EXTENDED_FRAME_BOUNDS` (physical screen pixels) |
+| `ImageFindEditor` callback | Sync BitBlt via `capturePhysicalRectForTemplate`; confirm UI via `deferUntilHostRestored` + `positionDialogNearGlobalPoint` |
+| `MainWindow::prepareForShutdown` | Calls `ScreenRegionOverlay::dismissAll()` |
+
+## Win32 overlay rules
+
+1. **Create** with `CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED, …, WS_POPUP, x, y, w, h, …)` using **physical** bounds from `getTargetWindowScreenRect()`.
+2. **Do not** mix Qt `setGeometry()` / `SetWindowPos()` on a Qt widget for overlay placement — DPI mismatch caused wrong position and click-through.
+3. **Hit testing**: `SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA)` on `WM_CREATE`. **Never** set `WS_EX_TRANSPARENT`.
+4. **Input**: handle `WM_LBUTTONDOWN` / `WM_MOUSEMOVE` / `WM_LBUTTONUP` with `SetCapture` / `ReleaseCapture`. Track selection in **physical** screen coordinates (`ClientToScreen`).
+5. **Esc cancel**: `RegisterHotKey(hwnd, id, 0, VK_ESCAPE)` plus `WM_KEYDOWN` — hotkey works even when focus is lost.
+6. **Paint**: GDI in `WM_PAINT` (dim fill + selection rectangle). Hint text from `tr()` stored as `std::wstring` at pick start.
+7. **Teardown**: `UnregisterHotKey`, `DestroyWindow`, invoke pick callback **immediately** (template BitBlt must not wait for next frame), then defer host restore via `QTimer::singleShot(0, qApp, …)`.
+
+## Host dialog during pick (BlockEditorDialog)
+
+- `BlockEditorDialog` is opened with `exec()`. **`hide()` or `setVisible(false)` on the host terminates `exec()` with `Rejected`** — do not use.
+- Use **`parkHostOffScreen()`**: `move()` host to off-screen while keeping it visible; **`restoreHost()`** after pick completes.
+- Run pick **callback (sync capture) before `restoreHost()`**; post-pick modals via `deferUntilHostRestored`.
+
+## DPI
+
+- Call `Application::ensureDpiAwareness()` in `main()` **before** `QApplication` construction (`PER_MONITOR_AWARE_V2`).
+- Overlay placement stays in Win32 physical pixels; do not convert overlay HWND position through Qt logical geometry.
+
+## Entry points
+
+- `ScreenRegionOverlay::startPick(hostWidget, callback)` — from `ImageFindEditor`
+- `ScreenRegionOverlay::dismissAll()` — shutdown, cancel, or before a new pick
+
+## Anti-patterns (known failures)
+
+- Qt frameless translucent `QWidget` + `WA_TranslucentBackground` for full-screen game overlay
+- `grabMouse()` / `grabKeyboard()` on Qt widget instead of native mouse messages
+- `WM_NCHITTEST` / `HTCLIENT` hacks on Qt layered widgets without fixing coordinate sync
+- Restoring host window before BitBlt in the pick callback
+- Replacing `parkHostOffScreen` with `hide()`
+
+## Known limitation
+
+If POE runs **as administrator**, a non-elevated SuckbongMachine process may not receive input over the game window. Document in user-facing text if reported; fix is run SuckbongMachine with matching elevation.
+
+## Key files
+
+- `src/ui/editors/ScreenRegionOverlay.h` / `.cpp`
+- `src/ui/editors/ImageFindEditor.cpp` (pick callback, confirm dialog deferral)
+- `src/core/capture/ScreenCapture.cpp` (`getTargetWindowScreenRect`, `capturePhysicalRect`)
+- `src/main.cpp` (DPI awareness order)
+- `src/app/MainWindow.cpp` (`dismissAll` on shutdown)
+
+Full handover context: [AGENTS.md](../../AGENTS.md) — section **Win32 screen-region overlay**.

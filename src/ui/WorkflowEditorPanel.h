@@ -1,0 +1,161 @@
+#pragma once
+
+#include "core/workflow/Block.h"
+#include "core/workflow/Workflow.h"
+
+#include <QWidget>
+
+#include <QList>
+#include <QPixmap>
+#include <QVector>
+
+#include <algorithm>
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
+#include "ui/BlockListWidget.h"
+
+class QLabel;
+class QPushButton;
+class QSplitter;
+class QHeaderView;
+class Feature;
+class Block;
+class BlockEditorDialog;
+
+class WorkflowEditorPanel : public QWidget {
+    Q_OBJECT
+public:
+    explicit WorkflowEditorPanel(QWidget* parent = nullptr);
+
+    void setFeature(Feature* feature);
+    void setProjectDirectory(const QString& directory);
+    void refresh();
+    void setEditingEnabled(bool enabled);
+    void clearBlockMatchResults();
+    void setActiveBlockIndex(int index, BlockListWidget::ExecutionHighlight highlight = BlockListWidget::ExecutionHighlight::Running);
+    void notifyImageFindRetry(int blockIndex);
+    bool isBlockMatchSuccessCommitted(int blockIndex) const;
+    void clearExecutionHighlight();
+    void setBlockMatchResult(int blockIndex,
+                             double matchThreshold,
+                             double confidence,
+                             const QPixmap& image,
+                             bool matched);
+    void markBlockMatchSuccess(int blockIndex);
+    void setBlockDuration(int blockIndex, qint64 durationMs);
+    void setBlockImageFindMatchDuration(int blockIndex, qint64 matchDurationMs);
+    void setLoopTiming(int loopNumber, qint64 elapsedMs, bool success);
+    void clearLoopTiming();
+
+    QHeaderView* blockListHeader() const;
+    QSplitter* workflowSplitter() const;
+
+signals:
+    void workflowModified();
+
+private slots:
+    void onEditBlock();
+    void onRemoveBlock();
+    void onMoveUp();
+    void onMoveDown();
+    void onBlockDoubleClicked(int row);
+    void onBlockRowsReordered(int fromRow, int toRow);
+    void onCopyBlocks();
+    void onPasteBlocks();
+    void onDeleteBlocks();
+    void onUndo();
+    void onRedo();
+    void onRemoveAllWaitBlocks();
+    void onInsertWaitBetweenBlocks();
+    void onManageLoopRegions();
+    void onLoopRegionRangePicked(int startRow, int endRow);
+    void onLoopRegionPickCancelled();
+    void onLoopRegionEditRequested(const QString& regionId);
+    void onLoopRegionDeleteRequested(const QString& regionId);
+    void onIfBlockEditRequested(int mainBlockRow);
+    void onIfBlockDeleteRequested(int mainBlockRow);
+    void onIfGotoBlockPicked(int blockRow);
+    void onIfGotoPickCancelled();
+    void onLoopRegionsButtonContextMenu(const QPoint& pos);
+    void openLoopRegionsListDialog();
+    void setLoopRegionPickMode(bool active);
+    void setIfGotoPickMode(bool active);
+    void connectBlockEditorDialog(BlockEditorDialog* dialog);
+    void beginIfGotoBlockPick(BlockEditorDialog* dialog, int branch);
+    void finishIfGotoBlockPick(int blockRow, bool apply);
+
+private:
+    void setupUi();
+    void addBlockOfType(BlockType type);
+    bool editBlockAt(int row);
+    bool editIfBranchBlock(int ifBlockRow, bool isThenBranch, int branchBlockIndex);
+    void editLoopRegion(const QString& regionId);
+    void deleteLoopRegion(const QString& regionId);
+    void deleteBlockAt(int row);
+    QList<int> selectedBlockRows() const;
+    void selectBlockRows(const QList<int>& rows);
+    void removeSelectedBlocks();
+    void pushUndoSnapshot();
+    void restoreFromSnapshot(const Workflow& snapshot);
+    void clearWorkflowHistory();
+    void updateWorkflowToolButtonStates();
+    void updateTitleText();
+
+    static constexpr int kMaxUndoDepth = 100;
+
+    struct FeatureRunFeedback {
+        QVector<QPixmap> rowMatchImages;
+        QVector<double> rowMatchConfidences;
+        QVector<double> rowMatchThresholds;
+        QVector<qint64> rowBlockDurations;
+        QVector<qint64> rowImageFindMatchDurations;
+        QVector<bool> rowMatchLockedSuccess;
+        int activeBlockIndex = -1;
+        BlockListWidget::ExecutionHighlight executionHighlight = BlockListWidget::ExecutionHighlight::None;
+        bool hasLoopTiming = false;
+        int loopNumber = 0;
+        qint64 loopElapsedMs = 0;
+        bool loopSuccess = true;
+    };
+
+    void saveRunFeedbackForFeature(const std::string& featureId);
+    void restoreRunFeedbackForFeature(const std::string& featureId);
+    void clearCurrentRunFeedbackVectors();
+
+    Feature* m_feature = nullptr;
+    QString m_projectDirectory;
+
+    QLabel* m_titleLabel = nullptr;
+    bool m_hasLoopTiming = false;
+    int m_loopNumber = 0;
+    qint64 m_loopElapsedMs = 0;
+    bool m_loopSuccess = true;
+    BlockListWidget* m_blockList = nullptr;
+    QSplitter* m_workflowSplitter = nullptr;
+    QVector<QPushButton*> m_addTypeButtons;
+    QPushButton* m_removeAllWaitButton = nullptr;
+    QPushButton* m_insertWaitBetweenButton = nullptr;
+    QPushButton* m_loopRegionsButton = nullptr;
+    bool m_loopRegionPickActive = false;
+    bool m_ifGotoPickActive = false;
+    BlockEditorDialog* m_ifGotoPickDialog = nullptr;
+    int m_ifGotoPickBranch = 0;
+
+    bool m_editingEnabled = true;
+
+    int m_activeBlockIndex = -1;
+    BlockListWidget::ExecutionHighlight m_executionHighlight = BlockListWidget::ExecutionHighlight::None;
+    QVector<QPixmap> m_rowMatchImages;
+    QVector<double> m_rowMatchConfidences;
+    QVector<double> m_rowMatchThresholds;
+    QVector<qint64> m_rowBlockDurations;
+    QVector<qint64> m_rowImageFindMatchDurations;
+
+    std::unordered_map<std::string, FeatureRunFeedback> m_featureRunFeedback;
+
+    std::vector<std::unique_ptr<Block>> m_clipboardBlocks;
+    std::vector<std::unique_ptr<Workflow>> m_undoStack;
+    std::vector<std::unique_ptr<Workflow>> m_redoStack;
+};
