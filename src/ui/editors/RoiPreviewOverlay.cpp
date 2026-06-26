@@ -29,7 +29,11 @@ constexpr int kEscHotkeyId = 0x5052;
 struct PreviewState {
     HWND hwnd = nullptr;
     QRect physicalBounds;
-    std::vector<QRect> roiClientRects;
+    struct RoiItem {
+        QRect clientRect;
+        int index = 1;
+    };
+    std::vector<RoiItem> roiItems;
     std::wstring hintText;
     RoiPreviewOverlay::VisibilityHandler onVisibilityChanged;
 };
@@ -78,6 +82,66 @@ QRect roiClientRectOnTargetWindow(const QRect& roiPhysical, const QRect& targetP
     return roiClient.intersected(targetClient);
 }
 
+void drawRoiIndexBadge(HDC hdc, const QRect& roiRect, int roiIndex) {
+    wchar_t label[16]{};
+    swprintf_s(label, L"#%d", roiIndex);
+    const int labelLen = static_cast<int>(wcslen(label));
+
+    HFONT font = CreateFontW(-22,
+                             0,
+                             0,
+                             0,
+                             FW_BOLD,
+                             FALSE,
+                             FALSE,
+                             FALSE,
+                             DEFAULT_CHARSET,
+                             OUT_DEFAULT_PRECIS,
+                             CLIP_DEFAULT_PRECIS,
+                             CLEARTYPE_QUALITY,
+                             DEFAULT_PITCH | FF_DONTCARE,
+                             L"Segoe UI");
+    HGDIOBJ oldFont = SelectObject(hdc, font);
+
+    SIZE textSize{};
+    GetTextExtentPoint32W(hdc, label, labelLen, &textSize);
+
+    constexpr int kPadX = 6;
+    constexpr int kPadY = 4;
+    int textX = roiRect.left() + 6;
+    int textY = roiRect.top() + 6;
+    if (textX + textSize.cx + kPadX * 2 > roiRect.right()) {
+        textX = std::max(roiRect.left() + 2, roiRect.right() - textSize.cx - kPadX * 2 - 2);
+    }
+    if (textY + textSize.cy + kPadY * 2 > roiRect.bottom()) {
+        textY = std::max(roiRect.top() + 2, roiRect.bottom() - textSize.cy - kPadY * 2 - 2);
+    }
+
+    RECT bgRect{textX,
+                textY,
+                textX + textSize.cx + kPadX * 2,
+                textY + textSize.cy + kPadY * 2};
+
+    HBRUSH bgBrush = CreateSolidBrush(RGB(24, 24, 24));
+    FillRect(hdc, &bgRect, bgBrush);
+    DeleteObject(bgBrush);
+
+    HPEN borderPen = CreatePen(PS_SOLID, 1, RGB(80, 255, 120));
+    HGDIOBJ oldPen = SelectObject(hdc, borderPen);
+    HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(HOLLOW_BRUSH));
+    Rectangle(hdc, bgRect.left, bgRect.top, bgRect.right, bgRect.bottom);
+    SelectObject(hdc, oldBrush);
+    SelectObject(hdc, oldPen);
+    DeleteObject(borderPen);
+
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, RGB(255, 255, 255));
+    TextOutW(hdc, bgRect.left + kPadX, bgRect.top + kPadY, label, labelLen);
+
+    SelectObject(hdc, oldFont);
+    DeleteObject(font);
+}
+
 void paintPreview(HDC hdc, const PreviewState& state) {
     RECT clientRect{};
     GetClientRect(state.hwnd, &clientRect);
@@ -86,7 +150,8 @@ void paintPreview(HDC hdc, const PreviewState& state) {
     FillRect(hdc, &clientRect, dimBrush);
     DeleteObject(dimBrush);
 
-    for (const QRect& roiRect : state.roiClientRects) {
+    for (const PreviewState::RoiItem& roiItem : state.roiItems) {
+        const QRect& roiRect = roiItem.clientRect;
         if (roiRect.width() < 2 || roiRect.height() < 2) {
             continue;
         }
@@ -106,11 +171,33 @@ void paintPreview(HDC hdc, const PreviewState& state) {
         FillRect(hdc, &inner, fillBrush);
         DeleteObject(fillBrush);
 
+        drawRoiIndexBadge(hdc, roiRect, roiItem.index);
+
         SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, RGB(255, 255, 255));
+        SetTextColor(hdc, RGB(230, 255, 235));
+        HFONT sizeFont = CreateFontW(-16,
+                                     0,
+                                     0,
+                                     0,
+                                     FW_NORMAL,
+                                     FALSE,
+                                     FALSE,
+                                     FALSE,
+                                     DEFAULT_CHARSET,
+                                     OUT_DEFAULT_PRECIS,
+                                     CLIP_DEFAULT_PRECIS,
+                                     CLEARTYPE_QUALITY,
+                                     DEFAULT_PITCH | FF_DONTCARE,
+                                     L"Segoe UI");
+        HGDIOBJ oldFont = SelectObject(hdc, sizeFont);
         const std::wstring sizeText =
             std::to_wstring(roiRect.width()) + L" x " + std::to_wstring(roiRect.height());
-        TextOutW(hdc, roiRect.left() + 8, roiRect.top() + 8, sizeText.c_str(), static_cast<int>(sizeText.size()));
+        const int sizeY = roiRect.top() + 38;
+        if (sizeY + 16 <= roiRect.bottom()) {
+            TextOutW(hdc, roiRect.left() + 8, sizeY, sizeText.c_str(), static_cast<int>(sizeText.size()));
+        }
+        SelectObject(hdc, oldFont);
+        DeleteObject(sizeFont);
     }
 
     if (!state.hintText.empty()) {
@@ -245,9 +332,9 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
     }
 
     const QRect targetPhysical(target.x, target.y, target.width, target.height);
-    std::vector<QRect> roiClientRects;
+    std::vector<PreviewState::RoiItem> roiItems;
 
-    auto appendRoiClient = [&](const CaptureRegion& region) {
+    auto appendRoiClient = [&](const CaptureRegion& region, int roiIndex) {
         QRect roiPhysical;
         if (!ScreenCapture::searchAreaPhysicalRect(
                 SearchArea::CustomRegion, region, percentRegion, roiPhysical)) {
@@ -255,14 +342,15 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
         }
         const QRect roiClient = roiClientRectOnTargetWindow(roiPhysical, targetPhysical);
         if (roiClient.width() >= 2 && roiClient.height() >= 2) {
-            roiClientRects.push_back(roiClient);
+            roiItems.push_back({roiClient, roiIndex});
         }
     };
 
     if (!customRegions.empty()) {
+        int roiIndex = 1;
         for (const CaptureRegion& region : customRegions) {
             if (region.width >= 2 && region.height >= 2) {
-                appendRoiClient(region);
+                appendRoiClient(region, roiIndex++);
             }
         }
     } else {
@@ -280,10 +368,10 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
                                  QObject::tr("탐색 ROI가 대상 창과 겹치지 않습니다."));
             return false;
         }
-        roiClientRects.push_back(roiClient);
+        roiItems.push_back({roiClient, 1});
     }
 
-    if (roiClientRects.empty()) {
+    if (roiItems.empty()) {
         QMessageBox::warning(messageBoxParent(hostWidget),
                              QObject::tr("ROI 미리보기"),
                              QObject::tr("탐색 ROI가 대상 창과 겹치지 않습니다."));
@@ -292,7 +380,7 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
 
     g_state = std::make_unique<PreviewState>();
     g_state->physicalBounds = targetPhysical;
-    g_state->roiClientRects = std::move(roiClientRects);
+    g_state->roiItems = std::move(roiItems);
     g_state->onVisibilityChanged = std::move(onVisibilityChanged);
     g_state->hintText =
         QObject::tr("탐색 ROI 미리보기 (클릭 통과)\nROI 미리보기 끄기 또는 Esc로 닫기").toStdWString();
