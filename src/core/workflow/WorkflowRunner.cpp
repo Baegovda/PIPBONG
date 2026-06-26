@@ -11,6 +11,8 @@
 
 namespace {
 
+constexpr auto kImageFindMissUiMinInterval = std::chrono::milliseconds(100);
+
 void emitBlockMatchResult(const WorkflowRunHooks& hooks,
                           int blockIndex,
                           ExecutionContext& ctx,
@@ -90,6 +92,12 @@ WorkflowRunResult executeSingleBlock(const Workflow& workflow,
     if (hooks && hooks->onBlockProgress) {
         ctx.setProgressCallback([hooks, blockIndex, &ctx](BlockProgressKind kind) {
             if (kind == BlockProgressKind::ImageFindMiss && ctx.hasLastMatchAttempt()) {
+                static thread_local std::chrono::steady_clock::time_point lastMissUiEmit;
+                const auto now = std::chrono::steady_clock::now();
+                if (now - lastMissUiEmit < kImageFindMissUiMinInterval) {
+                    return;
+                }
+                lastMissUiEmit = now;
                 emitBlockMatchResult(*hooks, blockIndex, ctx, false);
             } else if (kind == BlockProgressKind::ImageFindSuccess && ctx.hasLastMatch()) {
                 emitBlockMatchResult(*hooks, blockIndex, ctx, true);
@@ -107,12 +115,6 @@ WorkflowRunResult executeSingleBlock(const Workflow& workflow,
         0, std::chrono::duration_cast<std::chrono::milliseconds>(blockEnd - blockStart).count());
 
     ctx.clearProgressCallback();
-
-    if (result.success && block.type() == BlockType::ImageFind && ctx.hasLastMatch()) {
-        if (hooks) {
-            emitBlockMatchResult(*hooks, blockIndex, ctx, true);
-        }
-    }
 
     if (hooks && hooks->onBlockFinished) {
         hooks->onBlockFinished(blockIndex,

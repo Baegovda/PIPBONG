@@ -1783,7 +1783,7 @@ void BlockListWidget::setBlockMatchResult(int row,
                                                    Qt::SmoothTransformation)));
     }
 
-    applyActiveRowVisuals();
+    applyActiveRowVisualsForBlockRow(row);
 }
 
 void BlockListWidget::setBlockMatchBaseline(int row, double matchThreshold) {
@@ -1917,7 +1917,7 @@ void BlockListWidget::setActiveRow(int row, ExecutionHighlight highlight) {
     } else if (effectiveHighlight == ExecutionHighlight::Failed && row >= 0) {
         triggerRowFlash(row, ExecutionHighlight::Failed, kFailedFlashMs);
     }
-    applyActiveRowVisuals();
+    applyActiveRowVisualsForBlockRow(row);
 }
 
 void BlockListWidget::notifyImageFindRetry(int row) {
@@ -1933,10 +1933,14 @@ void BlockListWidget::notifyImageFindRetry(int row) {
         return;
     }
 
+    const int previousActiveRow = m_activeRow;
     m_activeRow = row;
     m_activeHighlight = ExecutionHighlight::ImageFindMiss;
     triggerRowFlash(row, ExecutionHighlight::ImageFindMiss, kMissFlashMs);
-    applyActiveRowVisuals();
+    if (previousActiveRow >= 0 && previousActiveRow != row) {
+        applyActiveRowVisualsForBlockRow(previousActiveRow);
+    }
+    applyActiveRowVisualsForBlockRow(row);
 }
 
 void BlockListWidget::clearActiveRow() {
@@ -1960,7 +1964,11 @@ void BlockListWidget::triggerRowFlash(int row, ExecutionHighlight highlight, int
 
 void BlockListWidget::onFlashAnimationValueChanged(const QVariant& value) {
     m_flashIntensity = value.toReal();
-    applyActiveRowVisuals();
+    if (m_flashRow >= 0) {
+        applyActiveRowVisualsForBlockRow(m_flashRow);
+    } else {
+        applyActiveRowVisuals();
+    }
 }
 
 void BlockListWidget::onFlashAnimationFinished() {
@@ -1994,115 +2002,134 @@ QColor BlockListWidget::matchScoreForegroundColor(bool succeeded, bool onMissHig
     return text.lightness() < 128 ? QColor(255, 150, 158) : QColor(190, 58, 68);
 }
 
-void BlockListWidget::applyActiveRowVisuals() {
+void BlockListWidget::applyActiveRowVisualsForBlockRow(int blockRow) {
+    if (blockRow < 0) {
+        return;
+    }
+    const int tableRow = tableRowForBlockRow(blockRow);
+    if (tableRow < 0) {
+        return;
+    }
+    paintTableRowVisuals(tableRow);
+}
+
+void BlockListWidget::paintTableRowVisuals(int tableRow) {
+    if (tableRow < 0 || tableRow >= rowCount()) {
+        return;
+    }
+
     const QPalette rowPalette = palette();
     const QBrush normalBrush = rowPalette.brush(QPalette::Base);
     const QBrush normalForeground = rowPalette.brush(QPalette::Text);
     const QFont normalFont = font();
 
-    for (int tableRow = 0; tableRow < rowCount(); ++tableRow) {
-        const int blockRow = blockRowForTableRow(tableRow);
-        if (blockRow < 0) {
-            for (int c = 0; c < columnCount(); ++c) {
-                if (QTableWidgetItem* cellItem = item(tableRow, c)) {
-                    cellItem->setBackground(Qt::NoBrush);
-                    cellItem->setForeground(rowPalette.brush(QPalette::Text));
-                }
+    const int blockRow = blockRowForTableRow(tableRow);
+    if (blockRow < 0) {
+        for (int c = 0; c < columnCount(); ++c) {
+            if (QTableWidgetItem* cellItem = item(tableRow, c)) {
+                cellItem->setBackground(Qt::NoBrush);
+                cellItem->setForeground(rowPalette.brush(QPalette::Text));
             }
+        }
+        return;
+    }
+
+    QBrush rowBrush = normalBrush;
+    QBrush rowForeground = normalForeground;
+    QFont rowFont = normalFont;
+    rowFont.setBold(false);
+    QString indexText = QString::number(blockRow + 1);
+    bool useGlassIndex = false;
+    GlassColors glassColors;
+
+    const ExecutionHighlight rowHighlight = rowVisualHighlight(blockRow);
+    const qreal glassIntensity = rowGlassIntensity(blockRow, rowHighlight);
+    const bool showGlass = rowHighlight != ExecutionHighlight::None && glassIntensity > 0.0;
+
+    if (blockRow == m_activeRow && m_activeHighlight != ExecutionHighlight::None) {
+        rowFont.setBold(true);
+        switch (m_activeHighlight) {
+        case ExecutionHighlight::Running:
+            indexText = QStringLiteral("▶ %1").arg(blockRow + 1);
+            break;
+        case ExecutionHighlight::ImageFindMiss:
+            indexText = QStringLiteral("⌕ %1").arg(blockRow + 1);
+            break;
+        case ExecutionHighlight::Success:
+            indexText = QStringLiteral("✓ %1").arg(blockRow + 1);
+            break;
+        case ExecutionHighlight::Failed:
+            indexText = QStringLiteral("✕ %1").arg(blockRow + 1);
+            break;
+        case ExecutionHighlight::None:
+            break;
+        }
+    } else if (tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow]
+               && blockRow == qMin(m_loopRegionPickAnchorRow, m_loopRegionPickCurrentRow)) {
+        indexText = QStringLiteral("↻ %1").arg(blockRow + 1);
+    } else if (tableRow < m_ifGotoPickPreview.size() && m_ifGotoPickPreview[tableRow]
+               && blockRow == m_ifGotoPickHoverRow) {
+        indexText = QStringLiteral("→ %1").arg(blockRow + 1);
+    }
+
+    const bool inLoopRegion = tableRow < m_loopRegionMember.size() && m_loopRegionMember[tableRow];
+    const bool inPickPreview = (tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow])
+                               || (tableRow < m_ifGotoPickPreview.size() && m_ifGotoPickPreview[tableRow]);
+
+    if (showGlass) {
+        glassColors = glassColorsFor(rowHighlight, glassIntensity, rowPalette);
+        rowBrush = glassBodyBrush(glassColors, rowPalette, kRowHeight);
+        rowForeground = glassColors.foreground;
+        useGlassIndex = true;
+    }
+
+    for (int c = 0; c < columnCount(); ++c) {
+        QTableWidgetItem* cellItem = this->item(tableRow, c);
+        if (!cellItem) {
             continue;
         }
-
-        QBrush rowBrush = normalBrush;
-        QBrush rowForeground = normalForeground;
-        QFont rowFont = normalFont;
-        rowFont.setBold(false);
-        QString indexText = QString::number(blockRow + 1);
-        bool useGlassIndex = false;
-        GlassColors glassColors;
-
-        const ExecutionHighlight rowHighlight = rowVisualHighlight(blockRow);
-        const qreal glassIntensity = rowGlassIntensity(blockRow, rowHighlight);
-        const bool showGlass = rowHighlight != ExecutionHighlight::None && glassIntensity > 0.0;
-
-        if (blockRow == m_activeRow && m_activeHighlight != ExecutionHighlight::None) {
-            rowFont.setBold(true);
-            switch (m_activeHighlight) {
-            case ExecutionHighlight::Running:
-                indexText = QStringLiteral("▶ %1").arg(blockRow + 1);
-                break;
-            case ExecutionHighlight::ImageFindMiss:
-                indexText = QStringLiteral("⌕ %1").arg(blockRow + 1);
-                break;
-            case ExecutionHighlight::Success:
-                indexText = QStringLiteral("✓ %1").arg(blockRow + 1);
-                break;
-            case ExecutionHighlight::Failed:
-                indexText = QStringLiteral("✕ %1").arg(blockRow + 1);
-                break;
-            case ExecutionHighlight::None:
-                break;
-            }
-        } else if (tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow]
-                   && blockRow == qMin(m_loopRegionPickAnchorRow, m_loopRegionPickCurrentRow)) {
-            indexText = QStringLiteral("↻ %1").arg(blockRow + 1);
-        } else if (tableRow < m_ifGotoPickPreview.size() && m_ifGotoPickPreview[tableRow]
-                   && blockRow == m_ifGotoPickHoverRow) {
-            indexText = QStringLiteral("→ %1").arg(blockRow + 1);
+        if (c == kColIndex && useGlassIndex) {
+            cellItem->setBackground(glassIndexBrush(glassColors, rowPalette, kRowHeight));
+        } else if (showGlass) {
+            cellItem->setBackground(rowBrush);
+        } else if (inPickPreview) {
+            QColor pickTint = rowPalette.color(QPalette::Highlight);
+            pickTint.setAlpha(48);
+            cellItem->setBackground(blendOver(rowPalette.color(QPalette::Base), pickTint));
+        } else if (inLoopRegion) {
+            cellItem->setBackground(normalBrush);
+        } else {
+            cellItem->setBackground(normalBrush);
         }
-
-        const bool inLoopRegion = tableRow < m_loopRegionMember.size() && m_loopRegionMember[tableRow];
-        const bool inPickPreview = (tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow])
-                                   || (tableRow < m_ifGotoPickPreview.size() && m_ifGotoPickPreview[tableRow]);
-
-        if (showGlass) {
-            glassColors = glassColorsFor(rowHighlight, glassIntensity, rowPalette);
-            rowBrush = glassBodyBrush(glassColors, rowPalette, kRowHeight);
-            rowForeground = glassColors.foreground;
-            useGlassIndex = true;
-        }
-
-        for (int c = 0; c < columnCount(); ++c) {
-            QTableWidgetItem* cellItem = this->item(tableRow, c);
-            if (!cellItem) {
-                continue;
-            }
-            if (c == kColIndex && useGlassIndex) {
-                cellItem->setBackground(glassIndexBrush(glassColors, rowPalette, kRowHeight));
-            } else if (showGlass) {
-                cellItem->setBackground(rowBrush);
-            } else if (inPickPreview) {
-                QColor pickTint = rowPalette.color(QPalette::Highlight);
-                pickTint.setAlpha(48);
-                cellItem->setBackground(blendOver(rowPalette.color(QPalette::Base), pickTint));
-            } else if (inLoopRegion) {
-                cellItem->setBackground(normalBrush);
+        cellItem->setFont(rowFont);
+        if (c == kColScore && blockRow < m_rowMatchHasScore.size() && m_rowMatchHasScore[blockRow]) {
+            const bool onMissHighlightRow = rowHighlight == ExecutionHighlight::ImageFindMiss;
+            const bool scoreSucceeded = isMatchSuccessLocked(blockRow)
+                                        || m_rowMatchSucceeded[blockRow]
+                                        || rowHighlight == ExecutionHighlight::Success;
+            if (showGlass) {
+                cellItem->setForeground(glassColors.scoreForeground);
             } else {
-                cellItem->setBackground(normalBrush);
+                cellItem->setForeground(matchScoreForegroundColor(scoreSucceeded, onMissHighlightRow));
             }
-            cellItem->setFont(rowFont);
-            if (c == kColScore && blockRow < m_rowMatchHasScore.size() && m_rowMatchHasScore[blockRow]) {
-                const bool onMissHighlightRow = rowHighlight == ExecutionHighlight::ImageFindMiss;
-                const bool scoreSucceeded = isMatchSuccessLocked(blockRow)
-                                            || m_rowMatchSucceeded[blockRow]
-                                            || rowHighlight == ExecutionHighlight::Success;
-                if (showGlass) {
-                    cellItem->setForeground(glassColors.scoreForeground);
-                } else {
-                    cellItem->setForeground(matchScoreForegroundColor(scoreSucceeded, onMissHighlightRow));
-                }
-            } else if (showGlass) {
-                cellItem->setForeground(rowForeground);
-            } else {
-                cellItem->setForeground(normalForeground);
-            }
-            if (c == kColIndex || c == kColPreview || c == kColAction || c == kColDuration || c == kColMatchDuration
-                || c == kColScore) {
-                cellItem->setTextAlignment(Qt::AlignCenter);
-            }
-            if (c == kColIndex) {
-                cellItem->setText(indexText);
-            }
+        } else if (showGlass) {
+            cellItem->setForeground(rowForeground);
+        } else {
+            cellItem->setForeground(normalForeground);
         }
+        if (c == kColIndex || c == kColPreview || c == kColAction || c == kColDuration || c == kColMatchDuration
+            || c == kColScore) {
+            cellItem->setTextAlignment(Qt::AlignCenter);
+        }
+        if (c == kColIndex) {
+            cellItem->setText(indexText);
+        }
+    }
+}
+
+void BlockListWidget::applyActiveRowVisuals() {
+    for (int tableRow = 0; tableRow < rowCount(); ++tableRow) {
+        paintTableRowVisuals(tableRow);
     }
 
     if (m_activeRow >= 0) {

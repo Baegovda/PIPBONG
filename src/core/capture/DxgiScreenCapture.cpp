@@ -24,7 +24,7 @@ struct DxgiSession {
     int desktopTop = 0;
     int desktopWidth = 0;
     int desktopHeight = 0;
-    cv::Mat cachedDesktopBgr;
+    cv::Mat cachedDesktopBgra;
     bool hasCachedDesktop = false;
     bool valid = false;
     bool frameAcquired = false;
@@ -54,7 +54,7 @@ void releaseSession(DxgiSession& session) {
         session.device = nullptr;
     }
     session.monitor = nullptr;
-    session.cachedDesktopBgr.release();
+    session.cachedDesktopBgra.release();
     session.hasCachedDesktop = false;
     session.valid = false;
 }
@@ -194,18 +194,22 @@ HMONITOR monitorForRect(int x, int y, int width, int height) {
 }
 
 cv::Mat cropCachedDesktopBgr(const DxgiSession& session, int x, int y, int width, int height) {
-    if (!session.hasCachedDesktop || session.cachedDesktopBgr.empty()) {
+    if (!session.hasCachedDesktop || session.cachedDesktopBgra.empty()) {
         return {};
     }
 
     const int srcLeft = x - session.desktopLeft;
     const int srcTop = y - session.desktopTop;
-    if (srcLeft < 0 || srcTop < 0 || srcLeft + width > session.cachedDesktopBgr.cols
-        || srcTop + height > session.cachedDesktopBgr.rows) {
+    if (srcLeft < 0 || srcTop < 0 || srcLeft + width > session.cachedDesktopBgra.cols
+        || srcTop + height > session.cachedDesktopBgra.rows) {
         return {};
     }
 
-    return session.cachedDesktopBgr(cv::Rect(srcLeft, srcTop, width, height)).clone();
+    const cv::Mat bgraRoi =
+        session.cachedDesktopBgra(cv::Rect(srcLeft, srcTop, width, height));
+    cv::Mat bgr;
+    cv::cvtColor(bgraRoi, bgr, cv::COLOR_BGRA2BGR);
+    return bgr;
 }
 
 bool updateDesktopCacheFromTexture(DxgiSession& session, ID3D11Texture2D* desktopTexture) {
@@ -226,11 +230,11 @@ bool updateDesktopCacheFromTexture(DxgiSession& session, ID3D11Texture2D* deskto
                               CV_8UC4,
                               mapped.pData,
                               static_cast<size_t>(mapped.RowPitch));
-    if (session.cachedDesktopBgr.rows != session.desktopHeight
-        || session.cachedDesktopBgr.cols != session.desktopWidth) {
-        session.cachedDesktopBgr.create(session.desktopHeight, session.desktopWidth, CV_8UC3);
+    if (session.cachedDesktopBgra.rows != session.desktopHeight
+        || session.cachedDesktopBgra.cols != session.desktopWidth) {
+        session.cachedDesktopBgra.create(session.desktopHeight, session.desktopWidth, CV_8UC4);
     }
-    cv::cvtColor(bgraWrapper, session.cachedDesktopBgr, cv::COLOR_BGRA2BGR);
+    bgraWrapper.copyTo(session.cachedDesktopBgra);
     session.hasCachedDesktop = true;
 
     session.context->Unmap(session.staging, 0);

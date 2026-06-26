@@ -106,6 +106,8 @@ private:
     void clearDropIndicator();
     void updateDragSourceVisuals();
     void applyActiveRowVisuals();
+    void paintTableRowVisuals(int tableRow);
+    void applyActiveRowVisualsForBlockRow(int blockRow);
     void onFlashAnimationValueChanged(const QVariant& value);
     void onFlashAnimationFinished();
     void triggerRowFlash(int row, ExecutionHighlight highlight, int durationMs);

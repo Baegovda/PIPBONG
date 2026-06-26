@@ -420,6 +420,56 @@ cv::Mat ImageMatcher::toGrayscale(const cv::Mat& image) {
 
 
 
+void ImageMatcher::toGrayscale(const cv::Mat& image, cv::Mat& grayOut) {
+
+    if (image.empty()) {
+
+        grayOut.release();
+
+        return;
+
+    }
+
+
+
+    switch (image.channels()) {
+
+    case 1:
+
+        grayOut = image;
+
+        break;
+
+    case 4:
+
+        if (grayOut.rows != image.rows || grayOut.cols != image.cols || grayOut.type() != CV_8UC1) {
+
+            grayOut.create(image.rows, image.cols, CV_8UC1);
+
+        }
+
+        cv::cvtColor(image, grayOut, cv::COLOR_BGRA2GRAY);
+
+        break;
+
+    default:
+
+        if (grayOut.rows != image.rows || grayOut.cols != image.cols || grayOut.type() != CV_8UC1) {
+
+            grayOut.create(image.rows, image.cols, CV_8UC1);
+
+        }
+
+        cv::cvtColor(image, grayOut, cv::COLOR_BGR2GRAY);
+
+        break;
+
+    }
+
+}
+
+
+
 bool ImageMatcher::isEffectivelyGrayscale(const cv::Mat& image, double maxMeanChannelSpread) {
 
     if (image.empty() || image.channels() == 1) {
@@ -645,6 +695,164 @@ MatchResult ImageMatcher::findPeakMatchGray(const cv::Mat& hayGray,
     }
 
     return best;
+
+}
+
+
+
+void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
+
+                                               const PreparedTemplate& templ,
+
+                                               const MatchOptions& options,
+
+                                               bool enumerateAll,
+
+                                               MatchResult& outPeak,
+
+                                               std::vector<MatchResult>& outMatches) {
+
+    outPeak = {};
+
+    outMatches.clear();
+
+    if (hayGray.empty() || templ.empty()) {
+
+        return;
+
+    }
+
+
+
+    ensureTemplateScaleCache(templ, options);
+
+    for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
+
+        const double scale = templ.scaleCacheFactors[i];
+
+        const cv::Mat& needleGray = templ.scaleCacheGrays[i];
+
+        if (!fitsInHaystack(needleGray.size(), hayGray.size())) {
+
+            continue;
+
+        }
+
+
+
+        cv::Mat correlation;
+
+        cv::matchTemplate(hayGray, needleGray, correlation, cv::TM_CCOEFF_NORMED);
+
+
+
+        double minVal = 0.0;
+
+        double maxVal = 0.0;
+
+        cv::Point minLoc;
+
+        cv::Point maxLoc;
+
+        cv::minMaxLoc(correlation, &minVal, &maxVal, &minLoc, &maxLoc);
+
+        const MatchResult scalePeak =
+
+            makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), hayGray.size());
+
+        if (scalePeak.found && scalePeak.confidence > outPeak.confidence) {
+
+            outPeak = scalePeak;
+
+        }
+
+
+
+        if (!enumerateAll) {
+
+            if (meetsThreshold(maxVal, options.threshold)) {
+
+                MatchResult result =
+
+                    makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), hayGray.size());
+
+                if (result.found) {
+
+                    outMatches.push_back(result);
+
+                }
+
+            }
+
+            continue;
+
+        }
+
+
+
+        cv::Mat suppressed = correlation.clone();
+
+        while (true) {
+
+            cv::minMaxLoc(suppressed, &minVal, &maxVal, &minLoc, &maxLoc);
+
+            if (!meetsThreshold(maxVal, options.threshold)) {
+
+                break;
+
+            }
+
+
+
+            MatchResult result =
+
+                makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), hayGray.size());
+
+            if (result.found) {
+
+                outMatches.push_back(result);
+
+            }
+
+
+
+            const cv::Rect suppressRect(maxLoc.x, maxLoc.y, needleGray.cols, needleGray.rows);
+
+            cv::rectangle(suppressed, suppressRect, cv::Scalar(-1.0), cv::FILLED);
+
+        }
+
+    }
+
+
+
+    if (enumerateAll) {
+
+        outMatches = dedupeOverlappingTopLeftFirst(std::move(outMatches));
+
+    }
+
+
+
+    for (MatchResult& match : outMatches) {
+
+        match.found = meetsThreshold(match.confidence, options.threshold) &&
+
+                      isWithinBounds(match.location, match.matchedSize, hayGray.size());
+
+    }
+
+
+
+    outMatches.erase(std::remove_if(outMatches.begin(),
+
+                                    outMatches.end(),
+
+                                    [](const MatchResult& match) { return !match.found; }),
+
+                     outMatches.end());
+
+    std::sort(outMatches.begin(), outMatches.end(), topLeftBefore);
 
 }
 

@@ -183,8 +183,12 @@ ImageFindSelection trySelectImageFindMatch(const cv::Mat& haystack,
         return selection;
     }
 
-    selection.allMatches =
-        ImageMatcher::findAllTemplatesGray(hayGray, templ, options, true);
+    ImageMatcher::findPeakAndAllTemplatesGray(
+        hayGray, templ, options, true, selection.peak, selection.allMatches);
+    if (!selection.peak.found
+        || !ImageMatcher::meetsThreshold(selection.peak.confidence, options.threshold)) {
+        return selection;
+    }
     applyGrayscaleHaystackFilter(haystack, templ, selection.allMatches, selection.peak);
     if (selection.allMatches.empty()) {
         return selection;
@@ -616,6 +620,8 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         pollRegions.push_back(customRegion);
     }
 
+    thread_local cv::Mat reusableHayGray;
+
     while (true) {
         lapStart = std::chrono::steady_clock::now();
 
@@ -650,7 +656,8 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                 continue;
             }
             anyValidHaystack = true;
-            const cv::Mat hayGray = ImageMatcher::toGrayscale(haystack);
+            ImageMatcher::toGrayscale(haystack, reusableHayGray);
+            const cv::Mat& hayGray = reusableHayGray;
 
             if (templateMatchMode == ImageFindTemplateMatchMode::Any) {
                 for (size_t index = 0; index < templates.size(); ++index) {

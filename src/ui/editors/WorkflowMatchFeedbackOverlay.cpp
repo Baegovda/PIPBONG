@@ -366,7 +366,6 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX, int clientY, 
                               g_state->pulses.begin()
                                   + static_cast<std::ptrdiff_t>(g_state->pulses.size() - kMaxActivePulses));
     }
-    renderOverlayFrame();
 #else
     (void)clientX;
     (void)clientY;

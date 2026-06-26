@@ -1,6 +1,6 @@
 # AGENTS.md — SuckbongMachine Master Document
 
-**Current version:** `0.5.43` (from `project(SuckbongMachine VERSION 0.5.43)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
+**Current version:** `0.5.44` (from `project(SuckbongMachine VERSION 0.5.44)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
 
 **Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
 
@@ -712,6 +712,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.5.44] - 2026-06-26
+
+### Changed
+
+- Performance: DXGI capture converts BGR→crop only for the requested ROI instead of the full desktop each frame (`DxgiScreenCapture`).
+- Performance: ImageFind poll reuses grayscale haystack buffer; consumed-region matching runs one `matchTemplate` per scale via `findPeakAndAllTemplatesGray` (`ImageMatcher`, `ImageFindBlock`).
+- Performance: ImageFind miss UI updates throttled to 100 ms; duplicate success `blockMatchResult` emit removed (`WorkflowRunner`).
+- Performance: workflow block list repaints only the active/flash row during ImageFind retries; match-feedback overlay defers render to the existing timer (`BlockListWidget`, `WorkflowMatchFeedbackOverlay`).
 
 ## [0.5.43] - 2026-06-26
 
@@ -1595,4 +1604,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-26. Current application version: 0.5.43.*
+*Last consolidated: 2026-06-26. Current application version: 0.5.44.*
