@@ -25,7 +25,7 @@
 namespace {
 
 #ifndef SBM_UPDATE_GITHUB_REPO
-#define SBM_UPDATE_GITHUB_REPO "Baegovda/SBM"
+#define SBM_UPDATE_GITHUB_REPO "Baegovda/SBM-releases"
 #endif
 
 #ifndef SBM_UPDATE_ASSET_NAME

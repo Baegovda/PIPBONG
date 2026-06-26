@@ -1,6 +1,6 @@
 # AGENTS.md — SuckbongMachine Master Document
 
-**Current version:** `0.5.42` (from `project(SuckbongMachine VERSION 0.5.42)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
+**Current version:** `0.5.43` (from `project(SuckbongMachine VERSION 0.5.43)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
 
 **Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
 
@@ -712,6 +712,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.5.43] - 2026-06-26
+
+### Changed
+
+- In-app update and `create-github-release.ps1` publish to public **`Baegovda/SBM-releases`** (exe only) so **파일 → 업데이트** works while source stays in private **`Baegovda/SBM`**.
 
 ## [0.5.42] - 2026-06-26
 
@@ -1589,4 +1595,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-26. Current application version: 0.5.42.*
+*Last consolidated: 2026-06-26. Current application version: 0.5.43.*

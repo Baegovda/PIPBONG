@@ -37,6 +37,8 @@ if (-not $gh) {
     throw "GitHub CLI (gh) is not installed. Install it, run 'gh auth login', then rerun this script."
 }
 
-Write-Host "Creating GitHub release $tag..."
-gh release create $tag $mainExe $updaterExe --title "SuckbongMachine $tag" --notes $Notes
-Write-Host "Done: https://github.com/Baegovda/SBM/releases/tag/$tag"
+$releaseRepo = "Baegovda/SBM-releases"
+
+Write-Host "Creating GitHub release $tag on $releaseRepo..."
+gh release create $tag $mainExe $updaterExe --repo $releaseRepo --title "SuckbongMachine $tag" --notes $Notes
+Write-Host "Done: https://github.com/$releaseRepo/releases/tag/$tag"
