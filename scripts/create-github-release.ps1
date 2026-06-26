@@ -39,4 +39,4 @@ if (-not $gh) {
 
 Write-Host "Creating GitHub release $tag..."
 gh release create $tag $mainExe $updaterExe --title "SuckbongMachine $tag" --notes $Notes
-Write-Host "Done: https://github.com/Baegovda/sbm/releases/tag/$tag"
+Write-Host "Done: https://github.com/Baegovda/SBM/releases/tag/$tag"

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(SuckbongMachine VERSION 0.5.41 LANGUAGES CXX)
+project(SuckbongMachine VERSION 0.5.42 LANGUAGES CXX)
 
 option(SBM_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
 
@@ -152,7 +152,7 @@ target_compile_definitions(SuckbongMachine PRIVATE
     UNICODE
     _UNICODE
     SBM_VERSION="${PROJECT_VERSION}"
-    SBM_UPDATE_GITHUB_REPO="Baegovda/sbm"
+    SBM_UPDATE_GITHUB_REPO="Baegovda/SBM"
     SBM_UPDATE_ASSET_NAME="SuckbongMachine.exe"
 )
 
