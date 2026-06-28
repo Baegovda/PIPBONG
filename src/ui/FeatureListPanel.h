@@ -6,6 +6,8 @@
 
 #include <QWidget>
 
+#include <memory>
+
 
 
 class QListWidgetItem;
@@ -122,6 +124,10 @@ private slots:
 
     void onFeatureRowsReordered(int fromRow, int toRow);
 
+    void onCopyFeature();
+
+    void onPasteFeature();
+
 
 
 private:
@@ -167,6 +173,10 @@ private:
     bool m_editControlsEnabled = true;
 
     bool m_restoringColumnLayout = false;
+
+    bool m_ignoreNextRunButtonRelease = false;
+
+    std::unique_ptr<Feature> m_clipboardFeature;
 
 };
 

@@ -134,9 +134,7 @@ void ImageFindEditor::setBlock(ImageFindBlock* block) {
     RoiPreviewOverlay::dismissAll();
     updateRoiPreviewButton(false);
     m_roiPickActive = false;
-    m_roiPickReplaceRow = -1;
     updatePickRoiButton(false);
-    updateEditRoiButton(false);
     m_block = block;
     reload();
 }
@@ -293,8 +291,6 @@ void ImageFindEditor::setupUi() {
 
     m_pickRoiButton = new QPushButton(tr("추가"), this);
     m_pickRoiButton->setToolTip(tr("대상 창 위에서 드래그하여 탐색 ROI를 추가합니다. 다시 누르면 취소합니다."));
-    m_editRoiButton = new QPushButton(tr("수정"), this);
-    m_editRoiButton->setToolTip(tr("목록에서 선택한 ROI 영역을 다시 지정합니다. 다시 누르면 취소합니다."));
     m_removeRoiButton = new QPushButton(tr("삭제"), this);
     m_removeRoiButton->setToolTip(tr("목록에서 선택한 ROI를 제거합니다."));
     m_roiPreviewButton = new QPushButton(tr("미리보기"), this);
@@ -305,7 +301,6 @@ void ImageFindEditor::setupUi() {
     roiToolbar->setSpacing(8);
     roiToolbar->addWidget(m_roiPreviewButton);
     roiToolbar->addWidget(m_pickRoiButton);
-    roiToolbar->addWidget(m_editRoiButton);
     roiToolbar->addWidget(m_removeRoiButton);
     roiToolbar->addStretch(1);
 
@@ -343,14 +338,10 @@ void ImageFindEditor::setupUi() {
         updatePreview();
     });
     connect(m_pickRoiButton, &QPushButton::clicked, this, &ImageFindEditor::onPickRoi);
-    connect(m_editRoiButton, &QPushButton::clicked, this, &ImageFindEditor::onEditRoi);
     connect(m_removeRoiButton, &QPushButton::clicked, this, &ImageFindEditor::onRemoveRoi);
     connect(m_roiList, &QListWidget::currentRowChanged, this, [this](int row) {
         if (m_removeRoiButton) {
             m_removeRoiButton->setEnabled(row >= 0);
-        }
-        if (m_editRoiButton) {
-            m_editRoiButton->setEnabled(row >= 0);
         }
         syncRoiPreviewSelection();
     });
@@ -543,9 +534,6 @@ void ImageFindEditor::refreshRoiList() {
     if (m_removeRoiButton) {
         m_removeRoiButton->setEnabled(m_roiList->currentRow() >= 0);
     }
-    if (m_editRoiButton) {
-        m_editRoiButton->setEnabled(m_roiList->currentRow() >= 0);
-    }
     syncRoiPreviewSelection();
 }
 
@@ -645,14 +633,9 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
                 self->onPickRoi();
             }
         },
-        [self](int roiIndex) {
-            if (!self || !self->m_roiList) {
-                return;
-            }
-            const int row = roiIndex - 1;
-            if (row >= 0 && row < self->m_roiList->count()) {
-                self->m_roiList->setCurrentRow(row);
-                self->onEditRoi();
+        [self](int roiIndex, const CaptureRegion& region) {
+            if (self) {
+                self->applyRoiRegionFromOverlay(roiIndex, region);
             }
         },
         [self](int roiIndex) {
@@ -680,11 +663,26 @@ void ImageFindEditor::updatePickRoiButton(bool pickActive) {
     m_pickRoiButton->setText(pickActive ? tr("추가 취소") : tr("추가"));
 }
 
-void ImageFindEditor::updateEditRoiButton(bool pickActive) {
-    if (!m_editRoiButton) {
+void ImageFindEditor::applyRoiRegionFromOverlay(int roiIndex, const CaptureRegion& region) {
+    if (!m_block || roiIndex < 1 || region.width < 2 || region.height < 2) {
         return;
     }
-    m_editRoiButton->setText(pickActive ? tr("수정 취소") : tr("수정"));
+    const size_t row = static_cast<size_t>(roiIndex - 1);
+    if (row >= m_block->customRegions.size()) {
+        return;
+    }
+
+    m_block->customRegions[row] = region;
+    if (row == 0) {
+        m_block->customRegion = region;
+    }
+    m_block->searchArea = SearchArea::CustomRegion;
+    refreshRoiList();
+    if (m_roiList && static_cast<int>(row) < m_roiList->count()) {
+        m_roiList->setCurrentRow(static_cast<int>(row));
+    }
+    syncRoiPreviewSelection();
+    apply();
 }
 
 void ImageFindEditor::updateMatchTestButton(bool overlayVisible) {
@@ -774,11 +772,11 @@ void ImageFindEditor::onRemoveTemplate() {
     apply();
 }
 
-void ImageFindEditor::startRoiPick(int replaceListRow) {
+void ImageFindEditor::startRoiPick() {
 #ifdef _WIN32
     if (!ScreenCapture::findTargetWindow()) {
         QMessageBox::warning(this,
-                             replaceListRow >= 0 ? tr("수정") : tr("추가"),
+                             tr("추가"),
                              tr("대상 창을 찾을 수 없습니다. 먼저 '창 지정'을 사용하세요."));
         return;
     }
@@ -789,7 +787,6 @@ void ImageFindEditor::startRoiPick(int replaceListRow) {
 
     QPointer<ImageFindEditor> self = this;
     m_roiPickActive = true;
-    m_roiPickReplaceRow = replaceListRow;
     ScreenRegionOverlay::StartPickOptions pickOptions;
     pickOptions.parkHostDuringPick = false;
     if (m_block) {
@@ -804,11 +801,8 @@ void ImageFindEditor::startRoiPick(int replaceListRow) {
         if (!self) {
             return;
         }
-        const int replaceRow = self->m_roiPickReplaceRow;
         self->m_roiPickActive = false;
-        self->m_roiPickReplaceRow = -1;
         self->updatePickRoiButton(false);
-        self->updateEditRoiButton(false);
         if (!self->m_block) {
             return;
         }
@@ -823,20 +817,13 @@ void ImageFindEditor::startRoiPick(int replaceListRow) {
         region.height = selectionRect.height();
 
         self->m_block->searchArea = SearchArea::CustomRegion;
-        if (replaceRow >= 0 && replaceRow < static_cast<int>(self->m_block->customRegions.size())) {
-            self->m_block->customRegions[static_cast<size_t>(replaceRow)] = region;
-        } else {
-            self->m_block->customRegions.push_back(region);
-        }
+        self->m_block->customRegions.push_back(region);
         if (!self->m_block->customRegions.empty()) {
             self->m_block->customRegion = self->m_block->customRegions.front();
         }
         self->refreshRoiList();
         if (self->m_roiList && self->m_roiList->count() > 0) {
-            const int selectRow =
-                replaceRow >= 0 ? qMin(replaceRow, self->m_roiList->count() - 1)
-                                : self->m_roiList->count() - 1;
-            self->m_roiList->setCurrentRow(selectRow);
+            self->m_roiList->setCurrentRow(self->m_roiList->count() - 1);
         }
         self->apply();
         if (self->isTemplateCaptureHotkeyHookActive()) {
@@ -845,14 +832,9 @@ void ImageFindEditor::startRoiPick(int replaceListRow) {
     }, pickOptions);
 
     if (ScreenRegionOverlay::isPickActive()) {
-        if (replaceListRow >= 0) {
-            updateEditRoiButton(true);
-        } else {
-            updatePickRoiButton(true);
-        }
+        updatePickRoiButton(true);
     } else {
         m_roiPickActive = false;
-        m_roiPickReplaceRow = -1;
     }
 }
 
@@ -861,18 +843,7 @@ void ImageFindEditor::onPickRoi() {
         ScreenRegionOverlay::dismissAll();
         return;
     }
-    startRoiPick(-1);
-}
-
-void ImageFindEditor::onEditRoi() {
-    if (!m_roiList || m_roiList->currentRow() < 0) {
-        return;
-    }
-    if (m_roiPickActive && ScreenRegionOverlay::isPickActive()) {
-        ScreenRegionOverlay::dismissAll();
-        return;
-    }
-    startRoiPick(m_roiList->currentRow());
+    startRoiPick();
 }
 
 void ImageFindEditor::onRemoveRoi() {
@@ -886,9 +857,6 @@ void ImageFindEditor::onRemoveRoi() {
     }
     if (m_removeRoiButton) {
         m_removeRoiButton->setEnabled(m_roiList->currentRow() >= 0);
-    }
-    if (m_editRoiButton) {
-        m_editRoiButton->setEnabled(m_roiList->currentRow() >= 0);
     }
     apply();
     if (hasConfiguredRoiForPreview() && isTemplateCaptureHotkeyHookActive()) {

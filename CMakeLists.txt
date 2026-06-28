@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(SuckbongMachine VERSION 0.5.54 LANGUAGES CXX)
+project(SuckbongMachine VERSION 0.5.60 LANGUAGES CXX)
 
 option(SBM_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
 
@@ -58,6 +58,7 @@ set(SBM_SOURCES
     src/ui/FeatureListWidget.cpp
     src/ui/HotkeyBindingIcon.cpp
     src/ui/TargetWindowDetailPanel.cpp
+    src/ui/TargetWindowHighlightOverlay.cpp
     src/ui/CustomTitleBar.cpp
     src/ui/UiStateManager.cpp
     src/ui/ProgramSettingsDialog.cpp

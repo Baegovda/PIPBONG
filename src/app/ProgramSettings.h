@@ -5,4 +5,7 @@ class ProgramSettings {
 public:
     static bool autoSelectRunningFeature();
     static void setAutoSelectRunningFeature(bool enabled);
+
+    static bool showWorkflowRunFeedback();
+    static void setShowWorkflowRunFeedback(bool enabled);
 };

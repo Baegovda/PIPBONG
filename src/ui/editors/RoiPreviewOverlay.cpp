@@ -32,6 +32,21 @@ constexpr int kToolbarHeight = 28;
 constexpr int kToolbarGap = 4;
 constexpr int kChromeSpacing = 4;
 constexpr int kButtonPadX = 10;
+constexpr int kHandleHitSize = 10;
+constexpr int kMinRoiSize = 8;
+
+enum class ResizeHandle {
+    None,
+    Move,
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left
+};
 
 struct PreviewState {
     HWND hwnd = nullptr;
@@ -47,11 +62,17 @@ struct PreviewState {
     RoiPreviewOverlay::VisibilityHandler onVisibilityChanged;
     RoiPreviewOverlay::RoiIndexHandler onRoiSelected;
     RoiPreviewOverlay::RoiActionHandler onRoiAdd;
-    RoiPreviewOverlay::RoiIndexHandler onRoiEdit;
+    RoiPreviewOverlay::RoiRegionHandler onRoiRegionChanged;
     RoiPreviewOverlay::RoiIndexHandler onRoiDelete;
     int hoveredRoiIndex = 0;
-    enum class HoveredControl { None, Add, Edit, Delete };
+    enum class HoveredControl { None, Add, Delete };
     HoveredControl hoveredControl = HoveredControl::None;
+    ResizeHandle hoveredResizeHandle = ResizeHandle::None;
+    bool dragging = false;
+    int dragRoiIndex = 0;
+    ResizeHandle dragHandle = ResizeHandle::None;
+    QPoint dragStartPoint;
+    QRect dragStartRect;
 };
 
 struct RoiChromeLayout {
@@ -59,7 +80,6 @@ struct RoiChromeLayout {
     QRect roiRect;
     QRect labelRect;
     QRect addRect;
-    QRect editRect;
     QRect deleteRect;
 };
 
@@ -141,6 +161,200 @@ bool pointInRect(const QPoint& point, const QRect& rect) {
     return rect.contains(point);
 }
 
+QRect targetClientBounds(const PreviewState& state) {
+    return QRect(0, 0, state.physicalBounds.width(), state.physicalBounds.height());
+}
+
+PreviewState::RoiItem* findRoiItem(PreviewState& state, int roiIndex) {
+    for (PreviewState::RoiItem& item : state.roiItems) {
+        if (item.index == roiIndex) {
+            return &item;
+        }
+    }
+    return nullptr;
+}
+
+CaptureRegion clientRectToCaptureRegion(const PreviewState& state, const QRect& clientRect) {
+    CaptureRegion region;
+    region.x = state.physicalBounds.x() + clientRect.x();
+    region.y = state.physicalBounds.y() + clientRect.y();
+    region.width = clientRect.width();
+    region.height = clientRect.height();
+    return region;
+}
+
+QRect normalizeDragRect(QRect rect, const QRect& bounds) {
+    rect = rect.normalized();
+    if (rect.width() < kMinRoiSize) {
+        rect.setWidth(kMinRoiSize);
+    }
+    if (rect.height() < kMinRoiSize) {
+        rect.setHeight(kMinRoiSize);
+    }
+    if (rect.left() < bounds.left()) {
+        rect.moveLeft(bounds.left());
+    }
+    if (rect.top() < bounds.top()) {
+        rect.moveTop(bounds.top());
+    }
+    if (rect.right() > bounds.right()) {
+        rect.moveRight(bounds.right());
+    }
+    if (rect.bottom() > bounds.bottom()) {
+        rect.moveBottom(bounds.bottom());
+    }
+    if (rect.width() < kMinRoiSize || rect.height() < kMinRoiSize) {
+        return {};
+    }
+    return rect;
+}
+
+QRect rectFromResize(const QRect& start, ResizeHandle handle, int dx, int dy, const QRect& bounds) {
+    int left = start.left();
+    int top = start.top();
+    int right = start.right();
+    int bottom = start.bottom();
+    switch (handle) {
+    case ResizeHandle::TopLeft:
+        left += dx;
+        top += dy;
+        break;
+    case ResizeHandle::Top:
+        top += dy;
+        break;
+    case ResizeHandle::TopRight:
+        right += dx;
+        top += dy;
+        break;
+    case ResizeHandle::Right:
+        right += dx;
+        break;
+    case ResizeHandle::BottomRight:
+        right += dx;
+        bottom += dy;
+        break;
+    case ResizeHandle::Bottom:
+        bottom += dy;
+        break;
+    case ResizeHandle::BottomLeft:
+        left += dx;
+        bottom += dy;
+        break;
+    case ResizeHandle::Left:
+        left += dx;
+        break;
+    case ResizeHandle::Move:
+        return normalizeDragRect(start.translated(dx, dy), bounds);
+    default:
+        break;
+    }
+    return normalizeDragRect(QRect(QPoint(left, top), QPoint(right, bottom)), bounds);
+}
+
+QRect handleHitRect(const QPoint& center) {
+    const int half = kHandleHitSize / 2;
+    return QRect(center.x() - half, center.y() - half, kHandleHitSize, kHandleHitSize);
+}
+
+ResizeHandle hitTestResizeHandle(const QRect& roiRect, const QPoint& point, bool selectedOnly, bool selected) {
+    if (selectedOnly && !selected) {
+        return ResizeHandle::None;
+    }
+    const QPoint centers[] = {
+        roiRect.topLeft(),
+        QPoint(roiRect.center().x(), roiRect.top()),
+        roiRect.topRight(),
+        QPoint(roiRect.right(), roiRect.center().y()),
+        roiRect.bottomRight(),
+        QPoint(roiRect.center().x(), roiRect.bottom()),
+        roiRect.bottomLeft(),
+        QPoint(roiRect.left(), roiRect.center().y()),
+    };
+    const ResizeHandle handles[] = {
+        ResizeHandle::TopLeft,
+        ResizeHandle::Top,
+        ResizeHandle::TopRight,
+        ResizeHandle::Right,
+        ResizeHandle::BottomRight,
+        ResizeHandle::Bottom,
+        ResizeHandle::BottomLeft,
+        ResizeHandle::Left,
+    };
+    for (size_t i = 0; i < std::size(handles); ++i) {
+        if (handleHitRect(centers[i]).contains(point)) {
+            return handles[i];
+        }
+    }
+    if (roiRect.contains(point)) {
+        return ResizeHandle::Move;
+    }
+    return ResizeHandle::None;
+}
+
+void drawResizeHandles(HDC hdc, const QRect& roiRect) {
+    const QPoint centers[] = {
+        roiRect.topLeft(),
+        QPoint(roiRect.center().x(), roiRect.top()),
+        roiRect.topRight(),
+        QPoint(roiRect.right(), roiRect.center().y()),
+        roiRect.bottomRight(),
+        QPoint(roiRect.center().x(), roiRect.bottom()),
+        roiRect.bottomLeft(),
+        QPoint(roiRect.left(), roiRect.center().y()),
+    };
+    HBRUSH handleBrush = CreateSolidBrush(RGB(255, 244, 200));
+    HPEN handlePen = CreatePen(PS_SOLID, 1, RGB(255, 214, 90));
+    HGDIOBJ oldBrush = SelectObject(hdc, handleBrush);
+    HGDIOBJ oldPen = SelectObject(hdc, handlePen);
+    for (const QPoint& center : centers) {
+        const QRect handle = handleHitRect(center);
+        Rectangle(hdc, handle.left(), handle.top(), handle.right() + 1, handle.bottom() + 1);
+    }
+    SelectObject(hdc, oldBrush);
+    SelectObject(hdc, oldPen);
+    DeleteObject(handleBrush);
+    DeleteObject(handlePen);
+}
+
+HCURSOR cursorForResizeHandle(ResizeHandle handle) {
+    LPCWSTR resource = IDC_ARROW;
+    switch (handle) {
+    case ResizeHandle::TopLeft:
+    case ResizeHandle::BottomRight:
+        resource = IDC_SIZENWSE;
+        break;
+    case ResizeHandle::TopRight:
+    case ResizeHandle::BottomLeft:
+        resource = IDC_SIZENESW;
+        break;
+    case ResizeHandle::Top:
+    case ResizeHandle::Bottom:
+        resource = IDC_SIZENS;
+        break;
+    case ResizeHandle::Left:
+    case ResizeHandle::Right:
+        resource = IDC_SIZEWE;
+        break;
+    case ResizeHandle::Move:
+        resource = IDC_SIZEALL;
+        break;
+    default:
+        break;
+    }
+    return LoadCursorW(nullptr, resource);
+}
+
+void invokeRoiRegionHandler(RoiPreviewOverlay::RoiRegionHandler handler,
+                            int roiIndex,
+                            const CaptureRegion& region) {
+    if (!handler) {
+        return;
+    }
+    QTimer::singleShot(0, qApp, [handler = std::move(handler), roiIndex, region]() {
+        handler(roiIndex, region);
+    });
+}
+
 void drawToolbarButton(HDC hdc,
                        const QRect& rect,
                        const wchar_t* text,
@@ -212,10 +426,8 @@ std::vector<RoiChromeLayout> buildChromeLayouts(const PreviewState& state, HDC h
     HGDIOBJ oldFont = SelectObject(hdc, buttonFont);
 
     const SIZE addSize = measureText(hdc, L"\ucd94\uac00", 2);
-    const SIZE editSize = measureText(hdc, L"\uc218\uc815", 2);
     const SIZE deleteSize = measureText(hdc, L"\uc0ad\uc81c", 2);
     const int addWidth = addSize.cx + kButtonPadX * 2;
-    const int editWidth = editSize.cx + kButtonPadX * 2;
     const int deleteWidth = deleteSize.cx + kButtonPadX * 2;
 
     HFONT labelFont = createUiFont(-16, FW_BOLD);
@@ -244,8 +456,6 @@ std::vector<RoiChromeLayout> buildChromeLayouts(const PreviewState& state, HDC h
         if (state.interactive) {
             layout.addRect = QRect(cursorX, toolbarY, addWidth, kToolbarHeight);
             cursorX = layout.addRect.right() + kChromeSpacing;
-            layout.editRect = QRect(cursorX, toolbarY, editWidth, kToolbarHeight);
-            cursorX = layout.editRect.right() + kChromeSpacing;
             layout.deleteRect = QRect(cursorX, toolbarY, deleteWidth, kToolbarHeight);
         }
 
@@ -336,6 +546,10 @@ void paintPreview(HDC hdc, PreviewState& state) {
         }
         SelectObject(hdc, oldFont);
         DeleteObject(sizeFont);
+
+        if (selected && state.interactive) {
+            drawResizeHandles(hdc, roiRect);
+        }
     }
 
     const std::vector<RoiChromeLayout> chromeLayouts = buildChromeLayouts(state, hdc);
@@ -352,13 +566,10 @@ void paintPreview(HDC hdc, PreviewState& state) {
         if (state.interactive) {
             const bool addHovered = state.hoveredRoiIndex == layout.roiIndex
                                     && state.hoveredControl == PreviewState::HoveredControl::Add;
-            const bool editHovered = state.hoveredRoiIndex == layout.roiIndex
-                                     && state.hoveredControl == PreviewState::HoveredControl::Edit;
             const bool deleteHovered = state.hoveredRoiIndex == layout.roiIndex
                                        && state.hoveredControl == PreviewState::HoveredControl::Delete;
             SelectObject(hdc, buttonFont);
             drawToolbarButton(hdc, layout.addRect, L"\ucd94\uac00", addHovered, false);
-            drawToolbarButton(hdc, layout.editRect, L"\uc218\uc815", editHovered, false);
             drawToolbarButton(hdc, layout.deleteRect, L"\uc0ad\uc81c", deleteHovered, true);
         }
     }
@@ -380,31 +591,41 @@ bool hitTestInteractive(const PreviewState& state,
                         const QPoint& point,
                         HDC hdc,
                         int* outRoiIndex,
-                        PreviewState::HoveredControl* outControl) {
+                        PreviewState::HoveredControl* outControl,
+                        ResizeHandle* outResizeHandle) {
     const std::vector<RoiChromeLayout> layouts = buildChromeLayouts(state, hdc);
     for (const RoiChromeLayout& layout : layouts) {
         if (state.interactive) {
             if (pointInRect(point, layout.deleteRect)) {
                 *outRoiIndex = layout.roiIndex;
                 *outControl = PreviewState::HoveredControl::Delete;
-                return true;
-            }
-            if (pointInRect(point, layout.editRect)) {
-                *outRoiIndex = layout.roiIndex;
-                *outControl = PreviewState::HoveredControl::Edit;
+                *outResizeHandle = ResizeHandle::None;
                 return true;
             }
             if (pointInRect(point, layout.addRect)) {
                 *outRoiIndex = layout.roiIndex;
                 *outControl = PreviewState::HoveredControl::Add;
+                *outResizeHandle = ResizeHandle::None;
                 return true;
             }
         }
     }
     for (const RoiChromeLayout& layout : layouts) {
-        if (pointInRect(point, layout.roiRect) || pointInRect(point, layout.labelRect)) {
+        const bool selected = state.selectedRoiIndex > 0 && layout.roiIndex == state.selectedRoiIndex;
+        if (state.interactive) {
+            const ResizeHandle handle =
+                hitTestResizeHandle(layout.roiRect, point, true, selected);
+            if (handle != ResizeHandle::None) {
+                *outRoiIndex = layout.roiIndex;
+                *outControl = PreviewState::HoveredControl::None;
+                *outResizeHandle = handle;
+                return true;
+            }
+        }
+        if (pointInRect(point, layout.labelRect) || pointInRect(point, layout.roiRect)) {
             *outRoiIndex = layout.roiIndex;
             *outControl = PreviewState::HoveredControl::None;
+            *outResizeHandle = ResizeHandle::None;
             return true;
         }
     }
@@ -412,23 +633,27 @@ bool hitTestInteractive(const PreviewState& state,
 }
 
 void updateHoverFromPoint(PreviewState& state, const QPoint& point) {
-    if (!state.interactive || !state.hwnd) {
+    if (!state.interactive || !state.hwnd || state.dragging) {
         return;
     }
 
     HDC hdc = GetDC(state.hwnd);
     int roiIndex = 0;
     PreviewState::HoveredControl control = PreviewState::HoveredControl::None;
-    const bool hit = hitTestInteractive(state, point, hdc, &roiIndex, &control);
+    ResizeHandle resizeHandle = ResizeHandle::None;
+    const bool hit = hitTestInteractive(state, point, hdc, &roiIndex, &control, &resizeHandle);
     ReleaseDC(state.hwnd, hdc);
 
     const int nextRoiIndex = hit ? roiIndex : 0;
     const auto nextControl = hit ? control : PreviewState::HoveredControl::None;
-    if (state.hoveredRoiIndex == nextRoiIndex && state.hoveredControl == nextControl) {
+    const ResizeHandle nextResizeHandle = hit ? resizeHandle : ResizeHandle::None;
+    if (state.hoveredRoiIndex == nextRoiIndex && state.hoveredControl == nextControl
+        && state.hoveredResizeHandle == nextResizeHandle) {
         return;
     }
     state.hoveredRoiIndex = nextRoiIndex;
     state.hoveredControl = nextControl;
+    state.hoveredResizeHandle = nextResizeHandle;
     InvalidateRect(state.hwnd, nullptr, FALSE);
 }
 
@@ -459,6 +684,20 @@ LRESULT CALLBACK previewWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
         }
         const int x = GET_X_LPARAM(lParam);
         const int y = GET_Y_LPARAM(lParam);
+        if (state->dragging) {
+            PreviewState::RoiItem* item = findRoiItem(*state, state->dragRoiIndex);
+            if (item) {
+                const int dx = x - state->dragStartPoint.x();
+                const int dy = y - state->dragStartPoint.y();
+                const QRect next =
+                    rectFromResize(state->dragStartRect, state->dragHandle, dx, dy, targetClientBounds(*state));
+                if (!next.isEmpty()) {
+                    item->clientRect = next;
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
+            }
+            return 0;
+        }
         updateHoverFromPoint(*state, QPoint(x, y));
         TRACKMOUSEEVENT track{};
         track.cbSize = sizeof(track);
@@ -468,12 +707,14 @@ LRESULT CALLBACK previewWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
         return 0;
     }
     case WM_MOUSELEAVE: {
-        if (!state || !state->interactive) {
+        if (!state || !state->interactive || state->dragging) {
             break;
         }
-        if (state->hoveredRoiIndex != 0 || state->hoveredControl != PreviewState::HoveredControl::None) {
+        if (state->hoveredRoiIndex != 0 || state->hoveredControl != PreviewState::HoveredControl::None
+            || state->hoveredResizeHandle != ResizeHandle::None) {
             state->hoveredRoiIndex = 0;
             state->hoveredControl = PreviewState::HoveredControl::None;
+            state->hoveredResizeHandle = ResizeHandle::None;
             InvalidateRect(hwnd, nullptr, FALSE);
         }
         return 0;
@@ -482,20 +723,52 @@ LRESULT CALLBACK previewWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
         if (!state || !state->interactive) {
             break;
         }
+        if (state->dragging) {
+            SetCursor(cursorForResizeHandle(state->dragHandle));
+            return TRUE;
+        }
         POINT pt{};
         GetCursorPos(&pt);
         ScreenToClient(hwnd, &pt);
         HDC hdc = GetDC(hwnd);
         int roiIndex = 0;
         PreviewState::HoveredControl control = PreviewState::HoveredControl::None;
-        const bool hit = hitTestInteractive(*state, QPoint(pt.x, pt.y), hdc, &roiIndex, &control);
+        ResizeHandle resizeHandle = ResizeHandle::None;
+        const bool hit = hitTestInteractive(*state, QPoint(pt.x, pt.y), hdc, &roiIndex, &control, &resizeHandle);
         ReleaseDC(hwnd, hdc);
+        if (hit && control == PreviewState::HoveredControl::None && resizeHandle != ResizeHandle::None) {
+            SetCursor(cursorForResizeHandle(resizeHandle));
+            return TRUE;
+        }
+        if (hit && control != PreviewState::HoveredControl::None) {
+            SetCursor(LoadCursorW(nullptr, IDC_HAND));
+            return TRUE;
+        }
         if (hit) {
             SetCursor(LoadCursorW(nullptr, IDC_HAND));
             return TRUE;
         }
         SetCursor(LoadCursorW(nullptr, IDC_ARROW));
         return TRUE;
+    }
+    case WM_LBUTTONUP: {
+        if (!state || !state->interactive || !state->dragging) {
+            break;
+        }
+        state->dragging = false;
+        ReleaseCapture();
+        PreviewState::RoiItem* item = findRoiItem(*state, state->dragRoiIndex);
+        if (item && item->clientRect != state->dragStartRect) {
+            invokeRoiRegionHandler(state->onRoiRegionChanged,
+                                   state->dragRoiIndex,
+                                   clientRectToCaptureRegion(*state, item->clientRect));
+        }
+        state->dragHandle = ResizeHandle::None;
+        state->dragRoiIndex = 0;
+        const int x = GET_X_LPARAM(lParam);
+        const int y = GET_Y_LPARAM(lParam);
+        updateHoverFromPoint(*state, QPoint(x, y));
+        return 0;
     }
     case WM_LBUTTONDOWN: {
         if (!state || !state->interactive) {
@@ -506,7 +779,8 @@ LRESULT CALLBACK previewWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
         HDC hdc = GetDC(hwnd);
         int roiIndex = 0;
         PreviewState::HoveredControl control = PreviewState::HoveredControl::None;
-        const bool hit = hitTestInteractive(*state, QPoint(x, y), hdc, &roiIndex, &control);
+        ResizeHandle resizeHandle = ResizeHandle::None;
+        const bool hit = hitTestInteractive(*state, QPoint(x, y), hdc, &roiIndex, &control, &resizeHandle);
         ReleaseDC(hwnd, hdc);
         if (!hit) {
             break;
@@ -514,10 +788,6 @@ LRESULT CALLBACK previewWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
 
         if (control == PreviewState::HoveredControl::Delete) {
             invokeRoiHandler(state->onRoiDelete, roiIndex);
-            return 0;
-        }
-        if (control == PreviewState::HoveredControl::Edit) {
-            invokeRoiHandler(state->onRoiEdit, roiIndex);
             return 0;
         }
         if (control == PreviewState::HoveredControl::Add) {
@@ -528,7 +798,26 @@ LRESULT CALLBACK previewWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
         if (state->selectedRoiIndex != roiIndex) {
             state->selectedRoiIndex = roiIndex;
             InvalidateRect(hwnd, nullptr, TRUE);
+            invokeRoiHandler(state->onRoiSelected, roiIndex);
+            if (resizeHandle == ResizeHandle::None) {
+                return 0;
+            }
         }
+
+        if (resizeHandle != ResizeHandle::None) {
+            PreviewState::RoiItem* item = findRoiItem(*state, roiIndex);
+            if (!item) {
+                return 0;
+            }
+            state->dragging = true;
+            state->dragRoiIndex = roiIndex;
+            state->dragHandle = resizeHandle;
+            state->dragStartPoint = QPoint(x, y);
+            state->dragStartRect = item->clientRect;
+            SetCapture(hwnd);
+            return 0;
+        }
+
         invokeRoiHandler(state->onRoiSelected, roiIndex);
         return 0;
     }
@@ -623,7 +912,7 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
                              bool interactive,
                              RoiIndexHandler onRoiSelected,
                              RoiActionHandler onRoiAdd,
-                             RoiIndexHandler onRoiEdit,
+                             RoiRegionHandler onRoiRegionChanged,
                              RoiIndexHandler onRoiDelete) {
 #ifdef _WIN32
     MatchTestOverlay::dismissAll();
@@ -700,11 +989,11 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
     g_state->onVisibilityChanged = std::move(onVisibilityChanged);
     g_state->onRoiSelected = std::move(onRoiSelected);
     g_state->onRoiAdd = std::move(onRoiAdd);
-    g_state->onRoiEdit = std::move(onRoiEdit);
+    g_state->onRoiRegionChanged = std::move(onRoiRegionChanged);
     g_state->onRoiDelete = std::move(onRoiDelete);
     if (interactive) {
         g_state->hintText = QObject::tr("탐색 ROI 미리보기\n"
-                                        "ROI 또는 번호를 클릭해 선택 · 추가/수정/삭제 · Esc로 닫기")
+                                        "ROI 드래그로 이동 · 모서리/변으로 크기 조절 · 추가/삭제 · Esc로 닫기")
                                 .toStdWString();
     } else {
         g_state->hintText =
@@ -731,7 +1020,7 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
     (void)interactive;
     (void)onRoiSelected;
     (void)onRoiAdd;
-    (void)onRoiEdit;
+    (void)onRoiRegionChanged;
     (void)onRoiDelete;
     return false;
 #endif

@@ -694,6 +694,8 @@ void FeatureListPanel::setupUi() {
     m_list->setSpacing(0);
     m_list->setItemDelegate(new FeatureListItemDelegate(this));
     connect(m_list, &FeatureListWidget::featureRowsReordered, this, &FeatureListPanel::onFeatureRowsReordered);
+    connect(m_list, &FeatureListWidget::copyRequested, this, &FeatureListPanel::onCopyFeature);
+    connect(m_list, &FeatureListWidget::pasteRequested, this, &FeatureListPanel::onPasteFeature);
     connect(m_list, &FeatureListWidget::deleteRequested, this, &FeatureListPanel::onRemoveFeature);
     m_list->viewport()->installEventFilter(this);
 
@@ -869,20 +871,45 @@ void FeatureListPanel::requestFeatureRun(int row) {
 }
 
 bool FeatureListPanel::eventFilter(QObject* watched, QEvent* event) {
-    if (m_list && watched == m_list->viewport() && event->type() == QEvent::MouseButtonRelease) {
-        const auto* mouseEvent = static_cast<QMouseEvent*>(event);
-        if (mouseEvent->button() == Qt::LeftButton) {
-            QListWidgetItem* item = m_list->itemAt(mouseEvent->pos());
-            if (item) {
-                const int row = m_list->row(item);
-                if (runButtonHitTest(row, mouseEvent->pos())) {
-                    requestFeatureRun(row);
-                    return true;
-                }
-            }
-        }
+    if (!m_list || watched != m_list->viewport()) {
+        return QWidget::eventFilter(watched, event);
     }
-    return QWidget::eventFilter(watched, event);
+
+    if (event->type() != QEvent::MouseButtonPress && event->type() != QEvent::MouseButtonRelease) {
+        return QWidget::eventFilter(watched, event);
+    }
+
+    const auto* mouseEvent = static_cast<QMouseEvent*>(event);
+    if (mouseEvent->button() != Qt::LeftButton) {
+        return QWidget::eventFilter(watched, event);
+    }
+
+    QListWidgetItem* item = m_list->itemAt(mouseEvent->pos());
+    if (!item) {
+        return QWidget::eventFilter(watched, event);
+    }
+
+    const int row = m_list->row(item);
+    if (!runButtonHitTest(row, mouseEvent->pos())) {
+        return QWidget::eventFilter(watched, event);
+    }
+
+    if (event->type() == QEvent::MouseButtonPress) {
+        const QString featureId = item->data(kFeatureIdRole).toString();
+        if (isFeatureRunning(featureId)) {
+            m_ignoreNextRunButtonRelease = true;
+            requestFeatureRun(row);
+        }
+        return true;
+    }
+
+    if (m_ignoreNextRunButtonRelease) {
+        m_ignoreNextRunButtonRelease = false;
+        return true;
+    }
+
+    requestFeatureRun(row);
+    return true;
 }
 
 void FeatureListPanel::onFeatureRowsReordered(int fromRow, int toRow) {
@@ -1035,6 +1062,44 @@ void FeatureListPanel::onRemoveFeature() {
     emit projectModified();
     emit hotkeysChanged();
 }
+
+void FeatureListPanel::onCopyFeature() {
+    if (!m_project) {
+        return;
+    }
+    const int index = selectedIndex();
+    if (index < 0) {
+        return;
+    }
+    const Feature* feature = m_project->featureAt(index);
+    if (!feature) {
+        return;
+    }
+    m_clipboardFeature = feature->clone();
+}
+
+void FeatureListPanel::onPasteFeature() {
+    if (!m_project || !m_editControlsEnabled || !m_clipboardFeature) {
+        return;
+    }
+
+    auto pasted = m_clipboardFeature->duplicateForPaste();
+    pasted->setName(pasted->name() + tr(" 복사").toStdString());
+
+    const int index = selectedIndex();
+    const int insertAt = index >= 0 ? index + 1 : static_cast<int>(m_project->features().size());
+    Feature* feature = m_project->insertFeature(insertAt, std::move(pasted));
+    if (!feature) {
+        return;
+    }
+
+    m_lastSelectedFeatureId = QString::fromStdString(feature->id());
+    refresh();
+    m_list->setCurrentRow(insertAt);
+    emit selectionChanged();
+    emit projectModified();
+    emit hotkeysChanged();
+}
 bool FeatureListPanel::editFeatureAt(int index) {
     if (!m_editControlsEnabled) {
         return false;
@@ -1101,6 +1166,9 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
         });
     }
     menu.addAction(tr("편집"), this, &FeatureListPanel::onEditFeature);
+    menu.addAction(tr("복사"), this, &FeatureListPanel::onCopyFeature);
+    QAction* pasteAction = menu.addAction(tr("붙여넣기"), this, &FeatureListPanel::onPasteFeature);
+    pasteAction->setEnabled(m_editControlsEnabled && m_clipboardFeature != nullptr);
     menu.addAction(tr("삭제"), this, &FeatureListPanel::onRemoveFeature);
     menu.exec(m_list->mapToGlobal(pos));
 }

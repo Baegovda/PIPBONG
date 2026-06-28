@@ -84,8 +84,6 @@ private slots:
 
     void onPickRoi();
 
-    void onEditRoi();
-
     void onRoiPreview();
 
     void onMatchTest();
@@ -134,9 +132,9 @@ private:
 
     void updatePickRoiButton(bool pickActive);
 
-    void updateEditRoiButton(bool pickActive);
+    void applyRoiRegionFromOverlay(int roiIndex, const CaptureRegion& region);
 
-    void startRoiPick(int replaceListRow);
+    void startRoiPick();
 
     void updateMatchTestButton(bool overlayVisible);
 
@@ -164,8 +162,6 @@ private:
 
     bool m_roiPickActive = false;
 
-    int m_roiPickReplaceRow = -1;
-
     DragAdjustDoubleSpinBox* m_thresholdSpin = nullptr;
 
     DragAdjustSpinBox* m_pollIntervalSpin = nullptr;
@@ -177,8 +173,6 @@ private:
     QPushButton* m_removeTemplateButton = nullptr;
 
     QPushButton* m_pickRoiButton = nullptr;
-
-    QPushButton* m_editRoiButton = nullptr;
 
     QListWidget* m_roiList = nullptr;
 

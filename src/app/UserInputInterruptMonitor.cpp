@@ -19,6 +19,19 @@ UserInputInterruptMonitor* g_userInputInterruptMonitor = nullptr;
 HHOOK g_keyboardHook = nullptr;
 HHOOK g_mouseHook = nullptr;
 
+bool isMouseOverOwnProcessWindow(const MSLLHOOKSTRUCT* info) {
+    if (!info) {
+        return false;
+    }
+    HWND hwnd = WindowFromPoint(info->pt);
+    if (!hwnd) {
+        return false;
+    }
+    DWORD windowPid = 0;
+    GetWindowThreadProcessId(hwnd, &windowPid);
+    return windowPid == GetCurrentProcessId();
+}
+
 bool isModifierOnlyVirtualKey(int vk) {
     switch (vk) {
     case VK_SHIFT:
@@ -107,6 +120,9 @@ LRESULT CALLBACK interruptMouseHookProc(int code, WPARAM wParam, LPARAM lParam) 
 
     const auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
     if (info->flags & LLMHF_INJECTED) {
+        return CallNextHookEx(g_mouseHook, code, wParam, lParam);
+    }
+    if (isMouseOverOwnProcessWindow(info)) {
         return CallNextHookEx(g_mouseHook, code, wParam, lParam);
     }
 

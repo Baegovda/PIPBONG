@@ -1,6 +1,6 @@
 # AGENTS.md — SuckbongMachine Master Document
 
-**Current version:** `0.5.54` (from `project(SuckbongMachine VERSION 0.5.54)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
+**Current version:** `0.5.60` (from `project(SuckbongMachine VERSION 0.5.60)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
 
 **Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
 
@@ -302,7 +302,7 @@ poez/                          # repo root (legacy folder name)
 | Templates | `{projectDirectory}/templates/*.png` |
 | Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
 | Debounce | 800 ms after edits; also on window close |
-| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); bottom **설정** button opens program settings dialog |
+| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`), `program/showWorkflowRunFeedback` (default `true`); bottom **설정** button opens program settings dialog |
 
 ---
 
@@ -783,6 +783,51 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.5.60] - 2026-06-27
+
+### Changed
+
+- ROI preview overlay: drag ROI body to move, drag corners/edges to resize; changes persist to `customRegions` via `applyRoiRegionFromOverlay` (`RoiPreviewOverlay`, `ImageFindEditor`).
+- ImageFind **탐색 ROI** toolbar and overlay chrome: removed **수정** button (drag edit replaces screen re-pick).
+
+### Fixed
+
+- ROI preview overlay drag release: `ReleaseCapture()` takes no HWND argument (`RoiPreviewOverlay.cpp`).
+
+## [0.5.59] - 2026-06-27
+
+### Changed
+
+- **누를 동안** (Hold) features: feature list run button disabled again (hotkey-only start); UI click shows guidance message (`FeatureListPanel`, `MainWindow::onFeatureRunRequested`).
+
+## [0.5.58] - 2026-06-27
+
+### Added
+
+- Program settings checkbox **워크플로 실행 시 대상 창에 위치 표시** toggles ImageFind run feedback pulses on the target window (`program/showWorkflowRunFeedback`, `ProgramSettings`, `ProgramSettingsDialog`, `MainWindow::onBlockMatchResult`).
+
+## [0.5.57] - 2026-06-27
+
+### Fixed
+
+- Feature list run button toggles on one click: stop on press (suppress release re-start); ignore **사용자 입력 시 정지** for mouse clicks over SBM's own windows (`FeatureListPanel`, `UserInputInterruptMonitor`).
+
+### Changed
+
+- Feature list run button toggles **누를 동안** features from the UI (was message-only); Hold run button enabled when blocks exist (`FeatureListPanel`, `MainWindow::onFeatureRunRequested`).
+
+## [0.5.56] - 2026-06-27
+
+### Added
+
+- Main window **대상 창**: **현재 창?** button below **창 지정** pulses a sky-blue border on the target window (~2.4 s) via Win32 layered overlay (`TargetWindowHighlightOverlay`, `MainWindow`).
+
+## [0.5.55] - 2026-06-27
+
+### Added
+
+- Feature list **Ctrl+C** / **Ctrl+V** copies and pastes the selected feature (workflow included); paste inserts below selection with ** 복사** suffix, new id, and cleared hotkey; context menu **복사** / **붙여넣기** (`FeatureListWidget`, `FeatureListPanel`, `Feature::duplicateForPaste`, `Project::insertFeature`).
 
 ## [0.5.54] - 2026-06-27
 
@@ -1742,4 +1787,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-27. Current application version: 0.5.54.*
+*Last consolidated: 2026-06-27. Current application version: 0.5.60.*

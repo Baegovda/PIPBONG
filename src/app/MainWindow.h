@@ -63,6 +63,7 @@ private slots:
     void onProgramSettings();
     void onAlwaysOnTopToggled(bool checked);
     void onPickTargetWindow();
+    void onHighlightTargetWindow();
     void onEngineLog(const QString& message);
     void onEngineStarted();
     void onEngineFinished(bool success, const QString& message);
@@ -158,6 +159,7 @@ private:
     QSplitter* m_bottomHorizontalSplitter = nullptr;
     QPlainTextEdit* m_logView = nullptr;
     QPushButton* m_pickWindowButton = nullptr;
+    QPushButton* m_highlightTargetWindowButton = nullptr;
     QCheckBox* m_alwaysOnTopCheck = nullptr;
     QPushButton* m_exitButton = nullptr;
     QPushButton* m_settingsButton = nullptr;

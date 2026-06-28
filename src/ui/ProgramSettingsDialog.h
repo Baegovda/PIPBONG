@@ -13,4 +13,5 @@ private:
     void setupUi();
 
     QCheckBox* m_autoSelectRunningFeatureCheck = nullptr;
+    QCheckBox* m_showWorkflowRunFeedbackCheck = nullptr;
 };

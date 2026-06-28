@@ -18,6 +18,8 @@ public:
 
 signals:
     void featureRowsReordered(int fromRow, int toRow);
+    void copyRequested();
+    void pasteRequested();
     void deleteRequested();
 
 protected:

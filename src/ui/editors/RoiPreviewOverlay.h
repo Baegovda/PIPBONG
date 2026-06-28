@@ -15,6 +15,7 @@ public:
     using VisibilityHandler = std::function<void(bool visible)>;
     using RoiIndexHandler = std::function<void(int roiIndex)>;
     using RoiActionHandler = std::function<void()>;
+    using RoiRegionHandler = std::function<void(int roiIndex, const CaptureRegion& region)>;
 
     static bool isVisible();
     static bool show(SearchArea searchArea,
@@ -27,7 +28,7 @@ public:
                      bool interactive = false,
                      RoiIndexHandler onRoiSelected = {},
                      RoiActionHandler onRoiAdd = {},
-                     RoiIndexHandler onRoiEdit = {},
+                     RoiRegionHandler onRoiRegionChanged = {},
                      RoiIndexHandler onRoiDelete = {});
     static void setSelectedRoiIndex(int selectedRoiIndex);
     static bool hide();

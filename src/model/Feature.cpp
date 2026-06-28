@@ -20,9 +20,14 @@ std::unique_ptr<Feature> Feature::clone() const {
     copy->m_infiniteExitAfterConsecutiveMisses = m_infiniteExitAfterConsecutiveMisses;
     copy->m_userInputInterruptMode = m_userInputInterruptMode;
     copy->m_hotkey = m_hotkey;
-    for (const auto& block : m_workflow.blocks()) {
-        copy->m_workflow.addBlock(block->clone());
-    }
+    copy->m_workflow.assignFrom(m_workflow);
+    return copy;
+}
+
+std::unique_ptr<Feature> Feature::duplicateForPaste() const {
+    auto copy = clone();
+    copy->m_id = generateId();
+    copy->m_hotkey = {};
     return copy;
 }
 

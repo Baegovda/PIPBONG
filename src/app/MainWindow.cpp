@@ -20,6 +20,7 @@
 #include "ui/BlockListWidget.h"
 #include "ui/WorkflowEditorPanel.h"
 #include "ui/TargetWindowDetailPanel.h"
+#include "ui/TargetWindowHighlightOverlay.h"
 #include "app/UpdateChecker.h"
 #include "ui/CustomTitleBar.h"
 #include "ui/UiStateManager.h"
@@ -163,11 +164,19 @@ void MainWindow::setupUi() {
     m_targetWindowDetailPanel = new TargetWindowDetailPanel(targetGroup);
     m_pickWindowButton = new QPushButton(tr("창 지정"), targetGroup);
     m_pickWindowButton->setToolTip(tr("클릭한 뒤 대상 창을 눌러 지정합니다. Esc로 취소."));
+    m_highlightTargetWindowButton = new QPushButton(tr("현재 창?"), targetGroup);
+    m_highlightTargetWindowButton->setToolTip(tr("대상으로 지정된 창 테두리를 깜빡여 표시합니다."));
+
+    auto* targetButtonColumn = new QVBoxLayout();
+    targetButtonColumn->setContentsMargins(0, 0, 0, 0);
+    targetButtonColumn->setSpacing(4);
+    targetButtonColumn->addWidget(m_pickWindowButton);
+    targetButtonColumn->addWidget(m_highlightTargetWindowButton);
 
     auto* detailRow = new QHBoxLayout();
     detailRow->setSpacing(8);
     detailRow->addWidget(m_targetWindowDetailPanel, 1);
-    detailRow->addWidget(m_pickWindowButton, 0, Qt::AlignRight | Qt::AlignVCenter);
+    detailRow->addLayout(targetButtonColumn, 0);
 
     targetLayout->addLayout(detailRow);
 
@@ -305,6 +314,10 @@ void MainWindow::connectSignals() {
     connect(m_settingsButton, &QPushButton::clicked, this, &MainWindow::onProgramSettings);
     connect(m_alwaysOnTopCheck, &QCheckBox::toggled, this, &MainWindow::onAlwaysOnTopToggled);
     connect(m_pickWindowButton, &QPushButton::clicked, this, &MainWindow::onPickTargetWindow);
+    connect(m_highlightTargetWindowButton,
+            &QPushButton::clicked,
+            this,
+            &MainWindow::onHighlightTargetWindow);
 
     UserInputInterruptMonitor::instance().setHandler(
         [this](const std::string& featureId) { onUserInputInterrupt(featureId); });
@@ -329,7 +342,12 @@ void MainWindow::onCheckForUpdates() {
 
 void MainWindow::onProgramSettings() {
     ProgramSettingsDialog dialog(this);
-    dialog.exec();
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    if (!ProgramSettings::showWorkflowRunFeedback()) {
+        WorkflowMatchFeedbackOverlay::dismissAll();
+    }
 }
 
 void MainWindow::onAlwaysOnTopToggled(bool checked) {
@@ -499,6 +517,7 @@ void MainWindow::prepareForShutdown() {
     MatchTestOverlay::dismissAll();
     RoiPreviewOverlay::dismissAll();
     WorkflowMatchFeedbackOverlay::dismissAll();
+    TargetWindowHighlightOverlay::dismissAll();
     WindowPicker::cancelPick();
     CursorPositionPicker::cancelPick();
     m_autoSaveTimer->stop();
@@ -1230,6 +1249,18 @@ void MainWindow::onPickTargetWindow() {
 #endif
 }
 
+void MainWindow::onHighlightTargetWindow() {
+#ifdef _WIN32
+    syncTargetWindowTitleToCapture();
+    if (!TargetWindowHighlightOverlay::flash(this)) {
+        return;
+    }
+    showTransientStatus(tr("대상 창 테두리를 표시합니다."), 2500);
+#else
+    QMessageBox::information(this, tr("현재 창?"), tr("대상 창 표시는 Windows에서만 지원됩니다."));
+#endif
+}
+
 void MainWindow::onEngineLog(const QString& message) {
     appendLog(message);
 }
@@ -1353,7 +1384,7 @@ void MainWindow::onBlockMatchResult(int index,
                                     bool hasClientPoint,
                                     int clientX,
                                     int clientY) {
-    if (hasClientPoint) {
+    if (hasClientPoint && ProgramSettings::showWorkflowRunFeedback()) {
         WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, matched);
     }
 

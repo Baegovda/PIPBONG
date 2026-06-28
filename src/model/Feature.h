@@ -42,6 +42,8 @@ public:
     void setHotkey(const HotkeyBinding& hotkey) { m_hotkey = hotkey; }
 
     std::unique_ptr<Feature> clone() const;
+    /// Deep copy with a new id and cleared hotkey (paste / duplicate).
+    std::unique_ptr<Feature> duplicateForPaste() const;
 
 private:
     static std::string generateId();
