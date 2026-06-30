@@ -1,0 +1,12 @@
+{
+    "dotnet.defaultSolution": "disable",
+    "dotnet.autoDetect": "off",
+
+    // CMake Tools off — use Ctrl+Shift+B / F5 via tasks.json + launch.json only.
+    "cmake.enabled": false,
+
+    "files.exclude": {
+        "**/build-clangd": true,
+        "**/build-static": true
+    }
+}

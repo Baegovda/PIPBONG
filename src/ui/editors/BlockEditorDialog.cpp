@@ -5,12 +5,10 @@
 #include "core/workflow/blocks/CommentBlock.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "core/workflow/blocks/KeyPressBlock.h"
-#include "core/workflow/blocks/IfBlock.h"
 #include "core/workflow/blocks/LoopBlock.h"
 #include "core/workflow/blocks/WaitBlock.h"
 #include "ui/editors/ClickEditor.h"
 #include "ui/editors/CommentEditor.h"
-#include "ui/editors/IfEditor.h"
 #include "ui/editors/LoopEditor.h"
 #include "ui/editors/ImageFindEditor.h"
 #include "ui/editors/KeyPressEditor.h"
@@ -45,14 +43,12 @@ int stackIndexFor(BlockType type) {
         return 2;
     case BlockType::Wait:
         return 3;
-    case BlockType::If:
-        return 4;
     case BlockType::Loop:
-        return 5;
+        return 4;
     case BlockType::Comment:
-        return 6;
+        return 5;
     }
-    return 6;
+    return 5;
 }
 
 } // namespace
@@ -74,22 +70,12 @@ BlockEditorDialog::BlockEditorDialog(Block* block, const QString& projectDirecto
 void BlockEditorDialog::setWorkflowEditorContext(int blockCount, int editingBlockIndex) {
     m_workflowBlockCount = blockCount;
     m_editingBlockIndex = editingBlockIndex;
-    if (m_ifEditor) {
-        m_ifEditor->setWorkflowEditorContext(blockCount, editingBlockIndex);
-    }
 }
 
-void BlockEditorDialog::setGotoBlockPickAvailable(bool available) {
-    if (m_ifEditor) {
-        m_ifEditor->setGotoBlockPickAvailable(available);
+void BlockEditorDialog::setRoiCorrectionUiPolicy(bool featureGlobalEnabled, bool sessionEligible) {
+    if (m_imageFindEditor) {
+        m_imageFindEditor->setRoiCorrectionUiPolicy(featureGlobalEnabled, sessionEligible);
     }
-}
-
-void BlockEditorDialog::applyIfGotoBlockPick(int branch, int blockNumber) {
-    if (m_block->type() != BlockType::If || !m_ifEditor) {
-        return;
-    }
-    m_ifEditor->applyPickedGotoBlock(branch, blockNumber);
 }
 
 void BlockEditorDialog::setupUi() {
@@ -114,7 +100,6 @@ void BlockEditorDialog::setupUi() {
     m_clickFormBlock = BlockFactory::create(BlockType::Click);
     m_keyPressFormBlock = BlockFactory::create(BlockType::KeyPress);
     m_waitFormBlock = BlockFactory::create(BlockType::Wait);
-    m_ifFormBlock = BlockFactory::create(BlockType::If);
     m_loopFormBlock = BlockFactory::create(BlockType::Loop);
     m_commentFormBlock = BlockFactory::create(BlockType::Comment);
 
@@ -124,7 +109,6 @@ void BlockEditorDialog::setupUi() {
     m_keyPressEditor =
         new KeyPressEditor(static_cast<KeyPressBlock*>(m_keyPressFormBlock.get()), this, true);
     m_waitEditor = new WaitEditor(static_cast<WaitBlock*>(m_waitFormBlock.get()), this, true);
-    m_ifEditor = new IfEditor(static_cast<IfBlock*>(m_ifFormBlock.get()), m_projectDirectory, this, true);
     m_loopEditor =
         new LoopEditor(static_cast<LoopBlock*>(m_loopFormBlock.get()), m_projectDirectory, this, true);
     m_commentEditor = new CommentEditor(static_cast<CommentBlock*>(m_commentFormBlock.get()), this, true);
@@ -133,7 +117,6 @@ void BlockEditorDialog::setupUi() {
     m_stack->addWidget(m_clickEditor);
     m_stack->addWidget(m_keyPressEditor);
     m_stack->addWidget(m_waitEditor);
-    m_stack->addWidget(m_ifEditor);
     m_stack->addWidget(m_loopEditor);
     m_stack->addWidget(m_commentEditor);
     m_stack->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
@@ -159,9 +142,6 @@ void BlockEditorDialog::setupUi() {
         case BlockType::Wait:
             m_waitEditor->apply();
             break;
-        case BlockType::If:
-            m_ifEditor->apply();
-            break;
         case BlockType::Loop:
             m_loopEditor->apply();
             break;
@@ -176,8 +156,6 @@ void BlockEditorDialog::setupUi() {
 
     connect(m_clickEditor, &ClickEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
     connect(m_waitEditor, &WaitEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
-    connect(m_ifEditor, &IfEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
-    connect(m_ifEditor, &IfEditor::requestGotoBlockPick, this, &BlockEditorDialog::requestIfGotoBlockPick);
     connect(m_loopEditor, &LoopEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
     connect(m_stack, &QStackedWidget::currentChanged, this, [this](int) {
         if (m_imageFindEditor) {
@@ -197,7 +175,6 @@ void BlockEditorDialog::setupTypeButtons(QHBoxLayout* row) {
                                BlockType::Click,
                                BlockType::KeyPress,
                                BlockType::Wait,
-                               BlockType::If,
                                BlockType::Loop};
 
     for (const BlockType type : types) {
@@ -248,10 +225,6 @@ void BlockEditorDialog::reloadEditorForType(BlockType type) {
         break;
     case BlockType::Wait:
         m_waitEditor->setBlock(static_cast<WaitBlock*>(m_block.get()));
-        break;
-    case BlockType::If:
-        m_ifEditor->setBlock(static_cast<IfBlock*>(m_block.get()));
-        m_ifEditor->setWorkflowEditorContext(m_workflowBlockCount, m_editingBlockIndex);
         break;
     case BlockType::Loop:
         m_loopEditor->setBlock(static_cast<LoopBlock*>(m_block.get()));

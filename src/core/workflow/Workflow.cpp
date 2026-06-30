@@ -62,6 +62,9 @@ void Workflow::normalizeLoopRegions() {
 }
 
 void Workflow::addBlock(std::unique_ptr<Block> block) {
+    if (!block) {
+        return;
+    }
     m_blocks.push_back(std::move(block));
 }
 

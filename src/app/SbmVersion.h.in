@@ -1,0 +1,5 @@
+#pragma once
+
+#define SBM_VERSION "@PROJECT_VERSION@"
+#define SBM_UPDATE_GITHUB_REPO "Baegovda/SBM-releases"
+#define SBM_UPDATE_ASSET_NAME "SuckbongMachine.exe"

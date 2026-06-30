@@ -43,6 +43,17 @@ Feature* Project::addFeature(const std::string& name) {
     return ptr;
 }
 
+Feature* Project::insertFeature(int index, std::unique_ptr<Feature> feature) {
+    if (!feature) {
+        return nullptr;
+    }
+    const int size = static_cast<int>(m_features.size());
+    index = std::clamp(index, 0, size);
+    Feature* ptr = feature.get();
+    m_features.insert(m_features.begin() + index, std::move(feature));
+    return ptr;
+}
+
 void Project::removeFeature(int index) {
     if (index < 0 || index >= static_cast<int>(m_features.size())) {
         return;

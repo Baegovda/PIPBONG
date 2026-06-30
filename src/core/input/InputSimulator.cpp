@@ -13,8 +13,13 @@
 namespace {
 
 #ifdef _WIN32
-constexpr auto kMultiClickGap = std::chrono::milliseconds(1);
+constexpr auto kCursorSettleDelay = std::chrono::milliseconds(16);
+constexpr auto kTapHoldDelay = std::chrono::milliseconds(12);
+constexpr auto kMultiClickGap = std::chrono::milliseconds(8);
+constexpr auto kCursorMultiClickGap = std::chrono::milliseconds(1);
 constexpr auto kWheelRepeatGap = std::chrono::milliseconds(10);
+constexpr int kCursorPositionTolerancePx = 2;
+constexpr int kCursorPositionMaxAttempts = 5;
 
 thread_local ExecutionContext* g_activeExecutionContext = nullptr;
 
@@ -77,6 +82,51 @@ void setCursorScreenPos(int screenX, int screenY) {
     SetCursorPos(screenX, screenY);
 }
 
+bool isCursorNearScreenPos(int screenX, int screenY) {
+    POINT pt{};
+    if (!GetCursorPos(&pt)) {
+        return false;
+    }
+    const int dx = pt.x - screenX;
+    const int dy = pt.y - screenY;
+    return dx >= -kCursorPositionTolerancePx && dx <= kCursorPositionTolerancePx
+           && dy >= -kCursorPositionTolerancePx && dy <= kCursorPositionTolerancePx;
+}
+
+void settleCursorAtScreenPos(int screenX, int screenY) {
+    if (isCursorNearScreenPos(screenX, screenY)) {
+        return;
+    }
+    constexpr auto kRetryDelay = std::chrono::milliseconds(4);
+    for (int attempt = 0; attempt < kCursorPositionMaxAttempts; ++attempt) {
+        SetCursorPos(screenX, screenY);
+        POINT pt{};
+        if (GetCursorPos(&pt)) {
+            const int dx = pt.x - screenX;
+            const int dy = pt.y - screenY;
+            if (dx >= -kCursorPositionTolerancePx && dx <= kCursorPositionTolerancePx
+                && dy >= -kCursorPositionTolerancePx && dy <= kCursorPositionTolerancePx) {
+                std::this_thread::sleep_for(kCursorSettleDelay);
+                return;
+            }
+        }
+        if (attempt + 1 < kCursorPositionMaxAttempts) {
+            std::this_thread::sleep_for(kRetryDelay);
+        }
+    }
+    SetCursorPos(screenX, screenY);
+    std::this_thread::sleep_for(kCursorSettleDelay);
+}
+
+void moveCursorToScreenIfNeeded(int screenX, int screenY, ClickAction action) {
+    if (action == ClickAction::Up) {
+        return;
+    }
+    if (!isCursorNearScreenPos(screenX, screenY)) {
+        SetCursorPos(screenX, screenY);
+    }
+}
+
 bool isStandardClickButton(MouseButton button) {
     return button == MouseButton::Left || button == MouseButton::Right
            || button == MouseButton::Middle;
@@ -97,6 +147,12 @@ void sendStandardButtonUp(MouseButton button) {
 }
 
 void sendStandardButtonTap(MouseButton button) {
+    sendStandardButtonDown(button);
+    std::this_thread::sleep_for(kTapHoldDelay);
+    sendStandardButtonUp(button);
+}
+
+void sendStandardButtonTapAtCursor(MouseButton button) {
     INPUT inputs[2]{};
     inputs[0].type = INPUT_MOUSE;
     inputs[0].mi.dwFlags = mouseDownFlag(button);
@@ -122,22 +178,64 @@ void sendXButtonUp(MouseButton button) {
 }
 
 void sendXButtonTap(MouseButton button) {
+    sendXButtonDown(button);
+    std::this_thread::sleep_for(kTapHoldDelay);
+    sendXButtonUp(button);
+}
+
+void sendXButtonTapAtCursor(MouseButton button) {
+    const DWORD data = xButtonData(button);
     INPUT inputs[2]{};
     inputs[0].type = INPUT_MOUSE;
     inputs[0].mi.dwFlags = MOUSEEVENTF_XDOWN;
-    inputs[0].mi.mouseData = xButtonData(button);
+    inputs[0].mi.mouseData = data;
     inputs[1].type = INPUT_MOUSE;
     inputs[1].mi.dwFlags = MOUSEEVENTF_XUP;
-    inputs[1].mi.mouseData = xButtonData(button);
+    inputs[1].mi.mouseData = data;
     sendInputs(inputs, 2);
 }
 
-void clickStandardAtScreen(int screenX,
-                           int screenY,
-                           MouseButton button,
-                           ClickAction action,
-                           int count) {
-    setCursorScreenPos(screenX, screenY);
+void performStandardButtonActionAtCursor(MouseButton button, ClickAction action, int count) {
+    switch (action) {
+    case ClickAction::Down:
+        sendStandardButtonDown(button);
+        break;
+    case ClickAction::Up:
+        sendStandardButtonUp(button);
+        break;
+    case ClickAction::Tap:
+    default:
+        for (int i = 0; i < count; ++i) {
+            sendStandardButtonTapAtCursor(button);
+            if (i + 1 < count) {
+                std::this_thread::sleep_for(kCursorMultiClickGap);
+            }
+        }
+        break;
+    }
+}
+
+void performXButtonActionAtCursor(MouseButton button, ClickAction action, int count) {
+    switch (action) {
+    case ClickAction::Down:
+        sendXButtonDown(button);
+        break;
+    case ClickAction::Up:
+        sendXButtonUp(button);
+        break;
+    case ClickAction::Tap:
+    default:
+        for (int i = 0; i < count; ++i) {
+            sendXButtonTapAtCursor(button);
+            if (i + 1 < count) {
+                std::this_thread::sleep_for(kCursorMultiClickGap);
+            }
+        }
+        break;
+    }
+}
+
+void performStandardButtonAction(MouseButton button, ClickAction action, int count) {
     switch (action) {
     case ClickAction::Down:
         sendStandardButtonDown(button);
@@ -157,12 +255,28 @@ void clickStandardAtScreen(int screenX,
     }
 }
 
+void clickStandardAtScreen(int screenX,
+                           int screenY,
+                           MouseButton button,
+                           ClickAction action,
+                           int count) {
+    const bool needsCursorMove = action != ClickAction::Up;
+    if (needsCursorMove) {
+        settleCursorAtScreenPos(screenX, screenY);
+    }
+    performStandardButtonAction(button, action, count);
+}
+
 void clickXButtonAtScreen(int screenX,
                           int screenY,
                           MouseButton button,
                           ClickAction action,
                           int count) {
-    setCursorScreenPos(screenX, screenY);
+    const bool needsCursorMove =
+        action != ClickAction::Up;
+    if (needsCursorMove) {
+        settleCursorAtScreenPos(screenX, screenY);
+    }
     switch (action) {
     case ClickAction::Down:
         sendXButtonDown(button);
@@ -206,14 +320,7 @@ void sendXButton(MouseButton button, ClickAction action, int count) {
     case ClickAction::Tap:
     default:
         for (int i = 0; i < count; ++i) {
-            INPUT inputs[2]{};
-            inputs[0].type = INPUT_MOUSE;
-            inputs[0].mi.dwFlags = MOUSEEVENTF_XDOWN;
-            inputs[0].mi.mouseData = data;
-            inputs[1].type = INPUT_MOUSE;
-            inputs[1].mi.dwFlags = MOUSEEVENTF_XUP;
-            inputs[1].mi.mouseData = data;
-            sendInputs(inputs, 2);
+            sendXButtonTap(button);
             if (i + 1 < count) {
                 std::this_thread::sleep_for(kMultiClickGap);
             }
@@ -414,12 +521,7 @@ void InputSimulator::mouseButton(MouseButton button, ClickAction action, int cou
     case ClickAction::Tap:
     default:
         for (int i = 0; i < count; ++i) {
-            INPUT inputs[2]{};
-            inputs[0].type = INPUT_MOUSE;
-            inputs[0].mi.dwFlags = mouseDownFlag(button);
-            inputs[1].type = INPUT_MOUSE;
-            inputs[1].mi.dwFlags = mouseUpFlag(button);
-            sendInputs(inputs, 2);
+            sendStandardButtonTap(button);
             if (i + 1 < count) {
                 std::this_thread::sleep_for(kMultiClickGap);
             }
@@ -460,12 +562,83 @@ void InputSimulator::clickAt(int screenX,
     }
 
     if (isWheelScrollButton(button)) {
-        setCursorScreenPos(screenX, screenY);
+        settleCursorAtScreenPos(screenX, screenY);
         sendWheelScroll(button, count);
     } else if (button == MouseButton::Back || button == MouseButton::Forward) {
         clickXButtonAtScreen(screenX, screenY, button, action, count);
     } else if (isStandardClickButton(button)) {
         clickStandardAtScreen(screenX, screenY, button, action, count);
+    }
+
+    if (needsModifiers && action == ClickAction::Tap) {
+        releaseAppliedModifiers(appliedMods, beforeBlock);
+    }
+#endif
+}
+
+void InputSimulator::clickAtCursor(MouseButton button,
+                                   ClickAction action,
+                                   int count,
+                                   KeyModifiers mods) {
+#ifdef _WIN32
+    if (action == ClickAction::MoveOnly) {
+        return;
+    }
+
+    const bool needsModifiers = mods.any();
+    ModifierSnapshot beforeBlock{};
+    AppliedKeyModifiers appliedMods{};
+    if (needsModifiers) {
+        beforeBlock = captureModifierSnapshot();
+        if (action == ClickAction::Tap || action == ClickAction::Down) {
+            appliedMods = pressModifiersIfNeeded(mods, beforeBlock);
+        }
+    }
+
+    if (isWheelScrollButton(button)) {
+        sendWheelScroll(button, count);
+    } else if (button == MouseButton::Back || button == MouseButton::Forward) {
+        performXButtonActionAtCursor(button, action, count);
+    } else if (isStandardClickButton(button)) {
+        performStandardButtonActionAtCursor(button, action, count);
+    }
+
+    if (needsModifiers && action == ClickAction::Tap) {
+        releaseAppliedModifiers(appliedMods, beforeBlock);
+    }
+#endif
+}
+
+void InputSimulator::clickAtMatchScreen(int screenX,
+                                        int screenY,
+                                        MouseButton button,
+                                        ClickAction action,
+                                        int count,
+                                        KeyModifiers mods) {
+#ifdef _WIN32
+    if (action == ClickAction::MoveOnly) {
+        moveCursorToScreenIfNeeded(screenX, screenY, action);
+        return;
+    }
+
+    const bool needsModifiers = mods.any();
+    ModifierSnapshot beforeBlock{};
+    AppliedKeyModifiers appliedMods{};
+    if (needsModifiers) {
+        beforeBlock = captureModifierSnapshot();
+        if (action == ClickAction::Tap || action == ClickAction::Down) {
+            appliedMods = pressModifiersIfNeeded(mods, beforeBlock);
+        }
+    }
+
+    moveCursorToScreenIfNeeded(screenX, screenY, action);
+
+    if (isWheelScrollButton(button)) {
+        sendWheelScroll(button, count);
+    } else if (button == MouseButton::Back || button == MouseButton::Forward) {
+        performXButtonActionAtCursor(button, action, count);
+    } else if (isStandardClickButton(button)) {
+        performStandardButtonActionAtCursor(button, action, count);
     }
 
     if (needsModifiers && action == ClickAction::Tap) {

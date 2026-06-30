@@ -1,5 +1,7 @@
 #include "app/UpdateChecker.h"
 
+#include "SbmVersion.h"
+
 #include <nlohmann/json.hpp>
 
 #include <QCoreApplication>
@@ -23,14 +25,6 @@
 #endif
 
 namespace {
-
-#ifndef SBM_UPDATE_GITHUB_REPO
-#define SBM_UPDATE_GITHUB_REPO "Baegovda/SBM-releases"
-#endif
-
-#ifndef SBM_UPDATE_ASSET_NAME
-#define SBM_UPDATE_ASSET_NAME "SuckbongMachine.exe"
-#endif
 
 QString githubLatestReleaseApiUrl() {
     return QStringLiteral("https://api.github.com/repos/%1/releases/latest")

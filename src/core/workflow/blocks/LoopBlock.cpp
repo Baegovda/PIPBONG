@@ -29,7 +29,7 @@ std::string LoopBlock::summary() const {
 }
 
 BlockResult LoopBlock::execute(ExecutionContext& ctx) {
-    if (!ctx.enterIfScope()) {
+    if (!ctx.enterNestingScope()) {
         BlockResult result;
         result.success = false;
         result.message = "구간 반복 블록 중첩 깊이 초과";
@@ -40,14 +40,14 @@ BlockResult LoopBlock::execute(ExecutionContext& ctx) {
     int iteration = 0;
     while (true) {
         if (!ctx.waitWhilePaused()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             BlockResult result;
             result.success = false;
             result.message = "사용자에 의해 중지됨";
             return result;
         }
         if (ctx.shouldStop()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             BlockResult result;
             result.success = false;
             result.message = "사용자에 의해 중지됨";
@@ -67,7 +67,7 @@ BlockResult LoopBlock::execute(ExecutionContext& ctx) {
         ctx.setImageFindMaxMissAttempts(savedMissLimit);
 
         if (ctx.shouldStop()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             BlockResult result;
             result.success = false;
             result.message = "사용자에 의해 중지됨";
@@ -77,7 +77,7 @@ BlockResult LoopBlock::execute(ExecutionContext& ctx) {
         if (shouldExitAfterIteration(ctx, runResult.success)) {
             ctx.log("구간 반복 종료: " + loopExitConditionToString(exitCondition) + " ("
                     + std::to_string(iteration) + "회)");
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             BlockResult result;
             result.success = true;
             result.message = "구간 반복 완료";
@@ -85,7 +85,7 @@ BlockResult LoopBlock::execute(ExecutionContext& ctx) {
         }
 
         if (!runResult.success && exitCondition != LoopExitCondition::DetectionFailed) {
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             BlockResult result;
             result.success = false;
             result.message = runResult.message.empty() ? "구간 반복 본문 실패" : runResult.message;
@@ -94,7 +94,7 @@ BlockResult LoopBlock::execute(ExecutionContext& ctx) {
 
         if (!runResult.success && exitCondition == LoopExitCondition::DetectionFailed
             && !ctx.detectionFailedThisRun()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             BlockResult result;
             result.success = false;
             result.message = runResult.message.empty() ? "구간 반복 본문 실패" : runResult.message;

@@ -104,6 +104,16 @@ public:
                         ClickAction action,
                         int count = 1,
                         KeyModifiers mods = {});
+    static void clickAtCursor(MouseButton button,
+                              ClickAction action,
+                              int count = 1,
+                              KeyModifiers mods = {});
+    static void clickAtMatchScreen(int screenX,
+                                   int screenY,
+                                   MouseButton button,
+                                   ClickAction action,
+                                   int count = 1,
+                                   KeyModifiers mods = {});
 
 #ifdef _WIN32
     static void clickAtClient(HWND hwnd,

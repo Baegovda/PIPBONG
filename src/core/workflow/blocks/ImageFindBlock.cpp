@@ -5,6 +5,7 @@
 #include "core/vision/ImageMatcher.h"
 #include "core/workflow/ExecutionContext.h"
 #include "ui/editors/WorkflowMatchFeedbackOverlay.h"
+#include "ui/editors/WorkflowRoiFlashOverlay.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -12,6 +13,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <sstream>
 #include <thread>
@@ -27,6 +29,10 @@ namespace {
 bool sleepUnlessStopped(ExecutionContext& ctx, int delayMs) {
     return ctx.interruptibleSleepMs(delayMs);
 }
+
+struct RunRoiOverlayGuard {
+    ~RunRoiOverlayGuard() { WorkflowRoiFlashOverlay::dismissAll(); }
+};
 
 SearchArea searchAreaFromString(const std::string& value) {
     if (value == "FullScreen") return SearchArea::FullScreen;
@@ -227,6 +233,30 @@ bool isValidCustomRegion(const CaptureRegion& region) {
     return region.width >= 2 && region.height >= 2;
 }
 
+constexpr double kRoiCorrectionExpandRatio = 1.10;
+
+CaptureRegion expandRoiCorrectionRegion(const CaptureRegion& matched) {
+    CaptureRegion region = matched;
+    if (region.width <= 0 || region.height <= 0) {
+        return region;
+    }
+    int expandedWidth = static_cast<int>(std::ceil(region.width * kRoiCorrectionExpandRatio));
+    int expandedHeight = static_cast<int>(std::ceil(region.height * kRoiCorrectionExpandRatio));
+    if (expandedWidth < region.width + 1) {
+        expandedWidth = region.width + 1;
+    }
+    if (expandedHeight < region.height + 1) {
+        expandedHeight = region.height + 1;
+    }
+    const int centerX = region.x + region.width / 2;
+    const int centerY = region.y + region.height / 2;
+    region.width = expandedWidth;
+    region.height = expandedHeight;
+    region.x = centerX - expandedWidth / 2;
+    region.y = centerY - expandedHeight / 2;
+    return region;
+}
+
 void pruneInvalidCustomRegions(std::vector<CaptureRegion>& regions) {
     regions.erase(std::remove_if(regions.begin(),
                                  regions.end(),
@@ -407,7 +437,35 @@ BlockResult imageFindDetectionFailureResult(ExecutionContext& ctx) {
     return result;
 }
 
+void maybeRecordRoiCorrection(ExecutionContext& ctx,
+                              bool blockRoiCorrection,
+                              const MatchResult& match,
+                              SearchArea searchArea,
+                              const CaptureRegion& customRegion,
+                              const PercentRegion& percentRegion) {
+    if (!ctx.shouldUseRoiCorrectionForBlock(blockRoiCorrection) || ctx.runLoopNumber() != 1) {
+        return;
+    }
+    const int blockIndex = ctx.activeBlockIndex();
+    if (blockIndex < 0 || match.matchedSize.width <= 0 || match.matchedSize.height <= 0) {
+        return;
+    }
+    const cv::Point physicalTopLeft = ScreenCapture::haystackTopLeftToPhysical(
+        searchArea, customRegion, percentRegion, match.location);
+    CaptureRegion region;
+    region.x = physicalTopLeft.x;
+    region.y = physicalTopLeft.y;
+    region.width = match.matchedSize.width;
+    region.height = match.matchedSize.height;
+    region = expandRoiCorrectionRegion(region);
+    if (!isValidCustomRegion(region)) {
+        return;
+    }
+    ctx.setCorrectedRoi(blockIndex, region);
+}
+
 BlockResult imageFindSuccessResult(ExecutionContext& ctx,
+                                   bool blockRoiCorrection,
                                    const cv::Mat& haystack,
                                    const ImageFindSelection& selection,
                                    SearchArea searchArea,
@@ -478,6 +536,7 @@ BlockResult imageFindSuccessResult(ExecutionContext& ctx,
         result.message += " [" + std::to_string(selectedIndex) + "/" + std::to_string(foundCount) + "]";
     }
     result.message += extraMessageSuffix;
+    maybeRecordRoiCorrection(ctx, blockRoiCorrection, match, searchArea, customRegion, percentRegion);
     ctx.reportProgress(BlockProgressKind::ImageFindSuccess);
     ctx.log(result.message);
     return result;
@@ -563,8 +622,24 @@ const PreparedTemplate& ImageFindBlock::cachedTemplateFor(const std::string& res
 }
 
 BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
-    normalizeImageFindSearchArea(searchArea, customRegions, customRegion);
-    syncLegacyCustomRegionFromList(customRegion, customRegions);
+    RunRoiOverlayGuard roiOverlayGuard;
+
+    SearchArea runtimeSearchArea = searchArea;
+    std::vector<CaptureRegion> runtimeCustomRegions = customRegions;
+    CaptureRegion runtimeCustomRegion = customRegion;
+    PercentRegion runtimePercentRegion = percentRegion;
+
+    if (ctx.shouldUseRoiCorrectionForBlock(roiCorrection) && ctx.runLoopNumber() >= 2) {
+        if (const std::optional<CaptureRegion> corrected = ctx.correctedRoi(ctx.activeBlockIndex())) {
+            runtimeSearchArea = SearchArea::CustomRegion;
+            runtimeCustomRegions = { *corrected };
+            runtimeCustomRegion = *corrected;
+            runtimePercentRegion = {};
+        }
+    }
+
+    normalizeImageFindSearchArea(runtimeSearchArea, runtimeCustomRegions, runtimeCustomRegion);
+    syncLegacyCustomRegionFromList(runtimeCustomRegion, runtimeCustomRegions);
 
     std::vector<std::string> relativePaths;
     std::vector<const PreparedTemplate*> templates;
@@ -594,6 +669,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
 
     const MatchOptions options = matchOptions();
     int missAttempts = 0;
+    int pollAttemptCount = 0;
     int64_t matchWorkMs = 0;
     auto lapStart = std::chrono::steady_clock::now();
     const auto accumulateMatchWork = [&]() {
@@ -609,14 +685,19 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
 #endif
 
     std::vector<CaptureRegion> pollRegions =
-        effectiveCustomRegions(customRegions, customRegion);
-    if (searchArea != SearchArea::CustomRegion) {
+        effectiveCustomRegions(runtimeCustomRegions, runtimeCustomRegion);
+    if (runtimeSearchArea != SearchArea::CustomRegion) {
         pollRegions.assign(1, CaptureRegion{});
     } else if (pollRegions.empty()) {
-        pollRegions.push_back(customRegion);
+        pollRegions.push_back(runtimeCustomRegion);
     }
 
+    WorkflowRoiFlashOverlay::showSearchArea(
+        runtimeSearchArea, runtimeCustomRegion, runtimePercentRegion, runtimeCustomRegions);
+
     while (true) {
+        ++pollAttemptCount;
+        ctx.setImageFindPollAttempt(pollAttemptCount);
         lapStart = std::chrono::steady_clock::now();
 
         WorkflowMatchFeedbackOverlay::hideBeforeCapture();
@@ -627,6 +708,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             result.success = false;
             result.message = "중지됨";
             result.imageFindMatchDurationMs = matchWorkMs;
+            result.imageFindPollAttempts = pollAttemptCount;
             return result;
         }
         if (!ctx.waitWhilePaused()) {
@@ -635,6 +717,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             result.success = false;
             result.message = "사용자에 의해 중지됨";
             result.imageFindMatchDurationMs = matchWorkMs;
+            result.imageFindPollAttempts = pollAttemptCount;
             return result;
         }
 
@@ -645,7 +728,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         for (const CaptureRegion& activeRegion : pollRegions) {
             missReportRegion = activeRegion;
             const cv::Mat haystack = ScreenCapture::captureSearchAreaForImageFind(
-                searchArea, activeRegion, percentRegion);
+                runtimeSearchArea, activeRegion, runtimePercentRegion);
             if (haystack.empty() || ScreenCapture::isMostlyBlack(haystack)) {
                 continue;
             }
@@ -655,19 +738,21 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             if (templateMatchMode == ImageFindTemplateMatchMode::Any) {
                 for (size_t index = 0; index < templates.size(); ++index) {
                     const ImageFindSelection selection = trySelectImageFindMatch(
-                        haystack, hayGray, *templates[index], options, ctx, searchArea, activeRegion, percentRegion);
+                        haystack, hayGray, *templates[index], options, ctx, runtimeSearchArea, activeRegion, runtimePercentRegion);
                     if (selection.ok) {
                         accumulateMatchWork();
                         BlockResult result = imageFindSuccessResult(ctx,
+                                                                  roiCorrection,
                                                                   haystack,
                                                                   selection,
-                                                                  searchArea,
+                                                                  runtimeSearchArea,
                                                                   activeRegion,
-                                                                  percentRegion,
+                                                                  runtimePercentRegion,
                                                                   targetWindow,
                                                                   threshold,
                                                                   relativePaths[index]);
                         result.imageFindMatchDurationMs = matchWorkMs;
+                        result.imageFindPollAttempts = pollAttemptCount;
                         return result;
                     }
                     if (selection.peak.found
@@ -683,7 +768,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             bool allMatched = true;
             for (const PreparedTemplate* templ : templates) {
                 const ImageFindSelection selection = trySelectImageFindMatch(
-                    haystack, hayGray, *templ, options, ctx, searchArea, activeRegion, percentRegion);
+                    haystack, hayGray, *templ, options, ctx, runtimeSearchArea, activeRegion, runtimePercentRegion);
                 selections.push_back(selection);
                 if (!selection.ok) {
                     allMatched = false;
@@ -695,7 +780,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             }
 
             if (allMatched && !selections.empty()) {
-                consumeAllSelections(ctx, searchArea, activeRegion, percentRegion, selections);
+                consumeAllSelections(ctx, runtimeSearchArea, activeRegion, runtimePercentRegion, selections);
                 std::string extraSuffix;
                 if (templates.size() > 1) {
                     std::ostringstream details;
@@ -708,17 +793,19 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                 }
                 accumulateMatchWork();
                 BlockResult result = imageFindSuccessResult(ctx,
+                                                            roiCorrection,
                                                             haystack,
                                                             selections.front(),
-                                                            searchArea,
+                                                            runtimeSearchArea,
                                                             activeRegion,
-                                                            percentRegion,
+                                                            runtimePercentRegion,
                                                             targetWindow,
                                                             threshold,
                                                             relativePaths.front(),
                                                             false,
                                                             extraSuffix);
                 result.imageFindMatchDurationMs = matchWorkMs;
+                result.imageFindPollAttempts = pollAttemptCount;
                 return result;
             }
         }
@@ -726,14 +813,15 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         reportImageFindMiss(ctx,
                             threshold,
                             anyValidHaystack ? bestMissPeak : MatchResult{},
-                            searchArea,
+                            runtimeSearchArea,
                             missReportRegion,
-                            percentRegion,
+                            runtimePercentRegion,
                             targetWindow);
         if (imageFindExceededMissLimit(ctx, missAttempts)) {
             accumulateMatchWork();
             BlockResult result = imageFindDetectionFailureResult(ctx);
             result.imageFindMatchDurationMs = matchWorkMs;
+            result.imageFindPollAttempts = pollAttemptCount;
             return result;
         }
         accumulateMatchWork();
@@ -742,6 +830,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             result.success = false;
             result.message = "사용자에 의해 중지됨";
             result.imageFindMatchDurationMs = matchWorkMs;
+            result.imageFindPollAttempts = pollAttemptCount;
             return result;
         }
     }
@@ -789,6 +878,9 @@ nlohmann::json ImageFindBlock::toJson() const {
     if (std::abs(maxScale - 1.1) > 1e-9) {
         json["maxScale"] = maxScale;
     }
+    if (roiCorrection) {
+        json["roiCorrection"] = true;
+    }
     return json;
 }
 
@@ -820,7 +912,8 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
     block->multiScale = json.value("multiScale", false);
     block->minScale = json.value("minScale", 0.9);
     block->maxScale = json.value("maxScale", 1.1);
-    block->pollIntervalMs = snapImageFindPollIntervalMs(json.value("pollIntervalMs", 200));
+    block->pollIntervalMs = snapImageFindPollIntervalMs(
+        json.value("pollIntervalMs", kDefaultImageFindPollIntervalMs));
     block->searchArea = searchAreaFromString(json.value("searchArea", "TargetWindow"));
     block->customRegions.clear();
     if (json.contains("customRegions") && json["customRegions"].is_array()) {
@@ -847,6 +940,7 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
         block->percentRegion.height = region.value("height", 100.0);
     }
     normalizeImageFindSearchArea(block->searchArea, block->customRegions, block->customRegion);
+    block->roiCorrection = json.value("roiCorrection", false);
     if (json.contains("matchTestHotkey")) {
         TemplateCaptureHotkeySettings::importLegacyIfUnset(HotkeyBinding::fromJson(json["matchTestHotkey"]));
     }
@@ -1029,75 +1123,6 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
     } else {
         result.match = bestPeak;
     }
-    result.captureOk = true;
-    return result;
-}
-
-ImageFindRoiPreviewData ImageFindBlock::captureRoiPreview(SearchArea searchArea,
-                                                          const CaptureRegion& customRegion,
-                                                          const PercentRegion& percentRegion) {
-    ImageFindRoiPreviewData result;
-
-#ifdef _WIN32
-    if (searchArea == SearchArea::TargetWindow && !ScreenCapture::findTargetWindow()) {
-        result.errorMessage = "대상 창을 찾을 수 없습니다. 먼저 '창 지정'을 사용하세요.";
-        return result;
-    }
-#endif
-
-    switch (searchArea) {
-    case SearchArea::TargetWindow: {
-        result.displayImage = ScreenCapture::captureTargetWindow();
-        if (result.displayImage.empty()) {
-            result.errorMessage = "대상 창을 캡처하지 못했습니다. 먼저 '창 지정'을 사용하세요.";
-            return result;
-        }
-        result.roiRect = QRect(0, 0, result.displayImage.cols, result.displayImage.rows);
-        result.editableRoi = false;
-        break;
-    }
-    case SearchArea::FullScreen: {
-        result.displayImage = ScreenCapture::captureFullScreen();
-        if (result.displayImage.empty()) {
-            result.errorMessage = "화면을 캡처하지 못했습니다.";
-            return result;
-        }
-        result.roiRect = QRect(0, 0, result.displayImage.cols, result.displayImage.rows);
-        result.editableRoi = false;
-        break;
-    }
-    case SearchArea::CustomRegion: {
-        result.displayImage = ScreenCapture::captureFullScreen();
-        if (result.displayImage.empty()) {
-            result.errorMessage = "화면을 캡처하지 못했습니다.";
-            return result;
-        }
-        result.roiRect = QRect(customRegion.x,
-                               customRegion.y,
-                               customRegion.width,
-                               customRegion.height);
-        result.editableRoi = true;
-        break;
-    }
-    case SearchArea::ScreenPercent: {
-        result.displayImage = ScreenCapture::captureFullScreen();
-        if (result.displayImage.empty()) {
-            result.errorMessage = "화면을 캡처하지 못했습니다.";
-            return result;
-        }
-        const CaptureRegion resolved = ScreenCapture::captureRegionFromPercent(percentRegion);
-        result.roiRect =
-            QRect(resolved.x, resolved.y, resolved.width, resolved.height);
-        result.editableRoi = false;
-        break;
-    }
-    }
-
-    if (ScreenCapture::isMostlyBlack(result.displayImage)) {
-        result.errorMessage = "캡처된 화면이 거의 검은색입니다. 창 모드 또는 보더리스 창 모드를 확인하세요.";
-        return result;
-    }
-
     result.captureOk = true;
     return result;
 }

@@ -35,6 +35,15 @@ public:
     UserInputInterruptMode userInputInterruptMode() const { return m_userInputInterruptMode; }
     void setUserInputInterruptMode(UserInputInterruptMode mode) { m_userInputInterruptMode = mode; }
 
+    bool pointerVisualFeedback() const { return m_pointerVisualFeedback; }
+    void setPointerVisualFeedback(bool enabled) { m_pointerVisualFeedback = enabled; }
+
+    bool roiCorrection() const { return m_roiCorrection; }
+    void setRoiCorrection(bool enabled) { m_roiCorrection = enabled; }
+
+    /// True when run mode supports ROI correction (infinite repeat or N≥2).
+    bool roiCorrectionSessionEligible() const;
+
     Workflow& workflow() { return m_workflow; }
     const Workflow& workflow() const { return m_workflow; }
 
@@ -42,6 +51,7 @@ public:
     void setHotkey(const HotkeyBinding& hotkey) { m_hotkey = hotkey; }
 
     std::unique_ptr<Feature> clone() const;
+    std::unique_ptr<Feature> duplicateAsNewInstance() const;
 
 private:
     static std::string generateId();
@@ -53,6 +63,8 @@ private:
     int m_repeatCount = 1;
     int m_infiniteExitAfterConsecutiveMisses = 0;
     UserInputInterruptMode m_userInputInterruptMode = UserInputInterruptMode::Stop;
+    bool m_pointerVisualFeedback = true;
+    bool m_roiCorrection = false;
     HotkeyBinding m_hotkey;
     Workflow m_workflow;
 };

@@ -23,9 +23,11 @@ public:
                       const HotkeyBinding& hotkey,
                       FeatureRunMode runMode,
                       int repeatCount,
-                                     int infiniteExitAfterConsecutiveMisses,
-                                     UserInputInterruptMode userInputInterruptMode,
-                                     Project* project,
+                      int infiniteExitAfterConsecutiveMisses,
+                      UserInputInterruptMode userInputInterruptMode,
+                      bool pointerVisualFeedback,
+                      bool roiCorrection,
+                      Project* project,
                       const std::string& featureId,
                       QWidget* parent = nullptr);
 
@@ -35,6 +37,8 @@ public:
     int repeatCount() const;
     int infiniteExitAfterConsecutiveMisses() const;
     UserInputInterruptMode userInputInterruptMode() const;
+    bool pointerVisualFeedback() const;
+    bool roiCorrection() const;
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -67,4 +71,6 @@ private:
     QLabel* m_infiniteExitCountLabel = nullptr;
     DragAdjustSpinBox* m_infiniteExitSpin = nullptr;
     QComboBox* m_userInputInterruptCombo = nullptr;
+    QCheckBox* m_pointerVisualFeedbackCheck = nullptr;
+    QCheckBox* m_roiCorrectionCheck = nullptr;
 };

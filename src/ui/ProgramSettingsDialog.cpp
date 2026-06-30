@@ -1,19 +1,24 @@
 #include "ui/ProgramSettingsDialog.h"
 
+#include "app/PointerFeedbackSettings.h"
 #include "app/ProgramSettings.h"
+#include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/UiStrings.h"
 #include "ui/widgets/HintLabel.h"
 
 #include <QCheckBox>
 #include <QDialogButtonBox>
+#include <QGroupBox>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
 #include <QVBoxLayout>
 
 ProgramSettingsDialog::ProgramSettingsDialog(QWidget* parent)
     : QDialog(parent) {
     setWindowTitle(tr("프로그램 설정"));
     setModal(true);
-    resize(440, 160);
+    resize(460, 220);
     setupUi();
 }
 
@@ -31,6 +36,28 @@ void ProgramSettingsDialog::setupUi() {
         tr("단축키나 실행 메뉴로 기능이 시작되면 워크플로우 패널에 그 기능을 표시합니다."));
     layout->addWidget(m_autoSelectRunningFeatureCheck);
 
+    auto* clickGroup = new QGroupBox(tr("마우스 클릭 피드백 애니메이션"), this);
+    auto* clickLayout = new QVBoxLayout(clickGroup);
+
+    m_clickFeedbackSummary = new QLabel(clickGroup);
+    m_clickFeedbackSummary->setWordWrap(true);
+    updateClickFeedbackSummary();
+
+    auto* clickRow = new QHBoxLayout();
+    clickRow->addWidget(m_clickFeedbackSummary, 1);
+    m_clickFeedbackButton = new QPushButton(tr("설정…"), clickGroup);
+    m_clickFeedbackButton->setCursor(Qt::PointingHandCursor);
+    connect(m_clickFeedbackButton, &QPushButton::clicked, this, &ProgramSettingsDialog::onOpenClickFeedbackSettings);
+    clickRow->addWidget(m_clickFeedbackButton, 0, Qt::AlignTop);
+    clickLayout->addLayout(clickRow);
+
+    auto* clickHint = new HintLabel(
+        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 클릭 시 대상 창에 표시되는 포인터 애니메이션입니다."),
+        clickGroup);
+    clickHint->setWordWrap(true);
+    clickLayout->addWidget(clickHint);
+    layout->addWidget(clickGroup);
+
     layout->addStretch();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -41,4 +68,16 @@ void ProgramSettingsDialog::setupUi() {
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
+}
+
+void ProgramSettingsDialog::updateClickFeedbackSummary() {
+    m_clickFeedbackSummary->setText(ClickPointerFeedbackSettingsDialog::settingsSummary(
+        PointerFeedbackSettings::click()));
+}
+
+void ProgramSettingsDialog::onOpenClickFeedbackSettings() {
+    ClickPointerFeedbackSettingsDialog dialog(this);
+    if (dialog.exec() == QDialog::Accepted) {
+        updateClickFeedbackSummary();
+    }
 }

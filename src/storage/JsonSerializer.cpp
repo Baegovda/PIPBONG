@@ -40,6 +40,12 @@ nlohmann::json featureToJson(const Feature& feature) {
     if (feature.userInputInterruptMode() == UserInputInterruptMode::Pause) {
         json["userInputInterrupt"] = userInputInterruptModeToString(feature.userInputInterruptMode());
     }
+    if (!feature.pointerVisualFeedback()) {
+        json["pointerVisualFeedback"] = false;
+    }
+    if (feature.roiCorrection()) {
+        json["roiCorrection"] = true;
+    }
     if (!feature.hotkey().isEmpty()) {
         json["hotkey"] = feature.hotkey().toJson();
     }
@@ -57,6 +63,8 @@ void featureFromJson(const nlohmann::json& json, Feature& feature) {
     feature.setInfiniteExitAfterConsecutiveMisses(json.value("infiniteExitAfterConsecutiveMisses", 0));
     feature.setUserInputInterruptMode(
         userInputInterruptModeFromString(json.value("userInputInterrupt", "Stop")));
+    feature.setPointerVisualFeedback(json.value("pointerVisualFeedback", true));
+    feature.setRoiCorrection(json.value("roiCorrection", false));
     if (json.contains("hotkey")) {
         feature.setHotkey(HotkeyBinding::fromJson(json["hotkey"]));
     } else {

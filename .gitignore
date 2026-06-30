@@ -3,7 +3,12 @@ build-static/
 dist/
 out/
 .vs/
-.vscode/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/extensions.json
+build-clangd/
 vcpkg_installed/
 CMakeUserPresets.json
 *.user

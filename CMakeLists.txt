@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-project(SuckbongMachine VERSION 0.5.43 LANGUAGES CXX)
+project(SuckbongMachine VERSION 0.5.96 LANGUAGES CXX)
 
 option(SBM_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
+option(SBM_SKIP_WINDEPLOY "Skip windeployqt on every incremental dev build; run deploy-qt target when DLLs are needed" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,6 +28,7 @@ set(SBM_SOURCES
     src/app/FeatureHotkeyGate.cpp
     src/app/UserInputInterruptMonitor.cpp
     src/app/ProgramSettings.cpp
+    src/app/PointerFeedbackSettings.cpp
     src/app/UpdateChecker.cpp
     src/model/Feature.cpp
     src/model/FeatureRunMode.cpp
@@ -51,7 +53,6 @@ set(SBM_SOURCES
     src/core/workflow/blocks/ClickBlock.cpp
     src/core/workflow/blocks/KeyPressBlock.cpp
     src/core/workflow/blocks/WaitBlock.cpp
-    src/core/workflow/blocks/IfBlock.cpp
     src/core/workflow/blocks/LoopBlock.cpp
     src/core/workflow/blocks/CommentBlock.cpp
     src/storage/JsonSerializer.cpp
@@ -62,7 +63,8 @@ set(SBM_SOURCES
     src/ui/CustomTitleBar.cpp
     src/ui/UiStateManager.cpp
     src/ui/ProgramSettingsDialog.cpp
-    src/ui/editors/FeatureRunModeDialog.cpp
+    src/ui/ClickPointerFeedbackSettingsDialog.cpp
+    src/ui/ClickPointerFeedbackRenderer.cpp
     src/ui/editors/FeatureEditDialog.cpp
     src/ui/WorkflowEditorPanel.cpp
     src/ui/BlockListWidget.cpp
@@ -70,18 +72,19 @@ set(SBM_SOURCES
     src/ui/widgets/DragAdjustSpinBox.cpp
     src/ui/widgets/DragAdjustDoubleSpinBox.cpp
     src/ui/widgets/HintLabel.cpp
+    src/ui/widgets/ClickPointerFeedbackPreviewWidget.cpp
     src/ui/editors/BlockEditorDialog.cpp
     src/ui/editors/ImageFindEditor.cpp
-    src/ui/editors/RoiPreviewWidget.cpp
-    src/ui/editors/ImageFindPreviewDialog.cpp
+    src/ui/editors/ImageFindPollIntervalPrefs.cpp
     src/ui/editors/MatchTestOverlay.cpp
     src/ui/editors/WorkflowMatchFeedbackOverlay.cpp
+    src/ui/editors/WorkflowRoiFlashOverlay.cpp
+    src/ui/TargetWindowHighlightOverlay.cpp
     src/ui/OpenCvQtUtil.cpp
     src/ui/editors/ClickEditor.cpp
     src/ui/editors/KeyPressEditor.cpp
     src/ui/editors/HotkeyCaptureDialog.cpp
     src/ui/editors/WaitEditor.cpp
-    src/ui/editors/IfEditor.cpp
     src/ui/editors/LoopEditor.cpp
     src/ui/editors/WorkflowLoopRegionsDialog.cpp
     src/ui/editors/BranchWorkflowEditor.cpp
@@ -89,8 +92,6 @@ set(SBM_SOURCES
     src/ui/editors/ScreenRegionOverlay.cpp
     src/ui/editors/RoiPreviewOverlay.cpp
     src/ui/editors/CaptureConfirmDialog.cpp
-    src/ui/editors/TemplateCaptureDialog.cpp
-    src/ui/editors/CaptureCanvas.cpp
     resources/app.qrc
 )
 
@@ -101,8 +102,14 @@ endif()
 
 add_executable(SuckbongMachine WIN32 ${SBM_SOURCES})
 
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app/SbmVersion.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/SbmVersion.h
+    @ONLY)
+
 target_include_directories(SuckbongMachine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${OpenCV_INCLUDE_DIRS}
 )
 
@@ -118,9 +125,16 @@ target_link_libraries(SuckbongMachine PRIVATE
 if(WIN32 AND NOT SBM_STATIC_BUILD)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "$ENV{Qt6_DIR}/../../../bin" "${Qt6_DIR}/../../../bin")
     if(WINDEPLOYQT_EXECUTABLE)
-        add_custom_command(TARGET SuckbongMachine POST_BUILD
+        if(NOT SBM_SKIP_WINDEPLOY)
+            add_custom_command(TARGET SuckbongMachine POST_BUILD
+                COMMAND "${WINDEPLOYQT_EXECUTABLE}" "$<TARGET_FILE:SuckbongMachine>"
+                COMMENT "Deploying Qt runtime..."
+            )
+        endif()
+        add_custom_target(deploy-qt
             COMMAND "${WINDEPLOYQT_EXECUTABLE}" "$<TARGET_FILE:SuckbongMachine>"
-            COMMENT "Deploying Qt runtime..."
+            DEPENDS SuckbongMachine
+            COMMENT "Deploying Qt/OpenCV runtime DLLs next to SuckbongMachine.exe"
         )
     endif()
 endif()
@@ -151,9 +165,6 @@ target_compile_definitions(SuckbongMachine PRIVATE
     WIN32_LEAN_AND_MEAN
     UNICODE
     _UNICODE
-    SBM_VERSION="${PROJECT_VERSION}"
-    SBM_UPDATE_GITHUB_REPO="Baegovda/SBM-releases"
-    SBM_UPDATE_ASSET_NAME="SuckbongMachine.exe"
 )
 
 if(SBM_STATIC_BUILD)

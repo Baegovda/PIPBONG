@@ -1,6 +1,7 @@
 #include "ui/editors/ImageFindEditor.h"
 
 #include "app/TemplateCaptureHotkeySettings.h"
+#include "ui/editors/ImageFindPollIntervalPrefs.h"
 #include "core/capture/ScreenCapture.h"
 #include "core/input/HotkeyBinding.h"
 #include "ui/editors/CaptureConfirmDialog.h"
@@ -48,6 +49,32 @@
 #endif
 
 namespace {
+
+QString roiToolbarButtonStyleSheet(const char* baseRgb, const char* hoverRgb, const char* borderRgb) {
+    return QStringLiteral(
+               "QPushButton { background-color: %1; color: #f8fafc; border: 1px solid %3; "
+               "border-radius: 6px; padding: 5px 14px; font-weight: 600; min-height: 20px; }"
+               "QPushButton:hover { background-color: %2; }"
+               "QPushButton:pressed { background-color: %2; }"
+               "QPushButton:checked { background-color: %2; border: 2px solid %3; }"
+               "QPushButton:disabled { background-color: #334155; color: #94a3b8; border-color: #475569; }")
+        .arg(QString::fromLatin1(baseRgb), QString::fromLatin1(hoverRgb), QString::fromLatin1(borderRgb));
+}
+
+void applyRoiToolbarButtonStyles(QPushButton* previewButton,
+                                 QPushButton* addButton,
+                                 QPushButton* removeButton) {
+    if (previewButton) {
+        previewButton->setStyleSheet(
+            roiToolbarButtonStyleSheet("#1d4ed8", "#2563eb", "#60a5fa"));
+    }
+    if (addButton) {
+        addButton->setStyleSheet(roiToolbarButtonStyleSheet("#047857", "#059669", "#34d399"));
+    }
+    if (removeButton) {
+        removeButton->setStyleSheet(roiToolbarButtonStyleSheet("#b91c1c", "#dc2626", "#f87171"));
+    }
+}
 
 #ifdef _WIN32
 ImageFindEditor* g_templateCaptureHotkeyEditor = nullptr;
@@ -134,9 +161,7 @@ void ImageFindEditor::setBlock(ImageFindBlock* block) {
     RoiPreviewOverlay::dismissAll();
     updateRoiPreviewButton(false);
     m_roiPickActive = false;
-    m_roiPickReplaceRow = -1;
     updatePickRoiButton(false);
-    updateEditRoiButton(false);
     m_block = block;
     reload();
 }
@@ -159,6 +184,27 @@ void ImageFindEditor::reload() {
     updateRoiPreviewButton(RoiPreviewOverlay::isVisible());
     updateTemplateHotkeyDisplay();
     syncTemplateCaptureHotkeyHook();
+    if (m_roiCorrectionCheck) {
+        QSignalBlocker blocker(m_roiCorrectionCheck);
+        m_roiCorrectionCheck->setChecked(m_block->roiCorrection);
+    }
+    updateRoiCorrectionUi();
+}
+
+void ImageFindEditor::setRoiCorrectionUiPolicy(bool featureGlobalEnabled, bool sessionEligible) {
+    m_featureRoiCorrectionGlobal = featureGlobalEnabled;
+    m_roiCorrectionSessionEligible = sessionEligible;
+    updateRoiCorrectionUi();
+}
+
+void ImageFindEditor::updateRoiCorrectionUi() {
+    const bool showPerBlock = m_roiCorrectionSessionEligible && !m_featureRoiCorrectionGlobal;
+    if (m_roiCorrectionCheck) {
+        m_roiCorrectionCheck->setVisible(showPerBlock);
+    }
+    if (m_roiCorrectionGlobalHint) {
+        m_roiCorrectionGlobalHint->setVisible(m_roiCorrectionSessionEligible && m_featureRoiCorrectionGlobal);
+    }
 }
 
 void ImageFindEditor::apply() {
@@ -184,10 +230,9 @@ void ImageFindEditor::setupUi() {
     m_pollIntervalSpin->setMinimumWidth(88);
     m_pollIntervalSpin->setMaximumWidth(120);
     m_pollIntervalSpin->setToolTip(tr("매칭에 실패하면 이 간격마다 화면을 다시 탐색합니다. 성공할 때까지 반복합니다."));
-    connect(m_pollIntervalSpin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
-        const int snapped = snapImageFindPollIntervalMs(value);
-        if (snapped != value) {
-            QSignalBlocker blocker(m_pollIntervalSpin);
+    connect(m_pollIntervalSpin, &QAbstractSpinBox::editingFinished, this, [this]() {
+        const int snapped = snapImageFindPollIntervalMs(m_pollIntervalSpin->value());
+        if (snapped != m_pollIntervalSpin->value()) {
             m_pollIntervalSpin->setValue(snapped);
         }
     });
@@ -207,6 +252,17 @@ void ImageFindEditor::setupUi() {
     matchForm->setVerticalSpacing(8);
     matchForm->addRow(tr("임계값"), m_thresholdSpin);
     matchForm->addRow(tr("탐지 재시도"), pollIntervalRow);
+
+    m_roiCorrectionCheck = new QCheckBox(tr("ROI 보정"), this);
+    m_roiCorrectionCheck->setToolTip(
+        tr("두 번째 루프부터 첫 루프 매칭 위치 기준으로 템플릿보다 약 10%% 넓은 영역만 탐색합니다. "
+           "기능 편집의 전체 ROI 보정이 꺼져 있을 때만 이 블록에 적용됩니다."));
+    matchForm->addRow(QString(), m_roiCorrectionCheck);
+
+    m_roiCorrectionGlobalHint = new HintLabel(
+        tr("기능 편집에서 전체 ROI 보정이 켜져 있습니다."), this);
+    m_roiCorrectionGlobalHint->hide();
+    matchForm->addRow(QString(), m_roiCorrectionGlobalHint);
 
     m_matchModeSwitch = new AnimatedTwoWaySwitch(tr("하나라도"), tr("모두"), this);
     m_matchModeSwitch->setToolTip(
@@ -293,8 +349,6 @@ void ImageFindEditor::setupUi() {
 
     m_pickRoiButton = new QPushButton(tr("추가"), this);
     m_pickRoiButton->setToolTip(tr("대상 창 위에서 드래그하여 탐색 ROI를 추가합니다. 다시 누르면 취소합니다."));
-    m_editRoiButton = new QPushButton(tr("수정"), this);
-    m_editRoiButton->setToolTip(tr("목록에서 선택한 ROI 영역을 다시 지정합니다. 다시 누르면 취소합니다."));
     m_removeRoiButton = new QPushButton(tr("삭제"), this);
     m_removeRoiButton->setToolTip(tr("목록에서 선택한 ROI를 제거합니다."));
     m_roiPreviewButton = new QPushButton(tr("미리보기"), this);
@@ -305,9 +359,9 @@ void ImageFindEditor::setupUi() {
     roiToolbar->setSpacing(8);
     roiToolbar->addWidget(m_roiPreviewButton);
     roiToolbar->addWidget(m_pickRoiButton);
-    roiToolbar->addWidget(m_editRoiButton);
     roiToolbar->addWidget(m_removeRoiButton);
     roiToolbar->addStretch(1);
+    applyRoiToolbarButtonStyles(m_roiPreviewButton, m_pickRoiButton, m_removeRoiButton);
 
     auto* roiHint = new HintLabel(tr("ROI가 없으면 대상 창 전체에서 탐색합니다."), this);
 
@@ -343,14 +397,13 @@ void ImageFindEditor::setupUi() {
         updatePreview();
     });
     connect(m_pickRoiButton, &QPushButton::clicked, this, &ImageFindEditor::onPickRoi);
-    connect(m_editRoiButton, &QPushButton::clicked, this, &ImageFindEditor::onEditRoi);
     connect(m_removeRoiButton, &QPushButton::clicked, this, &ImageFindEditor::onRemoveRoi);
     connect(m_roiList, &QListWidget::currentRowChanged, this, [this](int row) {
         if (m_removeRoiButton) {
             m_removeRoiButton->setEnabled(row >= 0);
         }
-        if (m_editRoiButton) {
-            m_editRoiButton->setEnabled(row >= 0);
+        if (RoiPreviewOverlay::isEditable()) {
+            RoiPreviewOverlay::setActiveRoiIndex(row);
         }
     });
     connect(m_roiPreviewButton, &QPushButton::clicked, this, &ImageFindEditor::onRoiPreview);
@@ -375,8 +428,12 @@ void ImageFindEditor::syncUiToBlockValues() {
     }
     m_block->threshold = m_thresholdSpin->value();
     m_block->pollIntervalMs = snapImageFindPollIntervalMs(m_pollIntervalSpin->value());
+    saveLastImageFindPollIntervalMs(m_block->pollIntervalMs);
     m_block->templateMatchMode =
         m_matchModeSwitch->isRightSelected() ? ImageFindTemplateMatchMode::All : ImageFindTemplateMatchMode::Any;
+    if (m_roiCorrectionCheck && m_roiCorrectionCheck->isVisible()) {
+        m_block->roiCorrection = m_roiCorrectionCheck->isChecked();
+    }
     syncBlockTemplatePathsFromList();
     syncBlockCustomRegionsFromList();
 }
@@ -542,9 +599,6 @@ void ImageFindEditor::refreshRoiList() {
     if (m_removeRoiButton) {
         m_removeRoiButton->setEnabled(m_roiList->currentRow() >= 0);
     }
-    if (m_editRoiButton) {
-        m_editRoiButton->setEnabled(m_roiList->currentRow() >= 0);
-    }
 }
 
 void ImageFindEditor::updateRoiPreviewButton(bool overlayVisible) {
@@ -609,8 +663,82 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
             if (self) {
                 self->updateRoiPreviewButton(overlayVisible);
             }
-        });
+        },
+        makeRoiPreviewEditableOptions());
     updateRoiPreviewButton(visible);
+}
+
+RoiPreviewOverlay::EditableOptions ImageFindEditor::makeRoiPreviewEditableOptions() {
+    RoiPreviewOverlay::EditableOptions options;
+    if (!m_block || m_block->customRegions.empty()) {
+        return options;
+    }
+
+    options.enabled = true;
+    options.activeIndex = m_roiList ? m_roiList->currentRow() : 0;
+    if (options.activeIndex < 0) {
+        options.activeIndex = 0;
+    }
+
+    QPointer<ImageFindEditor> self = this;
+    options.onRoiEdited = [self](int index, const CaptureRegion& region) {
+        if (!self || !self->m_block) {
+            return;
+        }
+        if (index < 0 || index >= static_cast<int>(self->m_block->customRegions.size())) {
+            return;
+        }
+
+        self->m_block->customRegions[static_cast<size_t>(index)] = region;
+        self->m_block->searchArea = SearchArea::CustomRegion;
+        if (!self->m_block->customRegions.empty()) {
+            self->m_block->customRegion = self->m_block->customRegions.front();
+        }
+        self->refreshRoiList();
+        if (self->m_roiList && index >= 0 && index < self->m_roiList->count()) {
+            self->m_roiList->blockSignals(true);
+            self->m_roiList->setCurrentRow(index);
+            self->m_roiList->blockSignals(false);
+        }
+        self->apply();
+    };
+    options.onRoiSelected = [self](int index) {
+        if (!self || !self->m_roiList || index < 0 || index >= self->m_roiList->count()) {
+            return;
+        }
+        self->m_roiList->blockSignals(true);
+        self->m_roiList->setCurrentRow(index);
+        self->m_roiList->blockSignals(false);
+    };
+    options.onConfirm = [self]() {
+        if (self) {
+            self->confirmFromRoiOverlay();
+        }
+    };
+    options.onAdd = [self]() {
+        if (self) {
+            self->onPickRoi();
+        }
+    };
+    options.onDelete = [self]() {
+        if (self) {
+            self->onRemoveRoi();
+        }
+    };
+    return options;
+}
+
+void ImageFindEditor::confirmFromRoiOverlay() {
+    syncUiToBlockValues();
+    apply();
+    dismissRoiPreviewOverlay();
+    ScreenRegionOverlay::dismissAll();
+    MatchTestOverlay::dismissAll();
+
+    QDialog* closingDialog = m_embedded ? qobject_cast<QDialog*>(window()) : this;
+    if (closingDialog) {
+        closingDialog->accept();
+    }
 }
 
 void ImageFindEditor::dismissRoiPreviewOverlay() {
@@ -623,13 +751,6 @@ void ImageFindEditor::updatePickRoiButton(bool pickActive) {
         return;
     }
     m_pickRoiButton->setText(pickActive ? tr("추가 취소") : tr("추가"));
-}
-
-void ImageFindEditor::updateEditRoiButton(bool pickActive) {
-    if (!m_editRoiButton) {
-        return;
-    }
-    m_editRoiButton->setText(pickActive ? tr("수정 취소") : tr("수정"));
 }
 
 void ImageFindEditor::updateMatchTestButton(bool overlayVisible) {
@@ -719,12 +840,10 @@ void ImageFindEditor::onRemoveTemplate() {
     apply();
 }
 
-void ImageFindEditor::startRoiPick(int replaceListRow) {
+void ImageFindEditor::startRoiPick() {
 #ifdef _WIN32
     if (!ScreenCapture::findTargetWindow()) {
-        QMessageBox::warning(this,
-                             replaceListRow >= 0 ? tr("수정") : tr("추가"),
-                             tr("대상 창을 찾을 수 없습니다. 먼저 '창 지정'을 사용하세요."));
+        QMessageBox::warning(this, tr("추가"), tr("대상 창을 찾을 수 없습니다. 먼저 '창 지정'을 사용하세요."));
         return;
     }
 #endif
@@ -734,7 +853,6 @@ void ImageFindEditor::startRoiPick(int replaceListRow) {
 
     QPointer<ImageFindEditor> self = this;
     m_roiPickActive = true;
-    m_roiPickReplaceRow = replaceListRow;
     ScreenRegionOverlay::StartPickOptions pickOptions;
     pickOptions.parkHostDuringPick = false;
     if (m_block) {
@@ -749,11 +867,8 @@ void ImageFindEditor::startRoiPick(int replaceListRow) {
         if (!self) {
             return;
         }
-        const int replaceRow = self->m_roiPickReplaceRow;
         self->m_roiPickActive = false;
-        self->m_roiPickReplaceRow = -1;
         self->updatePickRoiButton(false);
-        self->updateEditRoiButton(false);
         if (!self->m_block) {
             return;
         }
@@ -768,20 +883,13 @@ void ImageFindEditor::startRoiPick(int replaceListRow) {
         region.height = selectionRect.height();
 
         self->m_block->searchArea = SearchArea::CustomRegion;
-        if (replaceRow >= 0 && replaceRow < static_cast<int>(self->m_block->customRegions.size())) {
-            self->m_block->customRegions[static_cast<size_t>(replaceRow)] = region;
-        } else {
-            self->m_block->customRegions.push_back(region);
-        }
+        self->m_block->customRegions.push_back(region);
         if (!self->m_block->customRegions.empty()) {
             self->m_block->customRegion = self->m_block->customRegions.front();
         }
         self->refreshRoiList();
         if (self->m_roiList && self->m_roiList->count() > 0) {
-            const int selectRow =
-                replaceRow >= 0 ? qMin(replaceRow, self->m_roiList->count() - 1)
-                                : self->m_roiList->count() - 1;
-            self->m_roiList->setCurrentRow(selectRow);
+            self->m_roiList->setCurrentRow(self->m_roiList->count() - 1);
         }
         self->apply();
         if (self->isTemplateCaptureHotkeyHookActive()) {
@@ -790,14 +898,9 @@ void ImageFindEditor::startRoiPick(int replaceListRow) {
     }, pickOptions);
 
     if (ScreenRegionOverlay::isPickActive()) {
-        if (replaceListRow >= 0) {
-            updateEditRoiButton(true);
-        } else {
-            updatePickRoiButton(true);
-        }
+        updatePickRoiButton(true);
     } else {
         m_roiPickActive = false;
-        m_roiPickReplaceRow = -1;
     }
 }
 
@@ -806,18 +909,7 @@ void ImageFindEditor::onPickRoi() {
         ScreenRegionOverlay::dismissAll();
         return;
     }
-    startRoiPick(-1);
-}
-
-void ImageFindEditor::onEditRoi() {
-    if (!m_roiList || m_roiList->currentRow() < 0) {
-        return;
-    }
-    if (m_roiPickActive && ScreenRegionOverlay::isPickActive()) {
-        ScreenRegionOverlay::dismissAll();
-        return;
-    }
-    startRoiPick(m_roiList->currentRow());
+    startRoiPick();
 }
 
 void ImageFindEditor::onRemoveRoi() {
@@ -831,9 +923,6 @@ void ImageFindEditor::onRemoveRoi() {
     }
     if (m_removeRoiButton) {
         m_removeRoiButton->setEnabled(m_roiList->currentRow() >= 0);
-    }
-    if (m_editRoiButton) {
-        m_editRoiButton->setEnabled(m_roiList->currentRow() >= 0);
     }
     apply();
     if (hasConfiguredRoiForPreview() && isTemplateCaptureHotkeyHookActive()) {

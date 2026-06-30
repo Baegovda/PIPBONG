@@ -13,16 +13,20 @@ class ExecutionContext;
 struct WorkflowRunResult {
     bool success = true;
     std::string message;
-    /// 0-based index in the current workflow to run next; -1 = continue sequentially.
-    int workflowJumpIndex = -1;
 };
 
 struct WorkflowRunHooks {
     std::function<void(int blockIndex, const std::string& summary)> onBlockStarted;
     std::function<void(int blockIndex, bool success, const std::string& message, qint64 durationMs,
-                       int64_t imageFindMatchDurationMs)>
+                       int64_t imageFindMatchDurationMs, int imageFindPollAttempts)>
         onBlockFinished;
     std::function<void(int blockIndex, BlockProgressKind kind)> onBlockProgress;
+    std::function<void(int blockIndex,
+                       int attemptCount,
+                       double matchThreshold,
+                       double detectedConfidence,
+                       bool matched)>
+        onBlockImageFindAttempt;
     std::function<void(int blockIndex,
                        double matchThreshold,
                        double confidence,
@@ -32,6 +36,7 @@ struct WorkflowRunHooks {
                        int clientX,
                        int clientY)>
         onBlockMatchResult;
+    std::function<void(int clientX, int clientY)> onPointerFeedbackAtClientPoint;
 };
 
 class WorkflowRunner {

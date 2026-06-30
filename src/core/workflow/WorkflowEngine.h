@@ -38,7 +38,12 @@ signals:
     void started();
     void blockStarted(int index, const QString& summary);
     void blockFinished(int index, bool success, const QString& message, qint64 durationMs,
-                       qint64 imageFindMatchDurationMs);
+                       qint64 imageFindMatchDurationMs, int imageFindPollAttempts);
+    void blockImageFindAttempt(int index,
+                               int attemptCount,
+                               double matchThreshold,
+                               double detectedConfidence,
+                               bool matched);
     void blockProgress(int index, BlockProgressKind kind);
     void blockMatchResult(int index,
                           double matchThreshold,
@@ -48,6 +53,7 @@ signals:
                           bool hasClientPoint,
                           int clientX,
                           int clientY);
+    void pointerFeedbackAtClientPoint(int clientX, int clientY);
     void logMessage(const QString& message);
     void finished(bool success, const QString& message);
 

@@ -4,7 +4,6 @@
 #include "core/workflow/blocks/ClickBlock.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "core/workflow/blocks/KeyPressBlock.h"
-#include "core/workflow/blocks/IfBlock.h"
 #include "core/workflow/blocks/WaitBlock.h"
 #include "core/workflow/WorkflowLoopRegion.h"
 #include "core/input/HotkeyBinding.h"
@@ -15,6 +14,7 @@
 #include "ui/editors/WorkflowLoopRegionsDialog.h"
 #include "ui/UiStrings.h"
 #include "ui/editors/BlockEditorDialog.h"
+#include "ui/editors/ImageFindPollIntervalPrefs.h"
 
 #include <QDialog>
 #include <QDir>
@@ -35,6 +35,7 @@
 #include <QPolygonF>
 #include <QPushButton>
 #include <QSet>
+#include <QSettings>
 #include <QSizePolicy>
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -53,6 +54,18 @@
 namespace {
 
 constexpr int kThumbnailSize = 32;
+constexpr const char* kLastBulkInsertWaitMsKey = "ui/state/workflowEditor/lastBulkInsertWaitMs";
+constexpr int kDefaultBulkInsertWaitMs = 500;
+
+int lastBulkInsertWaitMs() {
+    QSettings settings;
+    return snapWaitDelayMs(settings.value(kLastBulkInsertWaitMsKey, kDefaultBulkInsertWaitMs).toInt());
+}
+
+void saveLastBulkInsertWaitMs(int ms) {
+    QSettings settings;
+    settings.setValue(kLastBulkInsertWaitMsKey, snapWaitDelayMs(ms));
+}
 
 bool loopRegionOverlaps(const std::vector<WorkflowLoopRegion>& regions,
                         int startIndex,
@@ -342,35 +355,6 @@ QPixmap loopBlockPreviewIcon() {
     return pixmap;
 }
 
-QPixmap ifBlockPreviewIcon() {
-    QPixmap pixmap(kThumbnailSize, kThumbnailSize);
-    pixmap.fill(Qt::transparent);
-
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    const QColor accent(74, 144, 217);
-    const QRectF diamond(8.0, 8.0, 16.0, 16.0);
-    QPolygonF shape;
-    shape << QPointF(diamond.center().x(), diamond.top())
-          << QPointF(diamond.right(), diamond.center().y())
-          << QPointF(diamond.center().x(), diamond.bottom())
-          << QPointF(diamond.left(), diamond.center().y());
-
-    painter.setPen(QPen(accent, 1.6));
-    painter.setBrush(QColor(245, 248, 255));
-    painter.drawPolygon(shape);
-
-    QFont font = painter.font();
-    font.setBold(true);
-    font.setPixelSize(11);
-    painter.setFont(font);
-    painter.setPen(accent);
-    painter.drawText(pixmap.rect(), Qt::AlignCenter, QStringLiteral("?"));
-
-    return pixmap;
-}
-
 QPixmap mouseMovePreviewIcon() {
     QPixmap pixmap(kThumbnailSize, kThumbnailSize);
     pixmap.fill(Qt::transparent);
@@ -414,10 +398,6 @@ QPixmap loadBlockThumbnail(const Block& block, const QString& projectDirectory) 
 
     if (block.type() == BlockType::Wait) {
         return waitBlockPreviewIcon();
-    }
-
-    if (block.type() == BlockType::If) {
-        return ifBlockPreviewIcon();
     }
 
     if (block.type() == BlockType::Loop) {
@@ -464,8 +444,21 @@ void WorkflowEditorPanel::setupUi() {
     m_titleLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 14px;"));
 
     m_blockList = new BlockListWidget(this);
+    connect(m_blockList, &QTableWidget::cellClicked, this,
+            [this](int row, int column) {
+                if (column != BlockListWidget::PreviewColumn || m_loopRegionPickActive) {
+                    return;
+                }
+                const int blockRow = m_blockList->blockRowForTableRow(row);
+                if (blockRow >= 0) {
+                    onBlockDoubleClicked(blockRow);
+                }
+            });
     connect(m_blockList, &QTableWidget::cellDoubleClicked, this,
-            [this](int row, int) {
+            [this](int row, int column) {
+                if (column == BlockListWidget::PreviewColumn) {
+                    return;
+                }
                 const int blockRow = m_blockList->blockRowForTableRow(row);
                 if (blockRow >= 0) {
                     onBlockDoubleClicked(blockRow);
@@ -474,18 +467,6 @@ void WorkflowEditorPanel::setupUi() {
                 const QString regionId = m_blockList->loopRegionIdForTableRow(row);
                 if (!regionId.isEmpty()) {
                     editLoopRegion(regionId);
-                    return;
-                }
-                int mainBlockRow = -1;
-                bool isThenBranch = true;
-                int branchBlockIndex = -1;
-                if (m_blockList->ifBranchBlockAtTableRow(row, mainBlockRow, isThenBranch, branchBlockIndex)) {
-                    editIfBranchBlock(mainBlockRow, isThenBranch, branchBlockIndex);
-                    return;
-                }
-                const int ifMainRow = m_blockList->ifMainBlockRowForTableRow(row);
-                if (ifMainRow >= 0) {
-                    editBlockAt(ifMainRow);
                 }
             });
     connect(m_blockList, &BlockListWidget::blockRowsReordered, this,
@@ -508,8 +489,7 @@ void WorkflowEditorPanel::setupUi() {
     const BlockType addTypes[] = {BlockType::ImageFind,
                                   BlockType::Click,
                                   BlockType::KeyPress,
-                                  BlockType::Wait,
-                                  BlockType::If};
+                                  BlockType::Wait};
     for (const BlockType type : addTypes) {
         auto* button = new QPushButton(blockTypeDisplayName(type), addGroup);
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -583,21 +563,23 @@ void WorkflowEditorPanel::setupUi() {
             this,
             &WorkflowEditorPanel::onLoopRegionDeleteRequested);
     connect(m_blockList,
-            &BlockListWidget::ifBlockEditRequested,
+            &BlockListWidget::imageFindThresholdChanged,
             this,
-            &WorkflowEditorPanel::onIfBlockEditRequested);
+            &WorkflowEditorPanel::onImageFindThresholdChanged);
     connect(m_blockList,
-            &BlockListWidget::ifGotoBlockPicked,
+            &BlockListWidget::imageFindRoiCorrectionChanged,
             this,
-            &WorkflowEditorPanel::onIfGotoBlockPicked);
-    connect(m_blockList,
-            &BlockListWidget::ifGotoPickCancelled,
-            this,
-            &WorkflowEditorPanel::onIfGotoPickCancelled);
+            &WorkflowEditorPanel::onImageFindRoiCorrectionChanged);
 }
 
 QHeaderView* WorkflowEditorPanel::blockListHeader() const {
     return m_blockList ? m_blockList->horizontalHeader() : nullptr;
+}
+
+void WorkflowEditorPanel::applyBlockListHeaderResizeModes() {
+    if (m_blockList) {
+        m_blockList->applyHeaderResizeModes();
+    }
 }
 
 QSplitter* WorkflowEditorPanel::workflowSplitter() const {
@@ -616,8 +598,10 @@ void WorkflowEditorPanel::clearCurrentRunFeedbackVectors() {
     m_rowMatchImages.clear();
     m_rowMatchConfidences.clear();
     m_rowMatchThresholds.clear();
+    m_rowMatchMatched.clear();
     m_rowBlockDurations.clear();
     m_rowImageFindMatchDurations.clear();
+    m_rowImageFindAttemptCounts.clear();
 }
 
 void WorkflowEditorPanel::saveRunFeedbackForFeature(const std::string& featureId) {
@@ -629,13 +613,16 @@ void WorkflowEditorPanel::saveRunFeedbackForFeature(const std::string& featureId
     feedback.rowMatchImages = m_rowMatchImages;
     feedback.rowMatchConfidences = m_rowMatchConfidences;
     feedback.rowMatchThresholds = m_rowMatchThresholds;
+    feedback.rowMatchMatched = m_rowMatchMatched;
     feedback.rowBlockDurations = m_rowBlockDurations;
     feedback.rowImageFindMatchDurations = m_rowImageFindMatchDurations;
+    feedback.rowImageFindAttemptCounts = m_rowImageFindAttemptCounts;
     feedback.activeBlockIndex = m_activeBlockIndex;
     feedback.executionHighlight = m_executionHighlight;
     feedback.hasLoopTiming = m_hasLoopTiming;
     feedback.loopNumber = m_loopNumber;
     feedback.loopElapsedMs = m_loopElapsedMs;
+    feedback.loopAverageMs = m_loopAverageMs;
     feedback.loopSuccess = m_loopSuccess;
 
     const int blockCount = m_blockList->blockCount();
@@ -661,12 +648,14 @@ void WorkflowEditorPanel::restoreRunFeedbackForFeature(const std::string& featur
     m_rowMatchImages = feedback.rowMatchImages;
     m_rowMatchConfidences = feedback.rowMatchConfidences;
     m_rowMatchThresholds = feedback.rowMatchThresholds;
+    m_rowMatchMatched = feedback.rowMatchMatched;
     m_rowBlockDurations = feedback.rowBlockDurations;
     m_rowImageFindMatchDurations = feedback.rowImageFindMatchDurations;
+    m_rowImageFindAttemptCounts = feedback.rowImageFindAttemptCounts;
     m_activeBlockIndex = feedback.activeBlockIndex;
     m_executionHighlight = feedback.executionHighlight;
     if (feedback.hasLoopTiming) {
-        setLoopTiming(feedback.loopNumber, feedback.loopElapsedMs, feedback.loopSuccess);
+        setLoopTiming(feedback.loopNumber, feedback.loopElapsedMs, feedback.loopAverageMs, feedback.loopSuccess);
     } else {
         clearLoopTiming();
     }
@@ -712,12 +701,14 @@ void WorkflowEditorPanel::setBlockMatchResult(int blockIndex,
     }
 
     if (blockIndex >= m_rowMatchConfidences.size()) {
-        m_rowMatchConfidences.resize(blockIndex + 1, 0.0);
+        m_rowMatchConfidences.resize(blockIndex + 1, -1.0);
         m_rowMatchThresholds.resize(blockIndex + 1, 0.0);
+        m_rowMatchMatched.resize(blockIndex + 1, false);
         m_rowMatchImages.resize(blockIndex + 1);
     }
     m_rowMatchThresholds[blockIndex] = matchThreshold;
     m_rowMatchConfidences[blockIndex] = confidence;
+    m_rowMatchMatched[blockIndex] = matched;
     m_rowMatchImages[blockIndex] = image;
     m_blockList->setBlockMatchResult(blockIndex, matchThreshold, confidence, image, matched);
 }
@@ -745,6 +736,13 @@ void WorkflowEditorPanel::markBlockMatchSuccess(int blockIndex) {
 
     if (confidence > 0.0 || !image.isNull()) {
         setBlockMatchResult(blockIndex, threshold, confidence > 0.0 ? confidence : 1.0, image, true);
+    } else if (blockIndex < static_cast<int>(m_rowMatchConfidences.size())
+               && m_rowMatchConfidences[blockIndex] >= 0.0) {
+        setBlockMatchResult(blockIndex,
+                            threshold,
+                            m_rowMatchConfidences[blockIndex],
+                            image,
+                            true);
     }
     m_blockList->commitRowSuccess(blockIndex);
 }
@@ -765,11 +763,21 @@ void WorkflowEditorPanel::setBlockImageFindMatchDuration(int blockIndex, qint64 
     m_blockList->setBlockImageFindMatchDuration(blockIndex, matchDurationMs);
 }
 
+void WorkflowEditorPanel::setBlockImageFindAttemptCount(int blockIndex, int attemptCount) {
+    if (blockIndex < 0) {
+        return;
+    }
+    if (blockIndex >= m_rowImageFindAttemptCounts.size()) {
+        m_rowImageFindAttemptCounts.resize(blockIndex + 1, -1);
+    }
+    m_rowImageFindAttemptCounts[blockIndex] = attemptCount;
+    m_blockList->setBlockImageFindAttemptCount(blockIndex, attemptCount);
+}
+
 void WorkflowEditorPanel::setFeature(Feature* feature) {
     if (m_feature && m_feature != feature) {
         saveRunFeedbackForFeature(m_feature->id());
         setLoopRegionPickMode(false);
-        setIfGotoPickMode(false);
     }
 
     m_feature = feature;
@@ -781,7 +789,6 @@ void WorkflowEditorPanel::setFeature(Feature* feature) {
         clearBlockMatchResults();
         clearExecutionHighlight();
         setLoopRegionPickMode(false);
-        setIfGotoPickMode(false);
     }
 
     refresh();
@@ -809,18 +816,20 @@ void WorkflowEditorPanel::updateTitleText() {
 
     QString title = tr("워크플로우: %1").arg(QString::fromStdString(m_feature->name()));
     if (m_hasLoopTiming) {
-        title += tr("  ·  루프 %1: %2 ms (%3)")
+        title += tr("  ·  루프 %1: %2 ms · 평균 %3 ms (%4)")
                       .arg(m_loopNumber)
                       .arg(m_loopElapsedMs)
+                      .arg(m_loopAverageMs)
                       .arg(m_loopSuccess ? tr("성공") : tr("실패"));
     }
     m_titleLabel->setText(title);
 }
 
-void WorkflowEditorPanel::setLoopTiming(int loopNumber, qint64 elapsedMs, bool success) {
+void WorkflowEditorPanel::setLoopTiming(int loopNumber, qint64 elapsedMs, qint64 averageMs, bool success) {
     m_hasLoopTiming = true;
     m_loopNumber = loopNumber;
     m_loopElapsedMs = elapsedMs;
+    m_loopAverageMs = averageMs;
     m_loopSuccess = success;
     updateTitleText();
 }
@@ -829,6 +838,7 @@ void WorkflowEditorPanel::clearLoopTiming() {
     m_hasLoopTiming = false;
     m_loopNumber = 0;
     m_loopElapsedMs = 0;
+    m_loopAverageMs = 0;
     m_loopSuccess = true;
     updateTitleText();
 }
@@ -856,32 +866,9 @@ void WorkflowEditorPanel::refresh() {
     const auto& blocks = m_feature->workflow().blocks();
     m_blockList->setBlockCount(static_cast<int>(blocks.size()));
 
-    std::vector<IfBlockDisplay> ifDisplays;
-    for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
-        if (blocks[i]->type() != BlockType::If) {
-            continue;
-        }
-        const auto* ifBlock = static_cast<const IfBlock*>(blocks[i].get());
-        IfBlockDisplay display;
-        display.blockRow = i;
-        display.conditionText = ifConditionDisplayLabel(ifBlock->condition, ifBlock->negate);
-        for (const auto& branchBlock : ifBlock->thenBranch.blocks()) {
-            IfBranchBlockDisplay branchDisplay;
-            branchDisplay.type = blockTypeWorkflowActionName(branchBlock->type());
-            branchDisplay.summary = QString::fromStdString(branchBlock->summary());
-            branchDisplay.thumbnail = loadBlockThumbnail(*branchBlock, m_projectDirectory);
-            display.thenBlocks.push_back(branchDisplay);
-        }
-        for (const auto& branchBlock : ifBlock->elseBranch.blocks()) {
-            IfBranchBlockDisplay branchDisplay;
-            branchDisplay.type = blockTypeWorkflowActionName(branchBlock->type());
-            branchDisplay.summary = QString::fromStdString(branchBlock->summary());
-            branchDisplay.thumbnail = loadBlockThumbnail(*branchBlock, m_projectDirectory);
-            display.elseBlocks.push_back(branchDisplay);
-        }
-        ifDisplays.push_back(display);
-    }
-    m_blockList->setIfBlockDisplays(ifDisplays);
+    const bool roiCorrectionEligible = m_feature->roiCorrectionSessionEligible();
+    const bool perBlockRoiCorrection = roiCorrectionEligible && !m_feature->roiCorrection();
+    m_blockList->setRoiCorrectionColumnVisible(perBlockRoiCorrection);
 
     m_blockList->setLoopRegions(m_feature->workflow().loopRegions());
     for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
@@ -895,15 +882,23 @@ void WorkflowEditorPanel::refresh() {
             continue;
         }
 
-        const double threshold = static_cast<const ImageFindBlock&>(block).threshold;
+        const auto& imageFind = static_cast<const ImageFindBlock&>(block);
+        m_blockList->setBlockRoiCorrection(i, imageFind.roiCorrection, perBlockRoiCorrection);
+
+        const double threshold = imageFind.threshold;
         if (i < static_cast<int>(m_rowMatchThresholds.size())) {
             m_rowMatchThresholds[i] = threshold;
         }
 
-        const bool hasRunMatch = i < m_rowMatchConfidences.size() && m_rowMatchConfidences[i] > 0.0 &&
-                                 i < m_rowMatchImages.size() && !m_rowMatchImages[i].isNull();
-        if (hasRunMatch) {
-            m_blockList->setBlockMatchResult(i, threshold, m_rowMatchConfidences[i], m_rowMatchImages[i], true);
+        const bool hasPeakScore = i < static_cast<int>(m_rowMatchConfidences.size())
+                                  && m_rowMatchConfidences[i] >= 0.0;
+        if (hasPeakScore) {
+            const bool matched = (i < static_cast<int>(m_rowMatchMatched.size()) && m_rowMatchMatched[i])
+                                 || m_blockList->isMatchSuccessLocked(i);
+            const QPixmap image =
+                i < static_cast<int>(m_rowMatchImages.size()) ? m_rowMatchImages[i] : QPixmap();
+            m_blockList->setBlockMatchResult(
+                i, threshold, m_rowMatchConfidences[i], image, matched);
         } else {
             m_blockList->setBlockMatchBaseline(i, threshold);
         }
@@ -915,6 +910,9 @@ void WorkflowEditorPanel::refresh() {
         }
         if (i < m_rowImageFindMatchDurations.size() && m_rowImageFindMatchDurations[i] >= 0) {
             m_blockList->setBlockImageFindMatchDuration(i, m_rowImageFindMatchDurations[i]);
+        }
+        if (i < m_rowImageFindAttemptCounts.size() && m_rowImageFindAttemptCounts[i] > 0) {
+            m_blockList->setBlockImageFindAttemptCount(i, m_rowImageFindAttemptCounts[i]);
         }
     }
     if (m_activeBlockIndex >= 0 && m_activeBlockIndex < static_cast<int>(blocks.size())) {
@@ -957,7 +955,6 @@ void WorkflowEditorPanel::setEditingEnabled(bool enabled) {
     m_blockList->setReorderEnabled(enabled);
     if (!enabled) {
         setLoopRegionPickMode(false);
-        setIfGotoPickMode(false);
     }
 }
 
@@ -967,12 +964,17 @@ void WorkflowEditorPanel::addBlockOfType(BlockType type) {
     }
 
     auto draft = BlockFactory::create(type);
+    if (type == BlockType::ImageFind) {
+        if (auto* imageFind = dynamic_cast<ImageFindBlock*>(draft.get())) {
+            imageFind->pollIntervalMs = lastImageFindPollIntervalMs();
+        }
+    }
     BlockEditorDialog dialog(draft.get(), m_projectDirectory, this);
     if (m_feature) {
         dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()) + 1,
                                         static_cast<int>(m_feature->workflow().blocks().size()));
+        dialog.setRoiCorrectionUiPolicy(m_feature->roiCorrection(), m_feature->roiCorrectionSessionEligible());
     }
-    connectBlockEditorDialog(&dialog);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -998,14 +1000,6 @@ QList<int> WorkflowEditorPanel::selectedBlockRows() const {
         const int blockRow = m_blockList->blockRowForTableRow(tableRow);
         if (blockRow >= 0) {
             rowSet.insert(blockRow);
-            continue;
-        }
-        if (m_blockList->tableRowKind(tableRow) == BlockListRowKind::IfBranchBlock) {
-            continue;
-        }
-        const int ifMainRow = m_blockList->ifMainBlockRowForTableRow(tableRow);
-        if (ifMainRow >= 0) {
-            rowSet.insert(ifMainRow);
         }
     }
     QList<int> rows = rowSet.values();
@@ -1019,7 +1013,7 @@ void WorkflowEditorPanel::selectBlockRows(const QList<int>& rows) {
     }
 
     QItemSelection selection;
-    const int lastColumn = m_blockList->columnCount() - 1;
+    const int lastColumn = BlockListWidget::LastDataColumn;
     for (int blockRow : rows) {
         const int tableRow = m_blockList->tableRowForBlockRow(blockRow);
         if (tableRow < 0) {
@@ -1085,81 +1079,26 @@ void WorkflowEditorPanel::removeSelectedBlocks() {
     }
 
     const QList<int> rows = selectedBlockRows();
-    struct IfBranchSelection {
-        int ifBlockRow = -1;
-        int branchBlockIndex = -1;
-        bool isThen = true;
-    };
-    QList<IfBranchSelection> branchSelections;
-    for (const QTableWidgetItem* item : m_blockList->selectedItems()) {
-        int ifBlockRow = -1;
-        bool isThen = true;
-        int branchBlockIndex = -1;
-        if (m_blockList->ifBranchBlockAtTableRow(item->row(), ifBlockRow, isThen, branchBlockIndex)) {
-            branchSelections.append({ifBlockRow, branchBlockIndex, isThen});
-        }
-    }
-
-    if (rows.isEmpty() && branchSelections.isEmpty()) {
+    if (rows.isEmpty()) {
         return;
     }
 
     pushUndoSnapshot();
 
-    if (!rows.isEmpty()) {
-        for (int i = rows.size() - 1; i >= 0; --i) {
-            m_feature->workflow().removeBlock(rows[i]);
-        }
-
-        clearBlockMatchResults();
-
-        const int blockCount = static_cast<int>(m_feature->workflow().blocks().size());
-        refresh();
-
-        if (blockCount > 0) {
-            const int anchorRow = qMin(rows.first(), blockCount - 1);
-            m_blockList->selectBlockRow(anchorRow);
-        }
-
-        emit workflowModified();
-        return;
+    for (int i = rows.size() - 1; i >= 0; --i) {
+        m_feature->workflow().removeBlock(rows[i]);
     }
 
-    std::sort(branchSelections.begin(),
-              branchSelections.end(),
-              [](const IfBranchSelection& a, const IfBranchSelection& b) {
-                  if (a.ifBlockRow != b.ifBlockRow) {
-                      return a.ifBlockRow > b.ifBlockRow;
-                  }
-                  if (a.isThen != b.isThen) {
-                      return a.isThen > b.isThen;
-                  }
-                  return a.branchBlockIndex > b.branchBlockIndex;
-              });
+    clearBlockMatchResults();
 
-    int anchorIfRow = -1;
-    for (const IfBranchSelection& selection : branchSelections) {
-        if (selection.ifBlockRow < 0
-            || selection.ifBlockRow >= static_cast<int>(m_feature->workflow().blocks().size())) {
-            continue;
-        }
-        auto* ifBlock = dynamic_cast<IfBlock*>(m_feature->workflow().blocks()[selection.ifBlockRow].get());
-        if (!ifBlock) {
-            continue;
-        }
-        Workflow& branch = selection.isThen ? ifBlock->thenBranch : ifBlock->elseBranch;
-        if (selection.branchBlockIndex < 0
-            || selection.branchBlockIndex >= static_cast<int>(branch.blocks().size())) {
-            continue;
-        }
-        branch.removeBlock(selection.branchBlockIndex);
-        anchorIfRow = selection.ifBlockRow;
-    }
-
+    const int blockCount = static_cast<int>(m_feature->workflow().blocks().size());
     refresh();
-    if (anchorIfRow >= 0) {
-        m_blockList->selectBlockRow(anchorIfRow);
+
+    if (blockCount > 0) {
+        const int anchorRow = qMin(rows.first(), blockCount - 1);
+        m_blockList->selectBlockRow(anchorRow);
     }
+
     emit workflowModified();
 }
 
@@ -1223,9 +1162,6 @@ void WorkflowEditorPanel::setLoopRegionPickMode(bool active) {
     if (m_loopRegionPickActive == active) {
         return;
     }
-    if (active) {
-        setIfGotoPickMode(false);
-    }
     m_loopRegionPickActive = active;
     m_blockList->setLoopRegionPickMode(active);
     if (m_loopRegionsButton) {
@@ -1234,60 +1170,75 @@ void WorkflowEditorPanel::setLoopRegionPickMode(bool active) {
     }
 }
 
-void WorkflowEditorPanel::setIfGotoPickMode(bool active) {
-    if (m_ifGotoPickActive == active) {
+void WorkflowEditorPanel::onImageFindThresholdChanged(int blockRow, double threshold) {
+    if (!m_feature || !m_editingEnabled) {
         return;
     }
-    if (active) {
-        setLoopRegionPickMode(false);
-        setIfGotoPickMode(false);
-    }
-    m_ifGotoPickActive = active;
-    m_blockList->setIfGotoPickMode(active);
-}
 
-void WorkflowEditorPanel::connectBlockEditorDialog(BlockEditorDialog* dialog) {
-    if (!dialog) {
+    auto& blocks = m_feature->workflow().blocks();
+    if (blockRow < 0 || blockRow >= static_cast<int>(blocks.size())) {
         return;
     }
-    dialog->setGotoBlockPickAvailable(true);
-    connect(dialog, &BlockEditorDialog::requestIfGotoBlockPick, this, [this, dialog](int branch) {
-        beginIfGotoBlockPick(dialog, branch);
-    });
-}
-
-void WorkflowEditorPanel::beginIfGotoBlockPick(BlockEditorDialog* dialog, int branch) {
-    if (!m_editingEnabled || !dialog || m_ifGotoPickDialog) {
+    if (blocks[blockRow]->type() != BlockType::ImageFind) {
         return;
     }
-    m_ifGotoPickDialog = dialog;
-    m_ifGotoPickBranch = branch;
-    dialog->hide();
-    setIfGotoPickMode(true);
-}
 
-void WorkflowEditorPanel::finishIfGotoBlockPick(int blockRow, bool apply) {
-    BlockEditorDialog* dialog = m_ifGotoPickDialog;
-    const int branch = m_ifGotoPickBranch;
-    m_ifGotoPickDialog = nullptr;
-    setIfGotoPickMode(false);
-    if (!dialog) {
+    auto* imageFind = static_cast<ImageFindBlock*>(blocks[blockRow].get());
+    if (qAbs(imageFind->threshold - threshold) < 0.0005) {
         return;
     }
-    dialog->show();
-    dialog->raise();
-    dialog->activateWindow();
-    if (apply && blockRow >= 0) {
-        dialog->applyIfGotoBlockPick(branch, blockRow + 1);
+
+    pushUndoSnapshot();
+    imageFind->threshold = threshold;
+    if (blockRow >= static_cast<int>(m_rowMatchThresholds.size())) {
+        m_rowMatchThresholds.resize(blockRow + 1, 0.0);
     }
+    m_rowMatchThresholds[blockRow] = threshold;
+
+    const bool hasPeakScore = blockRow < static_cast<int>(m_rowMatchConfidences.size())
+                              && m_rowMatchConfidences[blockRow] >= 0.0;
+    if (hasPeakScore) {
+        const bool matched = (blockRow < static_cast<int>(m_rowMatchMatched.size())
+                              && m_rowMatchMatched[blockRow])
+                             || m_blockList->isMatchSuccessLocked(blockRow);
+        const QPixmap image = blockRow < static_cast<int>(m_rowMatchImages.size())
+                                  ? m_rowMatchImages[blockRow]
+                                  : QPixmap();
+        m_blockList->setBlockMatchResult(blockRow,
+                                         threshold,
+                                         m_rowMatchConfidences[blockRow],
+                                         image,
+                                         matched);
+    } else {
+        m_blockList->setBlockMatchBaseline(blockRow, threshold);
+    }
+    emit workflowModified();
 }
 
-void WorkflowEditorPanel::onIfGotoBlockPicked(int blockRow) {
-    finishIfGotoBlockPick(blockRow, true);
-}
+void WorkflowEditorPanel::onImageFindRoiCorrectionChanged(int blockRow, bool enabled) {
+    if (!m_feature || !m_editingEnabled) {
+        return;
+    }
 
-void WorkflowEditorPanel::onIfGotoPickCancelled() {
-    finishIfGotoBlockPick(-1, false);
+    auto& blocks = m_feature->workflow().blocks();
+    if (blockRow < 0 || blockRow >= static_cast<int>(blocks.size())) {
+        return;
+    }
+    if (blocks[blockRow]->type() != BlockType::ImageFind) {
+        return;
+    }
+
+    auto* imageFind = static_cast<ImageFindBlock*>(blocks[blockRow].get());
+    if (imageFind->roiCorrection == enabled) {
+        return;
+    }
+
+    pushUndoSnapshot();
+    imageFind->roiCorrection = enabled;
+    const bool perBlockRoiCorrection =
+        m_feature->roiCorrectionSessionEligible() && !m_feature->roiCorrection();
+    m_blockList->setBlockRoiCorrection(blockRow, enabled, perBlockRoiCorrection);
+    emit workflowModified();
 }
 
 void WorkflowEditorPanel::onLoopRegionPickCancelled() {
@@ -1378,14 +1329,6 @@ void WorkflowEditorPanel::onLoopRegionDeleteRequested(const QString& regionId) {
     deleteLoopRegion(regionId);
 }
 
-void WorkflowEditorPanel::onIfBlockEditRequested(int mainBlockRow) {
-    editBlockAt(mainBlockRow);
-}
-
-void WorkflowEditorPanel::onIfBlockDeleteRequested(int mainBlockRow) {
-    deleteBlockAt(mainBlockRow);
-}
-
 void WorkflowEditorPanel::onLoopRegionsButtonContextMenu(const QPoint& pos) {
     QMenu menu(this);
     menu.addAction(tr("구간 반복 목록…"), this, &WorkflowEditorPanel::openLoopRegionsListDialog);
@@ -1465,7 +1408,7 @@ void WorkflowEditorPanel::onInsertWaitBetweenBlocks() {
     const int waitMs = snapWaitDelayMs(QInputDialog::getInt(this,
                                             tr("전체 딜레이 추가"),
                                             tr("삽입할 딜레이 시간 (ms):"),
-                                            500,
+                                            lastBulkInsertWaitMs(),
                                             0,
                                             600000,
                                             kWaitDelayStepMs,
@@ -1473,6 +1416,8 @@ void WorkflowEditorPanel::onInsertWaitBetweenBlocks() {
     if (!accepted) {
         return;
     }
+
+    saveLastBulkInsertWaitMs(waitMs);
 
     pushUndoSnapshot();
     for (int i = blockCount - 2; i >= 0; --i) {
@@ -1546,7 +1491,7 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
     Block* block = m_feature->workflow().blocks()[row].get();
     BlockEditorDialog dialog(block, m_projectDirectory, this);
     dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()), row);
-    connectBlockEditorDialog(&dialog);
+    dialog.setRoiCorrectionUiPolicy(m_feature->roiCorrection(), m_feature->roiCorrectionSessionEligible());
     if (dialog.exec() != QDialog::Accepted) {
         return false;
     }
@@ -1555,36 +1500,6 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
     m_feature->workflow().replaceBlock(row, dialog.takeBlock());
     refresh();
     m_blockList->selectBlockRow(row);
-    emit workflowModified();
-    return true;
-}
-
-bool WorkflowEditorPanel::editIfBranchBlock(int ifBlockRow, bool isThenBranch, int branchBlockIndex) {
-    if (!m_feature || ifBlockRow < 0 || ifBlockRow >= static_cast<int>(m_feature->workflow().blocks().size())) {
-        return false;
-    }
-
-    Block* block = m_feature->workflow().blocks()[ifBlockRow].get();
-    auto* ifBlock = dynamic_cast<IfBlock*>(block);
-    if (!ifBlock) {
-        return false;
-    }
-
-    Workflow& branch = isThenBranch ? ifBlock->thenBranch : ifBlock->elseBranch;
-    if (branchBlockIndex < 0 || branchBlockIndex >= static_cast<int>(branch.blocks().size())) {
-        return editBlockAt(ifBlockRow);
-    }
-
-    BlockEditorDialog dialog(branch.blocks()[branchBlockIndex].get(), m_projectDirectory, this);
-    dialog.setWorkflowEditorContext(static_cast<int>(branch.blocks().size()), branchBlockIndex);
-    if (dialog.exec() != QDialog::Accepted) {
-        return false;
-    }
-
-    pushUndoSnapshot();
-    branch.replaceBlock(branchBlockIndex, dialog.takeBlock());
-    refresh();
-    m_blockList->selectBlockRow(ifBlockRow);
     emit workflowModified();
     return true;
 }

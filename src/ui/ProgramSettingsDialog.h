@@ -3,6 +3,8 @@
 #include <QDialog>
 
 class QCheckBox;
+class QLabel;
+class QPushButton;
 
 class ProgramSettingsDialog : public QDialog {
     Q_OBJECT
@@ -11,6 +13,10 @@ public:
 
 private:
     void setupUi();
+    void updateClickFeedbackSummary();
+    void onOpenClickFeedbackSettings();
 
     QCheckBox* m_autoSelectRunningFeatureCheck = nullptr;
+    QLabel* m_clickFeedbackSummary = nullptr;
+    QPushButton* m_clickFeedbackButton = nullptr;
 };

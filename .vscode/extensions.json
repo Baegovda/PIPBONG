@@ -1,0 +1,8 @@
+{
+    "recommendations": [],
+    "unwantedRecommendations": [
+        "ms-vscode.cmake-tools",
+        "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp"
+    ]
+}

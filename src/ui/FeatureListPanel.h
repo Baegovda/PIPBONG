@@ -1,25 +1,16 @@
 #pragma once
 
-
-
 #include <QSet>
-
 #include <QWidget>
 
-
+#include <memory>
 
 class QListWidgetItem;
-
 class QPushButton;
-
 class QSettings;
-
 class QTimer;
-
 class Project;
-
 class Feature;
-
 class FeatureListWidget;
 
 
@@ -43,6 +34,7 @@ class FeatureListPanel : public QWidget {
 public:
 
     explicit FeatureListPanel(QWidget* parent = nullptr);
+    ~FeatureListPanel() override;
 
 
 
@@ -112,6 +104,10 @@ private slots:
 
     void onRemoveFeature();
 
+    void onCopyFeature();
+
+    void onPasteFeature();
+
     void onEditFeature();
 
     void onSelectionChanged();
@@ -168,6 +164,7 @@ private:
 
     bool m_restoringColumnLayout = false;
 
+    std::unique_ptr<Feature> m_clipboardFeature;
 };
 
 

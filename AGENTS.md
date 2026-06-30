@@ -1,6 +1,6 @@
 # AGENTS.md — SuckbongMachine Master Document
 
-**Current version:** `0.5.43` (from `project(SuckbongMachine VERSION 0.5.43)` in `CMakeLists.txt` → `SBM_VERSION` compile definition)
+**Current version:** `0.5.96` (from `project(SuckbongMachine VERSION 0.5.96)` in `CMakeLists.txt` → `SbmVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
 
@@ -76,33 +76,53 @@ This is the **only project document** — AI handover, user quick start, develop
 
 ### Configure and build (default — fast dev)
 
-**Default for AI and daily work.** Dynamic DLL linking; **incremental** compiles (changed `.cpp` only) are much faster than re-running configure or static builds.
+**Default for AI and daily work.** Dynamic DLL linking; **incremental** compiles (changed `.cpp` only). Dev builds **skip `windeployqt` on every link** (`SBM_SKIP_WINDEPLOY=ON`) so no-change rebuilds stay ~3 s and single-file edits ~5 s.
 
 #### First time on a machine (once)
 
 ```powershell
 cmake --preset default
 cmake --build build --config Release
+.\scripts\deploy-qt.ps1
 ```
 
-#### Everyday / when the user asks to build (incremental)
+Run **`deploy-qt` once** after the first successful build (or when Qt/OpenCV DLLs beside the exe are missing). Do **not** run it after every incremental build.
+
+#### Everyday incremental (default)
 
 ```powershell
 cmake --build build --config Release
 ```
 
-Only re-run `cmake --preset default` when `build/` does not exist yet, or after changing `CMakeLists.txt` (new sources), `CMakePresets.json`, or `vcpkg.json`. CMake re-configures automatically on the next `--build` when `CMakeLists.txt` changes (e.g. version bump) — **do not** run `--preset` again just for a version number change.
+Or **Ctrl+Shift+B** / `빌드.bat` → `scripts/build-release.ps1` (same command; kills running exe before link).
 
-**Output:** `build/Release/SuckbongMachine.exe` (run with the `build/Release/` folder — `windeployqt` deploys Qt/OpenCV DLLs on link).
+| Situation | Typical time |
+|-----------|----------------|
+| One `.cpp` changed | ~5–15 s |
+| No source changes | ~3 s |
+| `CMakeLists.txt` / version bump (full recompile) | ~2–3 min |
+
+Only re-run `cmake --preset default` when `build/` does not exist yet, or after changing `CMakeLists.txt` (new sources), `CMakePresets.json`, or `vcpkg.json`. CMake re-configures automatically on the next `--build` when `CMakeLists.txt` changes — **do not** run `--preset` again just for a version number change.
+
+**Output:** `build/Release/SuckbongMachine.exe` — run from `build/Release/` (DLLs deployed via `deploy-qt`, not every build).
+
+#### Deploy Qt DLLs (when needed)
+
+```powershell
+.\scripts\deploy-qt.ps1
+```
+
+Equivalent: `cmake --build build --config Release --target deploy-qt`
 
 #### AI build policy
 
 | When | Build? | Command |
 |------|--------|---------|
-| Task close (default) | **No** — do not build automatically | — |
-| User explicitly asks (e.g. “빌드해줘”, “빌드해”, “컴파일 확인”) | **Yes** — incremental build | `cmake --build build --config Release` |
-| Compile verification needed and user did not forbid | **Yes** | same as above |
-| `build/` missing and user asked to build | Configure once, then build | `cmake --preset default` then `--build` |
+| **Task close** — C++/headers/`CMakeLists.txt` changed | **Yes** — incremental only (changed `.cpp` recompile) | `cmake --build build --config Release` or `scripts/build-release.ps1` |
+| Task close — docs / rules / changelog only | **No** | — |
+| Mid-implementation (unless compile check needed) | **No** | — |
+| User explicitly asks mid-task (e.g. “빌드해줘”) | **Yes** | same incremental command |
+| `build/` missing at close | Configure once, then build | `cmake --preset default` then `--build` |
 | Distribution exe requested | Static preset | `cmake --preset static` then `cmake --build build-static --config Release` |
 
 Before link, kill a running `SuckbongMachine.exe` only when a build is actually run (`LNK1104`).
@@ -131,8 +151,56 @@ Distribution build: `.\dist\SuckbongMachine.exe`
 ### Build pitfalls
 
 - **LNK1104:** Kill any running `SuckbongMachine.exe` before linking (only when building).
-- **Slow closes:** Do not run `cmake --preset default` on every task — use incremental `--build` only.
+- **Slow builds:** Do not run `cmake --preset default` on every task — use incremental `--build` only. Avoid static preset for daily work. A version bump regenerates `SbmVersion.h` and recompiles only `Application.cpp` + `UpdateChecker.cpp` (not every `.cpp`).
+- **Missing DLLs at runtime:** Run `.\scripts\deploy-qt.ps1` once — dev builds no longer call `windeployqt` every link.
 - **vcpkg path:** `CMakePresets.json` may reference a machine-specific `CMAKE_TOOLCHAIN_FILE`; adjust if vcpkg is installed elsewhere.
+
+### 3.1 IDE / Cursor build workflow (mandatory — do not regress)
+
+**Status:** Verified working on Windows (2026-06). This is the **canonical daily dev path** for humans and AI. If the IDE “breaks” (CMake configure loops, vcpkg rebuilds, F5 failures, exit code -1), **restore this section** — not CMake Tools defaults.
+
+#### What to use
+
+| Action | Command / UI |
+|--------|----------------|
+| **Build** | **Ctrl+Shift+B**, `빌드.bat`, or `.\scripts\build-release.ps1` |
+| **Run** | Run and Debug → **`Run SuckbongMachine (Release)`** → **F5** |
+| **Binary** | `build/Release/SuckbongMachine.exe` (working directory `build/Release/`) |
+| **Task close (AI)** | Same script when C++/headers/`CMakeLists.txt` changed |
+
+`build-release.ps1` kills a running `SuckbongMachine.exe`, auto-runs `cmake --preset default` only if `build/CMakeCache.txt` is missing, then `cmake --build build --config Release`.
+
+#### Required tracked `.vscode/` files (recovery source of truth)
+
+These files **must** remain in git (see `.gitignore` whitelist). They are **not** optional local-only config.
+
+| File | Purpose |
+|------|---------|
+| `.vscode/tasks.json` | Default build task **`Build Release`** → `scripts/build-release.ps1` |
+| `.vscode/launch.json` | **`Run SuckbongMachine (Release)`** — Release exe + `preLaunchTask`: `Build Release` |
+| `.vscode/settings.json` | **`cmake.enabled`: `false`** — prevents CMake Tools from hijacking F5/configure |
+| `.vscode/extensions.json` | Discourage `ms-vscode.cmake-tools` and C# Dev Kit in this workspace |
+
+**Critical setting:** `"cmake.enabled": false` in workspace `settings.json`. Without it, CMake Tools may run **configure → vcpkg → qtbase** on F5 or open (10–30 minutes) and show **“A CMake task is already running”** (exit -1).
+
+#### Do not use for daily dev
+
+- CMake Tools status-bar **[Configure]** / **[Build]** as the primary build path
+- Launch configs with `"type": "cmake"` or `preLaunchTask: "CMake: build …"`
+- Separate **`build-clangd/`** tree (IntelliSense noise; excluded in `settings.json`)
+- Debug-only F5 without Release workflow unless user explicitly requests debug setup
+- Placeholder `launch.json` (`<your program>`) or re-gitignoring entire `.vscode/`
+
+#### Recovery checklist (IDE build broken)
+
+1. `git checkout -- .vscode/` (or restore from this doc / `.cursor/rules/ide-build-workflow.mdc`).
+2. Confirm `cmake.enabled` is `false` in `.vscode/settings.json`.
+3. **Developer: Reload Window** in Cursor.
+4. `Stop-Process -Name cmake,msbuild -Force -ErrorAction SilentlyContinue` if a task is stuck.
+5. `.\scripts\build-release.ps1` — expect ~3 s (no changes) or ~5–15 s (one `.cpp`).
+6. F5 with **Run SuckbongMachine (Release)**; if Qt DLL error, run `.\scripts\deploy-qt.ps1` once.
+
+Cursor rule: `.cursor/rules/ide-build-workflow.mdc` (always applied).
 
 ---
 
@@ -144,6 +212,15 @@ poez/                          # repo root (legacy folder name)
 ├── CMakeLists.txt             # version source of truth, source list
 ├── CMakePresets.json          # VS2022 + vcpkg preset
 ├── vcpkg.json                 # dependency manifest
+├── 빌드.bat                   # one-click Release build → scripts/build-release.ps1
+├── scripts/
+│   ├── build-release.ps1      # canonical incremental Release build (IDE + AI task close)
+│   └── deploy-qt.ps1          # Qt DLL deploy beside build/Release (once when needed)
+├── .vscode/                   # tracked IDE workflow — tasks, launch, settings (see §3.1)
+│   ├── tasks.json             # Ctrl+Shift+B → build-release.ps1
+│   ├── launch.json            # F5 → Run SuckbongMachine (Release)
+│   ├── settings.json          # cmake.enabled: false
+│   └── extensions.json
 ├── .cursor/rules/             # always-applied Cursor agent rules
 └── src/
     ├── main.cpp               # DPI awareness before QApplication
@@ -212,7 +289,7 @@ poez/                          # repo root (legacy folder name)
 
 ### 5.5 Workflow engine
 
-- **Block types (UI):** `ImageFind`, `Click`, `KeyPress`, `Wait`, `If`, `Loop`. Legacy `Comment` blocks still load from JSON but are hidden from add/type UI.
+- **Block types (UI):** `ImageFind`, `Click`, `KeyPress`, `Wait`, `Loop`. Legacy `Comment` blocks still load from JSON but are hidden from add/type UI. Legacy JSON `"type": "If"` entries are skipped on load.
 - **`WorkflowEngine`**: Runs workflow on **`QThread` worker**; emits `started`, `blockStarted`, `blockFinished` (with ImageFind match confidence + preview pixmap), `logMessage`, `finished`.
 - **`ExecutionContext`**: Stop flag, last match point/confidence/preview, logging callback.
 - **ImageFind execution:** Poll loop until match, timeout, or stop; sets last match for subsequent `Click` blocks (`LastMatch` target).
@@ -233,7 +310,7 @@ poez/                          # repo root (legacy folder name)
 | Templates | `{projectDirectory}/templates/*.png` |
 | Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
 | Debounce | 800 ms after edits; also on window close |
-| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); bottom **설정** button opens program settings dialog |
+| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); `program/pointerFeedback/click/*` for click pointer animation; bottom **설정** button opens program settings dialog |
 
 ---
 
@@ -306,6 +383,8 @@ poez/                          # repo root (legacy folder name)
 | `repeatCount` | `1` | Used when `runMode` is `RepeatCount` |
 | `infiniteExitAfterConsecutiveMisses` | `0` (omitted) | When `> 0` with `RepeatInfinite` or `Hold`, stop after this many consecutive loop iterations where template matching fails |
 | `userInputInterrupt` | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run. Legacy `"None"` loads as `"Stop"`. Excludes mouse movement, injected input, and the feature's own hotkey |
+| `pointerVisualFeedback` | `true` (omitted) | When `false`, disables target-window click/match pulse overlay for this feature during runs |
+| `roiCorrection` | `false` (omitted) | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
 
 `hotkey` is optional. `virtualKey` is Win32 VK code.
 
@@ -326,6 +405,7 @@ poez/                          # repo root (legacy folder name)
 | `percentRegion` | `{x,y,width,height}` | 0–100 % of virtual desktop when `ScreenPercent` |
 | `multiScale` | `false` | Written as `true` when enabled |
 | `minScale` / `maxScale` | `0.9` / `1.1` | Written only when non-default |
+| `roiCorrection` | `false` (omitted) | Per-block ROI correction when feature `roiCorrection` is off; loop 2+ uses session-only matched template rect from loop 1 |
 
 #### `Click`
 
@@ -360,19 +440,6 @@ poez/                          # repo root (legacy folder name)
 | `randomRange` | `false` | Use min/max instead |
 | `minMs`, `maxMs` | `0` | Random range bounds (5 ms step) |
 
-#### `If`
-
-| Field | Default | Notes |
-|-------|---------|-------|
-| `condition` | `"LastMatchSuccess"` | `LastMatchSuccess`, `LastMatchFailed`, `DetectionFailed` |
-| `negate` | `false` | Invert condition result |
-| `then` | `[]` | Nested workflow when condition is true |
-| `else` | `[]` | Nested workflow when false; omit or empty for no-op |
-| `thenGotoBlock` | omitted (`0`) | 1-based `#` column in the **parent** workflow to jump to after a successful `then` branch |
-| `elseGotoBlock` | omitted (`0`) | Same after a successful `else` branch |
-
-`then` / `else` arrays use the same block JSON schema as the root `workflow` array. Nested `If` blocks are allowed (max depth 8 at runtime).
-
 #### `Loop`
 
 | Field | Default | Notes |
@@ -381,7 +448,7 @@ poez/                          # repo root (legacy folder name)
 | `detectionMissLimit` | `1` | Consecutive ImageFind poll misses inside the body before detection counts as failed (`DetectionFailed` only); omitted when default |
 | `body` | `[]` | Nested workflow repeated until the exit condition is met |
 
-`body` uses the same block JSON schema as the root `workflow` array. Nested `Loop` / `If` blocks share the max depth 8 runtime limit.
+`body` uses the same block JSON schema as the root `workflow` array. Nested `Loop` blocks share the max depth 8 runtime limit.
 
 #### Workflow loop regions (feature `workflow` document)
 
@@ -623,6 +690,20 @@ Cursor rule: `.cursor/rules/physical-keyboard-preservation.mdc`.
 
 Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
+### 8.8 IDE / Cursor build workflow (mandatory — do not regress)
+
+**Status:** Verified working on Windows (2026-06). IDE build and F5 **must not** trigger CMake Tools configure or vcpkg reinstall. Use tracked `.vscode/` + `scripts/build-release.ps1` only.
+
+| Layer | Rule |
+|-------|------|
+| Build | **Ctrl+Shift+B** / `빌드.bat` / `build-release.ps1` → `cmake --build build --config Release` |
+| Run | `launch.json` **`Run SuckbongMachine (Release)`** with `preLaunchTask` **`Build Release`** |
+| CMake Tools | **`cmake.enabled`: `false`** in `.vscode/settings.json` — workspace only |
+| Git | Four `.vscode/*` files whitelisted in `.gitignore` — never delete from repo |
+| Exclude | `build-clangd/` — do not use as CMake build dir |
+
+**Recovery:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) checklist + `.cursor/rules/ide-build-workflow.mdc`.
+
 ---
 
 ## 9. Development Governance
@@ -644,9 +725,10 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 ### After every completed task
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
-2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave an empty `[Unreleased]`. **Do not** run `cmake --build` at task close unless the user explicitly asks to build. Static `dist/SuckbongMachine.exe` **only when the user explicitly requests** distribution. **Never** leave shipped work only under `[Unreleased]` with an unchanged version.
+2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave an empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip for docs/rules-only. Static `dist/SuckbongMachine.exe` **only when the user explicitly requests** distribution. **Never** leave shipped work only under `[Unreleased]` with an unchanged version.
 3. Keep diffs minimal; match existing C++ / Qt conventions.
 4. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
+5. **Do not regress IDE build workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files and `cmake.enabled: false`; never replace F5 with CMake Tools configure-on-open.
 
 ### Diff conventions
 
@@ -658,7 +740,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 ## 10. Versioning Policy
 
-**Single source of truth:** `project(SuckbongMachine VERSION x.y.z)` in `CMakeLists.txt` → `SBM_VERSION` compile definition → `QCoreApplication::applicationVersion()`.
+**Single source of truth:** `project(SuckbongMachine VERSION x.y.z)` in `CMakeLists.txt` → `configure_file` → `build/generated/SbmVersion.h` → `Application::setApplicationVersion()`.
 
 **Do not** hardcode version strings elsewhere.
 
@@ -672,7 +754,7 @@ When the user’s request is **done** (code merged, changelog written, version b
 | 2 | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history) |
 | 3 | Leave empty `[Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` headers only, or blank) |
 | 4 | Update **Current version** at the top of this file |
-| 5 | **Build only if the user explicitly asked** — incremental `cmake --build build --config Release` (static `dist/` only if user asked for distribution). Otherwise do not build. |
+| 5 | **Incremental build at task close** when compile inputs changed — `cmake --build build --config Release` (or `scripts/build-release.ps1`; `--preset default` only if `build/` missing). Skip docs/rules-only. Static `dist/` only if user asked for distribution. |
 
 **Do not** accumulate many tasks under `[Unreleased]` without bumping. **Do not** finish a chat task with changelog entries still unreleased and the same version number.
 
@@ -691,7 +773,7 @@ When in doubt, **patch bump**.
 1. Update `project(SuckbongMachine VERSION ...)` in `CMakeLists.txt`.
 2. Move `[Unreleased]` items into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history).
 3. Leave empty `[Unreleased]` section.
-4. **Do not** build at task close unless the user asked. When they ask: incremental `cmake --build build --config Release`. Static `dist/SuckbongMachine.exe` only when the user requests distribution.
+4. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `cmake --build build --config Release` (kill running exe before link). Skip docs/rules-only. Static `dist/SuckbongMachine.exe` only when the user requests distribution.
 
 ### Changelog format
 
@@ -712,6 +794,353 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.5.96] - 2026-06-29
+
+### Added
+
+- Mandatory IDE build workflow policy: AGENTS.md §3.1 and §8.8, always-applied `.cursor/rules/ide-build-workflow.mdc` (Ctrl+Shift+B / F5 via `build-release.ps1`, tracked `.vscode/`, `cmake.enabled: false`, recovery checklist).
+
+## [0.5.95] - 2026-06-29
+
+### Fixed
+
+- Restore IDE build workflow: `.vscode/tasks.json` default **Build Release** runs `scripts/build-release.ps1`; F5 uses `launch.json` + incremental Release build; `cmake.enabled: false` stops CMake Tools configure/vcpkg conflicts and “task already running” errors; track `.vscode` config in git; ignore `build-clangd/`.
+
+## [0.5.94] - 2026-06-29
+
+### Changed
+
+- New ImageFind blocks default **탐지 재시도** to the last value saved in `QSettings` (`ui/state/imageFindEditor/lastPollIntervalMs`); updated whenever an ImageFind editor is applied (`ImageFindPollIntervalPrefs`, `WorkflowEditorPanel`, `ImageFindEditor`).
+
+## [0.5.93] - 2026-06-29
+
+### Fixed
+
+- Wait and ImageFind ms spin boxes snap to the 5 ms grid on `editingFinished` / apply only — not on every `valueChanged` keystroke, so typing `10` no longer collapses to `0` mid-edit (`WaitEditor`, `ImageFindEditor`).
+
+## [0.5.92] - 2026-06-29
+
+### Fixed
+
+- Incremental builds no longer recompile every translation unit on a version bump: `SBM_VERSION` and update macros moved from global `target_compile_definitions` to generated `SbmVersion.h` included only by `Application.cpp` and `UpdateChecker.cpp` (`CMakeLists.txt`, `SbmVersion.h.in`).
+
+## [0.5.91] - 2026-06-29
+
+### Changed
+
+- Workflow block list header resize: removed custom filler column, viewport clamping, and bespoke save/restore wrappers; use standard Qt `QHeaderView::Interactive` + `Stretch` on **요약** with `UiStateManager::registerHeader` persistence (`BlockListWidget`, `WorkflowEditorPanel`, `MainWindow`).
+
+## [0.5.90] - 2026-06-29
+
+### Changed
+
+- AI build policy: run incremental `cmake --build build --config Release` at task close when C++/headers/`CMakeLists.txt` changed; skip docs/rules-only; static `dist/` still user-request only (`AGENTS.md` §3/§9/§10, `.cursor/rules/static-single-exe-build.mdc`, `changelog-versioning.mdc`, `ai-governance.mdc`).
+
+## [0.5.89] - 2026-06-29
+
+### Changed
+
+- ROI correction search region on loop 2+ expands the first-loop match rectangle by ~10% (centered) instead of using the exact template size (`ImageFindBlock::maybeRecordRoiCorrection`).
+
+## [0.5.88] - 2026-06-29
+
+### Fixed
+
+- Workflow block list header stays pinned to the viewport right edge: data-column widths clamp to the visible width, trailing `Stretch` filler absorbs slack, horizontal scroll is disabled, and layout re-syncs on resize/restore (`BlockListWidget`).
+
+## [0.5.87] - 2026-06-29
+
+### Added
+
+- Workflow panel title shows session average loop time beside the last loop duration (`루프 N: X ms · 평균 Y ms`); cumulative average resets when a new run session starts (`FeatureRunSession`, `WorkflowEditorPanel`, `MainWindow`).
+
+## [0.5.86] - 2026-06-29
+
+### Changed
+
+- **직전 매칭** mouse clicks use `clickAtMatchScreen`: optional `SetCursorPos` when not already near the match point, no 16 ms settle or 12 ms tap hold, batched DOWN+UP at cursor; removed 15 ms pre-click delay (`InputSimulator`, `ClickBlock`).
+
+## [0.5.85] - 2026-06-29
+
+### Fixed
+
+- Workflow block list header resize: all data columns (`#` through **매칭**) use `Interactive` drag resize; trailing empty `Stretch` filler column absorbs panel slack instead of stretching **요약** mid-table (`BlockListWidget`).
+
+## [0.5.84] - 2026-06-29
+
+### Changed
+
+- **현재 위치** mouse tap sends batched DOWN+UP in one `SendInput` with no 12 ms hold; coordinate lookup for click-feedback runs only after the click and only when **실행 위치 표시** is enabled (`InputSimulator`, `ClickBlock`, `ExecutionContext`).
+
+## [0.5.83] - 2026-06-29
+
+### Fixed
+
+- **현재 위치** mouse clicks no longer move/settle the cursor before tapping; skip 16 ms settle when the cursor is already at the target (`InputSimulator::clickAtCursor`, `settleCursorAtScreenPos`, `ClickBlock`) — typical block time drops from ~45 ms to ~12 ms (tap hold only).
+
+## [0.5.82] - 2026-06-29
+
+### Fixed
+
+- Workflow block list header no longer stops short of the panel edge: **요약** column uses `QHeaderView::Stretch` to absorb remaining width while other columns stay drag-resizable (`BlockListWidget`).
+
+## [0.5.81] - 2026-06-29
+
+### Fixed
+
+- Workflow ImageFind **기준/감지** column shows the live peak match score on every miss retry and on final block failure, even when below threshold (`WorkflowRunner`, `WorkflowEngine`, `MainWindow`, `WorkflowEditorPanel` run-feedback cache).
+
+## [0.5.80] - 2026-06-29
+
+### Added
+
+- Workflow block list: all columns use `QHeaderView::Interactive` — drag header dividers to resize; layout saved under `workflowBlockList/columns` (`BlockListWidget`, `WorkflowEditorPanel`, `MainWindow`).
+
+## [0.5.79] - 2026-06-29
+
+### Removed
+
+- Workflow block list column resize/persistence: removed `Interactive` modes, hidden stretch filler column, `saveState`/`restoreState`, legacy layout migration, and `ui/state/blockList/header` settings hooks (`BlockListWidget`, `WorkflowEditorPanel`, `MainWindow`).
+
+### Changed
+
+- Workflow block list columns use a fixed layout: metric columns `Fixed` width, **요약** `Stretch` fills remaining space; no user column drag-resize (`BlockListWidget`).
+
+## [0.5.78] - 2026-06-29
+
+### Fixed
+
+- Workflow block list **ROI 보정** column: checkbox indicator is center-aligned via `CenterCheckBoxDelegate` (`BlockListWidget`).
+
+## [0.5.77] - 2026-06-29
+
+### Changed
+
+- Workflow block list **ROI 보정** column moved to the right edge (between **기준/감지** and **매칭**); **ROI 보정** and **매칭** use `Fixed` width with trailing stretch filler so both stay pinned at the viewport right like left columns (`BlockListWidget`).
+
+## [0.5.76] - 2026-06-29
+
+### Added
+
+- Per-block ROI correction when feature **전체 ROI 보정** is off: **ROI 보정** checkbox in ImageFind block editor and checkable **ROI 보정** workflow column (`ImageFindBlock`, `ImageFindEditor`, `BlockListWidget`, `WorkflowEditorPanel`).
+
+### Changed
+
+- Feature **전체 ROI 보정** applies ROI correction to all ImageFind blocks; per-block `roiCorrection` JSON and UI are used only when the feature flag is off (`Feature`, `ExecutionContext`, `MainWindow`, `FeatureEditDialog`).
+
+## [0.5.75] - 2026-06-29
+
+### Changed
+
+- ImageFind **탐색 ROI** toolbar: **미리보기** (blue), **추가** (green), **삭제** (red) buttons use colored styles for clearer affordance (`ImageFindEditor`).
+- ROI preview overlay: **확인** / **추가** / **삭제** toolbar segments use distinct green/blue/red fills with bolder labels; ROI borders, fill tint, and resize handles are brighter; ROI index badge moved to the **top-left** corner (`RoiPreviewOverlay`).
+
+## [0.5.74] - 2026-06-29
+
+### Fixed
+
+- Workflow block list column resize: **요약** through **매칭** use the same `Interactive` mode as **#** / **미리보기** / **동작** (removed **요약** `Stretch` and **매칭** `Fixed`); hidden trailing stretch filler absorbs extra viewport width so **매칭** stays at the right edge (`BlockListWidget`).
+
+## [0.5.73] - 2026-06-29
+
+### Changed
+
+- Workflow ImageFind run ROI hint: padded outward border (10 px) stays visible for the whole block (not a 0.48 s flash); border sits outside the real capture haystack so polls no longer hide the overlay; sky-tint outline (`WorkflowRoiFlashOverlay`, `ImageFindBlock`).
+
+## [0.5.72] - 2026-06-29
+
+### Fixed
+
+- Workflow block list **매칭** column pinned to the viewport right edge (`QHeaderView::Fixed`, no trailing filler); extra width goes to **요약** (`Stretch`); metric columns stay independently resizable (`BlockListWidget`).
+
+## [0.5.71] - 2026-06-29
+
+### Fixed
+
+- Workflow block list column resize: trailing hidden stretch filler column absorbs extra viewport width so **요약** no longer shrinks when resizing **동작 시간**–**매칭**; each data column (including **요약**) resizes only via its own divider; legacy 9-column saved layouts still restore (`BlockListWidget`, `WorkflowEditorPanel`).
+
+## [0.5.70] - 2026-06-29
+
+### Added
+
+- Workflow run: when an ImageFind block starts, its search ROI flashes as a faint border on the target window (~480 ms fade); uses the effective search area (including session **ROI 보정**); hidden before capture polls (`WorkflowRoiFlashOverlay`, `ImageFindBlock`, `MainWindow` dismiss on run end).
+
+## [0.5.69] - 2026-06-29
+
+### Added
+
+- Feature **ROI 보정** option in **기능 편집** (shown for **무한 반복** or **N회 반복** ≥2): loop 1 uses user-configured ImageFind search areas; on match, records the matched template bounds as a session-only custom ROI for that block; loop 2+ searches only that rect; JSON `roiCorrection` (default off, omitted when false); corrected coordinates are never saved to blocks (`Feature`, `FeatureEditDialog`, `JsonSerializer`, `ExecutionContext`, `ImageFindBlock`, `WorkflowRunner`, `MainWindow`).
+
+## [0.5.68] - 2026-06-29
+
+### Added
+
+- **마우스 클릭 피드백 애니메이션** dedicated settings dialog (**프로그램 설정 → 설정…**): grouped timing / shape / size controls, checkerboard live preview with looped animation, **다시 재생** and **기본값** (`ClickPointerFeedbackSettingsDialog`, `ClickPointerFeedbackPreviewWidget`, `ClickPointerFeedbackRenderer`).
+
+### Changed
+
+- Program settings no longer embeds click-feedback controls inline; shows a one-line summary and opens the dedicated dialog (`ProgramSettingsDialog`).
+
+## [0.5.67] - 2026-06-29
+
+### Fixed
+
+- Workflow block list column resize: removed `Stretch` on the middle **요약** column (Qt resized the wrong neighbor and felt inverted); all columns are `Interactive`, **요약** auto-fills remaining viewport width, persisted header state is validated for 9 columns and remapped to interactive modes on restore (`BlockListWidget`, `WorkflowEditorPanel`, `MainWindow`).
+
+## [0.5.66] - 2026-06-29
+
+### Changed
+
+- Workflow block list **미리보기** column: single click opens the block editor; double-click on other columns still opens edit (`WorkflowEditorPanel`, `BlockListWidget::PreviewColumn`).
+
+## [0.5.65] - 2026-06-29
+
+### Fixed
+
+- ROI preview overlay: `drawRoiNumberBadge` and `drawSizeChip` used `QRect(left, top, width, height)` but passed right/bottom coordinates as width/height, drawing giant chip/badge rectangles over the game window (`RoiPreviewOverlay`).
+
+## [0.5.64] - 2026-06-29
+
+### Changed
+
+- Daily dev build policy: `SBM_SKIP_WINDEPLOY=ON` on `default` preset skips `windeployqt` on every incremental link (~3 s no-op / ~5 s single-file builds); one-shot `deploy-qt` CMake target and `scripts/deploy-qt.ps1` for Qt DLL deployment (`CMakeLists.txt`, `CMakePresets.json`, `scripts/build-release.ps1`, AGENTS.md §3).
+
+## [0.5.63] - 2026-06-29
+
+### Removed
+
+- Dead legacy UI: `TemplateCaptureDialog`, `CaptureCanvas` (replaced by `ScreenRegionOverlay` + `CaptureConfirmDialog`), `ImageFindPreviewDialog`, `RoiPreviewWidget` (replaced by `RoiPreviewOverlay`), and `FeatureRunModeDialog` (merged into `FeatureEditDialog`); dropped `ImageFindBlock::captureRoiPreview` / `ImageFindRoiPreviewData` and unused `OpenCvQtUtil::drawRoiOverlay` / `drawMatchPreview` (`CMakeLists.txt`, `ImageFindBlock`, `OpenCvQtUtil`).
+
+## [0.5.62] - 2026-06-29
+
+### Removed
+
+- **만약 (If)** workflow block and all related code: `IfBlock`, `IfEditor`, `BlockListIfDisplay`, block-list If chrome/goto pick mode, `BlockType::If`, `workflowJumpIndex` goto jumps, and If add/edit UI (`Block.h`, `BlockFactory`, `BlockListWidget`, `BlockEditorDialog`, `WorkflowEditorPanel`, `UiStrings`, `CMakeLists.txt`). Legacy JSON `"type": "If"` is skipped on load (`BlockFactory::fromJson` returns null). Workflow nesting depth API renamed to `ExecutionContext::enterNestingScope` / `leaveNestingScope` (still used by `Loop` blocks and workflow loop regions).
+
+## [0.5.61] - 2026-06-29
+
+### Added
+
+- Main window **대상 창** panel: **창 표시** button below **창 지정** flashes a pulsing sky-blue border on the target window for ~2.4 s (`TargetWindowHighlightOverlay`, `MainWindow`).
+
+## [0.5.60] - 2026-06-29
+
+### Added
+
+- Feature list **Ctrl+C** / **Ctrl+V** copies and pastes the selected feature (workflow, loop regions, settings); paste inserts below selection as **{name} 복사** with a new id and cleared hotkey; context menu **복사** / **붙여넣기** (`Feature::duplicateAsNewInstance`, `Project::insertFeature`, `FeatureListWidget`, `FeatureListPanel`).
+
+### Changed
+
+- `Feature::clone` now copies workflow loop regions via `Workflow::assignFrom`.
+
+## [0.5.59] - 2026-06-29
+
+### Added
+
+- Feature list **Delete** key removes the selected feature (same confirmation flow as the **삭제** button; disabled while workflow edit controls are off) (`FeatureListWidget`, `FeatureListPanel`).
+
+## [0.5.58] - 2026-06-29
+
+### Changed
+
+- ROI preview overlay visual refresh: slate/emerald palette, softer dim scrim, thin accent borders, subtle fills, circular resize handles, glass size/number chips, bottom hint banner, and cleaner segmented toolbar (`RoiPreviewOverlay`).
+
+## [0.5.57] - 2026-06-29
+
+### Added
+
+- ROI preview overlay shows **ROI 1**, **ROI 2**, … badges on each region (matching the editor list order); active ROI green chip, inactive ghost gray (`RoiPreviewOverlay`).
+
+## [0.5.56] - 2026-06-29
+
+### Added
+
+- Program settings **마우스 클릭 피드백 애니메이션** group: display duration, animation speed, shape (dot+rings / ring only / crosshair / square), color, core size, max expansion, ring count, line thickness, and max opacity — persisted in `QSettings` (`PointerFeedbackSettings`, `ProgramSettingsDialog`, `WorkflowMatchFeedbackOverlay`).
+
+## [0.5.55] - 2026-06-29
+
+### Changed
+
+- ROI preview editable overlay toolbar: segmented pill bar with per-action accent (confirm green, add blue, delete red), shadow, hover tint, and Segoe UI labels; anchored to the active ROI top-left above the box edge (`RoiPreviewOverlay`).
+
+## [0.5.54] - 2026-06-29
+
+### Fixed
+
+- Workflow block list **기준/감지** threshold drag targeted the wrong row: hit-test now uses viewport `columnAt` / `rowAtViewportY` instead of `indexAt(mapTo(widget))`, which shifted Y by the header height (`BlockListWidget`).
+
+## [0.5.53] - 2026-06-29
+
+### Added
+
+- Workflow block list **시도 횟수** column shows ImageFind template detection poll count during runs (live on each retry, final on block finish); cached per feature when switching tabs (`ImageFindBlock`, `ExecutionContext`, `WorkflowEngine`, `BlockListWidget`, `WorkflowEditorPanel`, `MainWindow`).
+
+## [0.5.52] - 2026-06-29
+
+### Added
+
+- Workflow block list **기준/감지** column: horizontal drag on ImageFind rows adjusts match threshold (0.01 step; Shift ×10, Ctrl ×100); persists to block JSON with undo (`BlockListWidget`, `WorkflowEditorPanel`).
+
+## [0.5.51] - 2026-06-29
+
+### Changed
+
+- Feature editor pointer-feedback checkbox label shortened to **실행 위치 표시** (`FeatureEditDialog`).
+
+## [0.5.50] - 2026-06-29
+
+### Changed
+
+- Click/match pointer visual feedback moved from program settings to per-feature **실행 시 클릭·매칭 위치 시각 피드백** in **기능 편집**; JSON `pointerVisualFeedback` (default on, omitted when `true`); run session snapshots the flag (`Feature`, `FeatureEditDialog`, `JsonSerializer`, `FeatureRunSession`, `MainWindow`).
+
+### Removed
+
+- Program-wide `program/runPointerVisualFeedback` (`ProgramSettings`, `ProgramSettingsDialog`).
+
+## [0.5.49] - 2026-06-29
+
+### Fixed
+
+- Post-ImageFind **직전 매칭** clicks less often missed: 15 ms settle after match before click; `InputSimulator` retries `SetCursorPos` until cursor reaches target, waits 16 ms after move, holds button down 12 ms before up, and uses 8 ms multi-click gap (`ClickBlock`, `InputSimulator`).
+
+## [0.5.48] - 2026-06-29
+
+### Added
+
+- Program settings **기능 실행 시 마우스 클릭·매칭 위치 시각 피드백** toggles target-window pulse overlay for ImageFind matches and Click block positions (`ProgramSettings`, `ProgramSettingsDialog`, `MainWindow`, `ClickBlock`, `WorkflowMatchFeedbackOverlay`).
+
+### Changed
+
+- Workflow run pointer overlay: Click blocks emit blue pulses; ImageFind keeps green/red match pulses; all gated by one program setting (consolidates existing `WorkflowMatchFeedbackOverlay` behavior).
+
+## [0.5.47] - 2026-06-29
+
+### Changed
+
+- Editable **ROI 미리보기** overlay: larger resize hit zones (18 px inside, 6 px outside edge); hover/drag cursors use Win32 `IDC_SIZE*` / `IDC_SIZEALL` per handle direction (`RoiPreviewOverlay`).
+
+## [0.5.46] - 2026-06-29
+
+### Added
+
+- ImageFind editable **ROI 미리보기** overlay: **확인** / **추가** / **삭제** toolbar attached above the active ROI box; same actions as block editor OK and ROI toolbar (`RoiPreviewOverlay`, `ImageFindEditor`).
+
+## [0.5.45] - 2026-06-29
+
+### Changed
+
+- ImageFind **ROI 미리보기** overlay supports drag move and corner/edge resize for custom ROIs when the block editor is open; inactive ROIs are ghosts; list selection stays in sync (`RoiPreviewOverlay`, `ImageFindEditor`).
+
+### Removed
+
+- ImageFind **탐색 ROI** toolbar **수정** button — ROI edits happen directly on the preview overlay (`ImageFindEditor`).
+
+## [0.5.44] - 2026-06-29
+
+### Changed
+
+- **전체 딜레이 추가** dialog default ms restores the last confirmed value from `QSettings` `ui/state/workflowEditor/lastBulkInsertWaitMs` (`WorkflowEditorPanel`).
 
 ## [0.5.43] - 2026-06-26
 
@@ -1589,10 +2018,16 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ### `static-single-exe-build.mdc`
 
-- **Default:** do **not** build at task close; run `cmake --build build --config Release` **only when the user explicitly asks**.
+- **Task close:** incremental `cmake --build build --config Release` when C++/headers/`CMakeLists.txt` changed (changed `.cpp` only); skip docs/rules-only.
 - **Distribution:** static single exe → `dist/SuckbongMachine.exe` **only when the user explicitly asks**.
-- Full policy in [§3](#3-build-and-run).
+- Full policy in [§3](#3-build-and-run). **IDE/F5 path:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) + `ide-build-workflow.mdc`.
+
+### `ide-build-workflow.mdc`
+
+- **Mandatory** Cursor/VS Code workflow: `scripts/build-release.ps1`, tracked `.vscode/tasks.json` + `launch.json`, **`cmake.enabled`: `false`**.
+- Full rules and recovery in [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) and [§8.8](#88-ide--cursor-build-workflow-mandatory--do-not-regress).
+- Never re-enable CMake Tools configure-on-F5 or remove `.vscode` from git.
 
 ---
 
-*Last consolidated: 2026-06-26. Current application version: 0.5.43.*
+*Last consolidated: 2026-06-29. Current application version: 0.5.96.*

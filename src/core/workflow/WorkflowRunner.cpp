@@ -2,8 +2,6 @@
 
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/WorkflowLoopRegion.h"
-#include "core/workflow/blocks/IfBlock.h"
-
 #include "ui/OpenCvQtUtil.h"
 
 #include <algorithm>
@@ -79,7 +77,9 @@ WorkflowRunResult executeSingleBlock(const Workflow& workflow,
 
     Block& block = *blocks[blockIndex];
     if (block.type() == BlockType::Comment) {
+        ctx.setActiveBlockIndex(blockIndex);
         block.execute(ctx);
+        ctx.setActiveBlockIndex(-1);
         return overall;
     }
 
@@ -94,23 +94,55 @@ WorkflowRunResult executeSingleBlock(const Workflow& workflow,
             } else if (kind == BlockProgressKind::ImageFindSuccess && ctx.hasLastMatch()) {
                 emitBlockMatchResult(*hooks, blockIndex, ctx, true);
             }
+            if (hooks->onBlockImageFindAttempt
+                && (kind == BlockProgressKind::ImageFindMiss
+                    || kind == BlockProgressKind::ImageFindSuccess)) {
+                double matchThreshold = 0.0;
+                double detectedConfidence = 0.0;
+                const bool matched = kind == BlockProgressKind::ImageFindSuccess;
+                if (matched && ctx.hasLastMatch()) {
+                    matchThreshold = ctx.lastMatchThreshold();
+                    detectedConfidence = ctx.lastMatchConfidence();
+                } else if (!matched && ctx.hasLastMatchAttempt()) {
+                    matchThreshold = ctx.lastMatchAttemptThreshold();
+                    detectedConfidence = ctx.lastMatchAttemptConfidence();
+                }
+                hooks->onBlockImageFindAttempt(blockIndex,
+                                               ctx.imageFindPollAttempt(),
+                                               matchThreshold,
+                                               detectedConfidence,
+                                               matched);
+            }
             hooks->onBlockProgress(blockIndex, kind);
         });
     } else {
         ctx.clearProgressCallback();
     }
 
+    if (hooks && hooks->onPointerFeedbackAtClientPoint) {
+        ctx.setPointerFeedbackCallback([hooks](int clientX, int clientY) {
+            hooks->onPointerFeedbackAtClientPoint(clientX, clientY);
+        });
+    } else {
+        ctx.clearPointerFeedbackCallback();
+    }
+
     const auto blockStart = std::chrono::steady_clock::now();
+    ctx.setActiveBlockIndex(blockIndex);
     BlockResult result = block.execute(ctx);
+    ctx.setActiveBlockIndex(-1);
     const auto blockEnd = std::chrono::steady_clock::now();
     const qint64 durationMs = std::max<qint64>(
         0, std::chrono::duration_cast<std::chrono::milliseconds>(blockEnd - blockStart).count());
 
     ctx.clearProgressCallback();
+    ctx.clearPointerFeedbackCallback();
 
-    if (result.success && block.type() == BlockType::ImageFind && ctx.hasLastMatch()) {
-        if (hooks) {
+    if (block.type() == BlockType::ImageFind && hooks) {
+        if (result.success && ctx.hasLastMatch()) {
             emitBlockMatchResult(*hooks, blockIndex, ctx, true);
+        } else if (!result.success && ctx.hasLastMatchAttempt()) {
+            emitBlockMatchResult(*hooks, blockIndex, ctx, false);
         }
     }
 
@@ -119,12 +151,12 @@ WorkflowRunResult executeSingleBlock(const Workflow& workflow,
                                result.success,
                                result.message,
                                durationMs,
-                               result.imageFindMatchDurationMs);
+                               result.imageFindMatchDurationMs,
+                               result.imageFindPollAttempts);
     }
 
     overall.success = result.success;
     overall.message = result.message;
-    overall.workflowJumpIndex = result.workflowJumpIndex;
     return overall;
 }
 
@@ -155,7 +187,7 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
                                 const WorkflowLoopRegion& region,
                                 ExecutionContext& ctx,
                                 const WorkflowRunHooks* hooks) {
-    if (!ctx.enterIfScope()) {
+    if (!ctx.enterNestingScope()) {
         WorkflowRunResult result;
         result.success = false;
         result.message = "구간 반복 중첩 깊이 초과";
@@ -166,14 +198,14 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
     int iteration = 0;
     while (true) {
         if (!ctx.waitWhilePaused()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             WorkflowRunResult result;
             result.success = false;
             result.message = "사용자에 의해 중지됨";
             return result;
         }
         if (ctx.shouldStop()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             WorkflowRunResult result;
             result.success = false;
             result.message = "사용자에 의해 중지됨";
@@ -194,7 +226,7 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
         ctx.setImageFindMaxMissAttempts(savedMissLimit);
 
         if (ctx.shouldStop()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             WorkflowRunResult result;
             result.success = false;
             result.message = "사용자에 의해 중지됨";
@@ -206,7 +238,7 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
                     + std::to_string(region.endIndex + 1) + " "
                     + loopExitConditionToString(region.exitCondition) + " (" + std::to_string(iteration)
                     + "회)");
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             WorkflowRunResult result;
             result.success = true;
             result.message = "구간 반복 완료";
@@ -214,13 +246,13 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
         }
 
         if (!runResult.success && region.exitCondition != LoopExitCondition::DetectionFailed) {
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             return runResult;
         }
 
         if (!runResult.success && region.exitCondition == LoopExitCondition::DetectionFailed
             && !ctx.detectionFailedThisRun()) {
-            ctx.leaveIfScope();
+            ctx.leaveNestingScope();
             return runResult;
         }
     }
@@ -264,10 +296,6 @@ WorkflowRunResult WorkflowRunner::run(const Workflow& workflow,
             overall.success = false;
             overall.message = step.message;
             break;
-        }
-        if (step.workflowJumpIndex >= 0) {
-            i = std::clamp(step.workflowJumpIndex, 0, blockCount - 1);
-            continue;
         }
         ++i;
     }

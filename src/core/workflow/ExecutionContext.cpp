@@ -1,8 +1,6 @@
 #include "core/workflow/ExecutionContext.h"
 
 #include "core/input/InputSimulator.h"
-#include "core/workflow/blocks/IfBlock.h"
-
 #include <chrono>
 #include <filesystem>
 #include <thread>
@@ -45,6 +43,29 @@ void ExecutionContext::reportProgress(BlockProgressKind kind) const {
     }
 }
 
+void ExecutionContext::setPointerFeedbackCallback(PointerFeedbackCallback callback) {
+    m_pointerFeedbackCallback = std::move(callback);
+}
+
+void ExecutionContext::clearPointerFeedbackCallback() {
+    m_pointerFeedbackCallback = nullptr;
+}
+
+void ExecutionContext::setPointerVisualFeedback(bool enabled) {
+    m_pointerVisualFeedback = enabled;
+}
+
+bool ExecutionContext::pointerVisualFeedback() const {
+    return m_pointerVisualFeedback;
+}
+
+void ExecutionContext::reportPointerFeedback(int clientX, int clientY) const {
+    if (!m_pointerVisualFeedback || !m_pointerFeedbackCallback) {
+        return;
+    }
+    m_pointerFeedbackCallback(clientX, clientY);
+}
+
 void ExecutionContext::requestStop() {
     m_stopRequested.store(true);
 }
@@ -57,7 +78,7 @@ void ExecutionContext::resetStop() {
     m_stopRequested.store(false);
     m_paused.store(false);
     m_detectionFailedThisRun = false;
-    m_ifNestingDepth = 0;
+    m_nestingDepth = 0;
     clearLastMatch();
     clearLastMatchAttempt();
     clearConsumedMatchRegions();
@@ -111,6 +132,14 @@ int ExecutionContext::imageFindMaxMissAttempts() const {
     return m_imageFindMaxMissAttempts;
 }
 
+void ExecutionContext::setImageFindPollAttempt(int attempt) {
+    m_imageFindPollAttempt = attempt < 0 ? 0 : attempt;
+}
+
+int ExecutionContext::imageFindPollAttempt() const {
+    return m_imageFindPollAttempt;
+}
+
 void ExecutionContext::markDetectionFailure() {
     m_detectionFailedThisRun = true;
 }
@@ -123,22 +152,18 @@ bool ExecutionContext::detectionFailedThisRun() const {
     return m_detectionFailedThisRun;
 }
 
-bool ExecutionContext::enterIfScope() {
-    if (m_ifNestingDepth >= IfBlock::kMaxNestingDepth) {
+bool ExecutionContext::enterNestingScope() {
+    if (m_nestingDepth >= kMaxWorkflowNestingDepth) {
         return false;
     }
-    ++m_ifNestingDepth;
+    ++m_nestingDepth;
     return true;
 }
 
-void ExecutionContext::leaveIfScope() {
-    if (m_ifNestingDepth > 0) {
-        --m_ifNestingDepth;
+void ExecutionContext::leaveNestingScope() {
+    if (m_nestingDepth > 0) {
+        --m_nestingDepth;
     }
-}
-
-int ExecutionContext::ifNestingDepth() const {
-    return m_ifNestingDepth;
 }
 
 bool ExecutionContext::hasLastMatch() const {
@@ -260,6 +285,64 @@ void ExecutionContext::consumeMatchRegion(const cv::Point& topLeft, const cv::Si
 
 void ExecutionContext::clearConsumedMatchRegions() {
     m_consumedMatchRegions.clear();
+}
+
+void ExecutionContext::setRoiCorrectionSession(bool eligible, bool featureGlobal) {
+    m_roiCorrectionSessionEligible = eligible;
+    m_featureRoiCorrectionGlobal = featureGlobal;
+}
+
+bool ExecutionContext::roiCorrectionSessionEligible() const {
+    return m_roiCorrectionSessionEligible;
+}
+
+bool ExecutionContext::featureRoiCorrectionGlobal() const {
+    return m_featureRoiCorrectionGlobal;
+}
+
+bool ExecutionContext::shouldUseRoiCorrectionForBlock(bool blockRoiCorrection) const {
+    if (!m_roiCorrectionSessionEligible) {
+        return false;
+    }
+    if (m_featureRoiCorrectionGlobal) {
+        return true;
+    }
+    return blockRoiCorrection;
+}
+
+void ExecutionContext::setRunLoopNumber(int loopNumber) {
+    m_runLoopNumber = loopNumber < 1 ? 1 : loopNumber;
+}
+
+int ExecutionContext::runLoopNumber() const {
+    return m_runLoopNumber;
+}
+
+void ExecutionContext::setActiveBlockIndex(int blockIndex) {
+    m_activeBlockIndex = blockIndex;
+}
+
+int ExecutionContext::activeBlockIndex() const {
+    return m_activeBlockIndex;
+}
+
+void ExecutionContext::setCorrectedRoi(int blockIndex, const CaptureRegion& region) {
+    if (blockIndex < 0) {
+        return;
+    }
+    m_correctedRoisByBlockIndex[blockIndex] = region;
+}
+
+std::optional<CaptureRegion> ExecutionContext::correctedRoi(int blockIndex) const {
+    const auto it = m_correctedRoisByBlockIndex.find(blockIndex);
+    if (it == m_correctedRoisByBlockIndex.end()) {
+        return std::nullopt;
+    }
+    return it->second;
+}
+
+void ExecutionContext::clearCorrectedRois() {
+    m_correctedRoisByBlockIndex.clear();
 }
 
 void ExecutionContext::setTargetWindowTitle(const std::wstring& title) {

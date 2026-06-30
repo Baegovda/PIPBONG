@@ -56,7 +56,6 @@ void BranchWorkflowEditor::setupUi(const QString& title) {
                                    BlockType::Click,
                                    BlockType::KeyPress,
                                    BlockType::Wait,
-                                   BlockType::If,
                                    BlockType::Loop};
         for (const BlockType type : types) {
             QAction* action = menu.addAction(blockTypeDisplayName(type));

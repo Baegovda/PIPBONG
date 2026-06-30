@@ -4,6 +4,7 @@
 #include <QDragLeaveEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
+#include <QKeyEvent>
 #include <QPainter>
 #include <QResizeEvent>
 #include <QTimer>
@@ -73,7 +74,7 @@ FeatureListWidget::FeatureListWidget(QWidget* parent)
     setDefaultDropAction(Qt::MoveAction);
     setDragDropOverwriteMode(false);
     setDropIndicatorShown(false);
-    setToolTip(tr("드래그하여 기능 순서 변경"));
+    setToolTip(tr("드래그하여 기능 순서 변경 · Ctrl+C/V 복사/붙여넣기 · Delete 삭제"));
     setReorderEnabled(true);
 
     m_dropIndicator = new DropInsertionIndicator(viewport());
@@ -243,4 +244,23 @@ void FeatureListWidget::dropEvent(QDropEvent* event) {
     }
     event->setDropAction(Qt::IgnoreAction);
     event->accept();
+}
+
+void FeatureListWidget::keyPressEvent(QKeyEvent* event) {
+    if (event->matches(QKeySequence::Copy)) {
+        emit copyRequested();
+        event->accept();
+        return;
+    }
+    if (event->matches(QKeySequence::Paste)) {
+        emit pasteRequested();
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Delete) {
+        emit deleteRequested();
+        event->accept();
+        return;
+    }
+    QListWidget::keyPressEvent(event);
 }

@@ -18,9 +18,13 @@ public:
 
 signals:
     void featureRowsReordered(int fromRow, int toRow);
+    void deleteRequested();
+    void copyRequested();
+    void pasteRequested();
 
 protected:
     void startDrag(Qt::DropActions supportedActions) override;
+    void keyPressEvent(QKeyEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;
     void dragLeaveEvent(QDragLeaveEvent* event) override;

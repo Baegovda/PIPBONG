@@ -27,6 +27,8 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      int repeatCount,
                                      int infiniteExitAfterConsecutiveMisses,
                                      UserInputInterruptMode userInputInterruptMode,
+                                     bool pointerVisualFeedback,
+                                     bool roiCorrection,
                                      Project* project,
                                      const std::string& featureId,
                                      QWidget* parent)
@@ -63,6 +65,9 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     if (interruptIndex >= 0) {
         m_userInputInterruptCombo->setCurrentIndex(interruptIndex);
     }
+
+    m_pointerVisualFeedbackCheck->setChecked(pointerVisualFeedback);
+    m_roiCorrectionCheck->setChecked(roiCorrection);
 
     updateModeDependentUi();
 }
@@ -130,6 +135,19 @@ void FeatureEditDialog::setupUi() {
            "일시정지하거나 완전히 정지합니다. 기능 단축키 입력은 제외됩니다."));
     form->addRow(tr("사용자 입력 시"), m_userInputInterruptCombo);
 
+    m_pointerVisualFeedbackCheck =
+        new QCheckBox(tr("실행 위치 표시"), this);
+    m_pointerVisualFeedbackCheck->setToolTip(
+        tr("실행 중 대상 창에 클릭·매칭 위치를 펄스로 표시합니다."));
+    form->addRow(QString(), m_pointerVisualFeedbackCheck);
+
+    m_roiCorrectionCheck = new QCheckBox(tr("전체 ROI 보정"), this);
+    m_roiCorrectionCheck->setToolTip(
+        tr("무한 반복·N회 반복(2회 이상) 실행 시 모든 템플릿 매칭 블록에 ROI 보정을 적용합니다. "
+           "해제하면 워크플로 목록의 ROI 보정 열 또는 각 템플릿 매칭 블록 편집에서 블록별로 설정할 수 있습니다. "
+           "보정 ROI는 실행 중에만 사용되며 저장되지 않습니다."));
+    form->addRow(QString(), m_roiCorrectionCheck);
+
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     localizeDialogButtons(buttons);
 
@@ -143,6 +161,8 @@ void FeatureEditDialog::setupUi() {
         updateCaptureUi();
     });
     connect(m_modeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int) { updateModeDependentUi(); });
+    connect(m_repeatSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             [this](int) { updateModeDependentUi(); });
     connect(m_infiniteExitCheck, &QCheckBox::toggled, this, [this](bool) { updateModeDependentUi(); });
     connect(buttons, &QDialogButtonBox::accepted, this, &FeatureEditDialog::tryAccept);
@@ -199,6 +219,11 @@ void FeatureEditDialog::updateModeDependentUi() {
         m_infiniteExitCountLabel->setVisible(showInfiniteExitCount);
     }
     m_infiniteExitSpin->setVisible(showInfiniteExitCount);
+
+    const bool roiCorrectionEligible = mode == FeatureRunMode::RepeatInfinite
+                                       || (repeatCountMode && m_repeatSpin->value() >= 2);
+    m_roiCorrectionCheck->setVisible(roiCorrectionEligible);
+
     adjustSize();
 }
 
@@ -257,7 +282,8 @@ bool FeatureEditDialog::isInteractiveWidget(const QWidget* widget) const {
     while (widget && widget != this) {
         if (widget == m_nameEdit || widget == m_modeCombo || widget == m_repeatSpin
             || widget == m_infiniteExitCheck || widget == m_infiniteExitSpin
-            || widget == m_userInputInterruptCombo) {
+            || widget == m_userInputInterruptCombo || widget == m_pointerVisualFeedbackCheck
+            || widget == m_roiCorrectionCheck) {
             return true;
         }
         if (qobject_cast<const QAbstractButton*>(widget)) {
@@ -297,6 +323,14 @@ int FeatureEditDialog::infiniteExitAfterConsecutiveMisses() const {
 
 UserInputInterruptMode FeatureEditDialog::userInputInterruptMode() const {
     return static_cast<UserInputInterruptMode>(m_userInputInterruptCombo->currentData().toInt());
+}
+
+bool FeatureEditDialog::pointerVisualFeedback() const {
+    return m_pointerVisualFeedbackCheck->isChecked();
+}
+
+bool FeatureEditDialog::roiCorrection() const {
+    return m_roiCorrectionCheck->isChecked();
 }
 
 void FeatureEditDialog::keyPressEvent(QKeyEvent* event) {

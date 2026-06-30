@@ -108,12 +108,21 @@ protected:
                 emit m_engine->blockStarted(i, QString::fromStdString(summary));
             };
             hooks.onBlockFinished = [this](int i, bool success, const std::string& message, qint64 durationMs,
-                                           int64_t imageFindMatchDurationMs) {
+                                           int64_t imageFindMatchDurationMs, int imageFindPollAttempts) {
                 emit m_engine->blockFinished(i,
                                              success,
                                              QString::fromStdString(message),
                                              durationMs,
-                                             static_cast<qint64>(imageFindMatchDurationMs));
+                                             static_cast<qint64>(imageFindMatchDurationMs),
+                                             imageFindPollAttempts);
+            };
+            hooks.onBlockImageFindAttempt = [this](int blockIndex,
+                                                  int attemptCount,
+                                                  double matchThreshold,
+                                                  double detectedConfidence,
+                                                  bool matched) {
+                emit m_engine->blockImageFindAttempt(
+                    blockIndex, attemptCount, matchThreshold, detectedConfidence, matched);
             };
             hooks.onBlockProgress = [this](int i, BlockProgressKind kind) {
                 emit m_engine->blockProgress(i, kind);
@@ -128,6 +137,9 @@ protected:
                                               int clientY) {
                 emit m_engine->blockMatchResult(
                     i, matchThreshold, confidence, matchPreview, matched, hasClientPoint, clientX, clientY);
+            };
+            hooks.onPointerFeedbackAtClientPoint = [this](int clientX, int clientY) {
+                emit m_engine->pointerFeedbackAtClientPoint(clientX, clientY);
             };
 
             const WorkflowRunResult runResult = WorkflowRunner::run(*workflow, *context, &hooks);

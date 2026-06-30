@@ -5,6 +5,7 @@
 #include "core/workflow/blocks/ImageFindBlock.h"
 
 #include "core/input/HotkeyBinding.h"
+#include "ui/editors/RoiPreviewOverlay.h"
 
 
 
@@ -30,6 +31,10 @@ class QResizeEvent;
 
 class QKeyEvent;
 
+class QCheckBox;
+
+class HintLabel;
+
 class AnimatedTwoWaySwitch;
 
 
@@ -54,7 +59,7 @@ public:
 
     void apply();
 
-
+    void setRoiCorrectionUiPolicy(bool featureGlobalEnabled, bool sessionEligible);
 
     bool isCapturingTemplateHotkey() const { return m_capturingTemplateHotkey; }
 
@@ -83,8 +88,6 @@ private slots:
     void onCaptureTemplate();
 
     void onPickRoi();
-
-    void onEditRoi();
 
     void onRoiPreview();
 
@@ -128,11 +131,13 @@ private:
 
     void dismissRoiPreviewOverlay();
 
+    void confirmFromRoiOverlay();
+
     void updatePickRoiButton(bool pickActive);
 
-    void updateEditRoiButton(bool pickActive);
+    void startRoiPick();
 
-    void startRoiPick(int replaceListRow);
+    RoiPreviewOverlay::EditableOptions makeRoiPreviewEditableOptions();
 
     void updateMatchTestButton(bool overlayVisible);
 
@@ -148,7 +153,7 @@ private:
 
     void syncTemplateCaptureHotkeyHook();
 
-
+    void updateRoiCorrectionUi();
 
     ImageFindBlock* m_block = nullptr;
 
@@ -156,15 +161,21 @@ private:
 
     bool m_embedded = false;
 
+    bool m_featureRoiCorrectionGlobal = false;
+
+    bool m_roiCorrectionSessionEligible = false;
+
     bool m_capturingTemplateHotkey = false;
 
     bool m_roiPickActive = false;
 
-    int m_roiPickReplaceRow = -1;
-
     DragAdjustDoubleSpinBox* m_thresholdSpin = nullptr;
 
     DragAdjustSpinBox* m_pollIntervalSpin = nullptr;
+
+    QCheckBox* m_roiCorrectionCheck = nullptr;
+
+    HintLabel* m_roiCorrectionGlobalHint = nullptr;
 
     AnimatedTwoWaySwitch* m_matchModeSwitch = nullptr;
 
@@ -173,8 +184,6 @@ private:
     QPushButton* m_removeTemplateButton = nullptr;
 
     QPushButton* m_pickRoiButton = nullptr;
-
-    QPushButton* m_editRoiButton = nullptr;
 
     QListWidget* m_roiList = nullptr;
 

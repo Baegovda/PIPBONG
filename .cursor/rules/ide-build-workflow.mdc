@@ -1,0 +1,79 @@
+---
+description: Mandatory Cursor/VS Code IDE build workflow — scripts/build-release.ps1, .vscode tasks/launch, CMake Tools off
+alwaysApply: true
+---
+
+# IDE Build Workflow (Mandatory — Do Not Regress)
+
+**Status:** Verified working on Windows (2026-06). Daily dev and F5 **must** use `scripts/build-release.ps1` via tracked `.vscode/` config — **not** CMake Tools configure/build/launch.
+
+## Canonical dev path
+
+| Action | How |
+|--------|-----|
+| **Build** | **Ctrl+Shift+B**, repo-root `빌드.bat`, or `.\scripts\build-release.ps1` |
+| **Run (F5)** | Launch config **`Run SuckbongMachine (Release)`** → `preLaunchTask`: **`Build Release`** |
+| **Output** | `build/Release/SuckbongMachine.exe` (cwd `build/Release/`) |
+| **First configure** | `build-release.ps1` runs `cmake --preset default` only when `build/CMakeCache.txt` is missing |
+| **Qt DLLs** | `.\scripts\deploy-qt.ps1` once when runtime DLLs missing — not every incremental link |
+
+## Required git-tracked files
+
+These four files **must** stay in the repo (`.gitignore` whitelists them). **Do not** delete, replace with CMake Tools defaults, or leave `.vscode/` fully gitignored.
+
+| File | Role |
+|------|------|
+| `.vscode/tasks.json` | Default build task **`Build Release`** → `scripts/build-release.ps1` |
+| `.vscode/launch.json` | **`Run SuckbongMachine (Release)`** — `cppvsdbg`, Release exe, `preLaunchTask`: `Build Release` |
+| `.vscode/settings.json` | **`cmake.enabled`: `false`**; block C#/CMake Tools interference |
+| `.vscode/extensions.json` | `unwantedRecommendations`: `ms-vscode.cmake-tools`, C# Dev Kit |
+
+## `.vscode/settings.json` (required keys)
+
+```json
+{
+    "dotnet.defaultSolution": "disable",
+    "dotnet.autoDetect": "off",
+    "cmake.enabled": false,
+    "files.exclude": {
+        "**/build-clangd": true,
+        "**/build-static": true
+    }
+}
+```
+
+## `tasks.json` / `launch.json` invariants
+
+- Task label: **`Build Release`** (must match `preLaunchTask` in launch.json).
+- Launch program: **`${workspaceFolder}/build/Release/SuckbongMachine.exe`**.
+- Launch cwd: **`${workspaceFolder}/build/Release`**.
+- **Never** use launch `type: "cmake"` or `preLaunchTask: "CMake: build …"`.
+- **Never** use placeholder `program` paths (`<your program>`) or Debug as the only F5 target for daily work.
+
+## Anti-patterns (known failures — do not reintroduce)
+
+| Symptom | Cause |
+|---------|--------|
+| F5 starts **vcpkg install** / qtbase build (10–30 min) | CMake Tools **configure** on open/F5; `cmake.configureOnOpen` / `type: "cmake"` launch |
+| **"A CMake task is already running"** / build exit **-1** | Parallel CMake Tools tasks; status-bar **[Build]** / **[Configure]** clicked while another runs |
+| **549+ Problems** / bogus IntelliSense | Separate **`build-clangd/`** tree — keep excluded; use **`build/`** only |
+| F5 fails / wrong exe | `launch.json` placeholder or Debug path without deploy |
+| Slow every link | Re-enabling per-link `windeployqt` — dev preset uses `SBM_SKIP_WINDEPLOY=ON` |
+
+## Recovery procedure (when IDE build breaks)
+
+1. **Restore `.vscode/`** from git: `git checkout -- .vscode/` (or recreate from this rule + [AGENTS.md](../../AGENTS.md) §3.1).
+2. Confirm **`cmake.enabled`: `false`** in `.vscode/settings.json`.
+3. **Developer: Reload Window** in Cursor (clears stuck CMake Tools state).
+4. Kill stuck processes if needed: `Stop-Process -Name cmake,msbuild -Force -ErrorAction SilentlyContinue`.
+5. **Do not** click CMake status-bar **[Configure]** — run `.\scripts\build-release.ps1` instead.
+6. Verify: incremental build OK; launch **Run SuckbongMachine (Release)**; exe runs from `build/Release/`.
+7. If DLL missing at runtime: `.\scripts\deploy-qt.ps1` once.
+
+## AI / agent rules
+
+- **Do not** “fix” IDE issues by re-enabling CMake Tools configure-on-open or adding `CMake: *` launch configs.
+- **Do not** remove `.vscode` from git tracking or overwrite `tasks.json` with CMake-generated build tasks.
+- When user reports CMake Tools popups or exit -1: restore this workflow first; see recovery procedure above.
+
+Full handover: [AGENTS.md](../../AGENTS.md) — **§3.1 IDE / Cursor build workflow** and **§8.8**.

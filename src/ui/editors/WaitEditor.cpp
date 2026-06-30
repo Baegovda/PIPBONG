@@ -7,7 +7,6 @@
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
@@ -19,10 +18,9 @@ void configureWaitMsSpin(DragAdjustSpinBox* spin) {
     }
     spin->setRange(0, 600000);
     spin->setSingleStep(kWaitDelayStepMs);
-    QObject::connect(spin, qOverload<int>(&QSpinBox::valueChanged), spin, [spin](int value) {
-        const int snapped = snapWaitDelayMs(value);
-        if (snapped != value) {
-            QSignalBlocker blocker(spin);
+    QObject::connect(spin, &QAbstractSpinBox::editingFinished, spin, [spin]() {
+        const int snapped = snapWaitDelayMs(spin->value());
+        if (snapped != spin->value()) {
             spin->setValue(snapped);
         }
     });

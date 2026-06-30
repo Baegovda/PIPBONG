@@ -63,6 +63,7 @@ private slots:
     void onProgramSettings();
     void onAlwaysOnTopToggled(bool checked);
     void onPickTargetWindow();
+    void onShowTargetWindow();
     void onEngineLog(const QString& message);
     void onEngineStarted();
     void onEngineFinished(bool success, const QString& message);
@@ -76,8 +77,14 @@ private slots:
                             bool hasClientPoint,
                             int clientX,
                             int clientY);
+    void onPointerFeedbackAtClientPoint(int clientX, int clientY);
     void onBlockFinished(int index, bool success, const QString& message, qint64 durationMs,
-                         qint64 imageFindMatchDurationMs);
+                         qint64 imageFindMatchDurationMs, int imageFindPollAttempts);
+    void onBlockImageFindAttempt(int index,
+                                 int attemptCount,
+                                 double matchThreshold,
+                                 double detectedConfidence,
+                                 bool matched);
     void onHotkeyTriggered(const QString& featureId);
     void onHotkeyHoldStarted(const QString& featureId);
     void onHotkeyHoldEnded(const QString& featureId);
@@ -158,6 +165,7 @@ private:
     QSplitter* m_bottomHorizontalSplitter = nullptr;
     QPlainTextEdit* m_logView = nullptr;
     QPushButton* m_pickWindowButton = nullptr;
+    QPushButton* m_showTargetWindowButton = nullptr;
     QCheckBox* m_alwaysOnTopCheck = nullptr;
     QPushButton* m_exitButton = nullptr;
     QPushButton* m_settingsButton = nullptr;

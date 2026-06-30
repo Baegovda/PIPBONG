@@ -10,8 +10,9 @@ if (-not (Test-Path 'build\CMakeCache.txt')) {
     cmake --preset default
 }
 
-Write-Host 'Building Release...' -ForegroundColor Cyan
+Write-Host 'Building Release (incremental, no windeployqt)...' -ForegroundColor Cyan
 cmake --build build --config Release
 
 Write-Host ''
 Write-Host 'OK: build\Release\SuckbongMachine.exe' -ForegroundColor Green
+Write-Host 'DLLs missing? Run: .\scripts\deploy-qt.ps1' -ForegroundColor DarkGray

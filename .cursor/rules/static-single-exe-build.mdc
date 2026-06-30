@@ -1,28 +1,37 @@
 ---
-description: Build only on user request; static single-exe distribution when user asks
+description: Incremental build at task close; static single-exe distribution when user asks
 alwaysApply: true
 ---
 
-# Build Policy — On User Request Only
+# Build Policy — Incremental Close-Out Build
 
-**Status:** Project policy (2026-06). **Do not** run `cmake --build` at task close by default. Build **only when the user explicitly asks** (e.g. “빌드해줘”, “빌드해”, “컴파일 확인”).
+**Status:** Project policy (2026-06). At the **end of every completed task** that touched compile inputs, run an **incremental** Release build. CMake/MSVC recompiles **only changed** `.cpp` / headers / touched units — not a full clean rebuild.
 
-## Incremental build (when user asks)
+## Task close (default — required when code changed)
 
 | Do | Don't |
 |----|-------|
-| `cmake --build build --config Release` when the user requests a build | Auto-build at every task close |
-| Re-use existing `build/` — only changed `.cpp` recompile | `cmake --preset default` on every task |
-| Run `--preset default` only when `build/` missing and user asked to build | Build during implementation unless user asks |
-| Kill `SuckbongMachine.exe` before link **only when actually building** (`LNK1104`) | Assume exe is fresh without a build |
+| `cmake --build build --config Release` after version bump / changelog | `cmake --build` mid-implementation unless compile check is needed |
+| Re-use existing `build/` — changed sources only recompile | `cmake --preset default` on every task |
+| Kill `SuckbongMachine.exe` before link (`LNK1104`) — `scripts/build-release.ps1` does this | Assume exe is fresh without a build |
+| Run `cmake --preset default` only when `build/` is missing, then `--build` | Full clean rebuild unless user asks |
+| Skip close-out build when the task changed **only** docs / `.cursor/rules` / changelog with **no** C++ or `CMakeLists.txt` sources | Run static `dist/` build automatically |
 
-Version bump in `CMakeLists.txt` does **not** require a build. Next user-requested `--build` re-configures automatically if needed.
+**Command (preferred):** `.\scripts\build-release.ps1` from repo root (auto-configure if needed, kill exe, incremental `--build`).
+
+**IDE / F5 (mandatory):** Ctrl+Shift+B and F5 use tracked `.vscode/` + `cmake.enabled: false` — see `.cursor/rules/ide-build-workflow.mdc` and AGENTS.md §3.1. **Do not** fix IDE issues by re-enabling CMake Tools configure-on-open.
+
+Equivalent: `Stop-Process -Name SuckbongMachine -ErrorAction SilentlyContinue; cmake --build build --config Release`
+
+**Dev preset:** `SBM_SKIP_WINDEPLOY=ON` — incremental links skip `windeployqt` (~3 s no-change / ~5–15 s single-file edits). Run `.\scripts\deploy-qt.ps1` once when DLLs beside the exe are missing.
+
+A `CMakeLists.txt` **version bump** reconfigures CMake and regenerates `SbmVersion.h` — only `Application.cpp` and `UpdateChecker.cpp` recompile (not the whole target).
 
 ## Distribution — user request only
 
 | Do | Don't |
 |----|-------|
-| `cmake --preset static` then `cmake --build build-static --config Release` | Run static build automatically after code changes |
+| `cmake --preset static` then `cmake --build build-static --config Release` | Run static build at ordinary task close |
 | Ship **`dist/SuckbongMachine.exe`** only (~55 MB, no DLLs) | Assume static is the default close-out build |
 
 First `cmake --preset static` may install static vcpkg packages (long one-time step).
@@ -31,7 +40,7 @@ First `cmake --preset static` may install static vcpkg packages (long one-time s
 
 | Preset | Purpose |
 |--------|---------|
-| **`default`** | `x64-windows`, `build/`, fast incremental — use when user asks to build |
+| **`default`** | `x64-windows`, `build/`, fast incremental — **task close and daily dev** |
 | `static` | `x64-windows-static`, `build-static/`, copies to `dist/` — **user-request distribution only** |
 
-Full build docs: [AGENTS.md](../../AGENTS.md) — **§3 Build and Run**.
+Full build docs: [AGENTS.md](../../AGENTS.md) — **§3 Build and Run**, **§3.1 IDE workflow**.

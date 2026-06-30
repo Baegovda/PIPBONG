@@ -186,6 +186,28 @@ std::string modifierPrefix(const KeyModifiers& mods) {
     return prefix;
 }
 
+#ifdef _WIN32
+bool clientPointForPointerFeedback(ExecutionContext& ctx,
+                                   int pointX,
+                                   int pointY,
+                                   bool useClientCoordinates,
+                                   int& clientX,
+                                   int& clientY) {
+    HWND hwnd = ctx.targetWindow();
+    if (!hwnd) {
+        return false;
+    }
+    if (useClientCoordinates) {
+        clientX = pointX;
+        clientY = pointY;
+        return true;
+    }
+    int screenX = pointX;
+    int screenY = pointY;
+    return InputSimulator::screenToClient(hwnd, screenX, screenY, clientX, clientY);
+}
+#endif
+
 } // namespace
 
 std::string ClickBlock::summary() const {
@@ -222,34 +244,7 @@ BlockResult ClickBlock::execute(ExecutionContext& ctx) {
             clickY += y;
         }
     } else if (target == ClickTarget::CurrentPosition) {
-#ifdef _WIN32
-        int screenX = 0;
-        int screenY = 0;
-        if (!InputSimulator::getCursorScreenPosition(screenX, screenY)) {
-            BlockResult result;
-            result.success = false;
-            result.message = "현재 마우스 위치를 읽을 수 없음";
-            return result;
-        }
-
-        HWND hwnd = ctx.targetWindow();
-        if (useClientCoordinates && hwnd) {
-            if (!InputSimulator::screenToClient(hwnd, screenX, screenY, clickX, clickY)) {
-                BlockResult result;
-                result.success = false;
-                result.message = "마우스 위치를 클라이언트 좌표로 변환할 수 없음";
-                return result;
-            }
-        } else {
-            clickX = screenX;
-            clickY = screenY;
-        }
-#else
-        BlockResult result;
-        result.success = false;
-        result.message = "현재 위치 클릭은 Windows에서만 지원됩니다";
-        return result;
-#endif
+        // Coordinates resolved after click only when pointer feedback is enabled.
     }
 
 #ifdef _WIN32
@@ -260,9 +255,39 @@ BlockResult ClickBlock::execute(ExecutionContext& ctx) {
         } else {
             InputSimulator::moveAt(clickX, clickY);
         }
-    } else if (target == ClickTarget::LastMatch && useClientCoordinates && ctx.hasLastMatchScreenPoint()) {
-        const cv::Point screen = ctx.lastMatchScreenPoint();
-        InputSimulator::clickAt(screen.x, screen.y, button, action, count, modifiers);
+    } else if (target == ClickTarget::CurrentPosition) {
+#ifndef _WIN32
+        BlockResult result;
+        result.success = false;
+        result.message = "현재 위치 클릭은 Windows에서만 지원됩니다";
+        return result;
+#else
+        InputSimulator::clickAtCursor(button, action, count, modifiers);
+#endif
+    } else if (target == ClickTarget::LastMatch) {
+        int screenX = 0;
+        int screenY = 0;
+        bool haveScreen = false;
+        if (useClientCoordinates && ctx.hasLastMatchScreenPoint()) {
+            const cv::Point screen = ctx.lastMatchScreenPoint();
+            screenX = screen.x;
+            screenY = screen.y;
+            haveScreen = true;
+        } else if (useClientCoordinates) {
+            HWND hwnd = ctx.targetWindow();
+            if (hwnd && InputSimulator::clientToScreen(hwnd, clickX, clickY, screenX, screenY)) {
+                haveScreen = true;
+            }
+        } else {
+            screenX = clickX;
+            screenY = clickY;
+            haveScreen = true;
+        }
+        if (haveScreen) {
+            InputSimulator::clickAtMatchScreen(screenX, screenY, button, action, count, modifiers);
+        } else {
+            InputSimulator::clickAt(clickX, clickY, button, action, count, modifiers);
+        }
     } else {
         HWND hwnd = ctx.targetWindow();
         if (useClientCoordinates && hwnd) {
@@ -279,10 +304,31 @@ BlockResult ClickBlock::execute(ExecutionContext& ctx) {
     }
 #endif
 
+#ifdef _WIN32
+    if (ctx.pointerVisualFeedback()) {
+        int feedbackClientX = 0;
+        int feedbackClientY = 0;
+        if (target == ClickTarget::CurrentPosition) {
+            int screenX = 0;
+            int screenY = 0;
+            if (InputSimulator::getCursorScreenPosition(screenX, screenY)
+                && clientPointForPointerFeedback(
+                    ctx, screenX, screenY, false, feedbackClientX, feedbackClientY)) {
+                ctx.reportPointerFeedback(feedbackClientX, feedbackClientY);
+            }
+        } else if (clientPointForPointerFeedback(
+                       ctx, clickX, clickY, useClientCoordinates, feedbackClientX, feedbackClientY)) {
+            ctx.reportPointerFeedback(feedbackClientX, feedbackClientY);
+        }
+    }
+#endif
+
     BlockResult result;
     result.success = true;
     if (action == ClickAction::MoveOnly) {
         result.message = std::string("이동만 @ (") + std::to_string(clickX) + "," + std::to_string(clickY) + ")";
+    } else if (target == ClickTarget::CurrentPosition) {
+        result.message = clickActionDisplayName(action) + " @ 현재 위치";
     } else {
         result.message = clickActionDisplayName(action) + " @ (" + std::to_string(clickX) + "," +
                          std::to_string(clickY) + ")";

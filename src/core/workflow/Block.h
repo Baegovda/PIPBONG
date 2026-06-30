@@ -10,7 +10,6 @@ enum class BlockType {
     Click,
     KeyPress,
     Wait,
-    If,
     Loop,
     Comment
 };
@@ -20,8 +19,8 @@ struct BlockResult {
     std::string message;
     /// Active capture + template-match work in ImageFind blocks (excludes poll sleep). -1 if N/A.
     int64_t imageFindMatchDurationMs = -1;
-    /// 0-based index in the current workflow to run next; -1 = continue sequentially.
-    int workflowJumpIndex = -1;
+    /// ImageFind poll iterations in the last execute(); -1 if N/A.
+    int imageFindPollAttempts = -1;
 };
 
 std::string blockTypeToString(BlockType type);

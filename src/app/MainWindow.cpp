@@ -20,11 +20,13 @@
 #include "ui/BlockListWidget.h"
 #include "ui/WorkflowEditorPanel.h"
 #include "ui/TargetWindowDetailPanel.h"
+#include "ui/TargetWindowHighlightOverlay.h"
 #include "app/UpdateChecker.h"
 #include "ui/CustomTitleBar.h"
 #include "ui/UiStateManager.h"
 #include "ui/editors/MatchTestOverlay.h"
 #include "ui/editors/WorkflowMatchFeedbackOverlay.h"
+#include "ui/editors/WorkflowRoiFlashOverlay.h"
 #include "ui/editors/RoiPreviewOverlay.h"
 #include "ui/editors/ScreenRegionOverlay.h"
 
@@ -36,6 +38,7 @@
 #include <QFileInfo>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -163,11 +166,18 @@ void MainWindow::setupUi() {
     m_targetWindowDetailPanel = new TargetWindowDetailPanel(targetGroup);
     m_pickWindowButton = new QPushButton(tr("창 지정"), targetGroup);
     m_pickWindowButton->setToolTip(tr("클릭한 뒤 대상 창을 눌러 지정합니다. Esc로 취소."));
+    m_showTargetWindowButton = new QPushButton(tr("창 표시"), targetGroup);
+    m_showTargetWindowButton->setToolTip(tr("지정된 대상 창 테두리를 잠시 깜빡여 표시합니다."));
+
+    auto* buttonColumn = new QVBoxLayout();
+    buttonColumn->setSpacing(4);
+    buttonColumn->addWidget(m_pickWindowButton);
+    buttonColumn->addWidget(m_showTargetWindowButton);
 
     auto* detailRow = new QHBoxLayout();
     detailRow->setSpacing(8);
     detailRow->addWidget(m_targetWindowDetailPanel, 1);
-    detailRow->addWidget(m_pickWindowButton, 0, Qt::AlignRight | Qt::AlignVCenter);
+    detailRow->addLayout(buttonColumn, 0);
 
     targetLayout->addLayout(detailRow);
 
@@ -234,8 +244,10 @@ void MainWindow::setupUiState() {
     m_uiState->registerSplitter(m_mainHorizontalSplitter, QStringLiteral("main/horizontal"));
     m_uiState->registerSplitter(m_mainVerticalSplitter, QStringLiteral("main/vertical"));
     m_uiState->registerSplitter(m_bottomHorizontalSplitter, QStringLiteral("main/bottomHorizontal"));
-    m_uiState->registerHeader(m_workflowEditor->blockListHeader(), QStringLiteral("blockList/header"));
     m_uiState->registerSplitter(m_workflowEditor->workflowSplitter(), QStringLiteral("workflowEditor/vertical"));
+    if (QHeaderView* blockHeader = m_workflowEditor->blockListHeader()) {
+        m_uiState->registerHeader(blockHeader, QStringLiteral("workflowBlockList/header"));
+    }
     m_uiState->registerSettingsHooks(
         QStringLiteral("featureList/columns"),
         [this](QSettings& settings) {
@@ -257,6 +269,9 @@ void MainWindow::setupUiState() {
             m_uiState,
             &UiStateManager::scheduleSave);
     m_uiState->restoreAll();
+    if (m_workflowEditor) {
+        m_workflowEditor->applyBlockListHeaderResizeModes();
+    }
     restoreAlwaysOnTopPreference();
 }
 
@@ -305,6 +320,7 @@ void MainWindow::connectSignals() {
     connect(m_settingsButton, &QPushButton::clicked, this, &MainWindow::onProgramSettings);
     connect(m_alwaysOnTopCheck, &QCheckBox::toggled, this, &MainWindow::onAlwaysOnTopToggled);
     connect(m_pickWindowButton, &QPushButton::clicked, this, &MainWindow::onPickTargetWindow);
+    connect(m_showTargetWindowButton, &QPushButton::clicked, this, &MainWindow::onShowTargetWindow);
 
     UserInputInterruptMonitor::instance().setHandler(
         [this](const std::string& featureId) { onUserInputInterrupt(featureId); });
@@ -499,6 +515,8 @@ void MainWindow::prepareForShutdown() {
     MatchTestOverlay::dismissAll();
     RoiPreviewOverlay::dismissAll();
     WorkflowMatchFeedbackOverlay::dismissAll();
+    WorkflowRoiFlashOverlay::dismissAll();
+    TargetWindowHighlightOverlay::dismissAll();
     WindowPicker::cancelPick();
     CursorPositionPicker::cancelPick();
     m_autoSaveTimer->stop();
@@ -758,6 +776,9 @@ void MainWindow::connectSessionEngine(FeatureRunSession& session) {
     connect(engine, &WorkflowEngine::blockFinished, this, &MainWindow::onBlockFinished);
     connect(engine, &WorkflowEngine::blockProgress, this, &MainWindow::onBlockProgress);
     connect(engine, &WorkflowEngine::blockMatchResult, this, &MainWindow::onBlockMatchResult);
+    connect(engine, &WorkflowEngine::blockImageFindAttempt, this, &MainWindow::onBlockImageFindAttempt);
+    connect(engine, &WorkflowEngine::pointerFeedbackAtClientPoint, this,
+            &MainWindow::onPointerFeedbackAtClientPoint);
 }
 
 void MainWindow::updateRunUiState() {
@@ -916,6 +937,9 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
         return;
     }
 
+    session.pointerVisualFeedback = feature->pointerVisualFeedback();
+    session.sessionContext->setPointerVisualFeedback(feature->pointerVisualFeedback());
+
     const bool infiniteStyle = session.runningMode == FeatureRunMode::RepeatInfinite
                              || session.runningMode == FeatureRunMode::Hold;
     const int exitAfter = feature->infiniteExitAfterConsecutiveMisses();
@@ -924,6 +948,10 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
     } else {
         session.sessionContext->setImageFindMaxMissAttempts(0);
     }
+
+    session.sessionContext->setRoiCorrectionSession(feature->roiCorrectionSessionEligible(),
+                                                    feature->roiCorrection());
+    session.sessionContext->setRunLoopNumber(session.sessionIteration + 1);
 }
 
 void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, const QString& message) {
@@ -934,6 +962,10 @@ void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, con
     session.hasLastLoopTiming = true;
     session.lastLoopNumber = loopNumber;
     session.lastLoopElapsedMs = elapsedMs;
+    session.totalLoopElapsedMs += elapsedMs;
+    ++session.completedLoopCount;
+    session.lastLoopAverageMs =
+        session.completedLoopCount > 0 ? session.totalLoopElapsedMs / session.completedLoopCount : 0;
     session.lastLoopSuccess = success;
 
     QString line = tr("루프 %1: %2 ms (%3)")
@@ -957,7 +989,10 @@ void MainWindow::syncLoopTimingToWorkflowEditor(const FeatureRunSession* session
         m_workflowEditor->clearLoopTiming();
         return;
     }
-    m_workflowEditor->setLoopTiming(session->lastLoopNumber, session->lastLoopElapsedMs, session->lastLoopSuccess);
+    m_workflowEditor->setLoopTiming(session->lastLoopNumber,
+                                    session->lastLoopElapsedMs,
+                                    session->lastLoopAverageMs,
+                                    session->lastLoopSuccess);
 }
 
 bool MainWindow::shouldLogRunDetails(const FeatureRunSession& session) const {
@@ -987,6 +1022,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         syncTargetWindowTitleToCapture();
         session.sessionIteration = 0;
         session.hasLastLoopTiming = false;
+        session.totalLoopElapsedMs = 0;
+        session.completedLoopCount = 0;
+        session.lastLoopAverageMs = 0;
         if (isDisplayedRunningFeature(&session)) {
             syncLoopTimingToWorkflowEditor(&session);
         }
@@ -1010,6 +1048,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
     }
     syncRunSessionContext(session);
     applyFeatureRunPoliciesToContext(session, feature);
+    if (!repeatIteration && session.sessionContext) {
+        session.sessionContext->clearCorrectedRois();
+    }
     syncUserInputInterruptForSession(session, feature);
 
     const std::wstring targetTitle = currentTargetWindowTitleW();
@@ -1116,6 +1157,7 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
     m_runSessions.erase(featureId);
     if (!hasAnyRunningSession()) {
         WorkflowMatchFeedbackOverlay::dismissAll();
+        WorkflowRoiFlashOverlay::dismissAll();
     }
     updateRunUiState();
     Q_UNUSED(message);
@@ -1227,6 +1269,16 @@ void MainWindow::onPickTargetWindow() {
     });
 #else
     QMessageBox::information(this, tr("창 지정"), tr("창 지정은 Windows에서만 지원됩니다."));
+#endif
+}
+
+void MainWindow::onShowTargetWindow() {
+#ifdef _WIN32
+    if (TargetWindowHighlightOverlay::flash(this)) {
+        showTransientStatus(tr("대상 창을 표시했습니다."), 2500);
+    }
+#else
+    QMessageBox::information(this, tr("창 표시"), tr("창 표시는 Windows에서만 지원됩니다."));
 #endif
 }
 
@@ -1353,19 +1405,30 @@ void MainWindow::onBlockMatchResult(int index,
                                     bool hasClientPoint,
                                     int clientX,
                                     int clientY) {
-    if (hasClientPoint) {
-        WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, matched);
+    FeatureRunSession* session = sessionForEngine(sender());
+    if (hasClientPoint && session && session->pointerVisualFeedback) {
+        WorkflowMatchFeedbackOverlay::pulseAtClientPoint(
+            clientX,
+            clientY,
+            matched ? RunPointerFeedbackKind::MatchSuccess : RunPointerFeedbackKind::MatchMiss);
     }
 
-    FeatureRunSession* session = sessionForEngine(sender());
     if (!session || !isDisplayedRunningFeature(session)) {
         return;
     }
     m_workflowEditor->setBlockMatchResult(index, matchThreshold, confidence, matchPreview, matched);
 }
 
+void MainWindow::onPointerFeedbackAtClientPoint(int clientX, int clientY) {
+    FeatureRunSession* session = sessionForEngine(sender());
+    if (!session || !session->pointerVisualFeedback) {
+        return;
+    }
+    WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, RunPointerFeedbackKind::Click);
+}
+
 void MainWindow::onBlockFinished(int index, bool success, const QString& message, qint64 durationMs,
-                                 qint64 imageFindMatchDurationMs) {
+                                 qint64 imageFindMatchDurationMs, int imageFindPollAttempts) {
     FeatureRunSession* session = sessionForEngine(sender());
     if (!session) {
         return;
@@ -1381,6 +1444,9 @@ void MainWindow::onBlockFinished(int index, bool success, const QString& message
     if (isDisplayedRunningFeature(session)) {
         m_workflowEditor->setBlockDuration(index, durationMs);
         m_workflowEditor->setBlockImageFindMatchDuration(index, imageFindMatchDurationMs);
+        if (imageFindPollAttempts > 0) {
+            m_workflowEditor->setBlockImageFindAttemptCount(index, imageFindPollAttempts);
+        }
     }
     if (!success) {
         applyRunningBlockVisuals(*session, index, BlockListWidget::ExecutionHighlight::Failed);
@@ -1389,6 +1455,21 @@ void MainWindow::onBlockFinished(int index, bool success, const QString& message
         if (isDisplayedRunningFeature(session)) {
             m_workflowEditor->markBlockMatchSuccess(index);
         }
+    }
+}
+
+void MainWindow::onBlockImageFindAttempt(int index,
+                                         int attemptCount,
+                                         double matchThreshold,
+                                         double detectedConfidence,
+                                         bool matched) {
+    FeatureRunSession* session = sessionForEngine(sender());
+    if (!session || !isDisplayedRunningFeature(session)) {
+        return;
+    }
+    m_workflowEditor->setBlockImageFindAttemptCount(index, attemptCount);
+    if (!matched) {
+        m_workflowEditor->setBlockMatchResult(index, matchThreshold, detectedConfidence, QPixmap(), false);
     }
 }
 

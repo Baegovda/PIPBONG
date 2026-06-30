@@ -24,6 +24,7 @@ public:
     const Feature* featureById(const std::string& id) const;
 
     Feature* addFeature(const std::string& name);
+    Feature* insertFeature(int index, std::unique_ptr<Feature> feature);
     void removeFeature(int index);
     void moveFeature(int fromIndex, int toIndex);
     void clear();

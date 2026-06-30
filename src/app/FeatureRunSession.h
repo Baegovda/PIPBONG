@@ -24,10 +24,14 @@ struct FeatureRunSession {
     std::shared_ptr<ExecutionContext> sessionContext;
     int sessionIteration = 0;
     bool hotkeyLaunchedSession = false;
+    bool pointerVisualFeedback = true;
     QElapsedTimer loopTimer;
     bool hasLastLoopTiming = false;
     int lastLoopNumber = 0;
     qint64 lastLoopElapsedMs = 0;
+    qint64 lastLoopAverageMs = 0;
+    qint64 totalLoopElapsedMs = 0;
+    int completedLoopCount = 0;
     bool lastLoopSuccess = true;
     int consecutiveDetectionFailLoops = 0;
 };

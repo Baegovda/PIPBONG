@@ -1,5 +1,7 @@
 #include "app/Application.h"
 
+#include "SbmVersion.h"
+
 #include <QFile>
 #include <QIcon>
 #include <QSettings>
@@ -57,9 +59,6 @@ Application::Application(int& argc, char** argv)
     : QApplication(argc, argv) {
     setApplicationName(QStringLiteral("SuckbongMachine"));
     setOrganizationName(QStringLiteral("SuckbongMachine"));
-#ifndef SBM_VERSION
-#define SBM_VERSION "0.1.0"
-#endif
     setApplicationVersion(QStringLiteral(SBM_VERSION));
 
     const QIcon appIcon(QStringLiteral(":/app/Sbm.ico"));

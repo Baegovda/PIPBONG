@@ -1,6 +1,9 @@
 #include "ui/BlockListWidget.h"
 
+#include "core/workflow/Block.h"
 #include "core/workflow/LoopExitCondition.h"
+#include "ui/UiStrings.h"
+#include "ui/widgets/DragAdjustSpinMouse.h"
 
 #include <QApplication>
 #include <QStyle>
@@ -22,27 +25,76 @@
 #include <QPainter>
 #include <QResizeEvent>
 #include <QScrollBar>
+#include <QSignalBlocker>
 #include <QStyledItemDelegate>
+#include <QStyleOptionButton>
 #include <QStyleOptionViewItem>
 #include <QTimer>
 #include <QVariantAnimation>
 #include <QEasingCurve>
+
+#include <cmath>
 
 namespace {
 
 constexpr int kThumbnailSize = 32;
 constexpr int kRowHeight = kThumbnailSize + 4;
 constexpr int kLoopRegionHeaderHeight = 28;
-constexpr int kIfHeaderHeight = 28;
-constexpr int kIfBranchHeaderHeight = 22;
 constexpr int kColIndex = 0;
 constexpr int kColPreview = 1;
 constexpr int kColAction = 2;
 constexpr int kColSummary = 3;
 constexpr int kColDuration = 4;
 constexpr int kColMatchDuration = 5;
-constexpr int kColScore = 6;
-constexpr int kColMatch = 7;
+constexpr int kColAttempts = 6;
+constexpr int kColScore = 7;
+constexpr int kColRoiCorrection = 8;
+constexpr int kColMatch = 9;
+constexpr int kColumnCount = 10;
+
+void applyDefaultBlockListColumnWidths(QTableWidget* table) {
+    const QSignalBlocker blocker(table->horizontalHeader());
+    table->setColumnWidth(kColIndex, 28);
+    table->setColumnWidth(kColPreview, kThumbnailSize + 6);
+    table->setColumnWidth(kColAction, 72);
+    table->setColumnWidth(kColDuration, 72);
+    table->setColumnWidth(kColMatchDuration, 72);
+    table->setColumnWidth(kColAttempts, 58);
+    table->setColumnWidth(kColScore, 78);
+    table->setColumnWidth(kColRoiCorrection, 52);
+    table->setColumnWidth(kColMatch, kThumbnailSize + 6);
+}
+
+void applyBlockListHeaderResizeModes(QHeaderView* header) {
+    if (!header) {
+        return;
+    }
+    header->setMinimumSectionSize(24);
+    header->setStretchLastSection(false);
+    header->setCascadingSectionResizes(false);
+    for (int column = 0; column < kColumnCount; ++column) {
+        header->setSectionResizeMode(column,
+                                     column == kColSummary ? QHeaderView::Stretch
+                                                           : QHeaderView::Interactive);
+    }
+}
+
+void initBlockListColumnHeader(BlockListWidget* table) {
+    table->setColumnCount(kColumnCount);
+    table->setHorizontalHeaderLabels({QStringLiteral("#"),
+                                    BlockListWidget::tr("미리보기"),
+                                    BlockListWidget::tr("동작"),
+                                    QStringLiteral("요약"),
+                                    BlockListWidget::tr("동작 시간"),
+                                    BlockListWidget::tr("매칭 시간"),
+                                    BlockListWidget::tr("시도 횟수"),
+                                    BlockListWidget::tr("기준/감지"),
+                                    BlockListWidget::tr("ROI 보정"),
+                                    BlockListWidget::tr("매칭")});
+
+    applyBlockListHeaderResizeModes(table->horizontalHeader());
+    applyDefaultBlockListColumnWidths(table);
+}
 
 class WorkflowChipHeaderRowWidget : public QWidget {
 public:
@@ -291,6 +343,86 @@ public:
     }
 };
 
+class CenterCheckBoxDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    static QRect centeredCheckIndicatorRect(const QStyleOptionViewItem& option, const QWidget* widget) {
+        QStyleOptionButton buttonOpt;
+        buttonOpt.state = QStyle::State_Enabled;
+        QStyle* style = widget ? widget->style() : QApplication::style();
+        const QRect indicator = style->subElementRect(QStyle::SE_CheckBoxIndicator, &buttonOpt, widget);
+        const QRect cell = option.rect;
+        return QRect(cell.left() + (cell.width() - indicator.width()) / 2,
+                     cell.top() + (cell.height() - indicator.height()) / 2,
+                     indicator.width(),
+                     indicator.height());
+    }
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+
+        const bool checkable = index.flags() & Qt::ItemIsUserCheckable;
+        if (checkable) {
+            opt.features &= ~QStyleOptionViewItem::HasCheckIndicator;
+            opt.text.clear();
+        } else {
+            opt.displayAlignment = Qt::AlignCenter;
+        }
+
+        const QWidget* widget = opt.widget;
+        QStyle* style = widget ? widget->style() : QApplication::style();
+        style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
+
+        if (!checkable) {
+            return;
+        }
+
+        QStyleOptionButton checkOpt;
+        checkOpt.state = QStyle::State_Enabled;
+        const auto checkState = static_cast<Qt::CheckState>(index.data(Qt::CheckStateRole).toInt());
+        switch (checkState) {
+        case Qt::Checked:
+            checkOpt.state |= QStyle::State_On;
+            break;
+        case Qt::PartiallyChecked:
+            checkOpt.state |= QStyle::State_NoChange;
+            break;
+        default:
+            checkOpt.state |= QStyle::State_Off;
+            break;
+        }
+        checkOpt.rect = centeredCheckIndicatorRect(opt, widget);
+        style->drawControl(QStyle::CE_CheckBox, &checkOpt, painter, widget);
+    }
+
+    bool editorEvent(QEvent* event,
+                     QAbstractItemModel* model,
+                     const QStyleOptionViewItem& option,
+                     const QModelIndex& index) override {
+        if (!(index.flags() & Qt::ItemIsUserCheckable)) {
+            return QStyledItemDelegate::editorEvent(event, model, option, index);
+        }
+        if (event->type() != QEvent::MouseButtonRelease) {
+            return false;
+        }
+        const auto* mouseEvent = static_cast<const QMouseEvent*>(event);
+        if (mouseEvent->button() != Qt::LeftButton) {
+            return false;
+        }
+
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        if (!centeredCheckIndicatorRect(opt, opt.widget).contains(mouseEvent->pos())) {
+            return false;
+        }
+
+        const auto state = static_cast<Qt::CheckState>(index.data(Qt::CheckStateRole).toInt());
+        return model->setData(index, state == Qt::Checked ? Qt::Unchecked : Qt::Checked, Qt::CheckStateRole);
+    }
+};
+
 class DropInsertionIndicator : public QWidget {
 public:
     explicit DropInsertionIndicator(QWidget* parent)
@@ -389,7 +521,7 @@ QRect tableRowRect(const QTableWidget* table, int tableRow) {
         return {};
     }
     QRect rowRect = table->visualRect(table->model()->index(tableRow, 0));
-    const int lastColumn = table->columnCount() - 1;
+    const int lastColumn = kColMatch;
     if (lastColumn > 0) {
         const QRect lastRect = table->visualRect(table->model()->index(tableRow, lastColumn));
         if (lastRect.isValid()) {
@@ -494,41 +626,6 @@ void paintWorkflowChipHeader(QPainter* painter,
     painter->drawText(conditionRect, Qt::AlignLeft | Qt::AlignVCenter, separator + conditionText);
 }
 
-void paintIfBranchHeaderRow(QPainter* painter,
-                            const QRect& rowRect,
-                            const QPalette& pal,
-                            bool selected,
-                            bool isThen,
-                            const QString& label) {
-    const QColor accent = isThen ? QColor(72, 158, 112) : QColor(196, 132, 72);
-    const QColor base = pal.color(QPalette::Base);
-
-    QColor rowTint = accent;
-    rowTint.setAlpha(selected ? 14 : 7);
-    painter->fillRect(rowRect, blendOver(base, rowTint));
-
-    const int insetY = 2;
-    const int barWidth = 3;
-    QRect leftBar(rowRect.left() + 8, rowRect.top() + insetY, barWidth, rowRect.height() - insetY * 2);
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(accent);
-    painter->drawRoundedRect(leftBar, 2, 2);
-
-    QFont font = painter->font();
-    font.setBold(true);
-    painter->setFont(font);
-    painter->setPen(pal.color(QPalette::WindowText));
-    const QRect textRect(leftBar.right() + 8,
-                         rowRect.top(),
-                         rowRect.right() - leftBar.right() - 12,
-                         rowRect.height());
-    painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, label);
-}
-
-QString ifHeaderTitle() {
-    return BlockListWidget::tr("만약");
-}
-
 class BlockListChromeRowDelegate : public QStyledItemDelegate {
 public:
     explicit BlockListChromeRowDelegate(BlockListWidget* owner)
@@ -543,9 +640,7 @@ public:
 
         const BlockListRowMeta& meta = m_owner->rowMeta(index.row());
         if (meta.kind == BlockListRowKind::MainBlock
-            || meta.kind == BlockListRowKind::IfBranchBlock
-            || meta.kind == BlockListRowKind::LoopRegionHeader
-            || meta.kind == BlockListRowKind::IfHeader) {
+            || meta.kind == BlockListRowKind::LoopRegionHeader) {
             QStyledItemDelegate::paint(painter, option, index);
             return;
         }
@@ -570,43 +665,18 @@ public:
         const QPalette pal = m_owner->palette();
         const bool selected = opt.state & QStyle::State_Selected;
 
-        switch (meta.kind) {
-        case BlockListRowKind::LoopRegionHeader: {
+        if (meta.kind == BlockListRowKind::LoopRegionHeader) {
             const WorkflowLoopRegion* region = loopRegionForTableRow(m_owner, index.row());
-            if (!region) {
-                break;
+            if (region) {
+                paintWorkflowChipHeader(painter,
+                                        rowRect,
+                                        pal,
+                                        selected,
+                                        pal.color(QPalette::Highlight),
+                                        QStringLiteral("↻"),
+                                        loopRegionHeaderTitle(),
+                                        loopRegionHeaderCondition(*region));
             }
-            paintWorkflowChipHeader(painter,
-                                    rowRect,
-                                    pal,
-                                    selected,
-                                    pal.color(QPalette::Highlight),
-                                    QStringLiteral("↻"),
-                                    loopRegionHeaderTitle(),
-                                    loopRegionHeaderCondition(*region));
-            break;
-        }
-        case BlockListRowKind::IfHeader: {
-            paintWorkflowChipHeader(painter,
-                                    rowRect,
-                                    pal,
-                                    selected,
-                                    QColor(74, 144, 217),
-                                    QStringLiteral("?"),
-                                    ifHeaderTitle(),
-                                    meta.ifConditionText);
-            break;
-        }
-        case BlockListRowKind::IfBranchHeader: {
-            const QTableWidgetItem* item = m_owner->item(index.row(), kColIndex);
-            const QString label = item ? item->text() : QString();
-            paintIfBranchHeaderRow(painter, rowRect, pal, selected, meta.isThenBranch, label);
-            break;
-        }
-        case BlockListRowKind::MainBlock:
-        case BlockListRowKind::IfBranchBlock:
-        default:
-            break;
         }
 
         painter->restore();
@@ -619,10 +689,6 @@ public:
         switch (m_owner->tableRowKind(index.row())) {
         case BlockListRowKind::LoopRegionHeader:
             return QSize(option.rect.width(), kLoopRegionHeaderHeight);
-        case BlockListRowKind::IfHeader:
-            return QSize(option.rect.width(), kIfHeaderHeight);
-        case BlockListRowKind::IfBranchHeader:
-            return QSize(option.rect.width(), kIfBranchHeaderHeight);
         default:
             break;
         }
@@ -740,174 +806,19 @@ private:
     std::vector<WorkflowLoopRegion> m_regions;
 };
 
-struct IfBranchChromeRange {
-    int startTableRow = -1;
-    int endTableRow = -1;
-    QColor accent;
-};
-
-LoopRegionChromeGeometry chromeGeometryForTableRows(const BlockListWidget* table,
-                                                    int startTableRow,
-                                                    int endTableRow,
-                                                    int marginLeft) {
-    LoopRegionChromeGeometry geometry;
-    if (!table || startTableRow < 0 || endTableRow < startTableRow || endTableRow >= table->rowCount()) {
-        return geometry;
-    }
-
-    const QRect topRect = table->visualRect(table->model()->index(startTableRow, 0));
-    const QRect bottomRect = table->visualRect(table->model()->index(endTableRow, 0));
-    if (!topRect.isValid() || !bottomRect.isValid()) {
-        return geometry;
-    }
-
-    const int viewportHeight = table->viewport() ? table->viewport()->height() : 0;
-    if (bottomRect.bottom() < 0 || topRect.top() > viewportHeight) {
-        return geometry;
-    }
-
-    geometry.visible = true;
-    const int barWidth = 4;
-    const int groupTop = topRect.top();
-    const int groupBottom = bottomRect.bottom();
-    const int viewportWidth = table->viewport() ? table->viewport()->width() : table->width();
-
-    geometry.leftBar = QRect(marginLeft, groupTop + 1, barWidth, groupBottom - groupTop - 1);
-    geometry.groupFill =
-        QRect(marginLeft + barWidth + 2,
-              groupTop,
-              viewportWidth - marginLeft - barWidth - 8,
-              groupBottom - groupTop + 1);
-    return geometry;
-}
-
-class IfBranchChromeOverlay : public QWidget {
-public:
-    explicit IfBranchChromeOverlay(BlockListWidget* owner, QWidget* parent)
-        : QWidget(parent)
-        , m_owner(owner) {
-        setAttribute(Qt::WA_TransparentForMouseEvents);
-        setAttribute(Qt::WA_NoSystemBackground);
-    }
-
-    void setRanges(const std::vector<IfBranchChromeRange>& ranges) {
-        m_ranges = ranges;
-        setVisible(!m_ranges.empty());
-        update();
-    }
-
-protected:
-    void paintEvent(QPaintEvent*) override {
-        if (!m_owner || m_ranges.empty()) {
-            return;
-        }
-
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
-
-        for (const IfBranchChromeRange& range : m_ranges) {
-            const LoopRegionChromeGeometry geometry =
-                chromeGeometryForTableRows(m_owner, range.startTableRow, range.endTableRow, 10);
-            if (!geometry.visible) {
-                continue;
-            }
-
-            QColor accentSoft = range.accent;
-            accentSoft.setAlpha(16);
-            QColor border = range.accent;
-            border.setAlpha(64);
-
-            painter.fillRect(geometry.groupFill, accentSoft);
-
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(range.accent);
-            painter.drawRoundedRect(geometry.leftBar, 2, 2);
-
-            painter.setPen(QPen(border, 1.0));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawLine(geometry.groupFill.left(),
-                             geometry.groupFill.top() + 1,
-                             geometry.groupFill.right(),
-                             geometry.groupFill.top() + 1);
-            painter.drawLine(geometry.groupFill.left(),
-                             geometry.groupFill.bottom() - 1,
-                             geometry.groupFill.right(),
-                             geometry.groupFill.bottom() - 1);
-            painter.drawLine(geometry.leftBar.right() + 1,
-                             geometry.groupFill.top() + 1,
-                             geometry.leftBar.right() + 1,
-                             geometry.groupFill.bottom() - 1);
-        }
-    }
-
-private:
-    BlockListWidget* m_owner = nullptr;
-    std::vector<IfBranchChromeRange> m_ranges;
-};
-
-void refreshIfBranchChromeOverlay(BlockListWidget* table, IfBranchChromeOverlay* overlay) {
-    if (!table || !overlay || !table->viewport()) {
-        return;
-    }
-
-    std::vector<IfBranchChromeRange> ranges;
-    int sectionStart = -1;
-    QColor sectionAccent;
-    for (int tableRow = 0; tableRow < table->rowCount(); ++tableRow) {
-        const BlockListRowMeta& meta = table->rowMeta(tableRow);
-        if (meta.kind == BlockListRowKind::IfBranchHeader) {
-            if (sectionStart >= 0) {
-                ranges.push_back({sectionStart, tableRow - 1, sectionAccent});
-            }
-            sectionStart = tableRow;
-            sectionAccent = meta.isThenBranch ? QColor(72, 158, 112) : QColor(196, 132, 72);
-        } else if (meta.kind != BlockListRowKind::IfBranchBlock && sectionStart >= 0) {
-            ranges.push_back({sectionStart, tableRow - 1, sectionAccent});
-            sectionStart = -1;
-        }
-    }
-    if (sectionStart >= 0) {
-        ranges.push_back({sectionStart, table->rowCount() - 1, sectionAccent});
-    }
-
-    overlay->setGeometry(table->viewport()->rect());
-    overlay->raise();
-    overlay->setRanges(ranges);
-    overlay->update();
-}
-
 } // namespace
+
 BlockListWidget::BlockListWidget(QWidget* parent)
     : QTableWidget(parent) {
-    setColumnCount(8);
-    setHorizontalHeaderLabels({QStringLiteral("#"),
-                               tr("미리보기"),
-                               tr("동작"),
-                               QStringLiteral("요약"),
-                               tr("동작 시간"),
-                               tr("매칭 시간"),
-                               tr("기준/감지"),
-                               tr("매칭")});
     horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
+    horizontalHeader()->setSectionsMovable(false);
+    horizontalHeader()->setFirstSectionMovable(false);
+    initBlockListColumnHeader(this);
     setIconSize(QSize(kThumbnailSize, kThumbnailSize));
     setItemDelegateForColumn(0, new BlockListChromeRowDelegate(this));
     setItemDelegateForColumn(1, new CenterIconDelegate(this));
-    horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
-    setColumnWidth(0, 28);
-    horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
-    setColumnWidth(1, kThumbnailSize + 6);
-    horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
-    setColumnWidth(2, 72);
-    horizontalHeader()->setStretchLastSection(false);
-    horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
-    horizontalHeader()->setSectionResizeMode(4, QHeaderView::Interactive);
-    setColumnWidth(4, 72);
-    horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
-    setColumnWidth(5, 72);
-    horizontalHeader()->setSectionResizeMode(6, QHeaderView::Interactive);
-    setColumnWidth(6, 78);
-    horizontalHeader()->setSectionResizeMode(7, QHeaderView::Interactive);
-    setColumnWidth(7, kThumbnailSize + 6);
+    setItemDelegateForColumn(kColRoiCorrection, new CenterCheckBoxDelegate(this));
+
     verticalHeader()->setDefaultSectionSize(kRowHeight);
     verticalHeader()->setVisible(false);
     setStyleSheet(QStringLiteral("QTableWidget::item { padding-top: 1px; padding-bottom: 1px; }"));
@@ -944,19 +855,26 @@ BlockListWidget::BlockListWidget(QWidget* parent)
     m_loopRegionChrome = new LoopRegionChromeOverlay(this, viewport());
     m_loopRegionChrome->hide();
 
-    m_ifBranchChrome = new IfBranchChromeOverlay(this, viewport());
-    m_ifBranchChrome->hide();
-
     viewport()->setMouseTracking(true);
     viewport()->installEventFilter(this);
 
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int) {
         updateLoopRegionChrome();
-        updateIfBranchChrome();
     });
     connect(horizontalScrollBar(), &QScrollBar::valueChanged, this, [this](int) {
         updateLoopRegionChrome();
-        updateIfBranchChrome();
+    });
+
+    connect(this, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* changedItem) {
+        if (!changedItem || changedItem->column() != kColRoiCorrection || m_updatingRoiCorrectionItem) {
+            return;
+        }
+        const int blockRow = blockRowForTableRow(changedItem->row());
+        if (blockRow < 0 || blockRow >= static_cast<int>(m_rowIsImageFind.size())
+            || !m_rowIsImageFind[static_cast<size_t>(blockRow)]) {
+            return;
+        }
+        emit imageFindRoiCorrectionChanged(blockRow, changedItem->checkState() == Qt::Checked);
     });
 }
 
@@ -967,13 +885,7 @@ void BlockListWidget::keyPressEvent(QKeyEvent* event) {
         event->accept();
         return;
     }
-    if (m_ifGotoPickActive && event->key() == Qt::Key_Escape) {
-        cancelIfGotoPick();
-        emit ifGotoPickCancelled();
-        event->accept();
-        return;
-    }
-    if (m_reorderEnabled && !m_loopRegionPickActive && !m_ifGotoPickActive) {
+    if (m_reorderEnabled && !m_loopRegionPickActive) {
         if (event->matches(QKeySequence::Copy)) {
             emit copyRequested();
             event->accept();
@@ -1003,11 +915,57 @@ void BlockListWidget::keyPressEvent(QKeyEvent* event) {
     QTableWidget::keyPressEvent(event);
 }
 
+void BlockListWidget::applyHeaderResizeModes() {
+    applyBlockListHeaderResizeModes(horizontalHeader());
+}
+
+void BlockListWidget::setRoiCorrectionColumnVisible(bool visible) {
+    m_roiCorrectionColumnVisible = visible;
+    if (QHeaderView* header = horizontalHeader()) {
+        header->setSectionHidden(kColRoiCorrection, !visible);
+    }
+}
+
+void BlockListWidget::setBlockRoiCorrection(int row, bool enabled, bool interactive) {
+    const int tableRow = tableRowForBlockRow(row);
+    if (row < 0 || row >= m_blockCount || tableRow < 0) {
+        return;
+    }
+
+    QTableWidgetItem* roiItem = item(tableRow, kColRoiCorrection);
+    if (!roiItem) {
+        return;
+    }
+
+    m_updatingRoiCorrectionItem = true;
+    const QSignalBlocker blocker(this);
+    const Qt::ItemFlags baseFlags = Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled;
+    if (row >= static_cast<int>(m_rowIsImageFind.size()) || !m_rowIsImageFind[static_cast<size_t>(row)]) {
+        roiItem->setFlags(baseFlags);
+        roiItem->setText(QStringLiteral("—"));
+        m_updatingRoiCorrectionItem = false;
+        return;
+    }
+
+    roiItem->setText(QString());
+    Qt::ItemFlags flags = baseFlags;
+    if (interactive && m_roiCorrectionColumnVisible) {
+        flags |= Qt::ItemIsUserCheckable;
+    }
+    roiItem->setFlags(flags);
+    roiItem->setCheckState(enabled ? Qt::Checked : Qt::Unchecked);
+    m_updatingRoiCorrectionItem = false;
+}
+
 void BlockListWidget::setBlockCount(int count) {
     m_blockCount = count;
     m_rowMatchHasScore = QVector<bool>(count, false);
     m_rowMatchSucceeded = QVector<bool>(count, false);
     m_rowMatchLockedSuccess = QVector<bool>(count, false);
+    m_rowDisplayConfidences = QVector<double>(count, -1.0);
+    m_rowIsImageFind = QVector<bool>(count, false);
+    m_rowImageFindThresholds = QVector<double>(count, 0.85);
+    m_rowImageFindAttemptCounts = QVector<int>(count, -1);
     m_rowCompletedHighlight = QVector<ExecutionHighlight>(count, ExecutionHighlight::None);
 }
 
@@ -1019,10 +977,6 @@ void BlockListWidget::rebuildTableRows() {
     m_blockTableRow = QVector<int>(m_blockCount, -1);
 
     int extraRows = static_cast<int>(m_loopRegions.size());
-    for (const IfBlockDisplay& display : m_ifDisplays) {
-        extraRows += 1 + 1 + static_cast<int>(display.thenBlocks.size()) + 1
-                     + static_cast<int>(display.elseBlocks.size());
-    }
 
     setRowCount(m_blockCount + extraRows);
     m_loopRegionMember = QVector<bool>(rowCount(), false);
@@ -1046,26 +1000,6 @@ void BlockListWidget::rebuildTableRows() {
             ++tableRow;
         }
 
-        const IfBlockDisplay* ifDisplay = nullptr;
-        for (const IfBlockDisplay& candidate : m_ifDisplays) {
-            if (candidate.blockRow == block) {
-                ifDisplay = &candidate;
-                break;
-            }
-        }
-
-        if (ifDisplay) {
-            m_tableRowBlockIndex.push_back(-1);
-            m_tableRowRegionId.push_back(QString());
-            BlockListRowMeta ifHeaderMeta;
-            ifHeaderMeta.kind = BlockListRowKind::IfHeader;
-            ifHeaderMeta.mainBlockRow = block;
-            ifHeaderMeta.ifConditionText = ifDisplay->conditionText;
-            m_tableRowMeta.push_back(ifHeaderMeta);
-            populateIfHeaderRow(tableRow, *ifDisplay);
-            ++tableRow;
-        }
-
         m_tableRowBlockIndex.push_back(block);
         m_tableRowRegionId.push_back(QString());
         BlockListRowMeta blockMeta;
@@ -1075,70 +1009,6 @@ void BlockListWidget::rebuildTableRows() {
         m_blockTableRow[block] = tableRow;
         setRowHeight(tableRow, kRowHeight);
         ++tableRow;
-
-        if (ifDisplay) {
-            const QString thenLabel =
-                ifDisplay->thenBlocks.empty()
-                    ? tr("맞으면 — 비어 있음")
-                    : tr("맞으면 (%1블록)").arg(ifDisplay->thenBlocks.size());
-            m_tableRowBlockIndex.push_back(-1);
-            m_tableRowRegionId.push_back(QString());
-            BlockListRowMeta thenHeaderMeta;
-            thenHeaderMeta.kind = BlockListRowKind::IfBranchHeader;
-            thenHeaderMeta.mainBlockRow = block;
-            thenHeaderMeta.isThenBranch = true;
-            m_tableRowMeta.push_back(thenHeaderMeta);
-            populateIfBranchHeaderRow(tableRow, true, thenLabel, block);
-            ++tableRow;
-
-            for (int branchIndex = 0; branchIndex < static_cast<int>(ifDisplay->thenBlocks.size()); ++branchIndex) {
-                m_tableRowBlockIndex.push_back(-1);
-                m_tableRowRegionId.push_back(QString());
-                BlockListRowMeta branchMeta;
-                branchMeta.kind = BlockListRowKind::IfBranchBlock;
-                branchMeta.mainBlockRow = block;
-                branchMeta.isThenBranch = true;
-                branchMeta.branchBlockIndex = branchIndex;
-                m_tableRowMeta.push_back(branchMeta);
-                populateIfBranchBlockRow(tableRow,
-                                         ifDisplay->thenBlocks[branchIndex],
-                                         branchIndex,
-                                         block,
-                                         true);
-                ++tableRow;
-            }
-
-            const QString elseLabel =
-                ifDisplay->elseBlocks.empty()
-                    ? tr("아니면 — 비어 있음")
-                    : tr("아니면 (%1블록)").arg(ifDisplay->elseBlocks.size());
-            m_tableRowBlockIndex.push_back(-1);
-            m_tableRowRegionId.push_back(QString());
-            BlockListRowMeta elseHeaderMeta;
-            elseHeaderMeta.kind = BlockListRowKind::IfBranchHeader;
-            elseHeaderMeta.mainBlockRow = block;
-            elseHeaderMeta.isThenBranch = false;
-            m_tableRowMeta.push_back(elseHeaderMeta);
-            populateIfBranchHeaderRow(tableRow, false, elseLabel, block);
-            ++tableRow;
-
-            for (int branchIndex = 0; branchIndex < static_cast<int>(ifDisplay->elseBlocks.size()); ++branchIndex) {
-                m_tableRowBlockIndex.push_back(-1);
-                m_tableRowRegionId.push_back(QString());
-                BlockListRowMeta branchMeta;
-                branchMeta.kind = BlockListRowKind::IfBranchBlock;
-                branchMeta.mainBlockRow = block;
-                branchMeta.isThenBranch = false;
-                branchMeta.branchBlockIndex = branchIndex;
-                m_tableRowMeta.push_back(branchMeta);
-                populateIfBranchBlockRow(tableRow,
-                                         ifDisplay->elseBlocks[branchIndex],
-                                         branchIndex,
-                                         block,
-                                         false);
-                ++tableRow;
-            }
-        }
     }
 }
 
@@ -1164,80 +1034,6 @@ void BlockListWidget::populateLoopRegionHeaderRow(int tableRow, const WorkflowLo
         [this, regionId]() { emit loopRegionDeleteRequested(regionId); });
 }
 
-void BlockListWidget::populateIfHeaderRow(int tableRow, const IfBlockDisplay& display) {
-    setRowHeight(tableRow, kIfHeaderHeight);
-    const Qt::ItemFlags headerFlags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-
-    auto* labelItem = new QTableWidgetItem();
-    labelItem->setFlags(headerFlags);
-    setItem(tableRow, 0, labelItem);
-
-    const int mainBlockRow = display.blockRow;
-    attachChipHeaderRowActions(
-        this,
-        tableRow,
-        QColor(74, 144, 217),
-        QStringLiteral("?"),
-        ifHeaderTitle(),
-        display.conditionText,
-        tr("만약 블록 편집"),
-        tr("만약 블록 삭제"),
-        [this, mainBlockRow]() { emit ifBlockEditRequested(mainBlockRow); },
-        [this, mainBlockRow]() { emit ifBlockDeleteRequested(mainBlockRow); });
-}
-
-void BlockListWidget::populateIfBranchHeaderRow(int tableRow,
-                                                bool isThen,
-                                                const QString& label,
-                                                int mainBlockRow) {
-    Q_UNUSED(isThen);
-    Q_UNUSED(mainBlockRow);
-    setRowHeight(tableRow, kIfBranchHeaderHeight);
-    const Qt::ItemFlags headerFlags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-
-    auto* labelItem = new QTableWidgetItem(label);
-    labelItem->setFlags(headerFlags);
-    labelItem->setToolTip(tr("더블 클릭: 만약 블록 편집"));
-    setItem(tableRow, 0, labelItem);
-    setSpan(tableRow, 0, 1, columnCount());
-}
-
-void BlockListWidget::populateIfBranchBlockRow(int tableRow,
-                                               const IfBranchBlockDisplay& display,
-                                               int branchIndex,
-                                               int mainBlockRow,
-                                               bool isThen) {
-    Q_UNUSED(mainBlockRow);
-    Q_UNUSED(isThen);
-    setRowHeight(tableRow, kRowHeight);
-    const Qt::ItemFlags flags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-
-    for (int column = 0; column < columnCount(); ++column) {
-        auto* cellItem = new QTableWidgetItem();
-        cellItem->setFlags(flags);
-        cellItem->setToolTip(tr("더블 클릭: 분기 블록 편집"));
-        setItem(tableRow, column, cellItem);
-    }
-
-    item(tableRow, kColIndex)->setText(QStringLiteral("· %1").arg(branchIndex + 1));
-    item(tableRow, kColAction)->setText(display.type);
-    item(tableRow, kColSummary)->setText(display.summary);
-    if (!display.thumbnail.isNull()) {
-        item(tableRow, kColPreview)->setData(Qt::DecorationRole, display.thumbnail);
-    }
-
-    for (int column = 0; column < columnCount(); ++column) {
-        if (column == kColIndex || column == kColPreview || column == kColAction || column == kColDuration
-            || column == kColMatchDuration || column == kColScore) {
-            item(tableRow, column)->setTextAlignment(Qt::AlignCenter);
-        }
-    }
-}
-
-void BlockListWidget::setIfBlockDisplays(const std::vector<IfBlockDisplay>& displays) {
-    m_ifDisplays = displays;
-}
-
 const BlockListRowMeta& BlockListWidget::rowMeta(int tableRow) const {
     static const BlockListRowMeta kEmpty;
     if (tableRow < 0 || tableRow >= m_tableRowMeta.size()) {
@@ -1248,43 +1044,6 @@ const BlockListRowMeta& BlockListWidget::rowMeta(int tableRow) const {
 
 BlockListRowKind BlockListWidget::tableRowKind(int tableRow) const {
     return rowMeta(tableRow).kind;
-}
-
-bool BlockListWidget::ifBranchBlockAtTableRow(int tableRow,
-                                              int& mainBlockRow,
-                                              bool& isThenBranch,
-                                              int& branchBlockIndex) const {
-    const BlockListRowMeta& meta = rowMeta(tableRow);
-    if (meta.kind != BlockListRowKind::IfBranchBlock) {
-        return false;
-    }
-    mainBlockRow = meta.mainBlockRow;
-    isThenBranch = meta.isThenBranch;
-    branchBlockIndex = meta.branchBlockIndex;
-    return true;
-}
-
-int BlockListWidget::ifMainBlockRowForTableRow(int tableRow) const {
-    const BlockListRowMeta& meta = rowMeta(tableRow);
-    if (meta.kind == BlockListRowKind::IfHeader
-        || meta.kind == BlockListRowKind::IfBranchHeader
-        || meta.kind == BlockListRowKind::IfBranchBlock) {
-        return meta.mainBlockRow;
-    }
-    return -1;
-}
-
-void BlockListWidget::updateIfBranchChrome() {
-    if (!m_ifBranchChrome || !viewport()) {
-        return;
-    }
-    refreshIfBranchChromeOverlay(this, static_cast<IfBranchChromeOverlay*>(m_ifBranchChrome));
-    if (m_loopRegionChrome && m_loopRegionChrome->isVisible()) {
-        m_loopRegionChrome->raise();
-    }
-    if (m_dropIndicator && m_dropIndicator->isVisible()) {
-        m_dropIndicator->raise();
-    }
 }
 
 int BlockListWidget::blockRowForTableRow(int tableRow) const {
@@ -1355,7 +1114,6 @@ void BlockListWidget::setLoopRegions(const std::vector<WorkflowLoopRegion>& regi
         static_cast<LoopRegionChromeOverlay*>(m_loopRegionChrome)->setRegions(m_loopRegions);
     }
     updateLoopRegionChrome();
-    updateIfBranchChrome();
     applyActiveRowVisuals();
 }
 
@@ -1378,7 +1136,6 @@ QString BlockListWidget::loopRegionIdAtViewportPos(const QPoint& viewportPos) co
 
 void BlockListWidget::clearLoopRegionVisuals() {
     m_loopRegions.clear();
-    m_ifDisplays.clear();
     m_loopRegionMember.clear();
     m_loopRegionStart.clear();
     m_loopRegionEnd.clear();
@@ -1389,10 +1146,6 @@ void BlockListWidget::clearLoopRegionVisuals() {
     m_blockTableRow.clear();
     if (m_loopRegionChrome) {
         static_cast<LoopRegionChromeOverlay*>(m_loopRegionChrome)->setRegions({});
-    }
-    if (m_ifBranchChrome) {
-        refreshIfBranchChromeOverlay(this, static_cast<IfBranchChromeOverlay*>(m_ifBranchChrome));
-        static_cast<IfBranchChromeOverlay*>(m_ifBranchChrome)->setRanges({});
     }
 }
 
@@ -1429,9 +1182,6 @@ void BlockListWidget::setLoopRegionPickMode(bool active) {
     if (m_loopRegionPickActive == active) {
         return;
     }
-    if (active) {
-        setIfGotoPickMode(false);
-    }
     m_loopRegionPickActive = active;
     cancelLoopRegionPick();
     setDragEnabled(active ? false : m_reorderEnabled);
@@ -1445,47 +1195,6 @@ void BlockListWidget::setLoopRegionPickMode(bool active) {
     applyActiveRowVisuals();
 }
 
-void BlockListWidget::setIfGotoPickMode(bool active) {
-    if (m_ifGotoPickActive == active) {
-        return;
-    }
-    if (active) {
-        setLoopRegionPickMode(false);
-    }
-    m_ifGotoPickActive = active;
-    cancelIfGotoPick();
-    setDragEnabled(active ? false : m_reorderEnabled);
-    setAcceptDrops(active ? false : m_reorderEnabled);
-    setDragDropMode((active || !m_reorderEnabled) ? QAbstractItemView::NoDragDrop
-                                                  : QAbstractItemView::InternalMove);
-    const Qt::CursorShape cursorShape = active ? Qt::CrossCursor : Qt::ArrowCursor;
-    setCursor(cursorShape);
-    viewport()->setCursor(cursorShape);
-    setToolTip(active ? tr("블록을 클릭하거나 드래그하여 이동 지점을 선택하세요. Esc로 취소.")
-                      : m_defaultToolTip);
-    applyActiveRowVisuals();
-}
-
-void BlockListWidget::cancelIfGotoPick() {
-    m_ifGotoPickDragging = false;
-    m_ifGotoPickHoverRow = -1;
-    m_ifGotoPickPreview.clear();
-    if (m_ifGotoPickActive) {
-        applyActiveRowVisuals();
-    }
-}
-
-void BlockListWidget::updateIfGotoPickPreview() {
-    m_ifGotoPickPreview = QVector<bool>(rowCount(), false);
-    if (m_ifGotoPickHoverRow < 0) {
-        return;
-    }
-    const int tableRow = tableRowForBlockRow(m_ifGotoPickHoverRow);
-    if (tableRow >= 0 && tableRow < m_ifGotoPickPreview.size()) {
-        m_ifGotoPickPreview[tableRow] = true;
-    }
-}
-
 void BlockListWidget::cancelLoopRegionPick() {
     m_loopRegionPickDragging = false;
     m_loopRegionPickAnchorRow = -1;
@@ -1496,60 +1205,79 @@ void BlockListWidget::cancelLoopRegionPick() {
     }
 }
 
-bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
-    if (watched == viewport() && m_ifGotoPickActive && rowCount() > 0) {
-        switch (event->type()) {
-        case QEvent::MouseButtonPress: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            if (mouseEvent->button() != Qt::LeftButton) {
-                break;
-            }
-            const int blockRow = blockRowAtViewportY(mouseEvent->pos().y());
-            if (blockRow < 0) {
-                break;
-            }
-            m_ifGotoPickDragging = true;
-            m_ifGotoPickHoverRow = blockRow;
-            updateIfGotoPickPreview();
-            applyActiveRowVisuals();
-            mouseEvent->accept();
-            return true;
-        }
-        case QEvent::MouseMove: {
-            if (!m_ifGotoPickDragging) {
-                break;
-            }
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            const int blockRow = blockRowAtViewportY(mouseEvent->pos().y());
-            if (blockRow >= 0) {
-                m_ifGotoPickHoverRow = blockRow;
-                updateIfGotoPickPreview();
-                applyActiveRowVisuals();
-            }
-            mouseEvent->accept();
-            return true;
-        }
-        case QEvent::MouseButtonRelease: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            if (mouseEvent->button() != Qt::LeftButton || !m_ifGotoPickDragging) {
-                break;
-            }
-            const int blockRow = blockRowAtViewportY(mouseEvent->pos().y());
-            m_ifGotoPickDragging = false;
-            m_ifGotoPickHoverRow = -1;
-            m_ifGotoPickPreview.clear();
-            applyActiveRowVisuals();
-            if (blockRow >= 0) {
-                emit ifGotoBlockPicked(blockRow);
-            }
-            mouseEvent->accept();
-            return true;
-        }
-        default:
-            break;
-        }
+bool BlockListWidget::imageFindScoreColumnAt(const QPoint& viewportPos, int& blockRowOut) const {
+    if (columnAt(viewportPos.x()) != kColScore) {
+        return false;
+    }
+    const int blockRow = blockRowForTableRow(rowAtViewportY(viewportPos.y()));
+    if (blockRow < 0 || blockRow >= m_rowIsImageFind.size() || !m_rowIsImageFind[blockRow]) {
+        return false;
+    }
+    blockRowOut = blockRow;
+    return true;
+}
+
+double BlockListWidget::imageFindThresholdDragStep(Qt::KeyboardModifiers modifiers) const {
+    constexpr double kBaseStep = 0.01;
+    if (modifiers.testFlag(Qt::ControlModifier)) {
+        return kBaseStep * 100.0;
+    }
+    if (modifiers.testFlag(Qt::ShiftModifier)) {
+        return kBaseStep * 10.0;
+    }
+    return kBaseStep;
+}
+
+void BlockListWidget::updateImageFindThresholdDisplay(int blockRow, double threshold) {
+    if (blockRow < 0 || blockRow >= m_blockCount) {
+        return;
+    }
+    const double snapped = std::round(std::clamp(threshold, 0.1, 1.0) * 100.0) / 100.0;
+    if (blockRow < m_rowImageFindThresholds.size()) {
+        m_rowImageFindThresholds[blockRow] = snapped;
     }
 
+    const int tableRow = tableRowForBlockRow(blockRow);
+    if (tableRow < 0) {
+        return;
+    }
+    QTableWidgetItem* scoreItem = item(tableRow, kColScore);
+    if (!scoreItem) {
+        return;
+    }
+
+    if (blockRow < m_rowDisplayConfidences.size() && m_rowDisplayConfidences[blockRow] >= 0.0) {
+        scoreItem->setText(QStringLiteral("%1 / %2")
+                               .arg(snapped, 0, 'f', 2)
+                               .arg(m_rowDisplayConfidences[blockRow], 0, 'f', 2));
+    } else {
+        scoreItem->setText(QStringLiteral("%1 / —").arg(snapped, 0, 'f', 2));
+    }
+}
+
+void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
+    const DragAdjustReleaseResult result =
+        dragAdjustFinishRelease(m_thresholdDragMouse, mouseEvent, viewport());
+    if (result == DragAdjustReleaseResult::NotHandled) {
+        return;
+    }
+
+    viewport()->unsetCursor();
+    const int blockRow = m_thresholdDragBlockRow;
+    m_thresholdDragBlockRow = -1;
+
+    if (blockRow < 0 || blockRow >= m_rowImageFindThresholds.size()) {
+        return;
+    }
+
+    const double finalThreshold = m_rowImageFindThresholds[blockRow];
+    if (result == DragAdjustReleaseResult::DragFinished
+        && std::abs(finalThreshold - m_thresholdDragStartValue) > 0.0005) {
+        emit imageFindThresholdChanged(blockRow, finalThreshold);
+    }
+}
+
+bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
     if (watched == viewport() && m_loopRegionPickActive && rowCount() > 0) {
         switch (event->type()) {
         case QEvent::MouseButtonPress: {
@@ -1603,6 +1331,61 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
             break;
         }
     }
+
+    if (watched == viewport() && m_reorderEnabled && !m_loopRegionPickActive) {
+        switch (event->type()) {
+        case QEvent::MouseButtonPress: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            int blockRow = -1;
+            if (!imageFindScoreColumnAt(mouseEvent->pos(), blockRow)) {
+                break;
+            }
+            if (!dragAdjustBeginPress(m_thresholdDragMouse, mouseEvent)) {
+                break;
+            }
+            m_thresholdDragBlockRow = blockRow;
+            m_thresholdDragStartValue = blockRow < m_rowImageFindThresholds.size()
+                                            ? m_rowImageFindThresholds[blockRow]
+                                            : 0.85;
+            viewport()->setCursor(Qt::SizeHorCursor);
+            mouseEvent->accept();
+            return true;
+        }
+        case QEvent::MouseMove: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (m_thresholdDragBlockRow >= 0) {
+                if (!dragAdjustContinueMove(m_thresholdDragMouse, mouseEvent, viewport())) {
+                    break;
+                }
+                const int deltaPx = dragAdjustDeltaPx(m_thresholdDragMouse, mouseEvent);
+                const double step = imageFindThresholdDragStep(mouseEvent->modifiers());
+                const double nextValue = m_thresholdDragStartValue + static_cast<double>(deltaPx) * step;
+                updateImageFindThresholdDisplay(m_thresholdDragBlockRow, nextValue);
+                mouseEvent->accept();
+                return true;
+            }
+            int hoverBlockRow = -1;
+            if (imageFindScoreColumnAt(mouseEvent->pos(), hoverBlockRow)) {
+                viewport()->setCursor(Qt::SizeHorCursor);
+            } else {
+                viewport()->unsetCursor();
+            }
+            break;
+        }
+        case QEvent::MouseButtonRelease: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (m_thresholdDragBlockRow < 0) {
+                break;
+            }
+            finishThresholdDrag(mouseEvent);
+            mouseEvent->accept();
+            return true;
+        }
+        default:
+            break;
+        }
+    }
+
     return QTableWidget::eventFilter(watched, event);
 }
 
@@ -1702,6 +1485,12 @@ void BlockListWidget::setBlockInfo(int row,
     typeItem->setFlags(itemFlags);
     setItem(tableRow, 2, typeItem);
 
+    auto* roiItem = new QTableWidgetItem();
+    roiItem->setTextAlignment(Qt::AlignCenter);
+    roiItem->setFlags(itemFlags);
+    roiItem->setToolTip(tr("두 번째 루프부터 매칭 위치 기준 템플릿보다 약 10% 넓은 영역만 탐색합니다."));
+    setItem(tableRow, kColRoiCorrection, roiItem);
+
     auto* summaryItem = new QTableWidgetItem(summary);
     summaryItem->setFlags(itemFlags);
     setItem(tableRow, kColSummary, summaryItem);
@@ -1718,10 +1507,29 @@ void BlockListWidget::setBlockInfo(int row,
     matchDurationItem->setToolTip(tr("화면 캡처 및 템플릿 매칭에 소요된 시간 (재시도 대기 제외)"));
     setItem(tableRow, kColMatchDuration, matchDurationItem);
 
+    auto* attemptsItem = new QTableWidgetItem(QStringLiteral("—"));
+    attemptsItem->setTextAlignment(Qt::AlignCenter);
+    attemptsItem->setFlags(itemFlags);
+    attemptsItem->setToolTip(tr("템플릿 매칭 감지 시도 횟수"));
+    setItem(tableRow, kColAttempts, attemptsItem);
+
     auto* scoreItem = new QTableWidgetItem(QStringLiteral("—"));
     scoreItem->setTextAlignment(Qt::AlignCenter);
     scoreItem->setFlags(itemFlags);
     setItem(tableRow, kColScore, scoreItem);
+
+    if (row >= m_rowIsImageFind.size()) {
+        m_rowIsImageFind.resize(m_blockCount, false);
+        m_rowImageFindThresholds.resize(m_blockCount, 0.85);
+        m_rowDisplayConfidences.resize(m_blockCount, -1.0);
+    }
+    m_rowIsImageFind[row] = (type == blockTypeWorkflowActionName(BlockType::ImageFind));
+    if (!m_rowIsImageFind[row]) {
+        roiItem->setText(QStringLiteral("—"));
+    }
+    if (m_rowIsImageFind[row]) {
+        scoreItem->setToolTip(tr("드래그하여 매칭 임계값 조정"));
+    }
 
     auto* matchItem = new QTableWidgetItem();
     matchItem->setTextAlignment(Qt::AlignCenter);
@@ -1753,7 +1561,13 @@ void BlockListWidget::setBlockMatchResult(int row,
     scoreItem->setText(QStringLiteral("%1 / %2")
                            .arg(matchThreshold, 0, 'f', 2)
                            .arg(confidence, 0, 'f', 2));
-    scoreItem->setToolTip(tr("매칭 기준 / 감지 점수"));
+    scoreItem->setToolTip(tr("매칭 기준 / 감지 점수 · 드래그하여 기준 조정"));
+    if (row < m_rowImageFindThresholds.size()) {
+        m_rowImageFindThresholds[row] = matchThreshold;
+    }
+    if (row < m_rowDisplayConfidences.size()) {
+        m_rowDisplayConfidences[row] = confidence;
+    }
 
     if (row >= m_rowMatchHasScore.size()) {
         m_rowMatchHasScore.resize(m_blockCount, false);
@@ -1800,7 +1614,13 @@ void BlockListWidget::setBlockMatchBaseline(int row, double matchThreshold) {
         setItem(tableRow, kColScore, scoreItem);
     }
     scoreItem->setText(QStringLiteral("%1 / —").arg(matchThreshold, 0, 'f', 2));
-    scoreItem->setToolTip(tr("매칭 기준 / 감지 점수"));
+    scoreItem->setToolTip(tr("매칭 기준 / 감지 점수 · 드래그하여 기준 조정"));
+    if (row < m_rowImageFindThresholds.size()) {
+        m_rowImageFindThresholds[row] = matchThreshold;
+    }
+    if (row < m_rowDisplayConfidences.size()) {
+        m_rowDisplayConfidences[row] = -1.0;
+    }
     if (row < m_rowMatchHasScore.size()) {
         m_rowMatchHasScore[row] = false;
     }
@@ -1846,6 +1666,30 @@ void BlockListWidget::setBlockImageFindMatchDuration(int row, qint64 matchDurati
     }
 }
 
+void BlockListWidget::setBlockImageFindAttemptCount(int row, int attemptCount) {
+    const int tableRow = tableRowForBlockRow(row);
+    if (row < 0 || row >= m_blockCount || tableRow < 0) {
+        return;
+    }
+    if (row < m_rowImageFindAttemptCounts.size()) {
+        m_rowImageFindAttemptCounts[row] = attemptCount;
+    }
+
+    QTableWidgetItem* attemptsItem = item(tableRow, kColAttempts);
+    if (!attemptsItem) {
+        attemptsItem = new QTableWidgetItem();
+        attemptsItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
+        attemptsItem->setTextAlignment(Qt::AlignCenter);
+        attemptsItem->setToolTip(tr("템플릿 매칭 감지 시도 횟수"));
+        setItem(tableRow, kColAttempts, attemptsItem);
+    }
+    if (row < m_rowIsImageFind.size() && m_rowIsImageFind[row] && attemptCount > 0) {
+        attemptsItem->setText(QString::number(attemptCount));
+    } else {
+        attemptsItem->setText(QStringLiteral("—"));
+    }
+}
+
 void BlockListWidget::clearBlockMatchResults() {
     m_rowMatchHasScore.fill(false);
     m_rowMatchSucceeded.fill(false);
@@ -1868,6 +1712,12 @@ void BlockListWidget::clearBlockMatchResults() {
         if (QTableWidgetItem* matchDurationItem = item(tableRow, kColMatchDuration)) {
             matchDurationItem->setText(QStringLiteral("—"));
         }
+        if (QTableWidgetItem* attemptsItem = item(tableRow, kColAttempts)) {
+            attemptsItem->setText(QStringLiteral("—"));
+        }
+        if (row < m_rowImageFindAttemptCounts.size()) {
+            m_rowImageFindAttemptCounts[row] = -1;
+        }
         if (QTableWidgetItem* scoreItem = item(tableRow, kColScore)) {
             scoreItem->setText(QStringLiteral("—"));
         }
@@ -1885,7 +1735,7 @@ void BlockListWidget::setReorderEnabled(bool enabled) {
 
     for (int tableRow = 0; tableRow < rowCount(); ++tableRow) {
         const BlockListRowKind kind = tableRowKind(tableRow);
-        if (kind != BlockListRowKind::LoopRegionHeader && kind != BlockListRowKind::IfHeader) {
+        if (kind != BlockListRowKind::LoopRegionHeader) {
             continue;
         }
         if (QWidget* widget = cellWidget(tableRow, 0)) {
@@ -2003,7 +1853,7 @@ void BlockListWidget::applyActiveRowVisuals() {
     for (int tableRow = 0; tableRow < rowCount(); ++tableRow) {
         const int blockRow = blockRowForTableRow(tableRow);
         if (blockRow < 0) {
-            for (int c = 0; c < columnCount(); ++c) {
+            for (int c = 0; c < kColumnCount; ++c) {
                 if (QTableWidgetItem* cellItem = item(tableRow, c)) {
                     cellItem->setBackground(Qt::NoBrush);
                     cellItem->setForeground(rowPalette.brush(QPalette::Text));
@@ -2045,14 +1895,10 @@ void BlockListWidget::applyActiveRowVisuals() {
         } else if (tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow]
                    && blockRow == qMin(m_loopRegionPickAnchorRow, m_loopRegionPickCurrentRow)) {
             indexText = QStringLiteral("↻ %1").arg(blockRow + 1);
-        } else if (tableRow < m_ifGotoPickPreview.size() && m_ifGotoPickPreview[tableRow]
-                   && blockRow == m_ifGotoPickHoverRow) {
-            indexText = QStringLiteral("→ %1").arg(blockRow + 1);
         }
 
         const bool inLoopRegion = tableRow < m_loopRegionMember.size() && m_loopRegionMember[tableRow];
-        const bool inPickPreview = (tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow])
-                                   || (tableRow < m_ifGotoPickPreview.size() && m_ifGotoPickPreview[tableRow]);
+        const bool inPickPreview = tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow];
 
         if (showGlass) {
             glassColors = glassColorsFor(rowHighlight, glassIntensity, rowPalette);
@@ -2061,7 +1907,7 @@ void BlockListWidget::applyActiveRowVisuals() {
             useGlassIndex = true;
         }
 
-        for (int c = 0; c < columnCount(); ++c) {
+        for (int c = 0; c < kColumnCount; ++c) {
             QTableWidgetItem* cellItem = this->item(tableRow, c);
             if (!cellItem) {
                 continue;
@@ -2096,7 +1942,7 @@ void BlockListWidget::applyActiveRowVisuals() {
                 cellItem->setForeground(normalForeground);
             }
             if (c == kColIndex || c == kColPreview || c == kColAction || c == kColDuration || c == kColMatchDuration
-                || c == kColScore) {
+                || c == kColAttempts || c == kColScore || c == kColRoiCorrection) {
                 cellItem->setTextAlignment(Qt::AlignCenter);
             }
             if (c == kColIndex) {
@@ -2114,7 +1960,6 @@ void BlockListWidget::applyActiveRowVisuals() {
         }
     }
     updateLoopRegionChrome();
-    updateIfBranchChrome();
 }
 
 void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
@@ -2232,7 +2077,7 @@ void BlockListWidget::updateDragSourceVisuals() {
 
     for (int r = 0; r < rowCount(); ++r) {
         const bool isSource = m_dragSourceRow >= 0 && r == m_dragSourceRow;
-        for (int c = 0; c < columnCount(); ++c) {
+        for (int c = 0; c < kColumnCount; ++c) {
             QTableWidgetItem* item = this->item(r, c);
             if (!item) {
                 continue;
@@ -2251,7 +2096,6 @@ void BlockListWidget::updateDragSourceVisuals() {
 void BlockListWidget::resizeEvent(QResizeEvent* event) {
     QTableWidget::resizeEvent(event);
     updateLoopRegionChrome();
-    updateIfBranchChrome();
     if (m_dropInsertionIndex >= 0) {
         updateDropIndicator();
     }

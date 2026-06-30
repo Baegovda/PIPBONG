@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run SuckbongMachine (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Release/SuckbongMachine.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/build/Release",
+            "preLaunchTask": "Build Release"
+        }
+    ]
+}

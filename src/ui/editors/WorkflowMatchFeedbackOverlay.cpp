@@ -1,7 +1,8 @@
 #include "ui/editors/WorkflowMatchFeedbackOverlay.h"
 
+#include "app/PointerFeedbackSettings.h"
 #include "core/capture/ScreenCapture.h"
-
+#include "ui/ClickPointerFeedbackRenderer.h"
 #include <QRect>
 
 #ifdef _WIN32
@@ -23,13 +24,12 @@ constexpr wchar_t kOverlayClassName[] = L"SbmWorkflowMatchFeedbackOverlay";
 constexpr UINT_PTR kTimerId = 1;
 constexpr UINT kTimerMs = 33;
 constexpr UINT kHideForCaptureMsg = WM_APP + 42;
-constexpr ULONGLONG kPulseLifetimeMs = 460;
+constexpr ULONGLONG kDefaultMatchPulseLifetimeMs = 460;
 constexpr size_t kMaxActivePulses = 16;
-
 struct Pulse {
     int clientX = 0;
     int clientY = 0;
-    bool matched = false;
+    RunPointerFeedbackKind kind = RunPointerFeedbackKind::MatchMiss;
     ULONGLONG startMs = 0;
 };
 
@@ -57,6 +57,13 @@ void destroyOverlayWindow() {
     g_state.reset();
 }
 
+ULONGLONG pulseLifetimeMs(RunPointerFeedbackKind kind) {
+    if (kind == RunPointerFeedbackKind::Click) {
+        return static_cast<ULONGLONG>(PointerFeedbackSettings::click().displayDurationMs);
+    }
+    return kDefaultMatchPulseLifetimeMs;
+}
+
 void pruneExpiredPulses(ULONGLONG currentMs) {
     if (!g_state) {
         return;
@@ -65,7 +72,7 @@ void pruneExpiredPulses(ULONGLONG currentMs) {
     pulses.erase(std::remove_if(pulses.begin(),
                                 pulses.end(),
                                 [currentMs](const Pulse& pulse) {
-                                    return currentMs - pulse.startMs > kPulseLifetimeMs;
+                                    return currentMs - pulse.startMs > pulseLifetimeMs(pulse.kind);
                                 }),
                  pulses.end());
 }
@@ -145,6 +152,57 @@ void strokeRing(uint32_t* bits,
     }
 }
 
+void renderMatchPulse(uint32_t* pixels,
+                      int width,
+                      int height,
+                      const Pulse& pulse,
+                      ULONGLONG age,
+                      ULONGLONG lifetimeMs) {
+    const float t = static_cast<float>(age) / static_cast<float>(lifetimeMs);
+    const float fade = 1.0f - t;
+    const uint8_t alpha = static_cast<uint8_t>(std::clamp(fade * 220.0f, 0.0f, 220.0f));
+
+    uint8_t r = 255;
+    uint8_t g = 110;
+    uint8_t b = 120;
+    if (pulse.kind == RunPointerFeedbackKind::MatchSuccess) {
+        r = 90;
+        g = 240;
+        b = 150;
+    }
+
+    const int centerX = pulse.clientX;
+    const int centerY = pulse.clientY;
+    fillCircle(pixels, width, height, centerX, centerY, 4, alpha, r, g, b);
+
+    for (int ring = 0; ring < 2; ++ring) {
+        const float ringT =
+            std::clamp((age - static_cast<ULONGLONG>(ring) * 90ULL) / 320.0f, 0.0f, 1.0f);
+        if (ringT <= 0.0f) {
+            continue;
+        }
+        const int radius = 8 + static_cast<int>(ringT * 26.0f);
+        const uint8_t ringAlpha = static_cast<uint8_t>(std::clamp((1.0f - ringT) * 180.0f, 0.0f, 180.0f));
+        strokeRing(pixels, width, height, centerX, centerY, radius, 3, ringAlpha, r, g, b);
+    }
+}
+
+void renderClickPulse(uint32_t* pixels,
+                      int width,
+                      int height,
+                      const Pulse& pulse,
+                      ULONGLONG age,
+                      ULONGLONG lifetimeMs) {
+    renderClickPointerFeedbackFrame(pixels,
+                                    width,
+                                    height,
+                                    pulse.clientX,
+                                    pulse.clientY,
+                                    age,
+                                    lifetimeMs,
+                                    PointerFeedbackSettings::click());
+}
+
 void renderOverlayFrame() {
     if (!g_state || !g_state->hwnd) {
         return;
@@ -181,37 +239,16 @@ void renderOverlayFrame() {
 
     const ULONGLONG currentMs = nowMs();
     for (const Pulse& pulse : g_state->pulses) {
+        const ULONGLONG lifetime = pulseLifetimeMs(pulse.kind);
         const ULONGLONG age = currentMs - pulse.startMs;
-        if (age > kPulseLifetimeMs) {
+        if (age > lifetime) {
             continue;
         }
 
-        const float t = static_cast<float>(age) / static_cast<float>(kPulseLifetimeMs);
-        const float fade = 1.0f - t;
-        const uint8_t alpha = static_cast<uint8_t>(std::clamp(fade * 220.0f, 0.0f, 220.0f));
-
-        uint8_t r = 255;
-        uint8_t g = 110;
-        uint8_t b = 120;
-        if (pulse.matched) {
-            r = 90;
-            g = 240;
-            b = 150;
-        }
-
-        const int centerX = pulse.clientX;
-        const int centerY = pulse.clientY;
-        const int coreRadius = 4;
-        fillCircle(pixels, width, height, centerX, centerY, coreRadius, alpha, r, g, b);
-
-        for (int ring = 0; ring < 2; ++ring) {
-            const float ringT = std::clamp((age - static_cast<ULONGLONG>(ring) * 90ULL) / 320.0f, 0.0f, 1.0f);
-            if (ringT <= 0.0f) {
-                continue;
-            }
-            const int radius = 8 + static_cast<int>(ringT * 26.0f);
-            const uint8_t ringAlpha = static_cast<uint8_t>(std::clamp((1.0f - ringT) * 180.0f, 0.0f, 180.0f));
-            strokeRing(pixels, width, height, centerX, centerY, radius, 3, ringAlpha, r, g, b);
+        if (pulse.kind == RunPointerFeedbackKind::Click) {
+            renderClickPulse(pixels, width, height, pulse, age, lifetime);
+        } else {
+            renderMatchPulse(pixels, width, height, pulse, age, lifetime);
         }
     }
 
@@ -349,7 +386,9 @@ void WorkflowMatchFeedbackOverlay::hideBeforeCapture() {
 #endif
 }
 
-void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX, int clientY, bool matched) {
+void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
+                                                      int clientY,
+                                                      RunPointerFeedbackKind kind) {
 #ifdef _WIN32
     if (!ensureOverlayWindow()) {
         return;
@@ -358,7 +397,7 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX, int clientY, 
     Pulse pulse;
     pulse.clientX = clientX;
     pulse.clientY = clientY;
-    pulse.matched = matched;
+    pulse.kind = kind;
     pulse.startMs = nowMs();
     g_state->pulses.push_back(pulse);
     if (g_state->pulses.size() > kMaxActivePulses) {
@@ -370,7 +409,7 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX, int clientY, 
 #else
     (void)clientX;
     (void)clientY;
-    (void)matched;
+    (void)kind;
 #endif
 }
 

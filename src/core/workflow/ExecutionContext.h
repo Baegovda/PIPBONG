@@ -6,8 +6,10 @@
 
 #include <atomic>
 #include <functional>
+#include <optional>
 #include <opencv2/core.hpp>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -24,6 +26,7 @@ class ExecutionContext {
 public:
     using LogCallback = std::function<void(const std::string& message)>;
     using ProgressCallback = std::function<void(BlockProgressKind kind)>;
+    using PointerFeedbackCallback = std::function<void(int clientX, int clientY)>;
 
     void setLogCallback(LogCallback callback);
     void log(const std::string& message) const;
@@ -31,6 +34,12 @@ public:
     void setProgressCallback(ProgressCallback callback);
     void clearProgressCallback();
     void reportProgress(BlockProgressKind kind) const;
+
+    void setPointerFeedbackCallback(PointerFeedbackCallback callback);
+    void clearPointerFeedbackCallback();
+    void setPointerVisualFeedback(bool enabled);
+    bool pointerVisualFeedback() const;
+    void reportPointerFeedback(int clientX, int clientY) const;
 
     void requestStop();
     bool shouldStop() const;
@@ -48,13 +57,17 @@ public:
     void setImageFindMaxMissAttempts(int attempts);
     int imageFindMaxMissAttempts() const;
 
+    void setImageFindPollAttempt(int attempt);
+    int imageFindPollAttempt() const;
+
     void markDetectionFailure();
     void clearDetectionFailedFlag();
     bool detectionFailedThisRun() const;
 
-    bool enterIfScope();
-    void leaveIfScope();
-    int ifNestingDepth() const;
+    static constexpr int kMaxWorkflowNestingDepth = 8;
+
+    bool enterNestingScope();
+    void leaveNestingScope();
 
     bool hasLastMatch() const;
     cv::Point lastMatchPoint() const;
@@ -85,6 +98,21 @@ public:
     void consumeMatchRegion(const cv::Point& topLeft, const cv::Size& size);
     void clearConsumedMatchRegions();
 
+    void setRoiCorrectionSession(bool eligible, bool featureGlobal);
+    bool roiCorrectionSessionEligible() const;
+    bool featureRoiCorrectionGlobal() const;
+    bool shouldUseRoiCorrectionForBlock(bool blockRoiCorrection) const;
+
+    void setRunLoopNumber(int loopNumber);
+    int runLoopNumber() const;
+
+    void setActiveBlockIndex(int blockIndex);
+    int activeBlockIndex() const;
+
+    void setCorrectedRoi(int blockIndex, const CaptureRegion& region);
+    std::optional<CaptureRegion> correctedRoi(int blockIndex) const;
+    void clearCorrectedRois();
+
     void setTargetWindowTitle(const std::wstring& title);
     std::wstring targetWindowTitle() const;
 
@@ -112,11 +140,14 @@ private:
 
     LogCallback m_logCallback;
     ProgressCallback m_progressCallback;
+    PointerFeedbackCallback m_pointerFeedbackCallback;
+    bool m_pointerVisualFeedback = true;
     std::atomic<bool> m_stopRequested{false};
     std::atomic<bool> m_paused{false};
     int m_imageFindMaxMissAttempts = 0;
+    int m_imageFindPollAttempt = 0;
     bool m_detectionFailedThisRun = false;
-    int m_ifNestingDepth = 0;
+    int m_nestingDepth = 0;
     bool m_hasLastMatch = false;
     cv::Point m_lastMatchPoint;
     bool m_hasLastMatchScreenPoint = false;
@@ -130,6 +161,11 @@ private:
     bool m_hasLastMatchAttemptPoint = false;
     cv::Point m_lastMatchAttemptClientPoint;
     std::vector<ConsumedMatchRegion> m_consumedMatchRegions;
+    bool m_roiCorrectionSessionEligible = false;
+    bool m_featureRoiCorrectionGlobal = false;
+    int m_runLoopNumber = 1;
+    int m_activeBlockIndex = -1;
+    std::unordered_map<int, CaptureRegion> m_correctedRoisByBlockIndex;
     std::wstring m_targetWindowTitle;
     std::string m_projectDirectory;
 #ifdef _WIN32

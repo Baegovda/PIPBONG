@@ -5,6 +5,7 @@
 
 #include <QWidget>
 
+#include <QByteArray>
 #include <QList>
 #include <QPixmap>
 #include <QVector>
@@ -46,11 +47,15 @@ public:
     void markBlockMatchSuccess(int blockIndex);
     void setBlockDuration(int blockIndex, qint64 durationMs);
     void setBlockImageFindMatchDuration(int blockIndex, qint64 matchDurationMs);
-    void setLoopTiming(int loopNumber, qint64 elapsedMs, bool success);
+    void setBlockImageFindAttemptCount(int blockIndex, int attemptCount);
+    void setLoopTiming(int loopNumber, qint64 elapsedMs, qint64 averageMs, bool success);
     void clearLoopTiming();
 
-    QHeaderView* blockListHeader() const;
     QSplitter* workflowSplitter() const;
+
+    QHeaderView* blockListHeader() const;
+
+    void applyBlockListHeaderResizeModes();
 
 signals:
     void workflowModified();
@@ -74,23 +79,16 @@ private slots:
     void onLoopRegionPickCancelled();
     void onLoopRegionEditRequested(const QString& regionId);
     void onLoopRegionDeleteRequested(const QString& regionId);
-    void onIfBlockEditRequested(int mainBlockRow);
-    void onIfBlockDeleteRequested(int mainBlockRow);
-    void onIfGotoBlockPicked(int blockRow);
-    void onIfGotoPickCancelled();
+    void onImageFindThresholdChanged(int blockRow, double threshold);
+    void onImageFindRoiCorrectionChanged(int blockRow, bool enabled);
     void onLoopRegionsButtonContextMenu(const QPoint& pos);
     void openLoopRegionsListDialog();
     void setLoopRegionPickMode(bool active);
-    void setIfGotoPickMode(bool active);
-    void connectBlockEditorDialog(BlockEditorDialog* dialog);
-    void beginIfGotoBlockPick(BlockEditorDialog* dialog, int branch);
-    void finishIfGotoBlockPick(int blockRow, bool apply);
 
 private:
     void setupUi();
     void addBlockOfType(BlockType type);
     bool editBlockAt(int row);
-    bool editIfBranchBlock(int ifBlockRow, bool isThenBranch, int branchBlockIndex);
     void editLoopRegion(const QString& regionId);
     void deleteLoopRegion(const QString& regionId);
     void deleteBlockAt(int row);
@@ -109,14 +107,17 @@ private:
         QVector<QPixmap> rowMatchImages;
         QVector<double> rowMatchConfidences;
         QVector<double> rowMatchThresholds;
+        QVector<bool> rowMatchMatched;
         QVector<qint64> rowBlockDurations;
         QVector<qint64> rowImageFindMatchDurations;
+        QVector<int> rowImageFindAttemptCounts;
         QVector<bool> rowMatchLockedSuccess;
         int activeBlockIndex = -1;
         BlockListWidget::ExecutionHighlight executionHighlight = BlockListWidget::ExecutionHighlight::None;
         bool hasLoopTiming = false;
         int loopNumber = 0;
         qint64 loopElapsedMs = 0;
+        qint64 loopAverageMs = 0;
         bool loopSuccess = true;
     };
 
@@ -131,6 +132,7 @@ private:
     bool m_hasLoopTiming = false;
     int m_loopNumber = 0;
     qint64 m_loopElapsedMs = 0;
+    qint64 m_loopAverageMs = 0;
     bool m_loopSuccess = true;
     BlockListWidget* m_blockList = nullptr;
     QSplitter* m_workflowSplitter = nullptr;
@@ -139,9 +141,6 @@ private:
     QPushButton* m_insertWaitBetweenButton = nullptr;
     QPushButton* m_loopRegionsButton = nullptr;
     bool m_loopRegionPickActive = false;
-    bool m_ifGotoPickActive = false;
-    BlockEditorDialog* m_ifGotoPickDialog = nullptr;
-    int m_ifGotoPickBranch = 0;
 
     bool m_editingEnabled = true;
 
@@ -150,8 +149,10 @@ private:
     QVector<QPixmap> m_rowMatchImages;
     QVector<double> m_rowMatchConfidences;
     QVector<double> m_rowMatchThresholds;
+    QVector<bool> m_rowMatchMatched;
     QVector<qint64> m_rowBlockDurations;
     QVector<qint64> m_rowImageFindMatchDurations;
+    QVector<int> m_rowImageFindAttemptCounts;
 
     std::unordered_map<std::string, FeatureRunFeedback> m_featureRunFeedback;
 
