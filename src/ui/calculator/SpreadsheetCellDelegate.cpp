@@ -4,6 +4,7 @@
 #include "ui/calculator/SpreadsheetModel.h"
 
 #include <QApplication>
+#include <QFontMetrics>
 #include <QPainter>
 #include <QStyle>
 
@@ -11,7 +12,6 @@ namespace {
 
 constexpr int kIconSize = 22;
 constexpr int kIconTextGap = 6;
-constexpr int kCellPadding = 4;
 
 } // namespace
 
@@ -42,30 +42,15 @@ void SpreadsheetCellDelegate::paint(QPainter* painter,
     QStyleOptionViewItem opt = option;
     initStyleOption(&opt, index);
     opt.icon = QIcon();
-    opt.features &= ~QStyleOptionViewItem::HasDecoration;
+    opt.text.clear();
+    opt.features &= ~(QStyleOptionViewItem::HasDecoration | QStyleOptionViewItem::HasDisplay);
 
     const QWidget* widget = option.widget;
     QStyle* style = widget ? widget->style() : QApplication::style();
     style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
 
-    const QRect iconRect(option.rect.left() + kCellPadding,
-                         option.rect.top() + (option.rect.height() - kIconSize) / 2,
-                         kIconSize,
-                         kIconSize);
-    painter->drawPixmap(iconRect, iconPixmap.scaled(kIconSize,
-                                                    kIconSize,
-                                                    Qt::KeepAspectRatio,
-                                                    Qt::SmoothTransformation));
-
     const QString text = index.data(Qt::DisplayRole).toString();
-    if (text.isEmpty()) {
-        return;
-    }
 
-    QRect textRect = option.rect.adjusted(kCellPadding + kIconSize + kIconTextGap,
-                                          0,
-                                          -kCellPadding,
-                                          0);
     painter->save();
     if (opt.state & QStyle::State_Selected) {
         painter->setPen(opt.palette.color(QPalette::HighlightedText));
@@ -74,6 +59,27 @@ void SpreadsheetCellDelegate::paint(QPainter* painter,
     } else {
         painter->setPen(opt.palette.color(QPalette::Text));
     }
-    painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, text);
+
+    const QFontMetrics fm(painter->font());
+    const int textWidth = text.isEmpty() ? 0 : fm.horizontalAdvance(text);
+    const int contentWidth = text.isEmpty() ? kIconSize : kIconSize + kIconTextGap + textWidth;
+    const int startX = option.rect.left() + (option.rect.width() - contentWidth) / 2;
+
+    const QRect iconRect(startX,
+                         option.rect.top() + (option.rect.height() - kIconSize) / 2,
+                         kIconSize,
+                         kIconSize);
+    painter->drawPixmap(iconRect, iconPixmap.scaled(kIconSize,
+                                                    kIconSize,
+                                                    Qt::KeepAspectRatio,
+                                                    Qt::SmoothTransformation));
+
+    if (!text.isEmpty()) {
+        const QRect textRect(iconRect.right() + kIconTextGap,
+                             option.rect.top(),
+                             textWidth,
+                             option.rect.height());
+        painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, text);
+    }
     painter->restore();
 }

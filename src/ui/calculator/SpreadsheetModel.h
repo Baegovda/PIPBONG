@@ -41,6 +41,10 @@ public:
     static constexpr int kDefaultRowCount = 20;
     static constexpr int kDefaultColumnCount = 8;
 
+    static constexpr int kDefaultDecimalPlaces = 4;
+    static constexpr int kMinDecimalPlaces = 0;
+    static constexpr int kMaxDecimalPlaces = 8;
+
     explicit SpreadsheetModel(QObject* parent = nullptr);
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
@@ -64,12 +68,17 @@ public:
     bool bindCurrencyToCell(int row, int col, const QString& currencyId, const QString& currencyName);
     QList<CurrencyRate> availableCurrencies() const;
 
+    int decimalPlaces() const;
+    void setDecimalPlaces(int places);
+    QString formatNumber(double value) const;
+
     nlohmann::json toJson() const;
     void fromJson(const nlohmann::json& document);
 
 signals:
     void sheetModified();
     void baseCurrencyChanged();
+    void decimalPlacesChanged();
 
 private:
     using CellKey = QPair<int, int>;
@@ -80,7 +89,6 @@ private:
     void recalculateCell(int row, int col, std::unordered_set<std::string>& visiting);
     std::optional<double> resolveNumericValue(int row, int col, std::unordered_set<std::string>& visiting);
     QString errorText(FormulaError error) const;
-    static QString formatNumber(double value);
     std::optional<double> rateValueInBase(const QString& currencyId) const;
 
     int m_rowCount = kDefaultRowCount;
@@ -88,5 +96,6 @@ private:
     QMap<CellKey, SpreadsheetCell> m_inputs;
     QMap<CellKey, SpreadsheetCellState> m_states;
     std::optional<EconomySnapshot> m_snapshot;
-    QString m_baseCurrencyId = QStringLiteral("currency:divine");
+    QString m_baseCurrencyId = QStringLiteral("currency:exalted");
+    int m_decimalPlaces = kDefaultDecimalPlaces;
 };

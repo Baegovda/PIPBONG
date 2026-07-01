@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.7.9 LANGUAGES CXX)
+project(PIPBONG VERSION 0.7.15 LANGUAGES CXX)
 
 option(PIPBONG_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on every incremental dev build; run deploy-qt target when DLLs are needed" ON)
@@ -62,6 +62,8 @@ set(PIPBONG_SOURCES
     src/ui/calculator/CurrencyIconCache.cpp
     src/ui/calculator/SpreadsheetCellDelegate.cpp
     src/ui/calculator/CurrencyPickerDialog.cpp
+    src/ui/calculator/EconomyFavoritesStore.cpp
+    src/ui/calculator/FormulaBuilderDialog.cpp
     src/ui/calculator/CalculatorDialog.cpp
     src/storage/JsonSerializer.cpp
     src/ui/FeatureListPanel.cpp

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.9` (from `project(PIPBONG VERSION 0.7.9)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.15` (from `project(PIPBONG VERSION 0.7.15)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -319,8 +319,9 @@ poez/                          # repo root (legacy folder name)
 
 - **Entry:** bottom **계산기** button (left of **설정**); modeless `CalculatorDialog`.
 - **`PoeNinjaClient`:** `GET /poe2/api/data/index-state` then `GET /poe2/api/economy/exchange/{version}/overview?league={DisplayName}&type=Currency` (unofficial, no auth; `league` must be display name e.g. `Runes of Aldur`).
-- **`SpreadsheetModel`:** 20×8 grid — manual numbers, `=A1+B1` formulas, **화폐 연동** API cells (Divine-based `primaryValue`); recalculates on edit or refresh.
-- **Persistence:** `QSettings` keys `calculator/sheet_v1`, `calculator/lastLeague`, `calculator/geometry` (not in `project.json`).
+- **`SpreadsheetModel`:** 20×8 grid — manual numbers, `=A1+B1` formulas (`FormulaEvaluator`: `+ − * /`, parentheses, cell refs), **시세 연동** API cells (base-currency-relative values); recalculates on edit or refresh.
+- **`FormulaBuilderDialog`:** **수식 만들기** — in-dialog arithmetic manual, operator buttons, operand fields, live preview; **표에서 고르기** pick mode on the grid (click or drag-select cells; Esc cancels).
+- **Persistence:** `QSettings` keys `calculator/sheet_v1`, `calculator/lastLeague`, `calculator/baseCurrencyId`, `calculator/decimalPlaces` (0–8, default 4), `calculator/autoRefreshEnabled`, `calculator/autoRefreshMinutes` (1–120, default 5), `calculator/economyFavorites_v1`, `calculator/geometry` (not in `project.json`).
 
 ---
 
@@ -354,9 +355,9 @@ poez/                          # repo root (legacy folder name)
 ### Economy calculator (poe.ninja)
 
 1. Click bottom **계산기** (left of **설정**).
-2. Select league → **새로고침** loads PoE2 Currency Exchange rates.
-3. Edit cells: numbers, `=A1*B2` formulas, or **화폐 연동** on selected cell.
-4. Sheet and window layout persist in `QSettings` across restarts.
+2. Select league → **새로고침** loads PoE2 economy exchange rates.
+3. Edit cells: numbers, **수식 만들기** (or type `=A1+B1`), or **시세 연동** on selected cell.
+4. Sheet, base currency, favorites, and window layout persist in `QSettings` across restarts.
 
 ---
 
@@ -814,6 +815,50 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.15] - 2026-06-29
+
+### Changed
+
+- Calculator spreadsheet cells use center alignment for all content; API-linked cells center icon + value as one block (`SpreadsheetModel`, `SpreadsheetCellDelegate`).
+
+## [0.7.14] - 2026-06-29
+
+### Added
+
+- Calculator **자동 새로고침**: optional interval in minutes (1–120, default 5) with checkbox; `QTimer` calls `refreshExchangeRates` while the dialog is open; persisted in `QSettings` (`CalculatorDialog`).
+
+## [0.7.13] - 2026-06-29
+
+### Added
+
+- Calculator **소수 자릿수** option (0–8, default 4): `DragAdjustSpinBox` in `CalculatorDialog`, persisted in `QSettings` `calculator/decimalPlaces`; applies to number, API-linked, and formula cell display (`SpreadsheetModel::formatNumber`).
+
+## [0.7.12] - 2026-06-29
+
+### Added
+
+- Calculator **수식 만들기**: modeless `FormulaBuilderDialog` with collapsible arithmetic manual, `+ − × ÷` operators, operand fields, live result preview, **표에서 고르기** grid pick (click or drag multi-cell; Esc cancel), toolbar/context-menu entry (`CalculatorDialog`, `FormulaBuilderDialog`).
+
+## [0.7.11] - 2026-06-29
+
+### Fixed
+
+- Calculator API-linked cells no longer paint overlapping text: delegate skips default label draw and right-aligns icon + value (`SpreadsheetCellDelegate`); numeric/formula cells use right alignment (`SpreadsheetModel`).
+
+### Changed
+
+- Default base currency is **Exalted Orb** (`currency:exalted`) instead of Divine Orb (`SpreadsheetModel`, `CalculatorDialog`).
+
+### Added
+
+- Base currency combo: shared favorites (★ button, right-click add/remove, favorites listed first) via `EconomyFavoritesStore` (`CalculatorDialog`).
+
+## [0.7.10] - 2026-06-29
+
+### Added
+
+- Calculator **시세 연동** picker: **즐겨찾기** category, right-click **즐겨찾기 추가/제거**, starred labels, and `QSettings` persistence (`EconomyFavoritesStore`, `CurrencyPickerDialog`).
 
 ## [0.7.9] - 2026-06-29
 

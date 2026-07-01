@@ -83,6 +83,10 @@ QVariant SpreadsheetModel::data(const QModelIndex& index, int role) const {
         return state.displayText;
     }
 
+    if (role == Qt::TextAlignmentRole) {
+        return static_cast<int>(Qt::AlignCenter);
+    }
+
     if (role == Qt::ToolTipRole) {
         if (state.hasError) {
             return errorText(state.error);
@@ -306,18 +310,25 @@ QString SpreadsheetModel::errorText(FormulaError error) const {
     return {};
 }
 
-QString SpreadsheetModel::formatNumber(double value) {
+QString SpreadsheetModel::formatNumber(double value) const {
     if (!std::isfinite(value)) {
         return QStringLiteral("#ERR");
     }
-    const double absValue = std::abs(value);
-    if (absValue >= 1000000.0 || (absValue > 0.0 && absValue < 0.0001)) {
-        return QString::number(value, 'g', 8);
+    return QString::number(value, 'f', m_decimalPlaces);
+}
+
+int SpreadsheetModel::decimalPlaces() const {
+    return m_decimalPlaces;
+}
+
+void SpreadsheetModel::setDecimalPlaces(int places) {
+    const int clamped = std::clamp(places, kMinDecimalPlaces, kMaxDecimalPlaces);
+    if (m_decimalPlaces == clamped) {
+        return;
     }
-    if (std::abs(value - std::round(value)) < 1e-9) {
-        return QString::number(static_cast<qlonglong>(std::llround(value)));
-    }
-    return QString::number(value, 'f', 4);
+    m_decimalPlaces = clamped;
+    recalculateAll();
+    emit decimalPlacesChanged();
 }
 
 std::optional<double> SpreadsheetModel::resolveNumericValue(int row,
