@@ -3,9 +3,12 @@
 #include "core/poeninja/PoeNinjaTypes.h"
 
 #include <QDialog>
+#include <QListWidget>
 #include <QString>
 
 class CurrencyIconCache;
+class QComboBox;
+class QLineEdit;
 
 class CurrencyPickerDialog : public QDialog {
     Q_OBJECT
@@ -31,9 +34,9 @@ private:
 
     QList<CurrencyRate> m_rates;
     CurrencyIconCache* m_icons = nullptr;
-    class QListWidget* m_list = nullptr;
-    class QComboBox* m_categoryCombo = nullptr;
-    class QLineEdit* m_filterEdit = nullptr;
+    QListWidget* m_list = nullptr;
+    QComboBox* m_categoryCombo = nullptr;
+    QLineEdit* m_filterEdit = nullptr;
     QString m_selectedId;
     QString m_selectedName;
 };

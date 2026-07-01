@@ -146,7 +146,9 @@ FormulaBuilderDialog::FormulaBuilderDialog(SpreadsheetModel* model, QWidget* par
     connect(m_pickTargetButton, &QPushButton::clicked, this, &FormulaBuilderDialog::onPickTargetClicked);
     connect(m_pickLeftButton, &QPushButton::clicked, this, &FormulaBuilderDialog::onPickLeftClicked);
     connect(m_pickRightButton, &QPushButton::clicked, this, &FormulaBuilderDialog::onPickRightClicked);
-    connect(buttons, &QDialogButtonBox::applied, this, &FormulaBuilderDialog::onApplyClicked);
+    if (m_applyButton) {
+        connect(m_applyButton, &QPushButton::clicked, this, &FormulaBuilderDialog::onApplyClicked);
+    }
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     if (m_model) {
