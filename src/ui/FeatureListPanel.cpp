@@ -81,30 +81,26 @@ FeatureListColumnRects featureListColumnRects(const QRect& itemRect, const Featu
     return featureListColumnEdges(itemRect, layout).cols;
 }
 QString featureRunModeLabel(FeatureRunMode mode) {
-    switch (normalizeRunMode(mode)) {
+    switch (mode) {
     case FeatureRunMode::Hold:
         return QObject::tr("누를 동안");
     case FeatureRunMode::RepeatInfinite:
         return QObject::tr("무한");
     case FeatureRunMode::RepeatCount:
         return QObject::tr("N회");
-    case FeatureRunMode::Toggle:
-    default:
-        return QObject::tr("N회");
     }
+    return QObject::tr("N회");
 }
 QString featureRunModeCompact(FeatureRunMode mode, int repeatCount) {
-    switch (normalizeRunMode(mode)) {
+    switch (mode) {
     case FeatureRunMode::Hold:
         return QObject::tr("홀드");
     case FeatureRunMode::RepeatInfinite:
         return QStringLiteral("\u221e");
     case FeatureRunMode::RepeatCount:
         return repeatCount <= 1 ? QStringLiteral("\u00d71") : QStringLiteral("\u00d7%1").arg(repeatCount);
-    case FeatureRunMode::Toggle:
-    default:
-        return QStringLiteral("\u00d71");
     }
+    return QStringLiteral("\u00d71");
 }
 
 HotkeyBinding hotkeyBindingFromIndex(const QModelIndex& index) {
@@ -593,7 +589,7 @@ public:
             m_panel->projectFeatureById(featureId);
         const bool isRunningFeature = isRunning;
         const bool holdMode =
-            feature && normalizeRunMode(feature->runMode()) == FeatureRunMode::Hold;
+            feature && feature->runMode() == FeatureRunMode::Hold;
         const bool hasBlocks = feature && !feature->workflow().blocks().empty();
         const bool runEnabled = isRunningFeature || (hasBlocks && !holdMode);
         paintFeatureRunButton(painter,
@@ -864,7 +860,7 @@ void FeatureListPanel::requestFeatureRun(int row) {
         return;
     }
     const bool running = isFeatureRunning(featureId);
-    const bool holdMode = normalizeRunMode(feature->runMode()) == FeatureRunMode::Hold;
+    const bool holdMode = feature->runMode() == FeatureRunMode::Hold;
     const bool hasBlocks = !feature->workflow().blocks().empty();
     if (!running && (holdMode || !hasBlocks)) {
         return;
@@ -932,7 +928,7 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
     item->setData(kHotkeyShiftRole, hotkey.shift);
     QString tooltip = featureName;
     tooltip += QStringLiteral("\n") + tr("동작: %1").arg(featureRunModeLabel(feature.runMode()));
-    if (normalizeRunMode(feature.runMode()) == FeatureRunMode::RepeatCount) {
+    if (feature.runMode() == FeatureRunMode::RepeatCount) {
         tooltip += tr(" (%1회)").arg(feature.repeatCount());
     }
     if (feature.infiniteExitAfterConsecutiveMisses() > 0) {
@@ -1091,6 +1087,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
                              feature->userInputInterruptMode(),
                              feature->pointerVisualFeedback(),
                              feature->roiCorrection(),
+                             feature->editFirstTemplateRoiOnStart(),
                              m_project,
                              feature->id(),
                              this);
@@ -1105,6 +1102,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setUserInputInterruptMode(dialog.userInputInterruptMode());
     feature->setPointerVisualFeedback(dialog.pointerVisualFeedback());
     feature->setRoiCorrection(dialog.roiCorrection());
+    feature->setEditFirstTemplateRoiOnStart(dialog.editFirstTemplateRoiOnStart());
     refresh();
     m_list->setCurrentRow(index);
     emit projectModified();
@@ -1128,7 +1126,7 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
     QMenu menu(this);
     const bool running = feature && isFeatureRunning(featureId);
     const bool canRun = feature && !running
-                        && normalizeRunMode(feature->runMode()) != FeatureRunMode::Hold
+                        && feature->runMode() != FeatureRunMode::Hold
                         && !feature->workflow().blocks().empty();
     if (running) {
         menu.addAction(tr("중지"), this, [this, featureId]() {

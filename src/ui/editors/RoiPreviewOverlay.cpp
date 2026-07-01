@@ -25,7 +25,7 @@
 namespace {
 
 #ifdef _WIN32
-constexpr wchar_t kPreviewClassName[] = L"SbmRoiPreviewOverlay";
+constexpr wchar_t kPreviewClassName[] = L"PipbongRoiPreviewOverlay";
 constexpr int kEscHotkeyId = 0x5052;
 constexpr int kHandleDrawSize = 7;
 constexpr int kHandleHitSize = 18;

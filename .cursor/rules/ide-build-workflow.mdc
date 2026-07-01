@@ -12,8 +12,8 @@ alwaysApply: true
 | Action | How |
 |--------|-----|
 | **Build** | **Ctrl+Shift+B**, repo-root `빌드.bat`, or `.\scripts\build-release.ps1` |
-| **Run (F5)** | Launch config **`Run SuckbongMachine (Release)`** → `preLaunchTask`: **`Build Release`** |
-| **Output** | `build/Release/SuckbongMachine.exe` (cwd `build/Release/`) |
+| **Run (F5)** | Launch config **`Run PIPBONG (Release)`** → `preLaunchTask`: **`Build Release`** |
+| **Output** | `build/Release/PIPBONG.exe` (cwd `build/Release/`) |
 | **First configure** | `build-release.ps1` runs `cmake --preset default` only when `build/CMakeCache.txt` is missing |
 | **Qt DLLs** | `.\scripts\deploy-qt.ps1` once when runtime DLLs missing — not every incremental link |
 
@@ -24,7 +24,7 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 | File | Role |
 |------|------|
 | `.vscode/tasks.json` | Default build task **`Build Release`** → `scripts/build-release.ps1` |
-| `.vscode/launch.json` | **`Run SuckbongMachine (Release)`** — `cppvsdbg`, Release exe, `preLaunchTask`: `Build Release` |
+| `.vscode/launch.json` | **`Run PIPBONG (Release)`** — `cppvsdbg`, Release exe, `preLaunchTask`: `Build Release` |
 | `.vscode/settings.json` | **`cmake.enabled`: `false`**; block C#/CMake Tools interference |
 | `.vscode/extensions.json` | `unwantedRecommendations`: `ms-vscode.cmake-tools`, C# Dev Kit |
 
@@ -45,7 +45,7 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 ## `tasks.json` / `launch.json` invariants
 
 - Task label: **`Build Release`** (must match `preLaunchTask` in launch.json).
-- Launch program: **`${workspaceFolder}/build/Release/SuckbongMachine.exe`**.
+- Launch program: **`${workspaceFolder}/build/Release/PIPBONG.exe`**.
 - Launch cwd: **`${workspaceFolder}/build/Release`**.
 - **Never** use launch `type: "cmake"` or `preLaunchTask: "CMake: build …"`.
 - **Never** use placeholder `program` paths (`<your program>`) or Debug as the only F5 target for daily work.
@@ -58,7 +58,7 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 | **"A CMake task is already running"** / build exit **-1** | Parallel CMake Tools tasks; status-bar **[Build]** / **[Configure]** clicked while another runs |
 | **549+ Problems** / bogus IntelliSense | Separate **`build-clangd/`** tree — keep excluded; use **`build/`** only |
 | F5 fails / wrong exe | `launch.json` placeholder or Debug path without deploy |
-| Slow every link | Re-enabling per-link `windeployqt` — dev preset uses `SBM_SKIP_WINDEPLOY=ON` |
+| Slow every link | Re-enabling per-link `windeployqt` — dev preset uses `PIPBONG_SKIP_WINDEPLOY=ON` |
 
 ## Recovery procedure (when IDE build breaks)
 
@@ -67,7 +67,7 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 3. **Developer: Reload Window** in Cursor (clears stuck CMake Tools state).
 4. Kill stuck processes if needed: `Stop-Process -Name cmake,msbuild -Force -ErrorAction SilentlyContinue`.
 5. **Do not** click CMake status-bar **[Configure]** — run `.\scripts\build-release.ps1` instead.
-6. Verify: incremental build OK; launch **Run SuckbongMachine (Release)**; exe runs from `build/Release/`.
+6. Verify: incremental build OK; launch **Run PIPBONG (Release)**; exe runs from `build/Release/`.
 7. If DLL missing at runtime: `.\scripts\deploy-qt.ps1` once.
 
 ## AI / agent rules

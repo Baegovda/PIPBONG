@@ -152,6 +152,22 @@ bool ExecutionContext::detectionFailedThisRun() const {
     return m_detectionFailedThisRun;
 }
 
+bool ExecutionContext::imageFindDeferRetryUsed(int blockIndex) const {
+    return m_imageFindDeferRetryUsedBlockIndexes.count(blockIndex) > 0;
+}
+
+void ExecutionContext::markImageFindDeferRetryUsed(int blockIndex) {
+    if (blockIndex >= 0) {
+        m_imageFindDeferRetryUsedBlockIndexes.insert(blockIndex);
+    }
+}
+
+void ExecutionContext::clearImageFindDeferRetryUsed(int blockIndex) {
+    if (blockIndex >= 0) {
+        m_imageFindDeferRetryUsedBlockIndexes.erase(blockIndex);
+    }
+}
+
 bool ExecutionContext::enterNestingScope() {
     if (m_nestingDepth >= kMaxWorkflowNestingDepth) {
         return false;
@@ -396,23 +412,23 @@ void ExecutionContext::beginRunKeyboardSessionIfNeeded() {
 }
 
 void ExecutionContext::noteSyntheticKeyDown(int virtualKey) {
-    m_sbmHeldVirtualKeys.insert(virtualKey);
+    m_pipbongHeldVirtualKeys.insert(virtualKey);
 }
 
 void ExecutionContext::noteSyntheticKeyUp(int virtualKey) {
-    m_sbmHeldVirtualKeys.erase(virtualKey);
+    m_pipbongHeldVirtualKeys.erase(virtualKey);
 }
 
 void ExecutionContext::restoreRunKeyboard() {
     if (!m_runKeyboardSessionActive) {
         return;
     }
-    InputSimulator::restoreTrackedKeyboard(m_sbmHeldVirtualKeys, m_runKeyboardSessionStart);
+    InputSimulator::restoreTrackedKeyboard(m_pipbongHeldVirtualKeys, m_runKeyboardSessionStart);
 }
 
 void ExecutionContext::endRunKeyboardSession() {
     restoreRunKeyboard();
     m_runKeyboardSessionActive = false;
-    m_sbmHeldVirtualKeys.clear();
+    m_pipbongHeldVirtualKeys.clear();
 }
 #endif

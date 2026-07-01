@@ -32,7 +32,7 @@ private:
     UserInputInterruptMonitor() = default;
 
     struct SessionEntry {
-        UserInputInterruptMode mode = UserInputInterruptMode::None;
+        UserInputInterruptMode mode = UserInputInterruptMode::Stop;
         HotkeyBinding featureHotkey;
         ExecutionContext* context = nullptr;
         std::chrono::steady_clock::time_point lastInterruptAt{};

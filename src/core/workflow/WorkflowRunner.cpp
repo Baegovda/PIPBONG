@@ -2,12 +2,142 @@
 
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/WorkflowLoopRegion.h"
+#include "core/workflow/blocks/ImageFindBlock.h"
 #include "ui/OpenCvQtUtil.h"
 
 #include <algorithm>
 #include <chrono>
 
 namespace {
+
+WorkflowRunResult executeSingleBlock(const Workflow& workflow,
+                                     int blockIndex,
+                                     ExecutionContext& ctx,
+                                     const WorkflowRunHooks* hooks);
+
+int previousImageFindBlockIndex(const Workflow& workflow, int currentIndex) {
+    for (int i = currentIndex - 1; i >= 0; --i) {
+        const auto& blocks = workflow.blocks();
+        if (i < static_cast<int>(blocks.size()) && blocks[i]
+            && blocks[i]->type() == BlockType::ImageFind) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int nextImageFindBlockIndex(const Workflow& workflow, int currentIndex) {
+    const auto& blocks = workflow.blocks();
+    for (int i = currentIndex + 1; i < static_cast<int>(blocks.size()); ++i) {
+        if (blocks[i] && blocks[i]->type() == BlockType::ImageFind) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+const ImageFindBlock* imageFindBlockAt(const Workflow& workflow, int blockIndex) {
+    const auto& blocks = workflow.blocks();
+    if (blockIndex < 0 || blockIndex >= static_cast<int>(blocks.size()) || !blocks[blockIndex]) {
+        return nullptr;
+    }
+    if (blocks[blockIndex]->type() != BlockType::ImageFind) {
+        return nullptr;
+    }
+    return static_cast<const ImageFindBlock*>(blocks[blockIndex].get());
+}
+
+struct ImageFindFailureResolution {
+    bool handled = false;
+    int continueAtIndex = -1;
+    int jumpToBlockIndex = -1;
+};
+
+bool propagateNonDetectionStepFailure(const WorkflowRunResult& step, ExecutionContext& ctx) {
+    return !step.success && !ctx.detectionFailedThisRun() && !ctx.shouldStop();
+}
+
+ImageFindFailureResolution resolveImageFindDetectionFailure(const Workflow& workflow,
+                                                            int currentIndex,
+                                                            ExecutionContext& ctx,
+                                                            const WorkflowRunHooks* hooks,
+                                                            const WorkflowRunResult& failedStep) {
+    ImageFindFailureResolution resolution;
+    const ImageFindBlock* imageFind = imageFindBlockAt(workflow, currentIndex);
+    if (!imageFind || !ctx.detectionFailedThisRun()) {
+        return resolution;
+    }
+
+    if (imageFind->retryAfterNextActionOnFailure && !ctx.imageFindDeferRetryUsed(currentIndex)) {
+        ctx.markImageFindDeferRetryUsed(currentIndex);
+        ctx.clearDetectionFailedFlag();
+
+        const int blockCount = static_cast<int>(workflow.blocks().size());
+        if (currentIndex + 1 < blockCount) {
+            WorkflowRunResult nextStep =
+                executeSingleBlock(workflow, currentIndex + 1, ctx, hooks);
+            if (propagateNonDetectionStepFailure(nextStep, ctx)) {
+                return resolution;
+            }
+        }
+
+        ctx.log("매칭 실패 — 바로 다음 블록 실행 후 다시 감지 시도 (#"
+                + std::to_string(currentIndex + 1) + ")");
+        resolution.handled = true;
+        resolution.continueAtIndex = currentIndex;
+        return resolution;
+    }
+
+    int previousImageFind = -1;
+    if (imageFind->returnToPreviousImageFindOnFailure) {
+        previousImageFind = previousImageFindBlockIndex(workflow, currentIndex);
+        if (previousImageFind >= 0) {
+            ctx.clearImageFindDeferRetryUsed(currentIndex);
+            ctx.clearDetectionFailedFlag();
+            ctx.log("매칭 실패 — 이전 템플릿 매칭 블록 #"
+                    + std::to_string(previousImageFind + 1) + "으로 돌아감");
+            resolution.handled = true;
+            resolution.continueAtIndex = previousImageFind;
+            return resolution;
+        }
+    }
+
+    if (imageFind->retryAfterNextActionOnFailure && ctx.imageFindDeferRetryUsed(currentIndex)) {
+        const int nextImageFind = nextImageFindBlockIndex(workflow, currentIndex);
+        ctx.clearImageFindDeferRetryUsed(currentIndex);
+        ctx.clearDetectionFailedFlag();
+        if (nextImageFind >= 0) {
+            ctx.log("감지 실패 — 다음 템플릿 매칭 블록 #"
+                    + std::to_string(nextImageFind + 1) + "으로 이동");
+            resolution.handled = true;
+            resolution.continueAtIndex = nextImageFind;
+            return resolution;
+        }
+        (void)failedStep;
+    }
+
+    return resolution;
+}
+
+bool applyImageFindFailureResolution(ImageFindFailureResolution& resolution,
+                                     int rangeStartIndex,
+                                     int rangeEndIndex,
+                                     int& loopIndex,
+                                     WorkflowRunResult& overall) {
+    if (!resolution.handled || resolution.continueAtIndex < 0) {
+        return false;
+    }
+
+    if (resolution.continueAtIndex < rangeStartIndex || resolution.continueAtIndex > rangeEndIndex) {
+        overall.jumpToBlockIndex = resolution.continueAtIndex;
+        overall.success = true;
+        overall.message = "완료";
+        return true;
+    }
+
+    loopIndex = resolution.continueAtIndex;
+    return true;
+}
 
 void emitBlockMatchResult(const WorkflowRunHooks& hooks,
                           int blockIndex,
@@ -76,12 +206,6 @@ WorkflowRunResult executeSingleBlock(const Workflow& workflow,
     }
 
     Block& block = *blocks[blockIndex];
-    if (block.type() == BlockType::Comment) {
-        ctx.setActiveBlockIndex(blockIndex);
-        block.execute(ctx);
-        ctx.setActiveBlockIndex(-1);
-        return overall;
-    }
 
     if (hooks && hooks->onBlockStarted) {
         hooks->onBlockStarted(blockIndex, block.summary());
@@ -155,6 +279,10 @@ WorkflowRunResult executeSingleBlock(const Workflow& workflow,
                                result.imageFindPollAttempts);
     }
 
+    if (result.success && block.type() == BlockType::ImageFind) {
+        ctx.clearImageFindDeferRetryUsed(blockIndex);
+    }
+
     overall.success = result.success;
     overall.message = result.message;
     return overall;
@@ -169,9 +297,17 @@ WorkflowRunResult executeBlockRange(const Workflow& workflow,
     overall.success = true;
     overall.message = "완료";
 
-    for (int i = startIndex; i <= endIndex; ++i) {
+    for (int i = startIndex; i <= endIndex;) {
         WorkflowRunResult step = executeSingleBlock(workflow, i, ctx, hooks);
         if (!step.success) {
+            ImageFindFailureResolution resolution =
+                resolveImageFindDetectionFailure(workflow, i, ctx, hooks, step);
+            if (applyImageFindFailureResolution(resolution, startIndex, endIndex, i, overall)) {
+                if (overall.jumpToBlockIndex >= 0) {
+                    return overall;
+                }
+                continue;
+            }
             return step;
         }
         if (ctx.shouldStop()) {
@@ -179,6 +315,7 @@ WorkflowRunResult executeBlockRange(const Workflow& workflow,
             overall.message = "사용자에 의해 중지됨";
             return overall;
         }
+        ++i;
     }
     return overall;
 }
@@ -224,6 +361,11 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
             executeBlockRange(workflow, region.startIndex, region.endIndex, ctx, hooks);
 
         ctx.setImageFindMaxMissAttempts(savedMissLimit);
+
+        if (runResult.jumpToBlockIndex >= 0) {
+            ctx.leaveNestingScope();
+            return runResult;
+        }
 
         if (ctx.shouldStop()) {
             ctx.leaveNestingScope();
@@ -282,6 +424,10 @@ WorkflowRunResult WorkflowRunner::run(const Workflow& workflow,
 
         if (const WorkflowLoopRegion* region = workflow.loopRegionStartingAt(i)) {
             WorkflowRunResult loopResult = runLoopRegion(workflow, *region, ctx, hooks);
+            if (loopResult.jumpToBlockIndex >= 0) {
+                i = loopResult.jumpToBlockIndex;
+                continue;
+            }
             if (!loopResult.success) {
                 overall.success = false;
                 overall.message = loopResult.message;
@@ -293,6 +439,14 @@ WorkflowRunResult WorkflowRunner::run(const Workflow& workflow,
 
         WorkflowRunResult step = executeSingleBlock(workflow, i, ctx, hooks);
         if (!step.success) {
+            ImageFindFailureResolution resolution =
+                resolveImageFindDetectionFailure(workflow, i, ctx, hooks, step);
+            if (applyImageFindFailureResolution(resolution, 0, blockCount - 1, i, overall)) {
+                if (overall.jumpToBlockIndex >= 0) {
+                    break;
+                }
+                continue;
+            }
             overall.success = false;
             overall.message = step.message;
             break;

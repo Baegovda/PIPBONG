@@ -20,7 +20,7 @@
 namespace {
 
 #ifdef _WIN32
-constexpr wchar_t kOverlayClassName[] = L"SbmWorkflowMatchFeedbackOverlay";
+constexpr wchar_t kOverlayClassName[] = L"PipbongWorkflowMatchFeedbackOverlay";
 constexpr UINT_PTR kTimerId = 1;
 constexpr UINT kTimerMs = 33;
 constexpr UINT kHideForCaptureMsg = WM_APP + 42;
@@ -405,7 +405,6 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
                               g_state->pulses.begin()
                                   + static_cast<std::ptrdiff_t>(g_state->pulses.size() - kMaxActivePulses));
     }
-    renderOverlayFrame();
 #else
     (void)clientX;
     (void)clientY;

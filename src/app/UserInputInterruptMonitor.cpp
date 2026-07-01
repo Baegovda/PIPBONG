@@ -19,6 +19,19 @@ UserInputInterruptMonitor* g_userInputInterruptMonitor = nullptr;
 HHOOK g_keyboardHook = nullptr;
 HHOOK g_mouseHook = nullptr;
 
+bool isMouseOverOwnProcessWindow(const MSLLHOOKSTRUCT* info) {
+    if (!info) {
+        return false;
+    }
+    HWND hwnd = WindowFromPoint(info->pt);
+    if (!hwnd) {
+        return false;
+    }
+    DWORD windowPid = 0;
+    GetWindowThreadProcessId(hwnd, &windowPid);
+    return windowPid == GetCurrentProcessId();
+}
+
 bool isModifierOnlyVirtualKey(int vk) {
     switch (vk) {
     case VK_SHIFT:
@@ -109,6 +122,9 @@ LRESULT CALLBACK interruptMouseHookProc(int code, WPARAM wParam, LPARAM lParam) 
     if (info->flags & LLMHF_INJECTED) {
         return CallNextHookEx(g_mouseHook, code, wParam, lParam);
     }
+    if (isMouseOverOwnProcessWindow(info)) {
+        return CallNextHookEx(g_mouseHook, code, wParam, lParam);
+    }
 
     const int vk = virtualKeyFromMouseMessage(wParam, info);
     if (vk == 0) {
@@ -138,7 +154,7 @@ void UserInputInterruptMonitor::registerSession(const std::string& featureId,
                                                 UserInputInterruptMode mode,
                                                 const HotkeyBinding& featureHotkey,
                                                 ExecutionContext* context) {
-    if (featureId.empty() || mode == UserInputInterruptMode::None || !context) {
+    if (featureId.empty() || !context) {
         return;
     }
 
@@ -208,7 +224,7 @@ void UserInputInterruptMonitor::notifyPhysicalInput(int virtualKey) {
         handler = m_handler;
         const auto now = std::chrono::steady_clock::now();
         for (auto& [featureId, entry] : m_sessions) {
-            if (entry.mode == UserInputInterruptMode::None || !entry.context) {
+            if (!entry.context) {
                 continue;
             }
             if (matchesFeatureHotkey(entry.featureHotkey, virtualKey)) {

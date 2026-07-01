@@ -2,14 +2,10 @@
 
 #include "core/workflow/BlockFactory.h"
 #include "core/workflow/blocks/ClickBlock.h"
-#include "core/workflow/blocks/CommentBlock.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "core/workflow/blocks/KeyPressBlock.h"
-#include "core/workflow/blocks/LoopBlock.h"
 #include "core/workflow/blocks/WaitBlock.h"
 #include "ui/editors/ClickEditor.h"
-#include "ui/editors/CommentEditor.h"
-#include "ui/editors/LoopEditor.h"
 #include "ui/editors/ImageFindEditor.h"
 #include "ui/editors/KeyPressEditor.h"
 #include "ui/editors/WaitEditor.h"
@@ -43,12 +39,8 @@ int stackIndexFor(BlockType type) {
         return 2;
     case BlockType::Wait:
         return 3;
-    case BlockType::Loop:
-        return 4;
-    case BlockType::Comment:
-        return 5;
     }
-    return 5;
+    return 0;
 }
 
 } // namespace
@@ -63,7 +55,7 @@ BlockEditorDialog::BlockEditorDialog(Block* block, const QString& projectDirecto
 
     syncTypeButtonSelection(m_block->type());
     reloadEditorForType(m_block->type());
-    m_stack->setCurrentIndex(stackIndexForType(m_block->type()));
+    m_stack->setCurrentIndex(stackIndexFor(m_block->type()));
     fitToCurrentPage();
 }
 
@@ -100,8 +92,6 @@ void BlockEditorDialog::setupUi() {
     m_clickFormBlock = BlockFactory::create(BlockType::Click);
     m_keyPressFormBlock = BlockFactory::create(BlockType::KeyPress);
     m_waitFormBlock = BlockFactory::create(BlockType::Wait);
-    m_loopFormBlock = BlockFactory::create(BlockType::Loop);
-    m_commentFormBlock = BlockFactory::create(BlockType::Comment);
 
     m_imageFindEditor = new ImageFindEditor(
         static_cast<ImageFindBlock*>(m_imageFindFormBlock.get()), m_projectDirectory, this, true);
@@ -109,16 +99,11 @@ void BlockEditorDialog::setupUi() {
     m_keyPressEditor =
         new KeyPressEditor(static_cast<KeyPressBlock*>(m_keyPressFormBlock.get()), this, true);
     m_waitEditor = new WaitEditor(static_cast<WaitBlock*>(m_waitFormBlock.get()), this, true);
-    m_loopEditor =
-        new LoopEditor(static_cast<LoopBlock*>(m_loopFormBlock.get()), m_projectDirectory, this, true);
-    m_commentEditor = new CommentEditor(static_cast<CommentBlock*>(m_commentFormBlock.get()), this, true);
 
     m_stack->addWidget(m_imageFindEditor);
     m_stack->addWidget(m_clickEditor);
     m_stack->addWidget(m_keyPressEditor);
     m_stack->addWidget(m_waitEditor);
-    m_stack->addWidget(m_loopEditor);
-    m_stack->addWidget(m_commentEditor);
     m_stack->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     layout->addWidget(m_stack, 0);
 
@@ -142,12 +127,6 @@ void BlockEditorDialog::setupUi() {
         case BlockType::Wait:
             m_waitEditor->apply();
             break;
-        case BlockType::Loop:
-            m_loopEditor->apply();
-            break;
-        case BlockType::Comment:
-            m_commentEditor->apply();
-            break;
         }
         dismissCaptureOverlays();
         accept();
@@ -156,7 +135,6 @@ void BlockEditorDialog::setupUi() {
 
     connect(m_clickEditor, &ClickEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
     connect(m_waitEditor, &WaitEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
-    connect(m_loopEditor, &LoopEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
     connect(m_stack, &QStackedWidget::currentChanged, this, [this](int) {
         if (m_imageFindEditor) {
             m_imageFindEditor->refreshTemplateCaptureHotkeyHook();
@@ -174,8 +152,7 @@ void BlockEditorDialog::setupTypeButtons(QHBoxLayout* row) {
     const BlockType types[] = {BlockType::ImageFind,
                                BlockType::Click,
                                BlockType::KeyPress,
-                               BlockType::Wait,
-                               BlockType::Loop};
+                               BlockType::Wait};
 
     for (const BlockType type : types) {
         auto* button = new QPushButton(blockTypeDisplayName(type), this);
@@ -183,15 +160,6 @@ void BlockEditorDialog::setupTypeButtons(QHBoxLayout* row) {
         m_typeButtonGroup->addButton(button, static_cast<int>(type));
         row->addWidget(button);
         connect(button, &QPushButton::clicked, this, [this, type]() { onTypeSelected(type); });
-    }
-
-    if (m_block && m_block->type() == BlockType::Comment) {
-        auto* commentButton = new QPushButton(blockTypeDisplayName(BlockType::Comment), this);
-        commentButton->setCheckable(true);
-        m_typeButtonGroup->addButton(commentButton, static_cast<int>(BlockType::Comment));
-        row->addWidget(commentButton);
-        connect(commentButton, &QPushButton::clicked, this,
-                [this]() { onTypeSelected(BlockType::Comment); });
     }
 
     row->addStretch();
@@ -208,10 +176,6 @@ void BlockEditorDialog::syncTypeButtonSelection(BlockType type) {
     }
 }
 
-int BlockEditorDialog::stackIndexForType(BlockType type) const {
-    return stackIndexFor(type);
-}
-
 void BlockEditorDialog::reloadEditorForType(BlockType type) {
     switch (type) {
     case BlockType::ImageFind:
@@ -226,19 +190,13 @@ void BlockEditorDialog::reloadEditorForType(BlockType type) {
     case BlockType::Wait:
         m_waitEditor->setBlock(static_cast<WaitBlock*>(m_block.get()));
         break;
-    case BlockType::Loop:
-        m_loopEditor->setBlock(static_cast<LoopBlock*>(m_block.get()));
-        break;
-    case BlockType::Comment:
-        m_commentEditor->setBlock(static_cast<CommentBlock*>(m_block.get()));
-        break;
     }
 }
 
 void BlockEditorDialog::onTypeSelected(BlockType newType) {
     if (newType == m_block->type()) {
         m_typeChangeNote->setVisible(m_initialType != newType);
-        m_stack->setCurrentIndex(stackIndexForType(newType));
+        m_stack->setCurrentIndex(stackIndexFor(newType));
         syncTypeButtonSelection(newType);
         fitToCurrentPage();
         return;
@@ -248,7 +206,7 @@ void BlockEditorDialog::onTypeSelected(BlockType newType) {
     m_typeChangeNote->setVisible(true);
     syncTypeButtonSelection(newType);
     reloadEditorForType(newType);
-    m_stack->setCurrentIndex(stackIndexForType(newType));
+    m_stack->setCurrentIndex(stackIndexFor(newType));
     fitToCurrentPage();
 }
 

@@ -1,8 +1,8 @@
-# AGENTS.md — SuckbongMachine Master Document
+# AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.5.96` (from `project(SuckbongMachine VERSION 0.5.96)` in `CMakeLists.txt` → `SbmVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.9` (from `project(PIPBONG VERSION 0.7.9)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
-**Repository folder:** `poez` (legacy name; application is **SuckbongMachine**)
+**Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
 This is the **only project document** — AI handover, user quick start, development governance, version history, and implementation patterns. Append changelog entries to [§11](#11-changelog-and-version-history) under `[Unreleased]`. Do not create any other doc files.
 
@@ -28,7 +28,7 @@ This is the **only project document** — AI handover, user quick start, develop
 
 ## 1. Project Overview
 
-**SuckbongMachine** is a C++17 / Qt6 Windows desktop automation utility with a visual block workflow editor. It targets any application window by title — not a single game. There is **no Python** or external script runtime.
+**PIPBONG** is a C++17 / Qt6 Windows desktop automation utility with a visual block workflow editor. It targets any application window by title — not a single game. There is **no Python** or external script runtime.
 
 | Aspect | Detail |
 |--------|--------|
@@ -37,8 +37,6 @@ This is the **only project document** — AI handover, user quick start, develop
 | **UI language** | Korean in-app (`tr()`, `QStringLiteral`) |
 | **Doc/code language** | English |
 | **Maintenance model** | 100% AI-maintained; human user directs work in Korean chat only |
-
-**Legacy naming:** The project was originally named **poez**. The executable, Qt org/app name, and display name are now **SuckbongMachine**. Auto-save data migrates from `%LOCALAPPDATA%/poez/poez/` on first launch when the new folder is empty (see [§5.7 Persistence](#57-persistence)).
 
 **Warning:** Automation may violate target application Terms of Service. Use at your own risk.
 
@@ -76,7 +74,7 @@ This is the **only project document** — AI handover, user quick start, develop
 
 ### Configure and build (default — fast dev)
 
-**Default for AI and daily work.** Dynamic DLL linking; **incremental** compiles (changed `.cpp` only). Dev builds **skip `windeployqt` on every link** (`SBM_SKIP_WINDEPLOY=ON`) so no-change rebuilds stay ~3 s and single-file edits ~5 s.
+**Default for AI and daily work.** Dynamic DLL linking; **incremental** compiles (changed `.cpp` only). Dev builds **skip `windeployqt` on every link** (`PIPBONG_SKIP_WINDEPLOY=ON`) so no-change rebuilds stay ~3 s and single-file edits ~5 s.
 
 #### First time on a machine (once)
 
@@ -104,7 +102,7 @@ Or **Ctrl+Shift+B** / `빌드.bat` → `scripts/build-release.ps1` (same command
 
 Only re-run `cmake --preset default` when `build/` does not exist yet, or after changing `CMakeLists.txt` (new sources), `CMakePresets.json`, or `vcpkg.json`. CMake re-configures automatically on the next `--build` when `CMakeLists.txt` changes — **do not** run `--preset` again just for a version number change.
 
-**Output:** `build/Release/SuckbongMachine.exe` — run from `build/Release/` (DLLs deployed via `deploy-qt`, not every build).
+**Output:** `build/Release/PIPBONG.exe` — run from `build/Release/` (DLLs deployed via `deploy-qt`, not every build).
 
 #### Deploy Qt DLLs (when needed)
 
@@ -125,7 +123,7 @@ Equivalent: `cmake --build build --config Release --target deploy-qt`
 | `build/` missing at close | Configure once, then build | `cmake --preset default` then `--build` |
 | Distribution exe requested | Static preset | `cmake --preset static` then `cmake --build build-static --config Release` |
 
-Before link, kill a running `SuckbongMachine.exe` only when a build is actually run (`LNK1104`).
+Before link, kill a running `PIPBONG.exe` only when a build is actually run (`LNK1104`).
 
 ### Distribution — single portable exe (user request only)
 
@@ -136,22 +134,22 @@ cmake --preset static
 cmake --build build-static --config Release
 ```
 
-**Ship:** `dist/SuckbongMachine.exe` only (~55 MB, no DLLs). Post-build copies from `build-static/Release/SuckbongMachine.exe`.
+**Ship:** `dist/PIPBONG.exe` only (~55 MB, no DLLs). Post-build copies from `build-static/Release/PIPBONG.exe`.
 
 ### Run
 
 ```powershell
-.\build\Release\SuckbongMachine.exe
+.\build\Release\PIPBONG.exe
 ```
 
-**One-click build (Windows):** double-click `빌드.bat` in the repo root, or in Cursor press **Ctrl+Shift+B** (default build task → `scripts/build-release.ps1`). Kills a running `SuckbongMachine.exe` before link when building.
+**One-click build (Windows):** double-click `빌드.bat` in the repo root, or in Cursor press **Ctrl+Shift+B** (default build task → `scripts/build-release.ps1`). Kills a running `PIPBONG.exe` before link when building.
 
-Distribution build: `.\dist\SuckbongMachine.exe`
+Distribution build: `.\dist\PIPBONG.exe`
 
 ### Build pitfalls
 
-- **LNK1104:** Kill any running `SuckbongMachine.exe` before linking (only when building).
-- **Slow builds:** Do not run `cmake --preset default` on every task — use incremental `--build` only. Avoid static preset for daily work. A version bump regenerates `SbmVersion.h` and recompiles only `Application.cpp` + `UpdateChecker.cpp` (not every `.cpp`).
+- **LNK1104:** Kill any running `PIPBONG.exe` before linking (only when building).
+- **Slow builds:** Do not run `cmake --preset default` on every task — use incremental `--build` only. Avoid static preset for daily work. A version bump regenerates `PipbongVersion.h` and recompiles only `Application.cpp` + `UpdateChecker.cpp` (not every `.cpp`).
 - **Missing DLLs at runtime:** Run `.\scripts\deploy-qt.ps1` once — dev builds no longer call `windeployqt` every link.
 - **vcpkg path:** `CMakePresets.json` may reference a machine-specific `CMAKE_TOOLCHAIN_FILE`; adjust if vcpkg is installed elsewhere.
 
@@ -164,11 +162,11 @@ Distribution build: `.\dist\SuckbongMachine.exe`
 | Action | Command / UI |
 |--------|----------------|
 | **Build** | **Ctrl+Shift+B**, `빌드.bat`, or `.\scripts\build-release.ps1` |
-| **Run** | Run and Debug → **`Run SuckbongMachine (Release)`** → **F5** |
-| **Binary** | `build/Release/SuckbongMachine.exe` (working directory `build/Release/`) |
+| **Run** | Run and Debug → **`Run PIPBONG (Release)`** → **F5** |
+| **Binary** | `build/Release/PIPBONG.exe` (working directory `build/Release/`) |
 | **Task close (AI)** | Same script when C++/headers/`CMakeLists.txt` changed |
 
-`build-release.ps1` kills a running `SuckbongMachine.exe`, auto-runs `cmake --preset default` only if `build/CMakeCache.txt` is missing, then `cmake --build build --config Release`.
+`build-release.ps1` kills a running `PIPBONG.exe`, auto-runs `cmake --preset default` only if `build/CMakeCache.txt` is missing, then `cmake --build build --config Release`.
 
 #### Required tracked `.vscode/` files (recovery source of truth)
 
@@ -177,7 +175,7 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 | File | Purpose |
 |------|---------|
 | `.vscode/tasks.json` | Default build task **`Build Release`** → `scripts/build-release.ps1` |
-| `.vscode/launch.json` | **`Run SuckbongMachine (Release)`** — Release exe + `preLaunchTask`: `Build Release` |
+| `.vscode/launch.json` | **`Run PIPBONG (Release)`** — Release exe + `preLaunchTask`: `Build Release` |
 | `.vscode/settings.json` | **`cmake.enabled`: `false`** — prevents CMake Tools from hijacking F5/configure |
 | `.vscode/extensions.json` | Discourage `ms-vscode.cmake-tools` and C# Dev Kit in this workspace |
 
@@ -198,7 +196,7 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 3. **Developer: Reload Window** in Cursor.
 4. `Stop-Process -Name cmake,msbuild -Force -ErrorAction SilentlyContinue` if a task is stuck.
 5. `.\scripts\build-release.ps1` — expect ~3 s (no changes) or ~5–15 s (one `.cpp`).
-6. F5 with **Run SuckbongMachine (Release)**; if Qt DLL error, run `.\scripts\deploy-qt.ps1` once.
+6. F5 with **Run PIPBONG (Release)**; if Qt DLL error, run `.\scripts\deploy-qt.ps1` once.
 
 Cursor rule: `.cursor/rules/ide-build-workflow.mdc` (always applied).
 
@@ -218,7 +216,7 @@ poez/                          # repo root (legacy folder name)
 │   └── deploy-qt.ps1          # Qt DLL deploy beside build/Release (once when needed)
 ├── .vscode/                   # tracked IDE workflow — tasks, launch, settings (see §3.1)
 │   ├── tasks.json             # Ctrl+Shift+B → build-release.ps1
-│   ├── launch.json            # F5 → Run SuckbongMachine (Release)
+│   ├── launch.json            # F5 → Run PIPBONG (Release)
 │   ├── settings.json          # cmake.enabled: false
 │   └── extensions.json
 ├── .cursor/rules/             # always-applied Cursor agent rules
@@ -230,9 +228,11 @@ poez/                          # repo root (legacy folder name)
     │   ├── capture/           # ScreenCapture — window find, multi-strategy capture
     │   ├── vision/            # ImageMatcher — OpenCV template matching
     │   ├── input/             # InputSimulator, HotkeyBinding
+    │   ├── poeninja/          # PoeNinjaClient — PoE2 economy API (calculator)
     │   └── workflow/          # Engine, blocks, execution context
     ├── storage/               # JsonSerializer — project JSON I/O
     └── ui/                    # Feature list, workflow editor, block editors, overlay
+        ├── calculator/        # SpreadsheetModel, CalculatorDialog (poe.ninja 시세 계산기)
         └── editors/
             ├── ScreenRegionOverlay.*   # Win32 screen-region picker (mandatory pattern)
             ├── ImageFindEditor.*       # template capture, ROI, match test
@@ -249,6 +249,8 @@ poez/                          # repo root (legacy folder name)
 | `src/core/vision/` | `ImageMatcher` — `PreparedTemplate`, multi-scale matching, NMS |
 | `src/core/input/` | `InputSimulator` — mouse/keyboard via Win32; `HotkeyBinding` |
 | `src/core/workflow/` | `WorkflowEngine`, `Workflow`, `ExecutionContext`, block types |
+| `src/core/poeninja/` | `PoeNinjaClient` — unofficial poe.ninja PoE2 Currency Exchange API |
+| `src/ui/calculator/` | `CalculatorDialog`, `SpreadsheetModel` — 시세 계산기 (workflow-independent) |
 | `src/ui/` | `FeatureListPanel`, `WorkflowEditorPanel`, `BlockListWidget`, editors |
 | `src/ui/editors/ScreenRegionOverlay.*` | Win32 overlay for in-game template capture |
 | `src/storage/` | `JsonSerializer` |
@@ -260,9 +262,9 @@ poez/                          # repo root (legacy folder name)
 
 ### 5.1 Application layer (`src/app/`)
 
-- **`Application`**: Qt app subclass; sets org/name/version; migrates legacy `poez` data; exposes `dataDirectory()`, `autoSaveFilePath()`, `ensureDpiAwareness()`.
+- **`Application`**: Qt app subclass; sets org/name/version; imports prior-install project + settings on first launch; exposes `dataDirectory()`, `autoSaveFilePath()`, `ensureDpiAwareness()`.
 - **`MainWindow`**: Main UI shell — target window title, feature list, workflow editor, run control, exit/shutdown (`prepareForShutdown` stops worker, dismisses overlays, flush auto-save).
-- **`HotkeyManager`**: Global hotkeys via `RegisterHotKey` / `WM_HOTKEY` on a hidden message-only Win32 host; restores previous foreground window before running workflow (no focus steal to SuckbongMachine).
+- **`HotkeyManager`**: Global hotkeys via `RegisterHotKey` / `WM_HOTKEY` on a hidden message-only Win32 host; restores previous foreground window before running workflow (no focus steal to PIPBONG).
 
 ### 5.2 Screen capture (`ScreenCapture`)
 
@@ -289,7 +291,7 @@ poez/                          # repo root (legacy folder name)
 
 ### 5.5 Workflow engine
 
-- **Block types (UI):** `ImageFind`, `Click`, `KeyPress`, `Wait`, `Loop`. Legacy `Comment` blocks still load from JSON but are hidden from add/type UI. Legacy JSON `"type": "If"` entries are skipped on load.
+- **Block types (UI):** `ImageFind`, `Click`, `KeyPress`, `Wait`. Workflow **구간 반복** uses `workflow.loopRegions` (not a block type).
 - **`WorkflowEngine`**: Runs workflow on **`QThread` worker**; emits `started`, `blockStarted`, `blockFinished` (with ImageFind match confidence + preview pixmap), `logMessage`, `finished`.
 - **`ExecutionContext`**: Stop flag, last match point/confidence/preview, logging callback.
 - **ImageFind execution:** Poll loop until match, timeout, or stop; sets last match for subsequent `Click` blocks (`LastMatch` target).
@@ -305,12 +307,20 @@ poez/                          # repo root (legacy folder name)
 
 | Item | Location |
 |------|----------|
-| Auto-save file | `%LOCALAPPDATA%/SuckbongMachine/SuckbongMachine/project.json` via `QStandardPaths::AppDataLocation` |
-| Legacy auto-save | `%LOCALAPPDATA%/poez/poez/project.json` — migrated on first launch if new path empty |
+| Auto-save file | `%LOCALAPPDATA%/PIPBONG/PIPBONG/project.json` via `QStandardPaths::AppDataLocation` |
+| Prior install import | First launch copies `project.json` + `templates/` from `%LOCALAPPDATA%/SuckbongMachine/SuckbongMachine/` or `%LOCALAPPDATA%/poez/poez/` when the PIPBONG folder is empty; merges `QSettings` from the same prior org/app once (`Application`) |
 | Templates | `{projectDirectory}/templates/*.png` |
 | Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
 | Debounce | 800 ms after edits; also on window close |
 | Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); `program/pointerFeedback/click/*` for click pointer animation; bottom **설정** button opens program settings dialog |
+| Calculator sheet | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry` |
+
+### 5.8 poe.ninja economy calculator
+
+- **Entry:** bottom **계산기** button (left of **설정**); modeless `CalculatorDialog`.
+- **`PoeNinjaClient`:** `GET /poe2/api/data/index-state` then `GET /poe2/api/economy/exchange/{version}/overview?league={DisplayName}&type=Currency` (unofficial, no auth; `league` must be display name e.g. `Runes of Aldur`).
+- **`SpreadsheetModel`:** 20×8 grid — manual numbers, `=A1+B1` formulas, **화폐 연동** API cells (Divine-based `primaryValue`); recalculates on edit or refresh.
+- **Persistence:** `QSettings` keys `calculator/sheet_v1`, `calculator/lastLeague`, `calculator/geometry` (not in `project.json`).
 
 ---
 
@@ -339,7 +349,14 @@ poez/                          # repo root (legacy folder name)
 ### Run controls
 
 - Run/stop: **실행** menu and feature hotkeys (main toolbar run/stop buttons removed).
-- Title bar: `SuckbongMachine {version}` or `SuckbongMachine {version} - {filename}` when project file open.
+- Title bar: `PIPBONG {version}` or `PIPBONG {version} - {filename}` when project file open.
+
+### Economy calculator (poe.ninja)
+
+1. Click bottom **계산기** (left of **설정**).
+2. Select league → **새로고침** loads PoE2 Currency Exchange rates.
+3. Edit cells: numbers, `=A1*B2` formulas, or **화폐 연동** on selected cell.
+4. Sheet and window layout persist in `QSettings` across restarts.
 
 ---
 
@@ -385,6 +402,7 @@ poez/                          # repo root (legacy folder name)
 | `userInputInterrupt` | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run. Legacy `"None"` loads as `"Stop"`. Excludes mouse movement, injected input, and the feature's own hotkey |
 | `pointerVisualFeedback` | `true` (omitted) | When `false`, disables target-window click/match pulse overlay for this feature during runs |
 | `roiCorrection` | `false` (omitted) | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
+| `editFirstTemplateRoiOnStart` | `false` (omitted) | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run |
 
 `hotkey` is optional. `virtualKey` is Win32 VK code.
 
@@ -406,6 +424,8 @@ poez/                          # repo root (legacy folder name)
 | `multiScale` | `false` | Written as `true` when enabled |
 | `minScale` / `maxScale` | `0.9` / `1.1` | Written only when non-default |
 | `roiCorrection` | `false` (omitted) | Per-block ROI correction when feature `roiCorrection` is off; loop 2+ uses session-only matched template rect from loop 1 |
+| `returnToPreviousImageFindOnFailure` | `false` (omitted) | On detection failure (miss limit), jump workflow execution to the previous `ImageFind` block in the list |
+| `retryAfterNextActionOnFailure` | `false` (omitted) | On first detection failure: run the next block once, then retry this block; on second failure jump to the next `ImageFind` block |
 
 #### `Click`
 
@@ -545,7 +565,7 @@ Mixing Qt logical geometry, `WA_TranslucentBackground`, and `SetWindowPos` in ph
 
 #### Known limitation
 
-If POE runs **as administrator**, a non-elevated SuckbongMachine process may not receive input over the game window. Fix: run SuckbongMachine with matching elevation.
+If POE runs **as administrator**, a non-elevated PIPBONG process may not receive input over the game window. Fix: run PIPBONG with matching elevation.
 
 #### Key files
 
@@ -566,7 +586,7 @@ If POE runs **as administrator**, a non-elevated SuckbongMachine process may not
 - Match surrounding C++/Qt style; minimal diffs.
 - UI strings: Korean via `tr()` / `QStringLiteral`.
 - Block log messages: Korean.
-- No hardcoded version strings — use `SBM_VERSION` / `QCoreApplication::applicationVersion()`.
+- No hardcoded version strings — use `PIPBONG_VERSION` / `QCoreApplication::applicationVersion()`.
 
 ### 8.4 Qt stylesheet and changeEvent (mandatory — no startup crash)
 
@@ -600,7 +620,7 @@ Cursor rule: `.cursor/rules/ux-regression-checklist.mdc`.
 
 ### 8.6 Physical keyboard state during workflow runs (mandatory — do not regress)
 
-**Status:** Verified working on Windows (2026-06). Ending a workflow loop must **not** release Shift/Ctrl/Alt the user was already holding **before the feature session started**. Keys SBM pressed during the run (KeyPress **누름**, modifier **누름**, Click block modifiers left down) are **released automatically** when each loop iteration or the feature session ends.
+**Status:** Verified working on Windows (2026-06). Ending a workflow loop must **not** release Shift/Ctrl/Alt the user was already holding **before the feature session started**. Keys PIPBONG pressed during the run (KeyPress **누름**, modifier **누름**, Click block modifiers left down) are **released automatically** when each loop iteration or the feature session ends.
 
 #### Symptom (user-held modifiers — do not regress)
 
@@ -610,9 +630,9 @@ User holds **Shift** (run/walk in games) while a feature runs — often **click-
 
 | Rule | Detail |
 |------|--------|
-| Track | `InputSimulator` records synthetic KEYDOWN/KEYUP into `ExecutionContext::m_sbmHeldVirtualKeys` while the worker runs |
+| Track | `InputSimulator` records synthetic KEYDOWN/KEYUP into `ExecutionContext::m_pipbongHeldVirtualKeys` while the worker runs |
 | Restore | `ExecutionContext::restoreRunKeyboard()` after each `WorkflowRunner::run` and `endRunKeyboardSession()` in `finishRunSession` |
-| Scope | Only virtual keys SBM actually sent DOWN and did not later UP — not keys the user held before the session (those never get a synthetic DOWN) |
+| Scope | Only virtual keys PIPBONG actually sent DOWN and did not later UP — not keys the user held before the session (those never get a synthetic DOWN) |
 | Per-block guards unchanged | `GetAsyncKeyState` + pre-block `ModifierSnapshot` still prevent duplicate DOWN/UP during blocks |
 
 #### Root causes (historical bugs — user-held modifiers)
@@ -620,7 +640,7 @@ User holds **Shift** (run/walk in games) while a feature runs — often **click-
 | Cause | Why it breaks physical holds |
 |-------|------------------------------|
 | `AttachThreadInput` in focus restore | Detach clears modifier state Windows tracks for keys still held physically |
-| Unconditional `SendInput` KEYUP | Synthetic KEYUP cancels a real hold, not only SBM’s own synthetic DOWN |
+| Unconditional `SendInput` KEYUP | Synthetic KEYUP cancels a real hold, not only PIPBONG's own synthetic DOWN |
 | `reassertPhysicallyHeldModifiers` on run finish | End-of-loop KEYDOWN/KEYUP “sync” disturbed real keyboard state — **removed** |
 | Hold hotkey UP delivered to game | Feature binding release (e.g. side button UP) reaches target app when loop ends |
 | Global `SendInput` for client clicks | Keyboard/mouse input queue pollution vs. in-window `SendMessage` |
@@ -630,9 +650,9 @@ User holds **Shift** (run/walk in games) while a feature runs — often **click-
 | Layer | Responsibility |
 |-------|----------------|
 | `restoreForegroundWindow` | `AllowSetForegroundWindow(ASFW_ANY)` + `SetForegroundWindow` only — **never** `AttachThreadInput` (`HotkeyManager.cpp`, `ScreenCapture.cpp`) |
-| `InputSimulator` | Modifier KEYDOWN/KEYUP guarded by `GetAsyncKeyState` (generic + L/R VK); track `AppliedKeyModifiers` per block; track session `m_sbmHeldVirtualKeys` for run-end restore |
+| `InputSimulator` | Modifier KEYDOWN/KEYUP guarded by `GetAsyncKeyState` (generic + L/R VK); track `AppliedKeyModifiers` per block; track session `m_pipbongHeldVirtualKeys` for run-end restore |
 | `HotkeyManager` | Low-level keyboard/mouse hooks swallow consumed feature hotkeys (`return 1`); ignore `LLKHF_INJECTED` / `LLMHF_INJECTED` |
-| Run teardown | `WorkflowEngine` worker calls `restoreRunKeyboard()` after each loop; `finishRunSession` calls `endRunKeyboardSession()` — releases **SBM-held keys only**, never blind sync of full keyboard state |
+| Run teardown | `WorkflowEngine` worker calls `restoreRunKeyboard()` after each loop; `finishRunSession` calls `endRunKeyboardSession()` — releases **PIPBONG-held keys only**, never blind sync of full keyboard state |
 
 #### InputSimulator rules
 
@@ -645,7 +665,7 @@ User holds **Shift** (run/walk in games) while a feature runs — often **click-
 #### HotkeyManager rules
 
 1. **`holdKeyboardHookProc` / `mouseHookProc`**: When `handleHoldKeyEvent` / `handleMouseButtonEvent` returns true, return **`1`** so the event is **not** forwarded to other apps (`CallNextHookEx` must not run for swallowed events).
-2. **Injected input**: Ignore events with `LLKHF_INJECTED` (keyboard) or `LLMHF_INJECTED` (mouse) so SBM’s own `SendInput` does not re-enter hotkey handling.
+2. **Injected input**: Ignore events with `LLKHF_INJECTED` (keyboard) or `LLMHF_INJECTED` (mouse) so PIPBONG's own `SendInput` does not re-enter hotkey handling.
 3. **Hold mode bindings**: Swallow both DOWN and UP for the bound key or mouse button so the target app never sees the feature hotkey as a click/keypress when starting or stopping the loop.
 4. **Foreground**: Before emitting hold/trigger signals, restore previous foreground with the same `restoreForegroundWindow` helper (no `AttachThreadInput`).
 
@@ -697,7 +717,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 | Layer | Rule |
 |-------|------|
 | Build | **Ctrl+Shift+B** / `빌드.bat` / `build-release.ps1` → `cmake --build build --config Release` |
-| Run | `launch.json` **`Run SuckbongMachine (Release)`** with `preLaunchTask` **`Build Release`** |
+| Run | `launch.json` **`Run PIPBONG (Release)`** with `preLaunchTask` **`Build Release`** |
 | CMake Tools | **`cmake.enabled`: `false`** in `.vscode/settings.json` — workspace only |
 | Git | Four `.vscode/*` files whitelisted in `.gitignore` — never delete from repo |
 | Exclude | `build-clangd/` — do not use as CMake build dir |
@@ -725,7 +745,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 ### After every completed task
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
-2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave an empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip for docs/rules-only. Static `dist/SuckbongMachine.exe` **only when the user explicitly requests** distribution. **Never** leave shipped work only under `[Unreleased]` with an unchanged version.
+2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave an empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip for docs/rules-only. Static `dist/PIPBONG.exe` **only when the user explicitly requests** distribution. **Never** leave shipped work only under `[Unreleased]` with an unchanged version.
 3. Keep diffs minimal; match existing C++ / Qt conventions.
 4. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
 5. **Do not regress IDE build workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files and `cmake.enabled: false`; never replace F5 with CMake Tools configure-on-open.
@@ -740,7 +760,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 ## 10. Versioning Policy
 
-**Single source of truth:** `project(SuckbongMachine VERSION x.y.z)` in `CMakeLists.txt` → `configure_file` → `build/generated/SbmVersion.h` → `Application::setApplicationVersion()`.
+**Single source of truth:** `project(PIPBONG VERSION x.y.z)` in `CMakeLists.txt` → `configure_file` → `build/generated/PipbongVersion.h` → `Application::setApplicationVersion()`.
 
 **Do not** hardcode version strings elsewhere.
 
@@ -770,10 +790,10 @@ When in doubt, **patch bump**.
 
 ### When bumping (checklist)
 
-1. Update `project(SuckbongMachine VERSION ...)` in `CMakeLists.txt`.
+1. Update `project(PIPBONG VERSION ...)` in `CMakeLists.txt`.
 2. Move `[Unreleased]` items into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history).
 3. Leave empty `[Unreleased]` section.
-4. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `cmake --build build --config Release` (kill running exe before link). Skip docs/rules-only. Static `dist/SuckbongMachine.exe` only when the user requests distribution.
+4. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `cmake --build build --config Release` (kill running exe before link). Skip docs/rules-only. Static `dist/PIPBONG.exe` only when the user requests distribution.
 
 ### Changelog format
 
@@ -794,6 +814,128 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.9] - 2026-06-29
+
+### Added
+
+- Calculator spreadsheet: right-click cell context menu with **시세 연동** and **셀 지우기** (`CalculatorDialog`).
+
+## [0.7.8] - 2026-06-29
+
+### Added
+
+- Calculator **시세 연동** picker: **카테고리** combo filters the item list (전체 + 14 poe.ninja categories); search still works within the selected category (`CurrencyPickerDialog`).
+
+## [0.7.7] - 2026-06-29
+
+### Added
+
+- PoE2 economy Korean names for all 14 poe.ninja calculator categories (~638 items): `EconomyNameKo` + generated `EconomyNameKoData.inc` from PoE2DB (`scripts/fetch-poe2db-ko-names.py`, `PoeNinjaClient::localizeEconomyRates`).
+
+### Changed
+
+- Calculator **시세 연동** picker and rate cells show PoE2DB Korean item names for fragments, runes, essences, uncut gems, expedition items, and other non-currency categories (not only 화폐).
+
+## [0.7.6] - 2026-06-29
+
+### Added
+
+- Calculator fetches all 14 poe.ninja PoE2 currency-exchange categories (화폐, 파편, 심연의 뼈, 미가공 젬, 혈통 보조 젬, 에센스, 영혼 핵, 우상, 룬, 징조, 탐험, 액체 감정, 균열 촉매, 베리시움) in parallel; **시세 연동** picker groups items by category (`PoeNinjaEconomyCategories`, `PoeNinjaClient`, `CurrencyPickerDialog`).
+
+### Changed
+
+- Economy item ids use `category:item` composite keys (legacy `divine` loads as `currency:divine`); base-currency combo still lists 화폐 category only (`SpreadsheetModel`, `CalculatorDialog`).
+
+## [0.7.5] - 2026-06-29
+
+### Fixed
+
+- Calculator currency icons failed to load: PoE2 exchange API image paths are on `web.poecdn.com`, not `poe.ninja` (`poeNinjaAssetUrl`); `CurrencyIconCache::setRates` re-fetches when the resolved URL changes.
+
+## [0.7.4] - 2026-06-29
+
+### Changed
+
+- Calculator last-refresh label uses Korea Standard Time (`Asia/Seoul`) instead of UTC (`CalculatorDialog`).
+- Calculator **기준 화폐** combo: any indexed currency can be the rate base (converted from poe.ninja Divine-relative `primaryValue`); choice persists in `QSettings` (`SpreadsheetModel`, `CalculatorDialog`).
+- Currency icons always accompany currency UI: placeholder icon while loading in spreadsheet ApiRef cells, **화폐 연동** picker, and base-currency combo (`CurrencyIconCache`, `SpreadsheetCellDelegate`, `CurrencyPickerDialog`).
+
+## [0.7.3] - 2026-06-29
+
+### Changed
+
+- Calculator currency display names use official Korean translations from PoE2DB (`poe2db.tw/kr/Currency`): `CurrencyNameKo` maps all 49 poe.ninja currency ids to localized names; applied on API parse and when refreshing bound spreadsheet cells (`PoeNinjaClient`, `SpreadsheetModel`).
+
+## [0.7.2] - 2026-06-29
+
+### Added
+
+- Calculator currency icons from poe.ninja `items[].image` URLs: disk-cached `CurrencyIconCache`, icon column in spreadsheet cells and **화폐 연동** picker (`CurrencyIconCache`, `SpreadsheetCellDelegate`, `CurrencyPickerDialog`, `PoeNinjaClient`).
+
+## [0.7.1] - 2026-06-29
+
+### Fixed
+
+- Calculator poe.ninja fetch failed on refresh: PoE2 exchange API uses string currency ids (e.g. `alch`), not integers — `PoeNinjaClient::parseExchangeOverview` now parses string ids; league combo omits leagues without a snapshot version (`PoeNinjaClient`, `CalculatorDialog`).
+
+## [0.7.0] - 2026-06-29
+
+### Added
+
+- **시세 계산기:** bottom **계산기** button opens modeless `CalculatorDialog` with spreadsheet grid (`SpreadsheetModel`, `FormulaEvaluator`); poe.ninja PoE2 Currency Exchange via `PoeNinjaClient` (`index-state` + `exchange/.../overview`); league picker, refresh, **화폐 연동** cells, `=A1+B1` formulas; persists sheet in `QSettings` (`CalculatorDialog`, `MainWindow`).
+
+## [0.6.3] - 2026-06-29
+
+### Fixed
+
+- ImageFind block editor: **매칭 실패 시 이전 블록 복귀** and **다음 동작 후 재시도** checkboxes can be enabled together; removed mutual-exclusion UI (`ImageFindEditor`).
+- Combined failure handling: first failure runs next block then retries when retry is enabled; on second failure prefers **return to previous** ImageFind when that option is set, otherwise advances to the next ImageFind (`WorkflowRunner`).
+
+## [0.6.2] - 2026-06-29
+
+### Fixed
+
+- Restored first-launch import from prior app installs **SuckbongMachine** and **poez**: auto-save `project.json`, `templates/`, and `QSettings` (window layout, hotkeys, program options) into **PIPBONG** when the new data folder is empty or still contains only the default **예시 기능** stub (`Application`).
+
+## [0.6.1] - 2026-06-29
+
+### Removed
+
+- Legacy **Loop** / **Comment** / **If** block types and editors (`LoopBlock`, `CommentBlock`, `LoopEditor`, `CommentEditor`, `BranchWorkflowEditor`); unknown JSON block types are skipped on load (`BlockFactory`, `BlockEditorDialog`, `CMakeLists.txt`).
+- App data migration from pre-PIPBONG folders (`Application::migrateLegacyAppData`).
+- Unused `ProgramSettings::showWorkflowRunFeedback`; `FeatureRunMode::Toggle`; `UserInputInterruptMode::None`; QSettings/template JSON legacy hotkey migration (`TemplateCaptureHotkeySettings`, `ImageFindBlock`, `KeyPressBlock`).
+- Orphan `SbmVersion.h.in`; unused CMake **debug** build preset.
+
+### Changed
+
+- JSON load accepts only `ImageFind`, `Click`, `KeyPress`, `Wait` blocks; ImageFind saves `templates` array only (no mirror `template` field).
+
+## [0.6.0] - 2026-06-29
+
+### Changed
+
+- Application rebrand **SuckbongMachine** → **PIPBONG**: executable `PIPBONG.exe`, updater `PIPBONGUpdater.exe`, Qt org/app name, window title, project file filter, Win32 overlay/hotkey class names, `PipbongVersion.h`, CMake target `PIPBONG`, vcpkg manifest `pipbong`, IDE launch **Run PIPBONG (Release)** (`CMakeLists.txt`, `Application`, `MainWindow`, `UpdateChecker`, overlays, scripts, `.vscode/`, rules, `AGENTS.md`).
+- GitHub: private source **`Baegovda/PIPBONG`**, public releases **`Baegovda/PIPBONG-releases`** (`PipbongVersion.h.in`, `create-github-release.ps1`, git remote).
+- Auto-save migrates from legacy `%LOCALAPPDATA%/SuckbongMachine/SuckbongMachine/` when the PIPBONG data folder is empty (`Application::migrateLegacyAppData`).
+
+## [0.5.99] - 2026-06-29
+
+### Added
+
+- ImageFind block **바로 다음 동작 후 다시 감지 시도, 감지되지 않으면 다음 템플릿 매칭 블록 절차로 넘어감** (`retryAfterNextActionOnFailure` JSON): on first detection failure (miss limit), run the next block once then retry this ImageFind; on second failure jump to the next ImageFind block (`ImageFindBlock`, `ImageFindEditor`, `WorkflowRunner`, `ExecutionContext` defer-retry state).
+
+## [0.5.98] - 2026-06-29
+
+### Added
+
+- ImageFind block **매칭 실패 시 바로 이전 템플릿 매칭 블록으로 돌아감** (`returnToPreviousImageFindOnFailure` JSON): on detection failure (miss limit), `WorkflowRunner` jumps to the previous ImageFind block (`ImageFindBlock`, `ImageFindEditor`, `WorkflowRunner`).
+
+## [0.5.97] - 2026-06-29
+
+### Added
+
+- Feature **기능 편집** option **첫 시작 시 첫 번째 템플릿의 ROI 수정한 뒤 바로 시작** (`editFirstTemplateRoiOnStart` JSON): before run, editable `RoiPreviewOverlay` on the first ImageFind block with templates and custom ROIs; confirm saves ROI and starts workflow; Esc cancels (`Feature`, `FeatureEditDialog`, `JsonSerializer`, `MainWindow`).
 
 ## [0.5.96] - 2026-06-29
 
@@ -823,7 +965,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixed
 
-- Incremental builds no longer recompile every translation unit on a version bump: `SBM_VERSION` and update macros moved from global `target_compile_definitions` to generated `SbmVersion.h` included only by `Application.cpp` and `UpdateChecker.cpp` (`CMakeLists.txt`, `SbmVersion.h.in`).
+- Incremental builds no longer recompile every translation unit on a version bump: `PIPBONG_VERSION` and update macros moved from global `target_compile_definitions` to generated `PipbongVersion.h` included only by `Application.cpp` and `UpdateChecker.cpp` (`CMakeLists.txt`, `PipbongVersion.h.in`).
 
 ## [0.5.91] - 2026-06-29
 
@@ -1004,7 +1146,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
-- Daily dev build policy: `SBM_SKIP_WINDEPLOY=ON` on `default` preset skips `windeployqt` on every incremental link (~3 s no-op / ~5 s single-file builds); one-shot `deploy-qt` CMake target and `scripts/deploy-qt.ps1` for Qt DLL deployment (`CMakeLists.txt`, `CMakePresets.json`, `scripts/build-release.ps1`, AGENTS.md §3).
+- Daily dev build policy: `PIPBONG_SKIP_WINDEPLOY=ON` on `default` preset skips `windeployqt` on every incremental link (~3 s no-op / ~5 s single-file builds); one-shot `deploy-qt` CMake target and `scripts/deploy-qt.ps1` for Qt DLL deployment (`CMakeLists.txt`, `CMakePresets.json`, `scripts/build-release.ps1`, AGENTS.md §3).
 
 ## [0.5.63] - 2026-06-29
 
@@ -1146,20 +1288,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
-- In-app update and `create-github-release.ps1` publish to public **`Baegovda/SBM-releases`** (exe only) so **파일 → 업데이트** works while source stays in private **`Baegovda/SBM`**.
+- In-app update and `create-github-release.ps1` publish to public **`Baegovda/PIPBONG-releases`** (exe only) so **파일 → 업데이트** works while source stays in private **`Baegovda/PIPBONG`**.
 
 ## [0.5.42] - 2026-06-26
 
 ### Changed
 
-- GitHub repository rename `sbm` → `SBM`: update URL, in-app update repo id (`Baegovda/SBM`), release script, and git remote.
+- GitHub repository rename `sbm` → `PIPBONG`: update URL, in-app update repo id (`Baegovda/PIPBONG`), release script, and git remote.
 
 ## [0.5.41] - 2026-06-24
 
 ### Added
 
-- In-app update: **파일 → 업데이트** checks GitHub Releases (`Baegovda/SBM`), downloads `SuckbongMachine.exe`, and replaces the running app via `SuckbongMachineUpdater.exe` (`UpdateChecker`, `MainWindow`).
-- `SuckbongMachineUpdater` helper executable and `scripts/create-github-release.ps1` for publishing `dist/` assets to GitHub Releases.
+- In-app update: **파일 → 업데이트** checks GitHub Releases (`Baegovda/PIPBONG`), downloads `PIPBONG.exe`, and replaces the running app via `PIPBONGUpdater.exe` (`UpdateChecker`, `MainWindow`).
+- `PIPBONGUpdater` helper executable and `scripts/create-github-release.ps1` for publishing `dist/` assets to GitHub Releases.
 
 ## [0.5.40] - 2026-06-24
 
@@ -1437,7 +1579,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
-- Run keyboard restore: SBM tracks synthetic KEYDOWN/KEYUP during workflow runs and releases any still-held keys when each loop iteration or feature session ends; user-held modifiers at session start are never tracked and stay down (`ExecutionContext`, `InputSimulator`, `WorkflowEngine`, `MainWindow::finishRunSession`).
+- Run keyboard restore: PIPBONG tracks synthetic KEYDOWN/KEYUP during workflow runs and releases any still-held keys when each loop iteration or feature session ends; user-held modifiers at session start are never tracked and stay down (`ExecutionContext`, `InputSimulator`, `WorkflowEngine`, `MainWindow::finishRunSession`).
 
 ## [0.4.27] - 2026-06-24
 
@@ -1548,7 +1690,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
-- Feature option **사용자 입력 시** (`userInputInterrupt` JSON): **일시정지** toggles workflow pause/resume on physical keyboard or mouse-button input (excluding movement and injected/SBM input); **완전 정지** stops the run (`UserInputInterruptMonitor`, `FeatureEditDialog`, `ExecutionContext`, `MainWindow`).
+- Feature option **사용자 입력 시** (`userInputInterrupt` JSON): **일시정지** toggles workflow pause/resume on physical keyboard or mouse-button input (excluding movement and injected/PIPBONG input); **완전 정지** stops the run (`UserInputInterruptMonitor`, `FeatureEditDialog`, `ExecutionContext`, `MainWindow`).
 
 ## [0.4.10] - 2026-06-24
 
@@ -1681,7 +1823,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Fixed
 
-- Click/KeyPress block modifiers no longer stay down into the next workflow step: `releaseAppliedModifiers` compares against a pre-block `ModifierSnapshot` so SBM-applied Ctrl/Alt/Shift are released after Tap while user-held keys are not (`InputSimulator`).
+- Click/KeyPress block modifiers no longer stay down into the next workflow step: `releaseAppliedModifiers` compares against a pre-block `ModifierSnapshot` so PIPBONG-applied Ctrl/Alt/Shift are released after Tap while user-held keys are not (`InputSimulator`).
 
 ## [0.3.13] - 2026-06-22
 
@@ -1711,7 +1853,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
-- Distribution build policy: `default` CMake preset is static single-exe (`x64-windows-static`, `build-static/`); ship `dist/SuckbongMachine.exe` only. Optional `dynamic-dev` preset for local DLL builds (`CMakePresets.json`, `.cursor/rules/static-single-exe-build.mdc`, AGENTS.md §3 / §9 / §10).
+- Distribution build policy: `default` CMake preset is static single-exe (`x64-windows-static`, `build-static/`); ship `dist/PIPBONG.exe` only. Optional `dynamic-dev` preset for local DLL builds (`CMakePresets.json`, `.cursor/rules/static-single-exe-build.mdc`, AGENTS.md §3 / §9 / §10).
 
 ## [0.3.8] - 2026-06-22
 
@@ -1729,13 +1871,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
-- Static single-exe build preset: `cmake --preset static` with vcpkg `x64-windows-static`, `SBM_STATIC_BUILD`, `qt_import_plugins`, and post-build copy to `dist/SuckbongMachine.exe` (`CMakePresets.json`, `CMakeLists.txt`).
+- Static single-exe build preset: `cmake --preset static` with vcpkg `x64-windows-static`, `PIPBONG_STATIC_BUILD`, `qt_import_plugins`, and post-build copy to `dist/PIPBONG.exe` (`CMakePresets.json`, `CMakeLists.txt`).
 
 ## [0.3.5] - 2026-06-22
 
 ### Added
 
-- Application icon from `Sbm.ico`: Windows executable resource (`resources/SuckbongMachine.rc`), Qt embedded resource (`resources/app.qrc`), `QApplication::setWindowIcon`, and custom title bar badge pixmap (`Application`, `CustomTitleBar`).
+- Application icon from `Pipbong.ico`: Windows executable resource (`resources/PIPBONG.rc`), Qt embedded resource (`resources/app.qrc`), `QApplication::setWindowIcon`, and custom title bar badge pixmap (`Application`, `CustomTitleBar`).
 
 ## [0.3.4] - 2026-06-22
 
@@ -1883,10 +2025,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - ImageFind block editor simplified: removed template path field, search-area combo, custom-region spin boxes, and screen-percent controls from the form; **탐색 ROI** group contains only **ROI 선택** and toggle **ROI 미리보기** buttons (Win32 semi-transparent overlay on the target window; inline thumbnail and ROI metadata label removed); template section uses **화면에서 캡처** only with **매칭 테스트**.
 - Repositioned as a general-purpose window automation utility: main UI label **POE 창** → **대상 창**; default target title empty (placeholder **대상 창 제목**); overlay strings use **대상 창** instead of game-specific wording.
 - Comment block removed from workflow add buttons and block-type picker; legacy `Comment` blocks in saved projects still load and edit.
-- Application renamed from **poez** to **SuckbongMachine** (display name, executable `SuckbongMachine.exe`, Qt org/app name, `SBM_VERSION`); legacy `%LOCALAPPDATA%/poez/poez` auto-save migrates on first launch when the new data folder is empty.
+- Application renamed from **poez** to **PIPBONG** (display name, executable `PIPBONG.exe`, Qt org/app name, `PIPBONG_VERSION`); legacy `%LOCALAPPDATA%/poez/poez` auto-save migrates on first launch when the new data folder is empty.
 - Image matching pipeline rebuilt (`ImageMatcher`): `PreparedTemplate` with cached grayscale, `MatchOptions` / expanded `MatchResult` (center, matched size, scale), multi-scale template matching (default 0.9×/1.0×/1.1×), bounds validation, and consistent preprocessing; `ImageFindBlock` uses new API with optional JSON `multiScale` / `minScale` / `maxScale`; match-test UI shows scale and matched region size.
 - ImageFind match selection: when multiple template hits exceed the confidence threshold in the search region, the top-leftmost match (smallest Y, then X) is chosen instead of the highest-confidence peak; overlapping duplicates are suppressed via non-maximum suppression; within a single workflow run, later ImageFind blocks skip already-selected regions and advance to the next top-left match (log shows `[n/total]` when multiple hits exist).
-- Feature global hotkeys no longer steal focus to SuckbongMachine: hotkeys register on a hidden message-only Win32 host window and the previous foreground window is restored before the workflow runs; pressing the same feature hotkey again while that workflow is running stops it (`MainWindow::onHotkeyTriggered`).
+- Feature global hotkeys no longer steal focus to PIPBONG: hotkeys register on a hidden message-only Win32 host window and the previous foreground window is restored before the workflow runs; pressing the same feature hotkey again while that workflow is running stops it (`MainWindow::onHotkeyTriggered`).
 - Block editor dialog: block-type selector changed from combo box to a horizontal row of toggle buttons at the top (**이미지 찾기**, **클릭**, **키 입력**, **대기**; legacy **주석** button only when editing a Comment block); `fitToCurrentPage()` sizes the stack to the **current** editor page only (fixes QStackedWidget using the largest hidden page width/height).
 - Workflow block list row height reduced: template thumbnails **32×32** (was 48×48), default row height **36 px** with tighter cell padding in `BlockListWidget`.
 - ImageFind block list summary no longer shows the template file path; uses label, screen-percent ROI text, or **이미지 찾기** fallback (`ImageFindBlock::summary`).
@@ -1895,7 +2037,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - ImageFind execution: polls continuously until a match is found or the workflow is stopped; each miss reports **ImageFindMiss** progress to the UI; success reports **ImageFindSuccess**; workflow block list shows red **pulse** highlight (⌕) while searching, green highlight (✓) on match; removed unused `timeoutMs` / `failOnNotFound` fields; editor **재시도 간격** replaces **타임아웃**.
 - Workflow editor: replaced **블록 추가** popup menu with per-type add buttons (**이미지 찾기**, **클릭**, **키 입력**, **대기**); edit/move controls grouped below; feature list panel narrowed; log panel height reduced; workflow area given more horizontal and vertical space.
 - Main window run control bar: removed **실행** / **중지** buttons; run/stop remain on **실행** menu and feature hotkeys; **종료** moved to bottom-right below the target window controls.
-- Main window title bar shows application version from `SBM_VERSION` via `QCoreApplication::applicationVersion()` (e.g. `SuckbongMachine 0.1.0` or `SuckbongMachine 0.1.0 - project.json` when a file is open); removed **자동 저장** suffix.
+- Main window title bar shows application version from `PIPBONG_VERSION` via `QCoreApplication::applicationVersion()` (e.g. `PIPBONG 0.1.0` or `PIPBONG 0.1.0 - project.json` when a file is open); removed **자동 저장** suffix.
 - Project documentation consolidated into this single `AGENTS.md` file; removed separate `CHANGELOG.md`, `HANDOVER.md`, and `README.md`.
 
 ### Added
@@ -1920,7 +2062,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Per-feature global hotkey binding to run workflows: `HotkeyManager` (`RegisterHotKey` / `WM_HOTKEY`), `HotkeyCaptureDialog`, feature list **단축키** button / double-click / context menu, hotkey display in list, JSON persistence under `hotkey`, duplicate-binding warning.
 - Exit button in the run control bar and unified shutdown path (`MainWindow::onExitRequested` / `prepareForShutdown`: stop workflow worker, dismiss capture overlays, flush auto-save); confirm exit only when a workflow is running.
 - AI governance docs: this file, `.cursor/rules/`, and changelog baseline.
-- Single version source via `SBM_VERSION` compile definition from CMake.
+- Single version source via `PIPBONG_VERSION` compile definition from CMake.
 
 ### Fixed
 
@@ -1970,7 +2112,7 @@ Using automation tools with Path of Exile may violate the game's **Terms of Serv
 
 This warning must remain in [§1 Project Overview](#1-project-overview) and user-facing materials. Do not remove it.
 
-**Technical risk:** Administrator-elevated POE blocks input from non-elevated SuckbongMachine (see [overlay limitation](#known-limitation)).
+**Technical risk:** Administrator-elevated POE blocks input from non-elevated PIPBONG (see [overlay limitation](#known-limitation)).
 
 ---
 
@@ -2008,7 +2150,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ### `physical-keyboard-preservation.mdc`
 
-- User-held modifiers before a feature session must not be released on loop end; SBM-applied keys are restored via tracked `m_sbmHeldVirtualKeys`.
+- User-held modifiers before a feature session must not be released on loop end; PIPBONG-applied keys are restored via tracked `m_pipbongHeldVirtualKeys`.
 - Full rules in [§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress): no `AttachThreadInput`, guarded modifier `SendInput`, session key tracking + `restoreRunKeyboard`, hotkey swallow in hooks, no blind keyboard sync.
 
 ### `drag-adjust-numeric-input.mdc`
@@ -2019,7 +2161,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 ### `static-single-exe-build.mdc`
 
 - **Task close:** incremental `cmake --build build --config Release` when C++/headers/`CMakeLists.txt` changed (changed `.cpp` only); skip docs/rules-only.
-- **Distribution:** static single exe → `dist/SuckbongMachine.exe` **only when the user explicitly asks**.
+- **Distribution:** static single exe → `dist/PIPBONG.exe` **only when the user explicitly asks**.
 - Full policy in [§3](#3-build-and-run). **IDE/F5 path:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) + `ide-build-workflow.mdc`.
 
 ### `ide-build-workflow.mdc`
@@ -2030,4 +2172,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-29. Current application version: 0.5.96.*
+*Last consolidated: 2026-06-29. Current application version: 0.7.6.*

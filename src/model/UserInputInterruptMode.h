@@ -3,7 +3,6 @@
 #include <string>
 
 enum class UserInputInterruptMode {
-    None,
     Pause,
     Stop
 };

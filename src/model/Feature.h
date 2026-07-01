@@ -41,6 +41,9 @@ public:
     bool roiCorrection() const { return m_roiCorrection; }
     void setRoiCorrection(bool enabled) { m_roiCorrection = enabled; }
 
+    bool editFirstTemplateRoiOnStart() const { return m_editFirstTemplateRoiOnStart; }
+    void setEditFirstTemplateRoiOnStart(bool enabled) { m_editFirstTemplateRoiOnStart = enabled; }
+
     /// True when run mode supports ROI correction (infinite repeat or N≥2).
     bool roiCorrectionSessionEligible() const;
 
@@ -65,6 +68,7 @@ private:
     UserInputInterruptMode m_userInputInterruptMode = UserInputInterruptMode::Stop;
     bool m_pointerVisualFeedback = true;
     bool m_roiCorrection = false;
+    bool m_editFirstTemplateRoiOnStart = false;
     HotkeyBinding m_hotkey;
     Workflow m_workflow;
 };

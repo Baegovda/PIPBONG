@@ -19,7 +19,7 @@ alwaysApply: true
 ## After Every Completed Task
 
 1. Append entries under `[Unreleased]` in **AGENTS.md** section **11. Changelog and Version History** as you implement.
-2. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip build for docs/rules-only tasks. Static `dist/SuckbongMachine.exe` **only when the user explicitly requests** distribution. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
+2. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip build for docs/rules-only tasks. Static `dist/PIPBONG.exe` **only when the user explicitly requests** distribution. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
 3. Keep diffs minimal; match existing C++ / Qt conventions in surrounding code.
 
 ## References

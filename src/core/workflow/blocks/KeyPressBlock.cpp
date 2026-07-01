@@ -102,14 +102,9 @@ QString keyPressBindingLabel(int virtualKey,
     return parts.join(QStringLiteral("+"));
 }
 
-ModifierKeyAction loadModifierAction(const nlohmann::json& json,
-                                     const char* actionField,
-                                     const char* legacyField) {
+ModifierKeyAction loadModifierAction(const nlohmann::json& json, const char* actionField) {
     if (json.contains(actionField)) {
         return modifierKeyActionFromString(json.value(actionField, "None"));
-    }
-    if (json.value(legacyField, false)) {
-        return ModifierKeyAction::Down;
     }
     return ModifierKeyAction::None;
 }
@@ -170,14 +165,8 @@ std::unique_ptr<KeyPressBlock> KeyPressBlock::fromJson(const nlohmann::json& jso
     block->useMainKey = json.value("useMainKey", true);
     block->virtualKey = json.value("virtualKey", 0x20);
     block->action = keyActionFromString(json.value("action", "Tap"));
-    block->modifierActions.ctrl = loadModifierAction(json, "ctrlAction", "ctrl");
-    block->modifierActions.alt = loadModifierAction(json, "altAction", "alt");
-    block->modifierActions.shift = loadModifierAction(json, "shiftAction", "shift");
-    if (!block->useMainKey && !block->modifierActions.hasAny()
-        && (json.value("ctrl", false) || json.value("alt", false) || json.value("shift", false))) {
-        block->modifierActions = KeyPressModifierActions::fromLegacyBools(json.value("ctrl", false),
-                                                                         json.value("alt", false),
-                                                                         json.value("shift", false));
-    }
+    block->modifierActions.ctrl = loadModifierAction(json, "ctrlAction");
+    block->modifierActions.alt = loadModifierAction(json, "altAction");
+    block->modifierActions.shift = loadModifierAction(json, "shiftAction");
     return block;
 }

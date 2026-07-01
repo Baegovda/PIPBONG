@@ -331,30 +331,6 @@ QPixmap waitBlockPreviewIcon() {
     return pixmap;
 }
 
-QPixmap loopBlockPreviewIcon() {
-    QPixmap pixmap(kThumbnailSize, kThumbnailSize);
-    pixmap.fill(Qt::transparent);
-
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    const QColor accent(74, 144, 217);
-    painter.setPen(QPen(accent, 1.6, Qt::SolidLine, Qt::RoundCap));
-    painter.setBrush(Qt::NoBrush);
-
-    const QRectF arcRect(6.0, 6.0, 20.0, 20.0);
-    painter.drawArc(arcRect, 45 * 16, 270 * 16);
-
-    const QPointF tip(arcRect.right() - 1.0, arcRect.center().y() - 2.0);
-    QPolygonF arrow;
-    arrow << tip << QPointF(tip.x() - 5.0, tip.y() - 3.0) << QPointF(tip.x() - 2.0, tip.y() + 4.0);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(accent);
-    painter.drawPolygon(arrow);
-
-    return pixmap;
-}
-
 QPixmap mouseMovePreviewIcon() {
     QPixmap pixmap(kThumbnailSize, kThumbnailSize);
     pixmap.fill(Qt::transparent);
@@ -398,10 +374,6 @@ QPixmap loadBlockThumbnail(const Block& block, const QString& projectDirectory) 
 
     if (block.type() == BlockType::Wait) {
         return waitBlockPreviewIcon();
-    }
-
-    if (block.type() == BlockType::Loop) {
-        return loopBlockPreviewIcon();
     }
 
     if (block.type() != BlockType::ImageFind) {

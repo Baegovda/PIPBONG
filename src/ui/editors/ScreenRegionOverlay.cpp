@@ -25,7 +25,7 @@
 namespace {
 
 #ifdef _WIN32
-constexpr wchar_t kOverlayClassName[] = L"SbmScreenRegionOverlay";
+constexpr wchar_t kOverlayClassName[] = L"PipbongScreenRegionOverlay";
 constexpr int kEscHotkeyId = 0x504F;
 constexpr UINT kMsgCancelPick = WM_APP + 0x504F;
 

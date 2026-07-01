@@ -57,7 +57,7 @@ alwaysApply: true
 
 ## Known limitation
 
-If POE runs **as administrator**, a non-elevated SuckbongMachine process may not receive input over the game window. Document in user-facing text if reported; fix is run SuckbongMachine with matching elevation.
+If POE runs **as administrator**, a non-elevated PIPBONG process may not receive input over the game window. Document in user-facing text if reported; fix is run PIPBONG with matching elevation.
 
 ## Key files
 

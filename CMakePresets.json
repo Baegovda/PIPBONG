@@ -13,7 +13,7 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "C:/Users/Revaptor_FX/PIP2.0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows",
-        "SBM_SKIP_WINDEPLOY": "ON"
+        "PIPBONG_SKIP_WINDEPLOY": "ON"
       }
     },
     {
@@ -28,7 +28,7 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "C:/Users/Revaptor_FX/PIP2.0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows-static",
-        "SBM_STATIC_BUILD": "ON"
+        "PIPBONG_STATIC_BUILD": "ON"
       }
     }
   ],
@@ -38,12 +38,6 @@
       "displayName": "Release (fast dynamic)",
       "configurePreset": "default",
       "configuration": "Release"
-    },
-    {
-      "name": "debug",
-      "displayName": "Debug (dynamic)",
-      "configurePreset": "default",
-      "configuration": "Debug"
     },
     {
       "name": "static-release",

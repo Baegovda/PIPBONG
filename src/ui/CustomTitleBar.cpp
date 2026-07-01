@@ -57,7 +57,7 @@ void CustomTitleBar::setupUi() {
     if (!appIcon.isNull()) {
         m_appBadge->setPixmap(appIcon.pixmap(22, 22));
     } else {
-        m_appBadge->setText(QStringLiteral("SB"));
+        m_appBadge->setText(QStringLiteral("PIP"));
     }
 
     m_menuBar = new QMenuBar(this);

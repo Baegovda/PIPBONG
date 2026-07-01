@@ -8,6 +8,7 @@
 #include <QByteArray>
 #include <QElapsedTimer>
 #include <QMainWindow>
+#include <QPointer>
 #include <QSet>
 #include <map>
 #include <memory>
@@ -35,6 +36,7 @@ class QMenuBar;
 class QSplitter;
 class TargetWindowDetailPanel;
 class CustomTitleBar;
+class CalculatorDialog;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -61,6 +63,7 @@ private slots:
     void onExitRequested();
     void onCheckForUpdates();
     void onProgramSettings();
+    void onCalculator();
     void onAlwaysOnTopToggled(bool checked);
     void onPickTargetWindow();
     void onShowTargetWindow();
@@ -118,6 +121,7 @@ private:
     bool ensureProjectFilePath();
     void prepareForShutdown();
     void startFeatureRun(Feature* feature, bool fromHotkey = false);
+    bool tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Feature* feature);
     void selectRunningFeatureForDisplay(Feature* feature);
     void launchWorkflowRun(FeatureRunSession& session, Feature* feature, bool repeatIteration = false);
     void ensureRunSessionResources(FeatureRunSession& session, Feature* feature, bool refreshWorkflow = false);
@@ -168,6 +172,7 @@ private:
     QPushButton* m_showTargetWindowButton = nullptr;
     QCheckBox* m_alwaysOnTopCheck = nullptr;
     QPushButton* m_exitButton = nullptr;
+    QPushButton* m_calculatorButton = nullptr;
     QPushButton* m_settingsButton = nullptr;
     TargetWindowDetailPanel* m_targetWindowDetailPanel = nullptr;
     CustomTitleBar* m_titleBar = nullptr;
@@ -179,5 +184,6 @@ private:
     QString m_persistentStatusMessage;
     QString m_transientStatusMessage;
     std::map<std::string, FeatureRunSession> m_runSessions;
+    QPointer<CalculatorDialog> m_calculatorDialog;
     bool m_modified = false;
 };

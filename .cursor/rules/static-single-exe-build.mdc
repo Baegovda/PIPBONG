@@ -13,7 +13,7 @@ alwaysApply: true
 |----|-------|
 | `cmake --build build --config Release` after version bump / changelog | `cmake --build` mid-implementation unless compile check is needed |
 | Re-use existing `build/` — changed sources only recompile | `cmake --preset default` on every task |
-| Kill `SuckbongMachine.exe` before link (`LNK1104`) — `scripts/build-release.ps1` does this | Assume exe is fresh without a build |
+| Kill `PIPBONG.exe` before link (`LNK1104`) — `scripts/build-release.ps1` does this | Assume exe is fresh without a build |
 | Run `cmake --preset default` only when `build/` is missing, then `--build` | Full clean rebuild unless user asks |
 | Skip close-out build when the task changed **only** docs / `.cursor/rules` / changelog with **no** C++ or `CMakeLists.txt` sources | Run static `dist/` build automatically |
 
@@ -21,18 +21,18 @@ alwaysApply: true
 
 **IDE / F5 (mandatory):** Ctrl+Shift+B and F5 use tracked `.vscode/` + `cmake.enabled: false` — see `.cursor/rules/ide-build-workflow.mdc` and AGENTS.md §3.1. **Do not** fix IDE issues by re-enabling CMake Tools configure-on-open.
 
-Equivalent: `Stop-Process -Name SuckbongMachine -ErrorAction SilentlyContinue; cmake --build build --config Release`
+Equivalent: `Stop-Process -Name PIPBONG -ErrorAction SilentlyContinue; cmake --build build --config Release`
 
-**Dev preset:** `SBM_SKIP_WINDEPLOY=ON` — incremental links skip `windeployqt` (~3 s no-change / ~5–15 s single-file edits). Run `.\scripts\deploy-qt.ps1` once when DLLs beside the exe are missing.
+**Dev preset:** `PIPBONG_SKIP_WINDEPLOY=ON` — incremental links skip `windeployqt` (~3 s no-change / ~5–15 s single-file edits). Run `.\scripts\deploy-qt.ps1` once when DLLs beside the exe are missing.
 
-A `CMakeLists.txt` **version bump** reconfigures CMake and regenerates `SbmVersion.h` — only `Application.cpp` and `UpdateChecker.cpp` recompile (not the whole target).
+A `CMakeLists.txt` **version bump** reconfigures CMake and regenerates `PipbongVersion.h` — only `Application.cpp` and `UpdateChecker.cpp` recompile (not the whole target).
 
 ## Distribution — user request only
 
 | Do | Don't |
 |----|-------|
 | `cmake --preset static` then `cmake --build build-static --config Release` | Run static build at ordinary task close |
-| Ship **`dist/SuckbongMachine.exe`** only (~55 MB, no DLLs) | Assume static is the default close-out build |
+| Ship **`dist/PIPBONG.exe`** only (~55 MB, no DLLs) | Assume static is the default close-out build |
 
 First `cmake --preset static` may install static vcpkg packages (long one-time step).
 

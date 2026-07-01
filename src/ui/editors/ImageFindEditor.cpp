@@ -188,6 +188,14 @@ void ImageFindEditor::reload() {
         QSignalBlocker blocker(m_roiCorrectionCheck);
         m_roiCorrectionCheck->setChecked(m_block->roiCorrection);
     }
+    if (m_returnToPreviousImageFindCheck) {
+        QSignalBlocker blocker(m_returnToPreviousImageFindCheck);
+        m_returnToPreviousImageFindCheck->setChecked(m_block->returnToPreviousImageFindOnFailure);
+    }
+    if (m_retryAfterNextActionCheck) {
+        QSignalBlocker blocker(m_retryAfterNextActionCheck);
+        m_retryAfterNextActionCheck->setChecked(m_block->retryAfterNextActionOnFailure);
+    }
     updateRoiCorrectionUi();
 }
 
@@ -258,6 +266,24 @@ void ImageFindEditor::setupUi() {
         tr("두 번째 루프부터 첫 루프 매칭 위치 기준으로 템플릿보다 약 10%% 넓은 영역만 탐색합니다. "
            "기능 편집의 전체 ROI 보정이 꺼져 있을 때만 이 블록에 적용됩니다."));
     matchForm->addRow(QString(), m_roiCorrectionCheck);
+
+    m_returnToPreviousImageFindCheck =
+        new QCheckBox(tr("매칭 실패 시 바로 이전 템플릿 매칭 블록으로 돌아감"), this);
+    m_returnToPreviousImageFindCheck->setToolTip(
+        tr("감지 실패(연속 미스 한도 도달) 시 워크플로가 바로 앞쪽 템플릿 매칭 블록부터 다시 실행됩니다. "
+           "다음 동작 후 재시도 옵션과 함께 켜면, 재시도 후에도 실패할 때 이전 블록으로 돌아갑니다. "
+           "기능·구간 반복에서 미스 한도가 설정되어 있을 때 동작합니다."));
+    matchForm->addRow(QString(), m_returnToPreviousImageFindCheck);
+
+    m_retryAfterNextActionCheck =
+        new QCheckBox(tr("바로 다음 동작 후 다시 감지 시도, 감지되지 않으면 다음 템플릿 매칭 블록 절차로 넘어감"),
+                      this);
+    m_retryAfterNextActionCheck->setToolTip(
+        tr("감지 실패 시 바로 다음 블록을 한 번 실행한 뒤 이 블록을 다시 감지합니다. "
+           "그래도 실패하면 다음 템플릿 매칭 블록으로 넘어갑니다. "
+           "이전 블록 복귀 옵션과 함께 켜면, 재시도 후 실패 시 이전 블록 복귀가 우선합니다. "
+           "기능·구간 반복에서 미스 한도가 설정되어 있을 때 동작합니다."));
+    matchForm->addRow(QString(), m_retryAfterNextActionCheck);
 
     m_roiCorrectionGlobalHint = new HintLabel(
         tr("기능 편집에서 전체 ROI 보정이 켜져 있습니다."), this);
@@ -433,6 +459,12 @@ void ImageFindEditor::syncUiToBlockValues() {
         m_matchModeSwitch->isRightSelected() ? ImageFindTemplateMatchMode::All : ImageFindTemplateMatchMode::Any;
     if (m_roiCorrectionCheck && m_roiCorrectionCheck->isVisible()) {
         m_block->roiCorrection = m_roiCorrectionCheck->isChecked();
+    }
+    if (m_returnToPreviousImageFindCheck) {
+        m_block->returnToPreviousImageFindOnFailure = m_returnToPreviousImageFindCheck->isChecked();
+    }
+    if (m_retryAfterNextActionCheck) {
+        m_block->retryAfterNextActionOnFailure = m_retryAfterNextActionCheck->isChecked();
     }
     syncBlockTemplatePathsFromList();
     syncBlockCustomRegionsFromList();

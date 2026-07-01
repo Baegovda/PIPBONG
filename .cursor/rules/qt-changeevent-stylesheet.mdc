@@ -43,6 +43,6 @@ void MyWidget::changeEvent(QEvent* event) {
 ## Before merging UI theme work
 
 - Grep for `StyleChange` + `setStyleSheet` / `applyTheme` in the same widget.
-- Run `SuckbongMachine.exe` and confirm process stays alive >10 s (crash reproduces in ~3–6 s when broken).
+- Run `PIPBONG.exe` and confirm process stays alive >10 s (crash reproduces in ~3–6 s when broken).
 
 Full policy: [AGENTS.md](../../AGENTS.md) — **§8.4 Qt stylesheet and changeEvent**.

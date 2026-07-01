@@ -1,6 +1,6 @@
 {
-  "name": "suckbongmachine",
-  "version-string": "0.1.0",
+  "name": "pipbong",
+  "version-string": "0.6.2",
   "dependencies": [
     "qtbase",
     "opencv4",

@@ -13,6 +13,8 @@ class ExecutionContext;
 struct WorkflowRunResult {
     bool success = true;
     std::string message;
+    /// When >= 0, caller continues the parent workflow at this block index.
+    int jumpToBlockIndex = -1;
 };
 
 struct WorkflowRunHooks {

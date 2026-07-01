@@ -1,18 +1,18 @@
-$ErrorActionPreference = 'Stop'
-
+$ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
-Stop-Process -Name SuckbongMachine -ErrorAction SilentlyContinue
-
-if (-not (Test-Path 'build\CMakeCache.txt')) {
-    Write-Host 'First configure: cmake --preset default' -ForegroundColor Cyan
+if (-not (Test-Path "build\CMakeCache.txt")) {
+    Write-Host "Configuring default preset (first time)..."
     cmake --preset default
 }
 
-Write-Host 'Building Release (incremental, no windeployqt)...' -ForegroundColor Cyan
+Write-Host "Building Release (incremental, no windeployqt)..."
+Stop-Process -Name PIPBONG -ErrorAction SilentlyContinue
 cmake --build build --config Release
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host ''
-Write-Host 'OK: build\Release\SuckbongMachine.exe' -ForegroundColor Green
-Write-Host 'DLLs missing? Run: .\scripts\deploy-qt.ps1' -ForegroundColor DarkGray
+Write-Host 'OK: build\Release\PIPBONG.exe' -ForegroundColor Green
+if (-not (Test-Path "build\Release\Qt6Core.dll")) {
+    Write-Host 'DLLs missing? Run: .\scripts\deploy-qt.ps1' -ForegroundColor Yellow
+}

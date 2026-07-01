@@ -23,7 +23,7 @@
 namespace {
 
 #ifdef _WIN32
-constexpr wchar_t kOverlayClassName[] = L"SbmMatchTestOverlay";
+constexpr wchar_t kOverlayClassName[] = L"PipbongMatchTestOverlay";
 constexpr int kEscHotkeyId = 0x4d54;
 constexpr UINT kMsgDismissOverlay = WM_APP + 0x4d54;
 

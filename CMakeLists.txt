@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-project(SuckbongMachine VERSION 0.5.96 LANGUAGES CXX)
+project(PIPBONG VERSION 0.7.9 LANGUAGES CXX)
 
-option(SBM_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
-option(SBM_SKIP_WINDEPLOY "Skip windeployqt on every incremental dev build; run deploy-qt target when DLLs are needed" ON)
+option(PIPBONG_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
+option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on every incremental dev build; run deploy-qt target when DLLs are needed" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,7 +10,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-if(SBM_STATIC_BUILD)
+if(PIPBONG_STATIC_BUILD)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
@@ -18,7 +18,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
-set(SBM_SOURCES
+set(PIPBONG_SOURCES
     src/main.cpp
     src/app/Application.cpp
     src/app/MainWindow.cpp
@@ -53,8 +53,16 @@ set(SBM_SOURCES
     src/core/workflow/blocks/ClickBlock.cpp
     src/core/workflow/blocks/KeyPressBlock.cpp
     src/core/workflow/blocks/WaitBlock.cpp
-    src/core/workflow/blocks/LoopBlock.cpp
-    src/core/workflow/blocks/CommentBlock.cpp
+    src/core/poeninja/PoeNinjaClient.cpp
+    src/core/poeninja/CurrencyNameKo.cpp
+    src/core/poeninja/EconomyNameKo.cpp
+    src/core/poeninja/PoeNinjaEconomyCategories.cpp
+    src/ui/calculator/FormulaEvaluator.cpp
+    src/ui/calculator/SpreadsheetModel.cpp
+    src/ui/calculator/CurrencyIconCache.cpp
+    src/ui/calculator/SpreadsheetCellDelegate.cpp
+    src/ui/calculator/CurrencyPickerDialog.cpp
+    src/ui/calculator/CalculatorDialog.cpp
     src/storage/JsonSerializer.cpp
     src/ui/FeatureListPanel.cpp
     src/ui/FeatureListWidget.cpp
@@ -85,10 +93,7 @@ set(SBM_SOURCES
     src/ui/editors/KeyPressEditor.cpp
     src/ui/editors/HotkeyCaptureDialog.cpp
     src/ui/editors/WaitEditor.cpp
-    src/ui/editors/LoopEditor.cpp
     src/ui/editors/WorkflowLoopRegionsDialog.cpp
-    src/ui/editors/BranchWorkflowEditor.cpp
-    src/ui/editors/CommentEditor.cpp
     src/ui/editors/ScreenRegionOverlay.cpp
     src/ui/editors/RoiPreviewOverlay.cpp
     src/ui/editors/CaptureConfirmDialog.cpp
@@ -97,23 +102,23 @@ set(SBM_SOURCES
 
 if(WIN32)
     enable_language(RC)
-    list(APPEND SBM_SOURCES resources/SuckbongMachine.rc)
+    list(APPEND PIPBONG_SOURCES resources/PIPBONG.rc)
 endif()
 
-add_executable(SuckbongMachine WIN32 ${SBM_SOURCES})
+add_executable(PIPBONG WIN32 ${PIPBONG_SOURCES})
 
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/app/SbmVersion.h.in
-    ${CMAKE_CURRENT_BINARY_DIR}/generated/SbmVersion.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/app/PipbongVersion.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/PipbongVersion.h
     @ONLY)
 
-target_include_directories(SuckbongMachine PRIVATE
+target_include_directories(PIPBONG PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${OpenCV_INCLUDE_DIRS}
 )
 
-target_link_libraries(SuckbongMachine PRIVATE
+target_link_libraries(PIPBONG PRIVATE
     Qt6::Widgets
     Qt6::Network
     opencv_core
@@ -122,25 +127,25 @@ target_link_libraries(SuckbongMachine PRIVATE
     nlohmann_json::nlohmann_json
 )
 
-if(WIN32 AND NOT SBM_STATIC_BUILD)
+if(WIN32 AND NOT PIPBONG_STATIC_BUILD)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "$ENV{Qt6_DIR}/../../../bin" "${Qt6_DIR}/../../../bin")
     if(WINDEPLOYQT_EXECUTABLE)
-        if(NOT SBM_SKIP_WINDEPLOY)
-            add_custom_command(TARGET SuckbongMachine POST_BUILD
-                COMMAND "${WINDEPLOYQT_EXECUTABLE}" "$<TARGET_FILE:SuckbongMachine>"
+        if(NOT PIPBONG_SKIP_WINDEPLOY)
+            add_custom_command(TARGET PIPBONG POST_BUILD
+                COMMAND "${WINDEPLOYQT_EXECUTABLE}" "$<TARGET_FILE:PIPBONG>"
                 COMMENT "Deploying Qt runtime..."
             )
         endif()
         add_custom_target(deploy-qt
-            COMMAND "${WINDEPLOYQT_EXECUTABLE}" "$<TARGET_FILE:SuckbongMachine>"
-            DEPENDS SuckbongMachine
-            COMMENT "Deploying Qt/OpenCV runtime DLLs next to SuckbongMachine.exe"
+            COMMAND "${WINDEPLOYQT_EXECUTABLE}" "$<TARGET_FILE:PIPBONG>"
+            DEPENDS PIPBONG
+            COMMENT "Deploying Qt/OpenCV runtime DLLs next to PIPBONG.exe"
         )
     endif()
 endif()
 
-if(SBM_STATIC_BUILD)
-    qt_import_plugins(SuckbongMachine
+if(PIPBONG_STATIC_BUILD)
+    qt_import_plugins(PIPBONG
         INCLUDE Qt6::QWindowsIntegrationPlugin
         INCLUDE Qt6::QModernWindowsStylePlugin
         INCLUDE Qt6::QGifPlugin
@@ -148,41 +153,41 @@ if(SBM_STATIC_BUILD)
         INCLUDE Qt6::QJpegPlugin
         INCLUDE Qt6::QSchannelBackendPlugin
     )
-    add_custom_command(TARGET SuckbongMachine POST_BUILD
+    add_custom_command(TARGET PIPBONG POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/dist"
-        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:SuckbongMachine>" "${CMAKE_SOURCE_DIR}/dist/SuckbongMachine.exe"
-        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:SuckbongMachineUpdater>" "${CMAKE_SOURCE_DIR}/dist/SuckbongMachineUpdater.exe"
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:PIPBONG>" "${CMAKE_SOURCE_DIR}/dist/PIPBONG.exe"
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:PIPBONGUpdater>" "${CMAKE_SOURCE_DIR}/dist/PIPBONGUpdater.exe"
         COMMENT "Copying single-exe build to dist/"
     )
 endif()
 
 if(WIN32)
-    target_link_libraries(SuckbongMachine PRIVATE user32 gdi32 dwmapi dxgi d3d11 winmm)
+    target_link_libraries(PIPBONG PRIVATE user32 gdi32 dwmapi dxgi d3d11 winmm)
 endif()
 
-target_compile_definitions(SuckbongMachine PRIVATE
+target_compile_definitions(PIPBONG PRIVATE
     NOMINMAX
     WIN32_LEAN_AND_MEAN
     UNICODE
     _UNICODE
 )
 
-if(SBM_STATIC_BUILD)
-    target_compile_definitions(SuckbongMachine PRIVATE QT_STATIC_BUILD)
+if(PIPBONG_STATIC_BUILD)
+    target_compile_definitions(PIPBONG PRIVATE QT_STATIC_BUILD)
 endif()
 
 if(WIN32)
-    add_executable(SuckbongMachineUpdater WIN32 src/updater/main.cpp)
-    target_link_libraries(SuckbongMachineUpdater PRIVATE shell32)
-    target_compile_definitions(SuckbongMachineUpdater PRIVATE
+    add_executable(PIPBONGUpdater WIN32 src/updater/main.cpp)
+    target_link_libraries(PIPBONGUpdater PRIVATE shell32)
+    target_compile_definitions(PIPBONGUpdater PRIVATE
         WIN32_LEAN_AND_MEAN
         UNICODE
         _UNICODE
     )
 
-    add_custom_command(TARGET SuckbongMachine POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:SuckbongMachineUpdater>"
-                "$<TARGET_FILE_DIR:SuckbongMachine>/SuckbongMachineUpdater.exe"
-        COMMENT "Copying SuckbongMachineUpdater next to main executable"
+    add_custom_command(TARGET PIPBONG POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:PIPBONGUpdater>"
+                "$<TARGET_FILE_DIR:PIPBONG>/PIPBONGUpdater.exe"
+        COMMENT "Copying PIPBONGUpdater next to main executable"
     )
 endif()

@@ -1,11 +1,11 @@
 ---
-description: Preserve user-held keyboard modifiers; release SBM-applied keys when workflow loops end
+description: Preserve user-held keyboard modifiers; release PIPBONG-applied keys when workflow loops end
 alwaysApply: true
 ---
 
 # Physical Keyboard State During Workflow Runs (Mandatory — Do Not Regress)
 
-**Status:** Verified working on Windows (2026-06). Workflow loop end must **not** release Shift/Ctrl/Alt the user was already holding **before the feature session started**. Keys SBM pressed during the run must be **released automatically** when each loop iteration or the feature session ends.
+**Status:** Verified working on Windows (2026-06). Workflow loop end must **not** release Shift/Ctrl/Alt the user was already holding **before the feature session started**. Keys PIPBONG pressed during the run must be **released automatically** when each loop iteration or the feature session ends.
 
 ## Problem (user-held modifiers)
 
@@ -15,18 +15,18 @@ User holds **Shift** (or Ctrl/Alt) in a game while a feature runs (often click-o
 
 | Rule | Detail |
 |------|--------|
-| Track | `InputSimulator` records synthetic KEYDOWN/KEYUP in `ExecutionContext::m_sbmHeldVirtualKeys` |
+| Track | `InputSimulator` records synthetic KEYDOWN/KEYUP in `ExecutionContext::m_pipbongHeldVirtualKeys` |
 | Restore | `restoreRunKeyboard()` after each `WorkflowRunner::run`; `endRunKeyboardSession()` in `finishRunSession` |
-| Scope | Only keys SBM sent DOWN without a matching UP — user pre-session holds never get a synthetic DOWN and are not tracked |
+| Scope | Only keys PIPBONG sent DOWN without a matching UP — user pre-session holds never get a synthetic DOWN and are not tracked |
 
 ## Root causes (known failures — user-held modifiers)
 
 | Cause | Mechanism |
 |-------|-----------|
 | `AttachThreadInput` in `restoreForegroundWindow` | Detach clears Windows modifier state for keys the user still holds |
-| Blind `SendInput` KEYUP | Synthetic KEYUP clears a physical hold, not just SBM's synthetic DOWN |
+| Blind `SendInput` KEYUP | Synthetic KEYUP clears a physical hold, not just PIPBONG's synthetic DOWN |
 | `reassertPhysicallyHeldModifiers` on run finish | Extra KEYDOWN/KEYUP at loop end disturbed real state — **removed entirely** |
-| Hold hotkey UP reaching the game | Side-button / key release delivered to target app after SBM stops |
+| Hold hotkey UP reaching the game | Side-button / key release delivered to target app after PIPBONG stops |
 | Global `SendInput` mouse on target `HWND` | Prefer `SendMessage` client clicks so keyboard queue is untouched |
 
 ## Required architecture
@@ -34,17 +34,17 @@ User holds **Shift** (or Ctrl/Alt) in a game while a feature runs (often click-o
 | Layer | Rule |
 |-------|------|
 | `restoreForegroundWindow` | `AllowSetForegroundWindow` + `SetForegroundWindow` only — **never** `AttachThreadInput` (`HotkeyManager`, `ScreenCapture`) |
-| `InputSimulator` modifiers | `GetAsyncKeyState` before KEYDOWN/KEYUP; per-block `AppliedKeyModifiers`; session `m_sbmHeldVirtualKeys` for run-end restore |
+| `InputSimulator` modifiers | `GetAsyncKeyState` before KEYDOWN/KEYUP; per-block `AppliedKeyModifiers`; session `m_pipbongHeldVirtualKeys` for run-end restore |
 | `InputSimulator::clickAtClient` | Client → screen coords, then `clickAt` (`SendInput` move+click batch); modifier guards unchanged |
 | `InputSimulator::sendKey` | Skip modifier **Tap** when that modifier is already physically down |
 | `HotkeyManager` hooks | Swallow consumed hotkey events (`return 1`); ignore `LLKHF_INJECTED` / `LLMHF_INJECTED` |
-| Run session teardown | `WorkflowEngine` + `finishRunSession` release **tracked SBM keys only** — no blind full-keyboard sync |
+| Run session teardown | `WorkflowEngine` + `finishRunSession` release **tracked PIPBONG keys only** — no blind full-keyboard sync |
 
 ## InputSimulator rules (detail)
 
 1. **`pressModifiersIfNeeded`**: Send KEYDOWN only when block requests modifier **and** it was not down in the pre-block `ModifierSnapshot`.
-2. **`releaseAppliedModifiers`**: After Tap, KEYUP only for `AppliedKeyModifiers` entries that were not in the pre-block snapshot (SBM-applied).
-3. **Session tracking**: Every synthetic KEYDOWN/KEYUP via `pressModifier` / `sendKey` updates `m_sbmHeldVirtualKeys` when a worker `ExecutionContext` is active.
+2. **`releaseAppliedModifiers`**: After Tap, KEYUP only for `AppliedKeyModifiers` entries that were not in the pre-block snapshot (PIPBONG-applied).
+3. **Session tracking**: Every synthetic KEYDOWN/KEYUP via `pressModifier` / `sendKey` updates `m_pipbongHeldVirtualKeys` when a worker `ExecutionContext` is active.
 4. **Client clicks**: Left/right/middle/X1/X2 via `SendMessage`; wheel/non-client still use `SendInput` where needed.
 5. **Never** add blind run-end keyboard sync or `reassertPhysicallyHeldModifiers`.
 
@@ -61,14 +61,14 @@ User holds **Shift** (or Ctrl/Alt) in a game while a feature runs (often click-o
 - `SendInput` KEYUP for Shift/Ctrl/Alt without `GetAsyncKeyState` guard during blocks
 - `reassertPhysicallyHeldModifiers` or blind workflow-finish keyboard sync
 - Global `SendInput` mouse for target-window client clicks when `HWND` is known
-- Delivering Hold hotkey button/key events to the game after SBM consumes them
+- Delivering Hold hotkey button/key events to the game after PIPBONG consumes them
 
 ## Manual verify before closing input/hotkey/workflow tasks
 
 1. Hold **Shift** in target app → run click-only workflow (**Hold** + side-button hotkey) → release hotkey → Shift must stay held in-game.
 2. Repeat / infinite loop stop mid-run — same check.
 3. Click block with **Shift** modifier while user already holds Shift — no spurious release on loop end.
-4. KeyPress **누름** during run → stop feature → SBM-pressed key released in target app.
+4. KeyPress **누름** during run → stop feature → PIPBONG-pressed key released in target app.
 
 ## Key files
 

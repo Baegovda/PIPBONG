@@ -21,7 +21,7 @@
 namespace {
 
 #ifdef _WIN32
-constexpr wchar_t kOverlayClassName[] = L"SbmTargetWindowHighlightOverlay";
+constexpr wchar_t kOverlayClassName[] = L"PipbongTargetWindowHighlightOverlay";
 constexpr UINT_PTR kTimerId = 1;
 constexpr UINT kTimerMs = 33;
 constexpr ULONGLONG kFlashDurationMs = 2400;

@@ -46,6 +46,9 @@ nlohmann::json featureToJson(const Feature& feature) {
     if (feature.roiCorrection()) {
         json["roiCorrection"] = true;
     }
+    if (feature.editFirstTemplateRoiOnStart()) {
+        json["editFirstTemplateRoiOnStart"] = true;
+    }
     if (!feature.hotkey().isEmpty()) {
         json["hotkey"] = feature.hotkey().toJson();
     }
@@ -65,6 +68,7 @@ void featureFromJson(const nlohmann::json& json, Feature& feature) {
         userInputInterruptModeFromString(json.value("userInputInterrupt", "Stop")));
     feature.setPointerVisualFeedback(json.value("pointerVisualFeedback", true));
     feature.setRoiCorrection(json.value("roiCorrection", false));
+    feature.setEditFirstTemplateRoiOnStart(json.value("editFirstTemplateRoiOnStart", false));
     if (json.contains("hotkey")) {
         feature.setHotkey(HotkeyBinding::fromJson(json["hotkey"]));
     } else {
@@ -154,7 +158,10 @@ void JsonSerializer::workflowFromJson(const nlohmann::json& json, Workflow& work
     workflow.clear();
     if (json.is_array()) {
         for (const auto& blockJson : json) {
-            workflow.addBlock(BlockFactory::fromJson(blockJson));
+            auto block = BlockFactory::fromJson(blockJson);
+            if (block) {
+                workflow.addBlock(std::move(block));
+            }
         }
         return;
     }
@@ -163,7 +170,10 @@ void JsonSerializer::workflowFromJson(const nlohmann::json& json, Workflow& work
     }
     if (json.contains("blocks") && json["blocks"].is_array()) {
         for (const auto& blockJson : json["blocks"]) {
-            workflow.addBlock(BlockFactory::fromJson(blockJson));
+            auto block = BlockFactory::fromJson(blockJson);
+            if (block) {
+                workflow.addBlock(std::move(block));
+            }
         }
     }
     if (json.contains("loopRegions")) {

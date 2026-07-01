@@ -3,6 +3,7 @@
 #include "app/Application.h"
 #include "app/ProgramSettings.h"
 #include "app/UserInputInterruptMonitor.h"
+#include "ui/calculator/CalculatorDialog.h"
 #include "ui/ProgramSettingsDialog.h"
 #include "model/UserInputInterruptMode.h"
 #include "app/HotkeyManager.h"
@@ -13,6 +14,7 @@
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/Workflow.h"
 #include "core/workflow/WorkflowEngine.h"
+#include "core/workflow/blocks/ImageFindBlock.h"
 #include "model/Feature.h"
 #include "model/Project.h"
 #include "storage/JsonSerializer.h"
@@ -50,8 +52,11 @@
 #include <QSizePolicy>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QPointer>
 #include <QTimer>
 #include <QVBoxLayout>
+
+#include <memory>
 
 #include "model/FeatureRunMode.h"
 
@@ -123,7 +128,7 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::setupUi() {
-    setWindowTitle(QStringLiteral("SuckbongMachine %1").arg(QCoreApplication::applicationVersion()));
+    setWindowTitle(QStringLiteral("PIPBONG %1").arg(QCoreApplication::applicationVersion()));
     setWindowFlag(Qt::FramelessWindowHint, true);
     resize(1280, 820);
 
@@ -182,10 +187,13 @@ void MainWindow::setupUi() {
     targetLayout->addLayout(detailRow);
 
     m_exitButton = new QPushButton(tr("종료"), bottomPanel);
+    m_calculatorButton = new QPushButton(tr("계산기"), bottomPanel);
+    m_calculatorButton->setToolTip(tr("poe.ninja 시세 계산기"));
     m_settingsButton = new QPushButton(tr("설정"), bottomPanel);
     m_settingsButton->setToolTip(tr("프로그램 설정"));
     auto* exitRow = new QHBoxLayout;
     exitRow->addStretch();
+    exitRow->addWidget(m_calculatorButton);
     exitRow->addWidget(m_settingsButton);
     exitRow->addWidget(m_exitButton);
 
@@ -318,6 +326,7 @@ void MainWindow::connectSignals() {
 
     connect(m_exitButton, &QPushButton::clicked, this, &MainWindow::onExitRequested);
     connect(m_settingsButton, &QPushButton::clicked, this, &MainWindow::onProgramSettings);
+    connect(m_calculatorButton, &QPushButton::clicked, this, &MainWindow::onCalculator);
     connect(m_alwaysOnTopCheck, &QCheckBox::toggled, this, &MainWindow::onAlwaysOnTopToggled);
     connect(m_pickWindowButton, &QPushButton::clicked, this, &MainWindow::onPickTargetWindow);
     connect(m_showTargetWindowButton, &QPushButton::clicked, this, &MainWindow::onShowTargetWindow);
@@ -346,6 +355,17 @@ void MainWindow::onCheckForUpdates() {
 void MainWindow::onProgramSettings() {
     ProgramSettingsDialog dialog(this);
     dialog.exec();
+}
+
+void MainWindow::onCalculator() {
+    if (!m_calculatorDialog) {
+        m_calculatorDialog = new CalculatorDialog(this);
+        m_calculatorDialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(m_calculatorDialog, &QObject::destroyed, this, [this]() { m_calculatorDialog = nullptr; });
+    }
+    m_calculatorDialog->show();
+    m_calculatorDialog->raise();
+    m_calculatorDialog->activateWindow();
 }
 
 void MainWindow::onAlwaysOnTopToggled(bool checked) {
@@ -517,6 +537,9 @@ void MainWindow::prepareForShutdown() {
     WorkflowMatchFeedbackOverlay::dismissAll();
     WorkflowRoiFlashOverlay::dismissAll();
     TargetWindowHighlightOverlay::dismissAll();
+    if (m_calculatorDialog) {
+        m_calculatorDialog->close();
+    }
     WindowPicker::cancelPick();
     CursorPositionPicker::cancelPick();
     m_autoSaveTimer->stop();
@@ -573,7 +596,7 @@ void MainWindow::onOpenProject() {
 
     const QString path = QFileDialog::getOpenFileName(
         this, tr("프로젝트 열기"), Application::instance()->projectDirectory(),
-        tr("SuckbongMachine 프로젝트 (*.json)"));
+        tr("PIPBONG 프로젝트 (*.json)"));
     if (path.isEmpty()) {
         return;
     }
@@ -599,7 +622,7 @@ void MainWindow::onSaveProject() {
 void MainWindow::onSaveProjectAs() {
     const QString path = QFileDialog::getSaveFileName(
         this, tr("다른 이름으로 저장"), Application::instance()->projectDirectory() + QStringLiteral("/project.json"),
-        tr("SuckbongMachine 프로젝트 (*.json)"));
+        tr("PIPBONG 프로젝트 (*.json)"));
     if (path.isEmpty()) {
         return;
     }
@@ -891,7 +914,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     session.featureId = feature->id();
     session.engine = std::make_unique<WorkflowEngine>(this);
     session.userStopRequested = false;
-    session.runningMode = normalizeRunMode(feature->runMode());
+    session.runningMode = feature->runMode();
     session.hotkeyLaunchedSession = fromHotkey;
     session.repeatSession = session.runningMode == FeatureRunMode::RepeatInfinite
                             || session.runningMode == FeatureRunMode::RepeatCount
@@ -906,7 +929,93 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     connectSessionEngine(session);
     m_runSessions.emplace(featureId, std::move(session));
     selectRunningFeatureForDisplay(feature);
-    launchWorkflowRun(*sessionFor(featureId), feature, false);
+    FeatureRunSession& activeSession = m_runSessions.at(featureId);
+    if (tryBeginFirstTemplateRoiEdit(activeSession, feature)) {
+        return;
+    }
+    launchWorkflowRun(activeSession, feature, false);
+}
+
+ImageFindBlock* firstImageFindWithEditableRoi(Workflow& workflow) {
+    for (const auto& block : workflow.blocks()) {
+        if (!block || block->type() != BlockType::ImageFind) {
+            continue;
+        }
+        auto* imageFind = static_cast<ImageFindBlock*>(block.get());
+        if (!imageFind->hasTemplates() || imageFind->customRegions.empty()) {
+            continue;
+        }
+        return imageFind;
+    }
+    return nullptr;
+}
+
+bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Feature* feature) {
+    if (!feature || !feature->editFirstTemplateRoiOnStart()) {
+        return false;
+    }
+
+    ImageFindBlock* block = firstImageFindWithEditableRoi(feature->workflow());
+    if (!block) {
+        return false;
+    }
+
+    QPointer<MainWindow> self = this;
+    const std::string featureId = session.featureId;
+    auto confirmed = std::make_shared<bool>(false);
+
+    RoiPreviewOverlay::EditableOptions options;
+    options.enabled = true;
+    options.activeIndex = 0;
+    options.onRoiEdited = [block](int index, const CaptureRegion& region) {
+        if (index < 0 || index >= static_cast<int>(block->customRegions.size())) {
+            return;
+        }
+        block->customRegions[static_cast<size_t>(index)] = region;
+        block->searchArea = SearchArea::CustomRegion;
+        if (!block->customRegions.empty()) {
+            block->customRegion = block->customRegions.front();
+        }
+    };
+    options.onConfirm = [self, featureId, confirmed]() {
+        if (!self) {
+            return;
+        }
+        *confirmed = true;
+        RoiPreviewOverlay::dismissAll();
+
+        FeatureRunSession* activeSession = self->sessionFor(featureId);
+        Feature* activeFeature = self->m_project ? self->m_project->featureById(featureId) : nullptr;
+        if (!activeSession || !activeFeature) {
+            self->m_runSessions.erase(featureId);
+            self->updateRunUiState();
+            return;
+        }
+
+        self->m_modified = true;
+        self->scheduleAutoSave();
+        self->refreshWorkflowEditor();
+        self->launchWorkflowRun(*activeSession, activeFeature, false);
+    };
+
+    const bool shown = RoiPreviewOverlay::show(
+        block->searchArea,
+        block->customRegion,
+        block->percentRegion,
+        block->customRegions,
+        this,
+        [self, featureId, confirmed](bool visible) {
+            if (visible || !self) {
+                return;
+            }
+            if (*confirmed) {
+                return;
+            }
+            self->m_runSessions.erase(featureId);
+            self->updateRunUiState();
+        },
+        options);
+    return shown;
 }
 
 void MainWindow::ensureRunSessionResources(FeatureRunSession& session,
@@ -1104,7 +1213,6 @@ bool MainWindow::shouldContinueRunSession(const FeatureRunSession& session, Feat
         return session.repeatSession;
     case FeatureRunMode::RepeatCount:
         return session.repeatSession && session.repeatRemaining > 0;
-    case FeatureRunMode::Toggle:
     default:
         return false;
     }
@@ -1525,7 +1633,7 @@ void MainWindow::loadProjectFromFile(const QString& path) {
 }
 
 void MainWindow::updateWindowTitle() {
-    m_baseWindowTitle = QStringLiteral("SuckbongMachine %1").arg(QCoreApplication::applicationVersion());
+    m_baseWindowTitle = QStringLiteral("PIPBONG %1").arg(QCoreApplication::applicationVersion());
     if (!m_projectFilePath.isEmpty()) {
         m_baseWindowTitle += QStringLiteral(" - ") + QFileInfo(m_projectFilePath).fileName();
     } else {
@@ -1640,8 +1748,7 @@ void MainWindow::updateTargetWindowDetails() {
 void MainWindow::syncUserInputInterruptForSession(FeatureRunSession& session, Feature* feature) {
     UserInputInterruptMonitor& monitor = UserInputInterruptMonitor::instance();
     monitor.unregisterSession(session.featureId);
-    if (!feature || feature->userInputInterruptMode() == UserInputInterruptMode::None
-        || !session.sessionContext) {
+    if (!feature || !session.sessionContext) {
         return;
     }
     monitor.registerSession(session.featureId,

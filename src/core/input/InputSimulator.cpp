@@ -460,7 +460,7 @@ WPARAM physicalMouseMoveWParam() {
 
 void releaseAppliedModifiers(const AppliedKeyModifiers& applied,
                              const ModifierSnapshot& beforeBlock) {
-    // Release only modifiers SBM pressed for this block. Never KEYUP keys the user
+    // Release only modifiers PIPBONG pressed for this block. Never KEYUP keys the user
     // already held before the block started (beforeBlock snapshot).
     if (applied.shift && !beforeBlock.shift) {
         pressModifier(VK_SHIFT, false);

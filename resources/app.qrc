@@ -1,6 +1,6 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
     <qresource prefix="/app">
-        <file>Sbm.ico</file>
+        <file>Pipbong.ico</file>
     </qresource>
 </RCC>

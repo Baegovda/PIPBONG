@@ -17,7 +17,7 @@
 #ifdef _WIN32
 namespace {
 
-constexpr wchar_t kHotkeyHostClassName[] = L"SuckbongMachineHotkeyHost";
+constexpr wchar_t kHotkeyHostClassName[] = L"PIPBONGHotkeyHost";
 
 HotkeyManager* g_hotkeyManager = nullptr;
 

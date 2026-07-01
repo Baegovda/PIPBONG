@@ -54,20 +54,6 @@ struct KeyPressModifierActions {
         return ctrl != ModifierKeyAction::None || alt != ModifierKeyAction::None
                || shift != ModifierKeyAction::None;
     }
-
-    static KeyPressModifierActions fromLegacyBools(bool ctrl, bool alt, bool shift) {
-        KeyPressModifierActions actions;
-        if (ctrl) {
-            actions.ctrl = ModifierKeyAction::Down;
-        }
-        if (alt) {
-            actions.alt = ModifierKeyAction::Down;
-        }
-        if (shift) {
-            actions.shift = ModifierKeyAction::Down;
-        }
-        return actions;
-    }
 };
 
 #ifdef _WIN32

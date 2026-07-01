@@ -26,7 +26,7 @@ void ProgramSettingsDialog::setupUi() {
     auto* layout = new QVBoxLayout(this);
 
     auto* hint = new HintLabel(
-        tr("SuckbongMachine 전체에 적용되는 설정입니다. 프로젝트 파일에는 저장되지 않습니다."), this);
+        tr("PIPBONG 전체에 적용되는 설정입니다. 프로젝트 파일에는 저장되지 않습니다."), this);
     layout->addWidget(hint);
 
     m_autoSelectRunningFeatureCheck =

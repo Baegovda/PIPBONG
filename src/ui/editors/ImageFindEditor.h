@@ -175,6 +175,10 @@ private:
 
     QCheckBox* m_roiCorrectionCheck = nullptr;
 
+    QCheckBox* m_returnToPreviousImageFindCheck = nullptr;
+
+    QCheckBox* m_retryAfterNextActionCheck = nullptr;
+
     HintLabel* m_roiCorrectionGlobalHint = nullptr;
 
     AnimatedTwoWaySwitch* m_matchModeSwitch = nullptr;

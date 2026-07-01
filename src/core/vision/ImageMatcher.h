@@ -38,6 +38,7 @@ public:
 
     static PreparedTemplate loadTemplate(const std::string& path);
     static cv::Mat toGrayscale(const cv::Mat& image);
+    static void toGrayscale(const cv::Mat& image, cv::Mat& grayOut);
     static bool isEffectivelyGrayscale(const cv::Mat& image, double maxMeanChannelSpread = 10.0);
     static bool isMatchRegionGrayscale(const cv::Mat& haystack,
                                        const MatchResult& match,
@@ -59,6 +60,12 @@ public:
     static MatchResult findPeakMatchGray(const cv::Mat& hayGray,
                                          const PreparedTemplate& templ,
                                          const MatchOptions& options);
+    static void findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
+                                            const PreparedTemplate& templ,
+                                            const MatchOptions& options,
+                                            bool enumerateAll,
+                                            MatchResult& outPeak,
+                                            std::vector<MatchResult>& outMatches);
     static void warmup();
     static std::vector<MatchResult> findAllTemplatesGray(const cv::Mat& hayGray,
                                                          const PreparedTemplate& templ,

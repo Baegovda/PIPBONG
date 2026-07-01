@@ -45,6 +45,10 @@ public:
     PercentRegion percentRegion;
     /// When feature-level ROI correction is off, enables session ROI correction for this block only.
     bool roiCorrection = false;
+    /// On detection failure (miss limit), workflow jumps to the previous ImageFind block.
+    bool returnToPreviousImageFindOnFailure = false;
+    /// On detection failure: run the next block once, retry this block; on second failure jump to next ImageFind.
+    bool retryAfterNextActionOnFailure = false;
 
     bool hasTemplates() const;
     std::string primaryTemplatePath() const;

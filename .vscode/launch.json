@@ -2,10 +2,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run SuckbongMachine (Release)",
+            "name": "Run PIPBONG (Release)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Release/SuckbongMachine.exe",
+            "program": "${workspaceFolder}/build/Release/PIPBONG.exe",
             "args": [],
             "cwd": "${workspaceFolder}/build/Release",
             "preLaunchTask": "Build Release"

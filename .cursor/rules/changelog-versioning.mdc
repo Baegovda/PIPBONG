@@ -16,13 +16,15 @@ Add bullet(s) under `[Unreleased]` in **AGENTS.md** section **11. Changelog and 
 
 Use English. Be specific (file/behavior), not vague.
 
+**Changelog ≠ handover:** §11 records *what changed*; procedures for the next agent (GitHub, release, scripts, URLs) belong in **AGENTS.md §3 / §8 / §9** in the **same task**. See `.cursor/rules/immediate-handover.mdc`.
+
 ## Version Bump (mandatory — every completed user task)
 
 **Before closing the task**, bump version. Do **not** leave work only under `[Unreleased]` with an unchanged `CMakeLists.txt` version.
 
 | Step | Action |
 |------|--------|
-| 1 | Increment `project(SuckbongMachine VERSION ...)` in `CMakeLists.txt` |
+| 1 | Increment `project(PIPBONG VERSION ...)` in `CMakeLists.txt` |
 | 2 | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in **AGENTS.md** §11 |
 | 3 | Leave empty `[Unreleased]` section |
 | 4 | Update **Current version** at top of **AGENTS.md** |
@@ -38,6 +40,6 @@ Use English. Be specific (file/behavior), not vague.
 
 When in doubt, **patch bump**.
 
-`Application.cpp` reads version from generated `SbmVersion.h` (from `CMakeLists.txt` `PROJECT_VERSION`); do not hardcode version strings elsewhere.
+`Application.cpp` reads version from generated `PipbongVersion.h` (from `CMakeLists.txt` `PROJECT_VERSION`); do not hardcode version strings elsewhere.
 
 Full policy: [AGENTS.md](../../AGENTS.md) — **§10 Versioning Policy**, **§11 Changelog**, **§3.1 IDE workflow**.

@@ -27,6 +27,7 @@ public:
                       UserInputInterruptMode userInputInterruptMode,
                       bool pointerVisualFeedback,
                       bool roiCorrection,
+                      bool editFirstTemplateRoiOnStart,
                       Project* project,
                       const std::string& featureId,
                       QWidget* parent = nullptr);
@@ -39,6 +40,7 @@ public:
     UserInputInterruptMode userInputInterruptMode() const;
     bool pointerVisualFeedback() const;
     bool roiCorrection() const;
+    bool editFirstTemplateRoiOnStart() const;
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -73,4 +75,5 @@ private:
     QComboBox* m_userInputInterruptCombo = nullptr;
     QCheckBox* m_pointerVisualFeedbackCheck = nullptr;
     QCheckBox* m_roiCorrectionCheck = nullptr;
+    QCheckBox* m_editFirstTemplateRoiOnStartCheck = nullptr;
 };

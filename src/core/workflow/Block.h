@@ -9,9 +9,7 @@ enum class BlockType {
     ImageFind,
     Click,
     KeyPress,
-    Wait,
-    Loop,
-    Comment
+    Wait
 };
 
 struct BlockResult {

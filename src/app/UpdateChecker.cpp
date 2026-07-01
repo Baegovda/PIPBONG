@@ -1,6 +1,6 @@
 #include "app/UpdateChecker.h"
 
-#include "SbmVersion.h"
+#include "PipbongVersion.h"
 
 #include <nlohmann/json.hpp>
 
@@ -28,13 +28,13 @@ namespace {
 
 QString githubLatestReleaseApiUrl() {
     return QStringLiteral("https://api.github.com/repos/%1/releases/latest")
-        .arg(QStringLiteral(SBM_UPDATE_GITHUB_REPO));
+        .arg(QStringLiteral(PIPBONG_UPDATE_GITHUB_REPO));
 }
 
 QNetworkRequest makeGitHubRequest(const QUrl& url) {
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::UserAgentHeader,
-                      QStringLiteral("SuckbongMachine/%1").arg(QCoreApplication::applicationVersion()));
+                      QStringLiteral("PIPBONG/%1").arg(QCoreApplication::applicationVersion()));
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
     return request;
@@ -50,7 +50,7 @@ QVersionNumber parseReleaseVersion(const QString& tagName) {
 
 QString updaterExecutablePath() {
     return QDir(QCoreApplication::applicationDirPath())
-        .filePath(QStringLiteral("SuckbongMachineUpdater.exe"));
+        .filePath(QStringLiteral("PIPBONGUpdater.exe"));
 }
 
 } // namespace
@@ -101,7 +101,7 @@ void UpdateChecker::onCheckReplyFinished() {
         if (assets != document.end() && assets->is_array()) {
             for (const auto& asset : *assets) {
                 const QString name = QString::fromStdString(asset.value("name", std::string()));
-                if (name.compare(QStringLiteral(SBM_UPDATE_ASSET_NAME), Qt::CaseInsensitive) != 0) {
+                if (name.compare(QStringLiteral(PIPBONG_UPDATE_ASSET_NAME), Qt::CaseInsensitive) != 0) {
                     continue;
                 }
                 release.downloadUrl =
@@ -112,7 +112,7 @@ void UpdateChecker::onCheckReplyFinished() {
         }
 
         if (release.downloadUrl.isEmpty() || release.version.isNull()) {
-            finishCheck(false, tr("릴리즈에 %1 파일이 없습니다.").arg(QStringLiteral(SBM_UPDATE_ASSET_NAME)), {}, false);
+            finishCheck(false, tr("릴리즈에 %1 파일이 없습니다.").arg(QStringLiteral(PIPBONG_UPDATE_ASSET_NAME)), {}, false);
             return;
         }
 
@@ -174,7 +174,7 @@ void UpdateChecker::downloadAndInstall(const ReleaseInfo& release) {
             m_parentWidget,
             tr("업데이트"),
             tr("업데이터(%1)를 찾을 수 없습니다.\n"
-               "프로그램 폴더에 SuckbongMachineUpdater.exe가 있는지 확인하거나,\n"
+               "프로그램 폴더에 PIPBONGUpdater.exe가 있는지 확인하거나,\n"
                "GitHub 릴리즈 페이지에서 수동으로 받아 주세요.")
                 .arg(updaterExecutablePath()));
         return;
@@ -182,7 +182,7 @@ void UpdateChecker::downloadAndInstall(const ReleaseInfo& release) {
 
     const QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
     m_pendingDownloadPath =
-        QDir(tempDir).filePath(QStringLiteral("SuckbongMachine-update.exe"));
+        QDir(tempDir).filePath(QStringLiteral("PIPBONG-update.exe"));
     QFile::remove(m_pendingDownloadPath);
     m_pendingRelease = release;
 

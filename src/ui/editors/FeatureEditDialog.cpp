@@ -29,6 +29,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      UserInputInterruptMode userInputInterruptMode,
                                      bool pointerVisualFeedback,
                                      bool roiCorrection,
+                                     bool editFirstTemplateRoiOnStart,
                                      Project* project,
                                      const std::string& featureId,
                                      QWidget* parent)
@@ -43,7 +44,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     m_nameEdit->setText(name);
     m_repeatSpin->setValue(repeatCount);
 
-    const FeatureRunMode displayMode = normalizeRunMode(runMode);
+    const FeatureRunMode displayMode = runMode;
     const int modeIndex = m_modeCombo->findData(static_cast<int>(displayMode));
     if (modeIndex >= 0) {
         m_modeCombo->setCurrentIndex(modeIndex);
@@ -57,17 +58,15 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
         m_infiniteExitSpin->setValue(infiniteExitAfterConsecutiveMisses);
     }
 
-    const UserInputInterruptMode displayInterruptMode =
-        userInputInterruptMode == UserInputInterruptMode::None ? UserInputInterruptMode::Stop
-                                                               : userInputInterruptMode;
     const int interruptIndex =
-        m_userInputInterruptCombo->findData(static_cast<int>(displayInterruptMode));
+        m_userInputInterruptCombo->findData(static_cast<int>(userInputInterruptMode));
     if (interruptIndex >= 0) {
         m_userInputInterruptCombo->setCurrentIndex(interruptIndex);
     }
 
     m_pointerVisualFeedbackCheck->setChecked(pointerVisualFeedback);
     m_roiCorrectionCheck->setChecked(roiCorrection);
+    m_editFirstTemplateRoiOnStartCheck->setChecked(editFirstTemplateRoiOnStart);
 
     updateModeDependentUi();
 }
@@ -147,6 +146,14 @@ void FeatureEditDialog::setupUi() {
            "해제하면 워크플로 목록의 ROI 보정 열 또는 각 템플릿 매칭 블록 편집에서 블록별로 설정할 수 있습니다. "
            "보정 ROI는 실행 중에만 사용되며 저장되지 않습니다."));
     form->addRow(QString(), m_roiCorrectionCheck);
+
+    m_editFirstTemplateRoiOnStartCheck =
+        new QCheckBox(tr("첫 시작 시 첫 번째 템플릿의 ROI 수정한 뒤 바로 시작"), this);
+    m_editFirstTemplateRoiOnStartCheck->setToolTip(
+        tr("기능 실행 직전에 워크플로 첫 템플릿 매칭 블록의 탐색 ROI를 대상 창에서 조정합니다. "
+           "확인 후 워크플로가 시작되며, Esc는 실행을 취소합니다. "
+           "탐색 ROI가 지정된 템플릿 매칭 블록이 있을 때만 동작합니다."));
+    form->addRow(QString(), m_editFirstTemplateRoiOnStartCheck);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     localizeDialogButtons(buttons);
@@ -283,7 +290,7 @@ bool FeatureEditDialog::isInteractiveWidget(const QWidget* widget) const {
         if (widget == m_nameEdit || widget == m_modeCombo || widget == m_repeatSpin
             || widget == m_infiniteExitCheck || widget == m_infiniteExitSpin
             || widget == m_userInputInterruptCombo || widget == m_pointerVisualFeedbackCheck
-            || widget == m_roiCorrectionCheck) {
+            || widget == m_roiCorrectionCheck || widget == m_editFirstTemplateRoiOnStartCheck) {
             return true;
         }
         if (qobject_cast<const QAbstractButton*>(widget)) {
@@ -331,6 +338,10 @@ bool FeatureEditDialog::pointerVisualFeedback() const {
 
 bool FeatureEditDialog::roiCorrection() const {
     return m_roiCorrectionCheck->isChecked();
+}
+
+bool FeatureEditDialog::editFirstTemplateRoiOnStart() const {
+    return m_editFirstTemplateRoiOnStartCheck->isChecked();
 }
 
 void FeatureEditDialog::keyPressEvent(QKeyEvent* event) {

@@ -1,6 +1,4 @@
 #include "core/workflow/blocks/ImageFindBlock.h"
-
-#include "app/TemplateCaptureHotkeySettings.h"
 #include "core/input/HotkeyBinding.h"
 #include "core/vision/ImageMatcher.h"
 #include "core/workflow/ExecutionContext.h"
@@ -866,9 +864,6 @@ nlohmann::json ImageFindBlock::toJson() const {
         }
         json["customRegions"] = std::move(regionsJson);
     }
-    if (!templatePaths.empty()) {
-        json["template"] = templatePaths.front();
-    }
     if (multiScale) {
         json["multiScale"] = true;
     }
@@ -880,6 +875,12 @@ nlohmann::json ImageFindBlock::toJson() const {
     }
     if (roiCorrection) {
         json["roiCorrection"] = true;
+    }
+    if (returnToPreviousImageFindOnFailure) {
+        json["returnToPreviousImageFindOnFailure"] = true;
+    }
+    if (retryAfterNextActionOnFailure) {
+        json["retryAfterNextActionOnFailure"] = true;
     }
     return json;
 }
@@ -897,12 +898,6 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
             if (item.is_string()) {
                 block->templatePaths.push_back(item.get<std::string>());
             }
-        }
-    }
-    if (block->templatePaths.empty()) {
-        const std::string legacyTemplate = json.value("template", "");
-        if (!legacyTemplate.empty()) {
-            block->templatePaths.push_back(legacyTemplate);
         }
     }
     pruneEmptyTemplatePaths(block->templatePaths);
@@ -924,13 +919,6 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
         }
     }
     pruneInvalidCustomRegions(block->customRegions);
-    if (json.contains("customRegion")) {
-        const CaptureRegion legacyRegion = captureRegionFromJson(json["customRegion"]);
-        if (block->customRegions.empty() && isValidCustomRegion(legacyRegion)) {
-            block->customRegions.push_back(legacyRegion);
-        }
-        block->customRegion = legacyRegion;
-    }
     syncLegacyCustomRegionFromList(block->customRegion, block->customRegions);
     if (json.contains("percentRegion")) {
         const auto& region = json["percentRegion"];
@@ -941,9 +929,8 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
     }
     normalizeImageFindSearchArea(block->searchArea, block->customRegions, block->customRegion);
     block->roiCorrection = json.value("roiCorrection", false);
-    if (json.contains("matchTestHotkey")) {
-        TemplateCaptureHotkeySettings::importLegacyIfUnset(HotkeyBinding::fromJson(json["matchTestHotkey"]));
-    }
+    block->returnToPreviousImageFindOnFailure = json.value("returnToPreviousImageFindOnFailure", false);
+    block->retryAfterNextActionOnFailure = json.value("retryAfterNextActionOnFailure", false);
     return block;
 }
 

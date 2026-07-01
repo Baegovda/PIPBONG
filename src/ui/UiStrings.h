@@ -22,10 +22,6 @@ inline QString blockTypeDisplayName(BlockType type) {
         return QStringLiteral("키보드");
     case BlockType::Wait:
         return QStringLiteral("딜레이");
-    case BlockType::Loop:
-        return QStringLiteral("구간 반복");
-    case BlockType::Comment:
-        return QStringLiteral("주석");
     }
     return QStringLiteral("알 수 없음");
 }
@@ -34,8 +30,6 @@ inline QString blockTypeWorkflowActionName(BlockType type) {
     switch (type) {
     case BlockType::ImageFind:
         return QStringLiteral("템플릿");
-    case BlockType::Loop:
-        return QStringLiteral("반복");
     default:
         return blockTypeDisplayName(type);
     }

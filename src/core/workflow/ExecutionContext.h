@@ -64,6 +64,10 @@ public:
     void clearDetectionFailedFlag();
     bool detectionFailedThisRun() const;
 
+    bool imageFindDeferRetryUsed(int blockIndex) const;
+    void markImageFindDeferRetryUsed(int blockIndex);
+    void clearImageFindDeferRetryUsed(int blockIndex);
+
     static constexpr int kMaxWorkflowNestingDepth = 8;
 
     bool enterNestingScope();
@@ -147,6 +151,7 @@ private:
     int m_imageFindMaxMissAttempts = 0;
     int m_imageFindPollAttempt = 0;
     bool m_detectionFailedThisRun = false;
+    std::unordered_set<int> m_imageFindDeferRetryUsedBlockIndexes;
     int m_nestingDepth = 0;
     bool m_hasLastMatch = false;
     cv::Point m_lastMatchPoint;
@@ -171,6 +176,6 @@ private:
 #ifdef _WIN32
     bool m_runKeyboardSessionActive = false;
     SessionModifierSnapshot m_runKeyboardSessionStart;
-    std::unordered_set<int> m_sbmHeldVirtualKeys;
+    std::unordered_set<int> m_pipbongHeldVirtualKeys;
 #endif
 };

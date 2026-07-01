@@ -1,15 +1,12 @@
-$ErrorActionPreference = 'Stop'
-
+$ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
-if (-not (Test-Path 'build\CMakeCache.txt')) {
-    Write-Host 'Configure first: cmake --preset default' -ForegroundColor Yellow
+if (-not (Test-Path "build\CMakeCache.txt")) {
     cmake --preset default
 }
 
-Write-Host 'Deploying Qt/OpenCV DLLs to build\Release\ ...' -ForegroundColor Cyan
 cmake --build build --config Release --target deploy-qt
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host ''
-Write-Host 'OK: build\Release\SuckbongMachine.exe (DLLs updated)' -ForegroundColor Green
+Write-Host 'OK: build\Release\PIPBONG.exe (DLLs updated)' -ForegroundColor Green

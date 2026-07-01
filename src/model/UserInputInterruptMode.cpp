@@ -6,16 +6,13 @@ std::string userInputInterruptModeToString(UserInputInterruptMode mode) {
         return "Pause";
     case UserInputInterruptMode::Stop:
         return "Stop";
-    case UserInputInterruptMode::None:
-    default:
-        return "None";
     }
+    return "Stop";
 }
 
 UserInputInterruptMode userInputInterruptModeFromString(const std::string& value) {
     if (value == "Pause") {
         return UserInputInterruptMode::Pause;
     }
-    // "None" (legacy) and omitted JSON default to Stop.
     return UserInputInterruptMode::Stop;
 }

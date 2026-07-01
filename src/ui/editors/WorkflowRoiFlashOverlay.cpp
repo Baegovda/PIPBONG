@@ -19,7 +19,7 @@
 namespace {
 
 #ifdef _WIN32
-constexpr wchar_t kOverlayClassName[] = L"SbmWorkflowRoiFlashOverlay";
+constexpr wchar_t kOverlayClassName[] = L"PipbongWorkflowRoiFlashOverlay";
 constexpr UINT_PTR kTimerId = 1;
 constexpr UINT kTimerMs = 200;
 constexpr int kBorderThickness = 2;
