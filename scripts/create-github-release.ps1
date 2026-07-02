@@ -37,4 +37,14 @@ $releaseRepo = "Baegovda/PIPBONG-releases"
 
 Write-Host "Creating GitHub release $tag on $releaseRepo..."
 gh release create $tag $zipPath --repo $releaseRepo --title "PIPBONG $tag" --notes $Notes
+
+Write-Host "Removing older releases from $releaseRepo (keep latest only)..."
+$existingTags = gh release list --repo $releaseRepo --limit 500 --json tagName -q '.[].tagName'
+foreach ($oldTag in $existingTags) {
+    if ($oldTag -ne $tag) {
+        Write-Host "  Deleting release $oldTag..."
+        gh release delete $oldTag --repo $releaseRepo --yes --cleanup-tag 2>$null | Out-Null
+    }
+}
+
 Write-Host "Done: https://github.com/$releaseRepo/releases/tag/$tag"

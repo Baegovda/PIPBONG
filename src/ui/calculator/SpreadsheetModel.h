@@ -102,6 +102,8 @@ public:
 
     bool insertRow(int atRow);
     bool insertColumn(int atCol);
+    bool deleteRows(int minRow, int maxRow);
+    bool deleteColumns(int minCol, int maxCol);
 
     FormulaResult evaluateFormulaAtCell(const QString& expression, int evalRow, int evalCol);
 
@@ -142,10 +144,16 @@ private:
     static QString adjustFormulaForMove(const QString& raw, int srcMinRow, int srcMinCol, int srcMaxRow, int srcMaxCol, int deltaRow, int deltaCol);
     static QString adjustFormulaForRowInsert(const QString& raw, int insertRow);
     static QString adjustFormulaForColumnInsert(const QString& raw, int insertCol);
+    static QString adjustFormulaForRowDelete(const QString& raw, int deleteMinRow, int deleteMaxRow);
+    static QString adjustFormulaForColumnDelete(const QString& raw, int deleteMinCol, int deleteMaxCol);
     void shiftAllMapsForRowInsert(int atRow);
     void shiftAllMapsForColumnInsert(int atCol);
+    void shiftAllMapsForRowDelete(int minRow, int maxRow);
+    void shiftAllMapsForColumnDelete(int minCol, int maxCol);
     void adjustAllFormulasForRowInsert(int insertRow);
     void adjustAllFormulasForColumnInsert(int insertCol);
+    void adjustAllFormulasForRowDelete(int minRow, int maxRow);
+    void adjustAllFormulasForColumnDelete(int minCol, int maxCol);
     static void clearCellMapsAt(QMap<CellKey, SpreadsheetCell>& inputs,
                                 QMap<CellKey, CellBorderMask>& borders,
                                 QMap<CellKey, QColor>& backgroundColors,

@@ -198,6 +198,9 @@ QString FormulaEvaluator::cellReference(int row, int col) {
 FormulaResult FormulaEvaluator::evaluate(const QString& expression,
                                          const CellValueResolver& resolveCell,
                                          std::unordered_set<std::string>* visiting) {
+    if (expression.contains(QStringLiteral("#REF!"), Qt::CaseInsensitive)) {
+        return {false, 0.0, FormulaError::Ref};
+    }
     FormulaResult result;
     QString trimmed = expression.trimmed();
     if (trimmed.startsWith(QLatin1Char('='))) {
@@ -371,4 +374,84 @@ QString FormulaEvaluator::shiftFormulaReferencesInRegion(const QString& formula,
                                         regionMinCol,
                                         regionMaxRow,
                                         regionMaxCol);
+}
+
+QString FormulaEvaluator::shiftFormulaReferencesForRowDelete(const QString& formula,
+                                                             int deleteMinRow,
+                                                             int deleteMaxRow) {
+    if (deleteMinRow > deleteMaxRow) {
+        return formula;
+    }
+    const int deleteCount = deleteMaxRow - deleteMinRow + 1;
+
+    static const QRegularExpression refPattern(QStringLiteral(R"(\b([A-Z]+)([0-9]+)\b)"));
+    QList<QRegularExpressionMatch> matches;
+    QRegularExpressionMatchIterator iterator = refPattern.globalMatch(formula);
+    while (iterator.hasNext()) {
+        matches.append(iterator.next());
+    }
+
+    QString result = formula;
+    for (int i = matches.size() - 1; i >= 0; --i) {
+        const QRegularExpressionMatch match = matches.at(i);
+        int row = 0;
+        int col = 0;
+        if (!cellAddressFromReference(match.captured(0), row, col)) {
+            continue;
+        }
+
+        if (row >= deleteMinRow && row <= deleteMaxRow) {
+            result.replace(match.capturedStart(), match.capturedLength(), QStringLiteral("#REF!"));
+            continue;
+        }
+
+        if (row > deleteMaxRow) {
+            row -= deleteCount;
+            if (row < 0) {
+                return {};
+            }
+            result.replace(match.capturedStart(), match.capturedLength(), cellReference(row, col));
+        }
+    }
+    return result;
+}
+
+QString FormulaEvaluator::shiftFormulaReferencesForColumnDelete(const QString& formula,
+                                                                int deleteMinCol,
+                                                                int deleteMaxCol) {
+    if (deleteMinCol > deleteMaxCol) {
+        return formula;
+    }
+    const int deleteCount = deleteMaxCol - deleteMinCol + 1;
+
+    static const QRegularExpression refPattern(QStringLiteral(R"(\b([A-Z]+)([0-9]+)\b)"));
+    QList<QRegularExpressionMatch> matches;
+    QRegularExpressionMatchIterator iterator = refPattern.globalMatch(formula);
+    while (iterator.hasNext()) {
+        matches.append(iterator.next());
+    }
+
+    QString result = formula;
+    for (int i = matches.size() - 1; i >= 0; --i) {
+        const QRegularExpressionMatch match = matches.at(i);
+        int row = 0;
+        int col = 0;
+        if (!cellAddressFromReference(match.captured(0), row, col)) {
+            continue;
+        }
+
+        if (col >= deleteMinCol && col <= deleteMaxCol) {
+            result.replace(match.capturedStart(), match.capturedLength(), QStringLiteral("#REF!"));
+            continue;
+        }
+
+        if (col > deleteMaxCol) {
+            col -= deleteCount;
+            if (col < 0) {
+                return {};
+            }
+            result.replace(match.capturedStart(), match.capturedLength(), cellReference(row, col));
+        }
+    }
+    return result;
 }

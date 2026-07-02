@@ -717,6 +717,34 @@ QString SpreadsheetModel::adjustFormulaForColumnInsert(const QString& raw, int i
     return hasEquals ? QStringLiteral("=") + shifted : shifted;
 }
 
+QString SpreadsheetModel::adjustFormulaForRowDelete(const QString& raw, int deleteMinRow, int deleteMaxRow) {
+    if (raw.isEmpty()) {
+        return raw;
+    }
+    const bool hasEquals = raw.startsWith(QLatin1Char('='));
+    const QString body = hasEquals ? raw.mid(1) : raw;
+    const QString shifted =
+        FormulaEvaluator::shiftFormulaReferencesForRowDelete(body, deleteMinRow, deleteMaxRow);
+    if (shifted.isEmpty()) {
+        return raw;
+    }
+    return hasEquals ? QStringLiteral("=") + shifted : shifted;
+}
+
+QString SpreadsheetModel::adjustFormulaForColumnDelete(const QString& raw, int deleteMinCol, int deleteMaxCol) {
+    if (raw.isEmpty()) {
+        return raw;
+    }
+    const bool hasEquals = raw.startsWith(QLatin1Char('='));
+    const QString body = hasEquals ? raw.mid(1) : raw;
+    const QString shifted =
+        FormulaEvaluator::shiftFormulaReferencesForColumnDelete(body, deleteMinCol, deleteMaxCol);
+    if (shifted.isEmpty()) {
+        return raw;
+    }
+    return hasEquals ? QStringLiteral("=") + shifted : shifted;
+}
+
 void SpreadsheetModel::adjustAllFormulasForRowInsert(int insertRow) {
     for (auto it = m_inputs.begin(); it != m_inputs.end(); ++it) {
         if (it->kind != SpreadsheetCellKind::Formula) {
@@ -732,6 +760,24 @@ void SpreadsheetModel::adjustAllFormulasForColumnInsert(int insertCol) {
             continue;
         }
         it->raw = adjustFormulaForColumnInsert(it->raw, insertCol);
+    }
+}
+
+void SpreadsheetModel::adjustAllFormulasForRowDelete(int minRow, int maxRow) {
+    for (auto it = m_inputs.begin(); it != m_inputs.end(); ++it) {
+        if (it->kind != SpreadsheetCellKind::Formula) {
+            continue;
+        }
+        it->raw = adjustFormulaForRowDelete(it->raw, minRow, maxRow);
+    }
+}
+
+void SpreadsheetModel::adjustAllFormulasForColumnDelete(int minCol, int maxCol) {
+    for (auto it = m_inputs.begin(); it != m_inputs.end(); ++it) {
+        if (it->kind != SpreadsheetCellKind::Formula) {
+            continue;
+        }
+        it->raw = adjustFormulaForColumnDelete(it->raw, minCol, maxCol);
     }
 }
 
@@ -843,6 +889,158 @@ void SpreadsheetModel::shiftAllMapsForColumnInsert(int atCol) {
     shiftBaseCurrencies();
 }
 
+void SpreadsheetModel::shiftAllMapsForRowDelete(int minRow, int maxRow) {
+    const int deleteCount = maxRow - minRow + 1;
+
+    auto shiftInputs = [this, minRow, maxRow, deleteCount]() {
+        QMap<CellKey, SpreadsheetCell> updated;
+        for (auto it = m_inputs.constBegin(); it != m_inputs.constEnd(); ++it) {
+            const int row = it.key().first;
+            const int col = it.key().second;
+            if (row >= minRow && row <= maxRow) {
+                continue;
+            }
+            const int newRow = row > maxRow ? row - deleteCount : row;
+            updated.insert(makeKey(newRow, col), it.value());
+        }
+        m_inputs = std::move(updated);
+    };
+    auto shiftBorders = [this, minRow, maxRow, deleteCount]() {
+        QMap<CellKey, CellBorderMask> updated;
+        for (auto it = m_borders.constBegin(); it != m_borders.constEnd(); ++it) {
+            const int row = it.key().first;
+            const int col = it.key().second;
+            if (row >= minRow && row <= maxRow) {
+                continue;
+            }
+            const int newRow = row > maxRow ? row - deleteCount : row;
+            updated.insert(makeKey(newRow, col), it.value());
+        }
+        m_borders = std::move(updated);
+    };
+    auto shiftBackgrounds = [this, minRow, maxRow, deleteCount]() {
+        QMap<CellKey, QColor> updated;
+        for (auto it = m_backgroundColors.constBegin(); it != m_backgroundColors.constEnd(); ++it) {
+            const int row = it.key().first;
+            const int col = it.key().second;
+            if (row >= minRow && row <= maxRow) {
+                continue;
+            }
+            const int newRow = row > maxRow ? row - deleteCount : row;
+            updated.insert(makeKey(newRow, col), it.value());
+        }
+        m_backgroundColors = std::move(updated);
+    };
+    auto shiftForegrounds = [this, minRow, maxRow, deleteCount]() {
+        QMap<CellKey, QColor> updated;
+        for (auto it = m_foregroundColors.constBegin(); it != m_foregroundColors.constEnd(); ++it) {
+            const int row = it.key().first;
+            const int col = it.key().second;
+            if (row >= minRow && row <= maxRow) {
+                continue;
+            }
+            const int newRow = row > maxRow ? row - deleteCount : row;
+            updated.insert(makeKey(newRow, col), it.value());
+        }
+        m_foregroundColors = std::move(updated);
+    };
+    auto shiftBaseCurrencies = [this, minRow, maxRow, deleteCount]() {
+        QMap<CellKey, QString> updated;
+        for (auto it = m_cellBaseCurrencyIds.constBegin(); it != m_cellBaseCurrencyIds.constEnd(); ++it) {
+            const int row = it.key().first;
+            const int col = it.key().second;
+            if (row >= minRow && row <= maxRow) {
+                continue;
+            }
+            const int newRow = row > maxRow ? row - deleteCount : row;
+            updated.insert(makeKey(newRow, col), it.value());
+        }
+        m_cellBaseCurrencyIds = std::move(updated);
+    };
+
+    shiftInputs();
+    shiftBorders();
+    shiftBackgrounds();
+    shiftForegrounds();
+    shiftBaseCurrencies();
+}
+
+void SpreadsheetModel::shiftAllMapsForColumnDelete(int minCol, int maxCol) {
+    const int deleteCount = maxCol - minCol + 1;
+
+    auto shiftInputs = [this, minCol, maxCol, deleteCount]() {
+        QMap<CellKey, SpreadsheetCell> updated;
+        for (auto it = m_inputs.constBegin(); it != m_inputs.constEnd(); ++it) {
+            const int row = it.key().first;
+            const int col = it.key().second;
+            if (col >= minCol && col <= maxCol) {
+                continue;
+            }
+            const int newCol = col > maxCol ? col - deleteCount : col;
+            updated.insert(makeKey(row, newCol), it.value());
+        }
+        m_inputs = std::move(updated);
+    };
+    auto shiftBorders = [this, minCol, maxCol, deleteCount]() {
+        QMap<CellKey, CellBorderMask> updated;
+        for (auto it = m_borders.constBegin(); it != m_borders.constEnd(); ++it) {
+            const int row = it.key().first;
+            const int col = it.key().second;
+            if (col >= minCol && col <= maxCol) {
+                continue;
+            }
+            const int newCol = col > maxCol ? col - deleteCount : col;
+            updated.insert(makeKey(row, newCol), it.value());
+        }
+        m_borders = std::move(updated);
+    };
+    auto shiftBackgrounds = [this, minCol, maxCol, deleteCount]() {
+        QMap<CellKey, QColor> updated;
+        for (auto it = m_backgroundColors.constBegin(); it != m_backgroundColors.constEnd(); ++it) {
+            const int row = it.key().first;
+            const int col = it.key().second;
+            if (col >= minCol && col <= maxCol) {
+                continue;
+            }
+            const int newCol = col > maxCol ? col - deleteCount : col;
+            updated.insert(makeKey(row, newCol), it.value());
+        }
+        m_backgroundColors = std::move(updated);
+    };
+    auto shiftForegrounds = [this, minCol, maxCol, deleteCount]() {
+        QMap<CellKey, QColor> updated;
+        for (auto it = m_foregroundColors.constBegin(); it != m_foregroundColors.constEnd(); ++it) {
+            const int row = it.key().first;
+            const int col = it.key().second;
+            if (col >= minCol && col <= maxCol) {
+                continue;
+            }
+            const int newCol = col > maxCol ? col - deleteCount : col;
+            updated.insert(makeKey(row, newCol), it.value());
+        }
+        m_foregroundColors = std::move(updated);
+    };
+    auto shiftBaseCurrencies = [this, minCol, maxCol, deleteCount]() {
+        QMap<CellKey, QString> updated;
+        for (auto it = m_cellBaseCurrencyIds.constBegin(); it != m_cellBaseCurrencyIds.constEnd(); ++it) {
+            const int row = it.key().first;
+            const int col = it.key().second;
+            if (col >= minCol && col <= maxCol) {
+                continue;
+            }
+            const int newCol = col > maxCol ? col - deleteCount : col;
+            updated.insert(makeKey(row, newCol), it.value());
+        }
+        m_cellBaseCurrencyIds = std::move(updated);
+    };
+
+    shiftInputs();
+    shiftBorders();
+    shiftBackgrounds();
+    shiftForegrounds();
+    shiftBaseCurrencies();
+}
+
 bool SpreadsheetModel::insertRow(int atRow) {
     if (atRow < 0) {
         return false;
@@ -879,6 +1077,48 @@ bool SpreadsheetModel::insertColumn(int atCol) {
 
     refreshCellStates();
     endInsertColumns();
+    emit sheetModified();
+    return true;
+}
+
+bool SpreadsheetModel::deleteRows(int minRow, int maxRow) {
+    if (minRow < 0 || maxRow < minRow || maxRow >= m_rowCount) {
+        return false;
+    }
+    const int deleteCount = maxRow - minRow + 1;
+    if (m_rowCount <= deleteCount) {
+        return false;
+    }
+
+    beginRemoveRows(QModelIndex(), minRow, maxRow);
+
+    adjustAllFormulasForRowDelete(minRow, maxRow);
+    shiftAllMapsForRowDelete(minRow, maxRow);
+    m_rowCount -= deleteCount;
+
+    refreshCellStates();
+    endRemoveRows();
+    emit sheetModified();
+    return true;
+}
+
+bool SpreadsheetModel::deleteColumns(int minCol, int maxCol) {
+    if (minCol < 0 || maxCol < minCol || maxCol >= m_columnCount) {
+        return false;
+    }
+    const int deleteCount = maxCol - minCol + 1;
+    if (m_columnCount <= deleteCount) {
+        return false;
+    }
+
+    beginRemoveColumns(QModelIndex(), minCol, maxCol);
+
+    adjustAllFormulasForColumnDelete(minCol, maxCol);
+    shiftAllMapsForColumnDelete(minCol, maxCol);
+    m_columnCount -= deleteCount;
+
+    refreshCellStates();
+    endRemoveColumns();
     emit sheetModified();
     return true;
 }

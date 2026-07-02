@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.34` (from `project(PIPBONG VERSION 0.7.34)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.35` (from `project(PIPBONG VERSION 0.7.35)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -137,7 +137,7 @@ Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static e
 
 **Local staging folder:** `dist/PIPBONG/` (same layout as inside the ZIP).
 
-**GitHub release:** `.\scripts\create-github-release.ps1` publishes the ZIP to **`Baegovda/PIPBONG-releases`**. In-app **파일 → 업데이트** downloads `PIPBONG-win64.zip` and installs via `PIPBONGUpdater.exe --install-zip`.
+**GitHub release:** `.\scripts\create-github-release.ps1` publishes the ZIP to **`Baegovda/PIPBONG-releases`**, then **deletes all older releases** on that repo so only the latest remains visible (GitHub has no per-release private toggle). In-app **파일 → 업데이트** downloads `PIPBONG-win64.zip` and installs via `PIPBONGUpdater.exe --install-zip`.
 
 ### Run
 
@@ -804,6 +804,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.35] - 2026-06-29
+
+### Added
+
+- Calculator **행 삭제** / **열 삭제** (toolbar + context menu): remove selected row/column range; cell data, borders, colors, and formula references shift up/left; refs to deleted cells become `#REF!` (`SpreadsheetModel`, `FormulaEvaluator`, `CalculatorDialog`).
+
+### Changed
+
+- `create-github-release.ps1`: after publishing a new release on **`Baegovda/PIPBONG-releases`**, deletes all older releases so only the latest is visible on the releases page.
 
 ## [0.7.34] - 2026-06-29
 
@@ -2334,4 +2344,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-29. Current application version: 0.7.34.*
+*Last consolidated: 2026-06-29. Current application version: 0.7.35.*

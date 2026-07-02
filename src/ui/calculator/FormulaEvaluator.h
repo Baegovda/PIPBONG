@@ -43,5 +43,11 @@ public:
                                                     int regionMaxCol,
                                                     int deltaRow,
                                                     int deltaCol);
+    static QString shiftFormulaReferencesForRowDelete(const QString& formula,
+                                                      int deleteMinRow,
+                                                      int deleteMaxRow);
+    static QString shiftFormulaReferencesForColumnDelete(const QString& formula,
+                                                         int deleteMinCol,
+                                                         int deleteMaxCol);
     static QString formatCellRange(int minRow, int minCol, int maxRow, int maxCol);
 };

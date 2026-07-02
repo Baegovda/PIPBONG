@@ -87,6 +87,8 @@ private:
     void showCustomForegroundColorDialog();
     void insertRowAtSelection();
     void insertColumnAtSelection();
+    void deleteRowAtSelection();
+    void deleteColumnAtSelection();
     void applyCellBaseCurrencyToSelection();
     void clearCellBaseCurrencyFromSelection();
     void cancelCellMoveDrag();

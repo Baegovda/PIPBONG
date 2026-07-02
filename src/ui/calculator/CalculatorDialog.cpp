@@ -224,6 +224,7 @@ void CalculatorDialog::setupUi() {
         tr("셀에 숫자를 입력하거나 수식 만들기로 사칙연산을 구성하세요 (=A1+B1). 시세 연동으로 화폐·파편·룬 등 poe.ninja 시세를 불러올 수 있습니다. "
            "선택한 셀을 드래그하면 이동하며, 다른 셀의 수식 참조도 함께 따라갑니다. "
            "행 추가·열 추가로 중간에 빈 줄/열을 넣으면 셀 데이터와 수식 참조(A1 등)가 자동으로 밀립니다. "
+           "행 삭제·열 삭제는 선택한 줄/열을 제거하고 아래·오른쪽 셀과 수식 참조를 당깁니다. "
            "셀 기준 화폐로 셀마다 다른 기준 화폐를 지정할 수 있으며, 지정하지 않은 셀은 상단 글로벌 기준 화폐를 사용합니다. "
            "셀은 드래그·Ctrl+클릭·Shift+클릭으로 여러 개 선택할 수 있으며 Delete로 일괄 지울 수 있습니다. "
            "기준 화폐는 상단 콤보에서 선택하며 GGG 집계로 최대 약 1시간 지연될 수 있습니다."),
@@ -290,6 +291,16 @@ void CalculatorDialog::setupUi() {
     insertColumnButton->setToolTip(tr("선택한 열 위치에 빈 열을 삽입합니다. 오른쪽 셀과 수식 참조가 자동으로 밀립니다."));
     connect(insertColumnButton, &QPushButton::clicked, this, &CalculatorDialog::insertColumnAtSelection);
     borderRow->addWidget(insertColumnButton);
+
+    auto* deleteRowButton = new QPushButton(tr("행 삭제"), this);
+    deleteRowButton->setToolTip(tr("선택한 행을 삭제합니다. 아래 셀과 수식 참조가 자동으로 당겨집니다."));
+    connect(deleteRowButton, &QPushButton::clicked, this, &CalculatorDialog::deleteRowAtSelection);
+    borderRow->addWidget(deleteRowButton);
+
+    auto* deleteColumnButton = new QPushButton(tr("열 삭제"), this);
+    deleteColumnButton->setToolTip(tr("선택한 열을 삭제합니다. 오른쪽 셀과 수식 참조가 자동으로 당겨집니다."));
+    connect(deleteColumnButton, &QPushButton::clicked, this, &CalculatorDialog::deleteColumnAtSelection);
+    borderRow->addWidget(deleteColumnButton);
 
     auto* cellBaseCurrencyButton = new QPushButton(tr("셀 기준 화폐"), this);
     cellBaseCurrencyButton->setToolTip(
@@ -786,6 +797,60 @@ void CalculatorDialog::insertColumnAtSelection() {
     updateFormulaBarFromSelection();
 }
 
+void CalculatorDialog::deleteRowAtSelection() {
+    int row = 0;
+    int col = 0;
+    if (!primarySelectedCell(row, col)) {
+        QMessageBox::information(this, tr("행 삭제"), tr("삭제할 행의 셀을 먼저 선택하세요."));
+        return;
+    }
+
+    int minRow = row;
+    int minCol = 0;
+    int maxRow = row;
+    int maxCol = 0;
+    selectedCellBounds(minRow, minCol, maxRow, maxCol);
+
+    if (!m_model.deleteRows(minRow, maxRow)) {
+        QMessageBox::information(this, tr("행 삭제"), tr("최소 1개 행은 남겨야 합니다."));
+        return;
+    }
+
+    if (m_table) {
+        const int focusRow = qMin(minRow, m_model.rowCount() - 1);
+        m_table->setCurrentIndex(m_model.index(focusRow, col));
+        m_table->viewport()->update();
+    }
+    updateFormulaBarFromSelection();
+}
+
+void CalculatorDialog::deleteColumnAtSelection() {
+    int row = 0;
+    int col = 0;
+    if (!primarySelectedCell(row, col)) {
+        QMessageBox::information(this, tr("열 삭제"), tr("삭제할 열의 셀을 먼저 선택하세요."));
+        return;
+    }
+
+    int minRow = 0;
+    int minCol = col;
+    int maxRow = 0;
+    int maxCol = col;
+    selectedCellBounds(minRow, minCol, maxRow, maxCol);
+
+    if (!m_model.deleteColumns(minCol, maxCol)) {
+        QMessageBox::information(this, tr("열 삭제"), tr("최소 1개 열은 남겨야 합니다."));
+        return;
+    }
+
+    if (m_table) {
+        const int focusCol = qMin(minCol, m_model.columnCount() - 1);
+        m_table->setCurrentIndex(m_model.index(row, focusCol));
+        m_table->viewport()->update();
+    }
+    updateFormulaBarFromSelection();
+}
+
 void CalculatorDialog::cancelCellMoveDrag() {
     if (!m_cellMoveDragArmed && !m_cellMoveDragging) {
         return;
@@ -1206,6 +1271,8 @@ void CalculatorDialog::onTableContextMenu(const QPoint& pos) {
     menu.addSeparator();
     QAction* insertRowAction = menu.addAction(tr("행 추가"));
     QAction* insertColumnAction = menu.addAction(tr("열 추가"));
+    QAction* deleteRowAction = menu.addAction(tr("행 삭제"));
+    QAction* deleteColumnAction = menu.addAction(tr("열 삭제"));
     menu.addSeparator();
     QAction* cellBaseCurrencyAction = menu.addAction(tr("셀 기준 화폐 지정…"));
     QAction* clearCellBaseCurrencyAction = menu.addAction(tr("셀 기준 화폐 초기화"));
@@ -1242,6 +1309,10 @@ void CalculatorDialog::onTableContextMenu(const QPoint& pos) {
         insertRowAtSelection();
     } else if (chosen == insertColumnAction) {
         insertColumnAtSelection();
+    } else if (chosen == deleteRowAction) {
+        deleteRowAtSelection();
+    } else if (chosen == deleteColumnAction) {
+        deleteColumnAtSelection();
     } else if (chosen == cellBaseCurrencyAction) {
         applyCellBaseCurrencyToSelection();
     } else if (chosen == clearCellBaseCurrencyAction) {
