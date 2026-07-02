@@ -1,5 +1,5 @@
 #pragma once
 
 #define PIPBONG_VERSION "@PROJECT_VERSION@"
-#define PIPBONG_UPDATE_GITHUB_REPO "Baegovda/PIPBONG-releases"
+#define PIPBONG_UPDATE_GITHUB_REPO "Baegovda/PIPBONG"
 #define PIPBONG_UPDATE_ASSET_NAME "PIPBONG-win64.zip"

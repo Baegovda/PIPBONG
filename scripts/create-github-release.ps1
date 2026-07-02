@@ -33,7 +33,7 @@ if (-not $gh) {
     throw "GitHub CLI (gh) is not installed. Install it, run 'gh auth login', then rerun this script."
 }
 
-$releaseRepo = "Baegovda/PIPBONG-releases"
+$releaseRepo = "Baegovda/PIPBONG"
 
 Write-Host "Creating GitHub release $tag on $releaseRepo..."
 gh release create $tag $zipPath --repo $releaseRepo --title "PIPBONG $tag" --notes $Notes

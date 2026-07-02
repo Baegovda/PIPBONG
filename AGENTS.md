@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.35` (from `project(PIPBONG VERSION 0.7.35)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.36` (from `project(PIPBONG VERSION 0.7.36)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -13,6 +13,8 @@ This is the **only project document** — AI handover, user quick start, develop
 1. [Project Overview](#1-project-overview)
 2. [Stack and Dependencies](#2-stack-and-dependencies)
 3. [Build and Run](#3-build-and-run)
+   - [3.1 IDE / Cursor build workflow](#31-ide--cursor-build-workflow-mandatory--do-not-regress)
+   - [3.6 GitHub backup and release](#36-github-backup-and-release)
 4. [Repository Map](#4-repository-map)
 5. [Architecture and Key Subsystems](#5-architecture-and-key-subsystems)
 6. [UX Flows](#6-ux-flows)
@@ -137,7 +139,7 @@ Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static e
 
 **Local staging folder:** `dist/PIPBONG/` (same layout as inside the ZIP).
 
-**GitHub release:** `.\scripts\create-github-release.ps1` publishes the ZIP to **`Baegovda/PIPBONG-releases`**, then **deletes all older releases** on that repo so only the latest remains visible (GitHub has no per-release private toggle). In-app **파일 → 업데이트** downloads `PIPBONG-win64.zip` and installs via `PIPBONGUpdater.exe --install-zip`.
+**GitHub release:** `.\scripts\create-github-release.ps1` publishes the ZIP to **`Baegovda/PIPBONG`** (same repo as source), then **deletes all older releases** on that repo so only the latest remains visible. In-app **파일 → 업데이트** downloads `PIPBONG-win64.zip` from that repo and installs via `PIPBONGUpdater.exe --install-zip`. See [§3.6](#36-github-backup-and-release).
 
 ### Run
 
@@ -202,6 +204,24 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 6. F5 with **Run PIPBONG (Release)**; if Qt DLL error, run `.\scripts\deploy-qt.ps1` once.
 
 Cursor rule: `.cursor/rules/ide-build-workflow.mdc` (always applied).
+
+### 3.6 GitHub backup and release
+
+**Single repository:** **`Baegovda/PIPBONG`** — source code, git history, and GitHub Releases (ZIP) all live here. The legacy **`Baegovda/PIPBONG-releases`** repo was removed (2026-07).
+
+| User says (Korean) | AI action |
+|--------------------|-----------|
+| **백업해줘** | `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** |
+| **릴리즈 해줘** | `scripts/create-github-release.ps1` only (package + publish) |
+| **백업하고 릴리즈까지 해줘** | Commit + push + `create-github-release.ps1` |
+
+**Release script:** `scripts/create-github-release.ps1` reads version from `CMakeLists.txt`, runs `package-release.ps1`, uploads `dist/PIPBONG-win64.zip` to **`Baegovda/PIPBONG`** Releases, then deletes older releases (latest only visible).
+
+**In-app update:** `PipbongVersion.h.in` → `PIPBONG_UPDATE_GITHUB_REPO` = `Baegovda/PIPBONG`; asset `PIPBONG-win64.zip` (`UpdateChecker.cpp`).
+
+**Prerequisites:** [GitHub CLI](https://cli.github.com/) (`gh auth login` once). Remote: `https://github.com/Baegovda/PIPBONG.git`.
+
+**Delete releases repo (one-time, already done):** `gh repo delete Baegovda/PIPBONG-releases --yes`
 
 ---
 
@@ -804,6 +824,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.36] - 2026-07-02
+
+### Changed
+
+- GitHub: unified source and releases into single public repo **`Baegovda/PIPBONG`**; removed **`Baegovda/PIPBONG-releases`** (`PipbongVersion.h.in`, `UpdateChecker`, `create-github-release.ps1`, `package-release.ps1`, AGENTS.md §3.6).
 
 ## [0.7.35] - 2026-06-29
 
@@ -2344,4 +2370,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-29. Current application version: 0.7.35.*
+*Last consolidated: 2026-07-02. Current application version: 0.7.36.*

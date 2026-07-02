@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Immediate Handover (Mandatory — Same Task, Not Later)
 
-**Status:** Policy strengthened 2026-06 after GitHub/release docs were implemented in code but not written to **AGENTS.md** until the user asked — a new agent would not have known private `PIPBONG` vs public `PIPBONG-releases`, `gh auth`, or release scripts.
+**Status:** Policy strengthened 2026-06 after GitHub/release docs were implemented in code but not written to **AGENTS.md** until the user asked — a new agent would not have known `gh auth` or release scripts.
 
 ## Rule
 
