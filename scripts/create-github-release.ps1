@@ -15,7 +15,7 @@ $version = ($cmakeVersionLine.Line -replace '.*VERSION\s+([0-9.]+).*', '$1').Tri
 $tag = "v$version"
 
 Write-Host "Packaging dynamic Release for $tag..."
-taskkill /IM PIPBONG.exe /F 2>$null | Out-Null
+cmd /c "taskkill /IM PIPBONG.exe /F 2>nul" | Out-Null
 & (Join-Path $repoRoot "scripts\package-release.ps1")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

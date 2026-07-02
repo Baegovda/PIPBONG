@@ -138,7 +138,9 @@ cd /d "%~dp0"
 start "" "PIPBONG.exe"
 '@
 
-    Set-Content -Path (Join-Path $StageRoot "PIPBONG 실행.bat") -Value $launcher -Encoding ASCII
+    $launcherName = 'PIPBONG ' + [char]0xC2E4 + [char]0xD589 + '.bat'
+    $launcherPath = Join-Path $StageRoot $launcherName
+    [System.IO.File]::WriteAllText($launcherPath, $launcher, [System.Text.Encoding]::ASCII)
 }
 
 $version = Get-ProjectVersion
