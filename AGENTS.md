@@ -207,7 +207,7 @@ Cursor rule: `.cursor/rules/ide-build-workflow.mdc` (always applied).
 
 ### 3.6 GitHub backup and release
 
-**Single repository:** **`Baegovda/PIPBONG`** — source code, git history, and GitHub Releases (ZIP) all live here. The legacy **`Baegovda/PIPBONG-releases`** repo was removed (2026-07).
+**Single repository:** **`Baegovda/PIPBONG`** — source code, git history, and GitHub Releases (ZIP) all live here. Legacy **`Baegovda/PIPBONG-releases`** is obsolete; delete it once (see below).
 
 | User says (Korean) | AI action |
 |--------------------|-----------|
@@ -221,7 +221,7 @@ Cursor rule: `.cursor/rules/ide-build-workflow.mdc` (always applied).
 
 **Prerequisites:** [GitHub CLI](https://cli.github.com/) (`gh auth login` once). Remote: `https://github.com/Baegovda/PIPBONG.git`.
 
-**Delete releases repo (one-time, already done):** `gh repo delete Baegovda/PIPBONG-releases --yes`
+**Delete legacy `PIPBONG-releases` repo (one-time):** requires `delete_repo` scope — `gh auth refresh -h github.com -s delete_repo`, then `gh repo delete Baegovda/PIPBONG-releases --yes`. Or delete from GitHub **Settings → Danger zone** on that repo.
 
 ---
 
@@ -829,7 +829,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Changed
 
-- GitHub: unified source and releases into single public repo **`Baegovda/PIPBONG`**; removed **`Baegovda/PIPBONG-releases`** (`PipbongVersion.h.in`, `UpdateChecker`, `create-github-release.ps1`, `package-release.ps1`, AGENTS.md §3.6).
+- GitHub: unified source and releases into single public repo **`Baegovda/PIPBONG`**; in-app update and `create-github-release.ps1` now target that repo instead of **`PIPBONG-releases`** (`PipbongVersion.h.in`, `UpdateChecker`, scripts, AGENTS.md §3.6).
 
 ## [0.7.35] - 2026-06-29
 
