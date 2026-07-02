@@ -35,6 +35,9 @@
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QCoreApplication>
+#include <QAbstractItemView>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -42,6 +45,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QListWidget>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
@@ -54,6 +58,7 @@
 #include <QStatusBar>
 #include <QPointer>
 #include <QTimer>
+#include <QVector>
 #include <QVBoxLayout>
 
 #include <memory>
@@ -86,6 +91,55 @@ bool applyNativeAlwaysOnTop(QWidget* window, bool enabled) {
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE;
 }
 
+struct WindowListEntry {
+    HWND hwnd = nullptr;
+    std::wstring title;
+    QString displayText;
+};
+
+QVector<WindowListEntry> collectWindowListEntries() {
+    QVector<WindowListEntry> entries;
+    EnumWindows(
+        [](HWND hwnd, LPARAM lParam) -> BOOL {
+            if (!IsWindowVisible(hwnd)) {
+                return TRUE;
+            }
+            if (GetWindow(hwnd, GW_OWNER) != nullptr) {
+                return TRUE;
+            }
+
+            wchar_t titleBuffer[512]{};
+            GetWindowTextW(hwnd, titleBuffer, 512);
+            std::wstring title(titleBuffer);
+            if (title.empty()) {
+                return TRUE;
+            }
+
+            ScreenCapture::TargetWindowInfo info;
+            QString processName = QStringLiteral("Unknown");
+            if (ScreenCapture::queryWindowInfo(hwnd, info) && !info.processPath.empty()) {
+                const QString processPath = QString::fromStdWString(info.processPath);
+                const QFileInfo processInfo(processPath);
+                processName = processInfo.fileName();
+            }
+
+            auto* out = reinterpret_cast<QVector<WindowListEntry>*>(lParam);
+            WindowListEntry entry;
+            entry.hwnd = hwnd;
+            entry.title = title;
+            const QString titleText = QString::fromStdWString(title);
+            const qulonglong hwndValue = reinterpret_cast<qulonglong>(hwnd);
+            entry.displayText = QStringLiteral("[%1] %2 - %3")
+                                    .arg(hwndValue, 0, 16)
+                                    .toUpper()
+                                    .arg(processName, titleText);
+            out->push_back(std::move(entry));
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&entries));
+    return entries;
+}
+
 } // namespace
 #endif
 
@@ -105,6 +159,8 @@ MainWindow::MainWindow(QWidget* parent)
     setupUiState();
     setupMenus();
     connectSignals();
+    setupUpdateChecker();
+    refreshUpdateButtonState();
 
     const QString autoSavePath = Application::autoSaveFilePath();
     if (QFileInfo::exists(autoSavePath)) {
@@ -171,12 +227,15 @@ void MainWindow::setupUi() {
     m_targetWindowDetailPanel = new TargetWindowDetailPanel(targetGroup);
     m_pickWindowButton = new QPushButton(tr("창 지정"), targetGroup);
     m_pickWindowButton->setToolTip(tr("클릭한 뒤 대상 창을 눌러 지정합니다. Esc로 취소."));
+    m_pickWindowListButton = new QPushButton(tr("창 목록"), targetGroup);
+    m_pickWindowListButton->setToolTip(tr("현재 표시 중인 창 목록에서 대상 창을 선택합니다."));
     m_showTargetWindowButton = new QPushButton(tr("창 표시"), targetGroup);
     m_showTargetWindowButton->setToolTip(tr("지정된 대상 창 테두리를 잠시 깜빡여 표시합니다."));
 
     auto* buttonColumn = new QVBoxLayout();
     buttonColumn->setSpacing(4);
     buttonColumn->addWidget(m_pickWindowButton);
+    buttonColumn->addWidget(m_pickWindowListButton);
     buttonColumn->addWidget(m_showTargetWindowButton);
 
     auto* detailRow = new QHBoxLayout();
@@ -187,11 +246,14 @@ void MainWindow::setupUi() {
     targetLayout->addLayout(detailRow);
 
     m_exitButton = new QPushButton(tr("종료"), bottomPanel);
+    m_updateButton = new QPushButton(bottomPanel);
+    m_updateButton->setToolTip(tr("GitHub 릴리즈에서 업데이트를 확인합니다."));
     m_calculatorButton = new QPushButton(tr("계산기"), bottomPanel);
     m_calculatorButton->setToolTip(tr("poe.ninja 시세 계산기"));
     m_settingsButton = new QPushButton(tr("설정"), bottomPanel);
     m_settingsButton->setToolTip(tr("프로그램 설정"));
     auto* exitRow = new QHBoxLayout;
+    exitRow->addWidget(m_updateButton);
     exitRow->addStretch();
     exitRow->addWidget(m_calculatorButton);
     exitRow->addWidget(m_settingsButton);
@@ -326,9 +388,11 @@ void MainWindow::connectSignals() {
 
     connect(m_exitButton, &QPushButton::clicked, this, &MainWindow::onExitRequested);
     connect(m_settingsButton, &QPushButton::clicked, this, &MainWindow::onProgramSettings);
+    connect(m_updateButton, &QPushButton::clicked, this, &MainWindow::onUpdateButtonClicked);
     connect(m_calculatorButton, &QPushButton::clicked, this, &MainWindow::onCalculator);
     connect(m_alwaysOnTopCheck, &QCheckBox::toggled, this, &MainWindow::onAlwaysOnTopToggled);
     connect(m_pickWindowButton, &QPushButton::clicked, this, &MainWindow::onPickTargetWindow);
+    connect(m_pickWindowListButton, &QPushButton::clicked, this, &MainWindow::onPickTargetWindowFromList);
     connect(m_showTargetWindowButton, &QPushButton::clicked, this, &MainWindow::onShowTargetWindow);
 
     UserInputInterruptMonitor::instance().setHandler(
@@ -339,6 +403,76 @@ void MainWindow::onExitRequested() {
     close();
 }
 
+void MainWindow::setupUpdateChecker() {
+    m_updateChecker = new UpdateChecker(this);
+    connect(m_updateChecker, &UpdateChecker::checkFinished, this, &MainWindow::onUpdateCheckFinished);
+    connect(m_updateChecker, &UpdateChecker::readyToRestartForUpdate, this, &MainWindow::prepareForShutdown);
+
+    m_updateCheckTimer = new QTimer(this);
+    m_updateCheckTimer->setInterval(5 * 60 * 1000);
+    connect(m_updateCheckTimer, &QTimer::timeout, this, &MainWindow::runSilentUpdateCheck);
+    m_updateCheckTimer->start();
+}
+
+void MainWindow::refreshUpdateButtonState() {
+    if (!m_updateButton || !m_updateChecker) {
+        return;
+    }
+
+    if (m_updateChecker->hasPendingUpdate()) {
+        const QString version = m_updateChecker->pendingUpdate().version.toString();
+        m_updateButton->setText(tr("v%1 버전으로 업데이트").arg(version));
+        m_updateButton->setEnabled(true);
+        m_updateButton->setToolTip(tr("GitHub 릴리즈 v%1을(를) 다운로드해 설치합니다.").arg(version));
+        return;
+    }
+
+    const QString currentVersion = QCoreApplication::applicationVersion();
+    m_updateButton->setText(tr("v%1 - 최신 버전입니다").arg(currentVersion));
+    m_updateButton->setEnabled(false);
+    m_updateButton->setToolTip(tr("GitHub 릴리즈와 비교해 현재 최신 버전입니다."));
+}
+
+void MainWindow::runSilentUpdateCheck() {
+    if (!m_updateChecker) {
+        return;
+    }
+    m_updateChecker->checkForUpdates(UpdateChecker::CheckUiMode::Silent);
+}
+
+void MainWindow::onUpdateCheckFinished(bool success, bool updateAvailable, const QString& errorMessage) {
+    refreshUpdateButtonState();
+    if (!success && !updateAvailable && !errorMessage.isEmpty() && m_updateButton) {
+        m_updateButton->setToolTip(errorMessage);
+    }
+}
+
+void MainWindow::onUpdateButtonClicked() {
+    if (hasAnyRunningSession()) {
+        QMessageBox::warning(this,
+                             tr("업데이트"),
+                             tr("워크플로 실행 중에는 업데이트할 수 없습니다. 먼저 실행을 중지하세요."));
+        return;
+    }
+
+    if (!m_updateChecker || !m_updateChecker->hasPendingUpdate()) {
+        return;
+    }
+
+    const UpdateChecker::ReleaseInfo release = m_updateChecker->pendingUpdate();
+    const auto reply =
+        QMessageBox::question(this,
+                              tr("업데이트"),
+                              tr("v%1(으)로 업데이트하시겠습니까?\n현재 버전: v%2")
+                                  .arg(release.version.toString())
+                                  .arg(QCoreApplication::applicationVersion()),
+                              QMessageBox::Yes | QMessageBox::No,
+                              QMessageBox::Yes);
+    if (reply == QMessageBox::Yes) {
+        m_updateChecker->installPendingUpdate();
+    }
+}
+
 void MainWindow::onCheckForUpdates() {
     if (hasAnyRunningSession()) {
         QMessageBox::warning(this,
@@ -347,9 +481,10 @@ void MainWindow::onCheckForUpdates() {
         return;
     }
 
-    auto* checker = new UpdateChecker(this);
-    connect(checker, &UpdateChecker::readyToRestartForUpdate, this, &MainWindow::prepareForShutdown);
-    checker->checkForUpdates();
+    if (!m_updateChecker) {
+        return;
+    }
+    m_updateChecker->checkForUpdates(UpdateChecker::CheckUiMode::Interactive);
 }
 
 void MainWindow::onProgramSettings() {
@@ -391,6 +526,10 @@ void MainWindow::applyAlwaysOnTop(bool enabled) {
 
 void MainWindow::showEvent(QShowEvent* event) {
     QMainWindow::showEvent(event);
+    if (!m_initialUpdateCheckDone) {
+        m_initialUpdateCheckDone = true;
+        QTimer::singleShot(0, this, &MainWindow::runSilentUpdateCheck);
+    }
 #ifdef _WIN32
     const HWND hwnd = reinterpret_cast<HWND>(winId());
     if (hwnd && IsWindow(hwnd)) {
@@ -1377,6 +1516,112 @@ void MainWindow::onPickTargetWindow() {
     });
 #else
     QMessageBox::information(this, tr("창 지정"), tr("창 지정은 Windows에서만 지원됩니다."));
+#endif
+}
+
+void MainWindow::onPickTargetWindowFromList() {
+#ifdef _WIN32
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("창 목록"));
+    dialog.resize(760, 460);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(8);
+
+    auto* hintLabel = new QLabel(
+        tr("현재 데스크톱에 표시된 최상위 창 목록입니다. 더블클릭하거나 선택 후 확인을 누르세요."),
+        &dialog);
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    auto* listWidget = new QListWidget(&dialog);
+    listWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+    layout->addWidget(listWidget, 1);
+
+    auto* refreshButton = new QPushButton(tr("새로고침"), &dialog);
+    auto* buttonRow = new QHBoxLayout();
+    buttonRow->addWidget(refreshButton);
+    buttonRow->addStretch();
+
+    auto* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    auto* okButton = buttonBox->button(QDialogButtonBox::Ok);
+    if (okButton) {
+        okButton->setText(tr("선택"));
+        okButton->setEnabled(false);
+    }
+    if (auto* cancelButton = buttonBox->button(QDialogButtonBox::Cancel)) {
+        cancelButton->setText(tr("취소"));
+    }
+    buttonRow->addWidget(buttonBox);
+    layout->addLayout(buttonRow);
+
+    auto populateList = [listWidget]() {
+        const HWND currentTarget = ScreenCapture::targetWindow();
+        const QVector<WindowListEntry> entries = collectWindowListEntries();
+        listWidget->clear();
+
+        int selectedIndex = -1;
+        for (int i = 0; i < entries.size(); ++i) {
+            const auto& entry = entries[i];
+            auto* item = new QListWidgetItem(entry.displayText, listWidget);
+            item->setData(Qt::UserRole, QVariant::fromValue(reinterpret_cast<qulonglong>(entry.hwnd)));
+            item->setData(Qt::UserRole + 1, QString::fromStdWString(entry.title));
+            if (currentTarget && currentTarget == entry.hwnd) {
+                selectedIndex = i;
+            }
+        }
+
+        if (selectedIndex >= 0) {
+            listWidget->setCurrentRow(selectedIndex);
+        } else if (listWidget->count() > 0) {
+            listWidget->setCurrentRow(0);
+        }
+    };
+
+    connect(refreshButton, &QPushButton::clicked, &dialog, populateList);
+    connect(listWidget, &QListWidget::itemDoubleClicked, &dialog, [&dialog](QListWidgetItem*) { dialog.accept(); });
+    connect(listWidget, &QListWidget::itemSelectionChanged, &dialog, [listWidget, okButton]() {
+        if (okButton) {
+            okButton->setEnabled(listWidget->currentItem() != nullptr);
+        }
+    });
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    populateList();
+    if (listWidget->count() == 0) {
+        QMessageBox::information(this, tr("창 목록"), tr("표시 중인 창을 찾지 못했습니다."));
+        return;
+    }
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    QListWidgetItem* currentItem = listWidget->currentItem();
+    if (!currentItem) {
+        return;
+    }
+
+    const qulonglong hwndValue = currentItem->data(Qt::UserRole).toULongLong();
+    const HWND hwnd = reinterpret_cast<HWND>(hwndValue);
+    if (!hwnd || !IsWindow(hwnd)) {
+        QMessageBox::warning(this, tr("창 목록"), tr("선택한 창이 더 이상 유효하지 않습니다. 다시 선택하세요."));
+        return;
+    }
+
+    const QString title = currentItem->data(Qt::UserRole + 1).toString();
+    ScreenCapture::setTargetWindowTitle(title.toStdWString());
+    ScreenCapture::setTargetWindow(hwnd);
+    m_project->setTargetWindowTitle(title.toStdString());
+    scheduleAutoSave();
+    appendLog(tr("창 지정: %1").arg(title.isEmpty() ? tr("(제목 없음)") : title));
+    showTransientStatus(tr("대상 창을 목록에서 지정했습니다."), 3000);
+    updateTargetWindowDetails();
+    scheduleRunWarmup();
+#else
+    QMessageBox::information(this, tr("창 목록"), tr("창 목록은 Windows에서만 지원됩니다."));
 #endif
 }
 

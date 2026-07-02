@@ -716,6 +716,9 @@ void FormulaBuilderDialog::onApplyClicked() {
                                   : preview;
 
     if (m_applyMode == FormulaApplyMode::SingleCell) {
+        if (m_model) {
+            m_model->pushUndoSnapshot();
+        }
         emit formulaApplied(m_targetRow, m_targetCol, formulaBody);
         return;
     }
@@ -763,6 +766,9 @@ void FormulaBuilderDialog::onApplyClicked() {
         }
     }
 
+    if (m_model) {
+        m_model->pushUndoSnapshot();
+    }
     for (const PendingApply& item : pending) {
         emit formulaApplied(item.row, item.col, item.formula);
     }

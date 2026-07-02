@@ -31,6 +31,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QSettings>
+#include <QShortcut>
 #include <QSignalBlocker>
 #include <QTableView>
 #include <QTimer>
@@ -140,6 +141,18 @@ CalculatorDialog::CalculatorDialog(QWidget* parent)
 
     connect(&m_client, &PoeNinjaClient::busyChanged, this, &CalculatorDialog::onClientBusyChanged);
     connect(&m_model, &SpreadsheetModel::sheetModified, this, &CalculatorDialog::onSheetModified);
+
+    auto* undoShortcut = new QShortcut(QKeySequence::Undo, this);
+    undoShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(undoShortcut, &QShortcut::activated, this, &CalculatorDialog::onUndo);
+
+    auto* redoShortcut = new QShortcut(QKeySequence::Redo, this);
+    redoShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(redoShortcut, &QShortcut::activated, this, &CalculatorDialog::onRedo);
+
+    auto* redoAltShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z), this);
+    redoAltShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(redoAltShortcut, &QShortcut::activated, this, &CalculatorDialog::onRedo);
     connect(&m_model, &SpreadsheetModel::baseCurrencyChanged, this, &CalculatorDialog::updateStatusLabels);
     connect(&m_iconCache, &CurrencyIconCache::iconUpdated, this, [this](const QString&) {
         refreshBaseCurrencyIcons();
@@ -227,6 +240,7 @@ void CalculatorDialog::setupUi() {
            "행 삭제·열 삭제는 선택한 줄/열을 제거하고 아래·오른쪽 셀과 수식 참조를 당깁니다. "
            "셀 기준 화폐로 셀마다 다른 기준 화폐를 지정할 수 있으며, 지정하지 않은 셀은 상단 글로벌 기준 화폐를 사용합니다. "
            "셀은 드래그·Ctrl+클릭·Shift+클릭으로 여러 개 선택할 수 있으며 Delete로 일괄 지울 수 있습니다. "
+           "Ctrl+Z / Ctrl+Y(또는 Ctrl+Shift+Z)로 편집을 되돌리거나 다시 실행할 수 있습니다. "
            "기준 화폐는 상단 콤보에서 선택하며 GGG 집계로 최대 약 1시간 지연될 수 있습니다."),
         this);
     m_hintLabel->setWordWrap(true);
@@ -502,6 +516,8 @@ void CalculatorDialog::loadPersistedState() {
             std::clamp(autoRefreshMinutes, kMinAutoRefreshMinutes, kMaxAutoRefreshMinutes));
         m_autoRefreshMinutesSpin->setEnabled(autoRefreshEnabled);
     }
+
+    m_model.clearUndoHistory();
 }
 
 void CalculatorDialog::persistState() {
@@ -528,6 +544,44 @@ void CalculatorDialog::saveSheetState() {
 
 void CalculatorDialog::onSheetModified() {
     m_saveTimer->start();
+    updateFormulaBarFromSelection();
+}
+
+void CalculatorDialog::onUndo() {
+    if (m_table && m_table->isEditingView()) {
+        return;
+    }
+    if (m_formulaBarEdit && m_formulaBarEdit->hasFocus()) {
+        return;
+    }
+    if (!m_model.canUndo()) {
+        return;
+    }
+
+    cancelCellMoveDrag();
+    m_model.undo();
+    if (m_table) {
+        m_table->viewport()->update();
+    }
+    updateFormulaBarFromSelection();
+}
+
+void CalculatorDialog::onRedo() {
+    if (m_table && m_table->isEditingView()) {
+        return;
+    }
+    if (m_formulaBarEdit && m_formulaBarEdit->hasFocus()) {
+        return;
+    }
+    if (!m_model.canRedo()) {
+        return;
+    }
+
+    cancelCellMoveDrag();
+    m_model.redo();
+    if (m_table) {
+        m_table->viewport()->update();
+    }
     updateFormulaBarFromSelection();
 }
 
@@ -668,6 +722,7 @@ void CalculatorDialog::applyBorderPreset(SpreadsheetBorderPreset preset) {
         return;
     }
 
+    m_model.pushUndoSnapshot();
     m_model.applyBorderPreset(minRow, minCol, maxRow, maxCol, preset);
     if (m_table) {
         m_table->viewport()->update();
@@ -684,6 +739,7 @@ void CalculatorDialog::applyCellBackgroundColor(const QColor& color) {
         return;
     }
 
+    m_model.pushUndoSnapshot();
     m_model.applyBackgroundColor(minRow, minCol, maxRow, maxCol, color);
     if (m_table) {
         m_table->viewport()->update();
@@ -700,6 +756,7 @@ void CalculatorDialog::applyCellForegroundColor(const QColor& color) {
         return;
     }
 
+    m_model.pushUndoSnapshot();
     m_model.applyForegroundColor(minRow, minCol, maxRow, maxCol, color);
     if (m_table) {
         m_table->viewport()->update();
@@ -715,6 +772,7 @@ void CalculatorDialog::clearSelectedCellColors() {
         return;
     }
 
+    m_model.pushUndoSnapshot();
     m_model.clearCellColors(minRow, minCol, maxRow, maxCol);
     if (m_table) {
         m_table->viewport()->update();
@@ -761,6 +819,7 @@ void CalculatorDialog::insertRowAtSelection() {
     int maxCol = 0;
     selectedCellBounds(minRow, minCol, maxRow, maxCol);
 
+    m_model.pushUndoSnapshot();
     if (!m_model.insertRow(minRow)) {
         return;
     }
@@ -786,6 +845,7 @@ void CalculatorDialog::insertColumnAtSelection() {
     int maxCol = col;
     selectedCellBounds(minRow, minCol, maxRow, maxCol);
 
+    m_model.pushUndoSnapshot();
     if (!m_model.insertColumn(minCol)) {
         return;
     }
@@ -811,6 +871,7 @@ void CalculatorDialog::deleteRowAtSelection() {
     int maxCol = 0;
     selectedCellBounds(minRow, minCol, maxRow, maxCol);
 
+    m_model.pushUndoSnapshot();
     if (!m_model.deleteRows(minRow, maxRow)) {
         QMessageBox::information(this, tr("행 삭제"), tr("최소 1개 행은 남겨야 합니다."));
         return;
@@ -838,6 +899,7 @@ void CalculatorDialog::deleteColumnAtSelection() {
     int maxCol = col;
     selectedCellBounds(minRow, minCol, maxRow, maxCol);
 
+    m_model.pushUndoSnapshot();
     if (!m_model.deleteColumns(minCol, maxCol)) {
         QMessageBox::information(this, tr("열 삭제"), tr("최소 1개 열은 남겨야 합니다."));
         return;
@@ -907,6 +969,7 @@ void CalculatorDialog::commitCellMoveDrag(const QModelIndex& dropIndex) {
         return;
     }
 
+    m_model.pushUndoSnapshot();
     if (!m_model.moveCellRange(m_cellMoveSrcMinRow,
                                m_cellMoveSrcMinCol,
                                m_cellMoveSrcMaxRow,
@@ -1321,6 +1384,7 @@ void CalculatorDialog::onTableContextMenu(const QPoint& pos) {
         if (multiSelected) {
             clearSelectedCells();
         } else {
+            m_model.pushUndoSnapshot();
             clearCellAt(index.row(), index.column());
         }
     }
@@ -1333,7 +1397,12 @@ void CalculatorDialog::bindCurrencyToCellAt(int row, int col) {
         return;
     }
 
-    CurrencyPickerDialog picker(currencies, &m_iconCache, this);
+    CurrencyPickerDialog picker(currencies,
+                                &m_iconCache,
+                                this,
+                                QString(),
+                                m_model.baseCurrencyId(),
+                                m_model.decimalPlaces());
     if (picker.exec() != QDialog::Accepted) {
         return;
     }
@@ -1344,6 +1413,7 @@ void CalculatorDialog::bindCurrencyToCellAt(int row, int col) {
         return;
     }
 
+    m_model.pushUndoSnapshot();
     m_model.bindCurrencyToCell(row, col, selectedId, selectedName);
 }
 
@@ -1370,7 +1440,12 @@ void CalculatorDialog::applyCellBaseCurrencyToSelection() {
         return;
     }
 
-    CurrencyPickerDialog picker(currencies, &m_iconCache, this, tr("셀 기준 화폐 선택"));
+    CurrencyPickerDialog picker(currencies,
+                                &m_iconCache,
+                                this,
+                                tr("셀 기준 화폐 선택"),
+                                m_model.baseCurrencyId(),
+                                m_model.decimalPlaces());
     if (picker.exec() != QDialog::Accepted) {
         return;
     }
@@ -1380,6 +1455,7 @@ void CalculatorDialog::applyCellBaseCurrencyToSelection() {
         return;
     }
 
+    m_model.pushUndoSnapshot();
     m_model.applyCellBaseCurrency(minRow, minCol, maxRow, maxCol, selectedId);
     if (m_table) {
         m_table->viewport()->update();
@@ -1396,6 +1472,7 @@ void CalculatorDialog::clearCellBaseCurrencyFromSelection() {
         return;
     }
 
+    m_model.pushUndoSnapshot();
     m_model.clearCellBaseCurrency(minRow, minCol, maxRow, maxCol);
     if (m_table) {
         m_table->viewport()->update();
@@ -1414,6 +1491,7 @@ void CalculatorDialog::clearSelectedCells() {
     }
 
     QSet<QPair<int, int>> cleared;
+    bool pushedUndo = false;
     for (const QModelIndex& index : selection->selectedIndexes()) {
         if (!index.isValid()) {
             continue;
@@ -1421,6 +1499,10 @@ void CalculatorDialog::clearSelectedCells() {
         const QPair<int, int> key(index.row(), index.column());
         if (cleared.contains(key)) {
             continue;
+        }
+        if (!pushedUndo) {
+            m_model.pushUndoSnapshot();
+            pushedUndo = true;
         }
         cleared.insert(key);
         clearCellAt(index.row(), index.column());

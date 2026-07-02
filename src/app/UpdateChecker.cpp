@@ -35,6 +35,7 @@ QNetworkRequest makeGitHubRequest(const QUrl& url) {
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::UserAgentHeader,
                       QStringLiteral("PIPBONG/%1").arg(QCoreApplication::applicationVersion()));
+    request.setRawHeader("Accept", "application/vnd.github+json");
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
     return request;
@@ -60,7 +61,8 @@ UpdateChecker::UpdateChecker(QWidget* parentWidget)
     , m_parentWidget(parentWidget)
     , m_network(new QNetworkAccessManager(this)) {}
 
-void UpdateChecker::checkForUpdates() {
+void UpdateChecker::checkForUpdates(CheckUiMode mode) {
+    m_checkUiMode = mode;
     if (m_activeReply) {
         m_activeReply->abort();
         m_activeReply->deleteLater();
@@ -70,6 +72,21 @@ void UpdateChecker::checkForUpdates() {
     QNetworkReply* reply = m_network->get(makeGitHubRequest(QUrl(githubLatestReleaseApiUrl())));
     m_activeReply = reply;
     connect(reply, &QNetworkReply::finished, this, &UpdateChecker::onCheckReplyFinished);
+}
+
+bool UpdateChecker::hasPendingUpdate() const {
+    return m_hasPendingUpdate;
+}
+
+UpdateChecker::ReleaseInfo UpdateChecker::pendingUpdate() const {
+    return m_availableRelease;
+}
+
+void UpdateChecker::installPendingUpdate() {
+    if (!m_hasPendingUpdate) {
+        return;
+    }
+    downloadAndInstall(m_availableRelease);
 }
 
 void UpdateChecker::onCheckReplyFinished() {
@@ -131,7 +148,18 @@ void UpdateChecker::finishCheck(bool success,
                                 const QString& errorMessage,
                                 const ReleaseInfo& release,
                                 bool updateAvailable) {
-    if (!m_parentWidget) {
+    if (success) {
+        if (updateAvailable) {
+            m_availableRelease = release;
+            m_hasPendingUpdate = true;
+        } else {
+            m_hasPendingUpdate = false;
+        }
+    }
+
+    emit checkFinished(success, updateAvailable, errorMessage);
+
+    if (m_checkUiMode == CheckUiMode::Silent || !m_parentWidget) {
         return;
     }
 

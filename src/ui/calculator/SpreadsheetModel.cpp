@@ -164,6 +164,8 @@ bool SpreadsheetModel::setData(const QModelIndex& index, const QVariant& value, 
         return false;
     }
 
+    pushUndoSnapshot();
+
     QString text = value.toString().trimmed();
     SpreadsheetCell cell;
 
@@ -1604,4 +1606,118 @@ void SpreadsheetModel::fromJson(const nlohmann::json& document) {
     }
 
     recalculateAll();
+}
+
+nlohmann::json SpreadsheetModel::captureState() const {
+    nlohmann::json state;
+    state["rowCount"] = m_rowCount;
+    state["columnCount"] = m_columnCount;
+    state["sheet"] = toJson();
+    return state;
+}
+
+void SpreadsheetModel::pruneCellsOutsideDimensions() {
+    const auto pruneMap = [this](auto& map) {
+        for (auto it = map.begin(); it != map.end();) {
+            if (it.key().first >= m_rowCount || it.key().second >= m_columnCount) {
+                it = map.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    };
+
+    pruneMap(m_inputs);
+    pruneMap(m_borders);
+    pruneMap(m_backgroundColors);
+    pruneMap(m_foregroundColors);
+    pruneMap(m_cellBaseCurrencyIds);
+}
+
+void SpreadsheetModel::restoreState(const nlohmann::json& state) {
+    m_suppressUndoCapture = true;
+    beginResetModel();
+
+    m_rowCount = state.value("rowCount", kDefaultRowCount);
+    m_columnCount = state.value("columnCount", kDefaultColumnCount);
+    m_inputs.clear();
+    m_borders.clear();
+    m_backgroundColors.clear();
+    m_foregroundColors.clear();
+    m_cellBaseCurrencyIds.clear();
+    m_states.clear();
+
+    const nlohmann::json sheet = state.value("sheet", nlohmann::json::object());
+    if (sheet.is_array()) {
+        fromJson(sheet);
+    } else {
+        fromJson(sheet);
+    }
+
+    m_rowCount = state.value("rowCount", m_rowCount);
+    m_columnCount = state.value("columnCount", m_columnCount);
+    pruneCellsOutsideDimensions();
+    recalculateAll();
+
+    endResetModel();
+    m_suppressUndoCapture = false;
+    emit sheetModified();
+    emit undoHistoryChanged();
+}
+
+void SpreadsheetModel::clearUndoHistory() {
+    m_undoStack.clear();
+    m_redoStack.clear();
+    emit undoHistoryChanged();
+}
+
+void SpreadsheetModel::pushUndoSnapshot() {
+    if (m_suppressUndoCapture) {
+        return;
+    }
+
+    m_undoStack.push_back(captureState());
+    if (static_cast<int>(m_undoStack.size()) > kMaxUndoDepth) {
+        m_undoStack.erase(m_undoStack.begin());
+    }
+    m_redoStack.clear();
+    emit undoHistoryChanged();
+}
+
+bool SpreadsheetModel::canUndo() const {
+    return !m_undoStack.empty();
+}
+
+bool SpreadsheetModel::canRedo() const {
+    return !m_redoStack.empty();
+}
+
+void SpreadsheetModel::undo() {
+    if (m_undoStack.empty()) {
+        return;
+    }
+
+    m_redoStack.push_back(captureState());
+    if (static_cast<int>(m_redoStack.size()) > kMaxUndoDepth) {
+        m_redoStack.erase(m_redoStack.begin());
+    }
+
+    const nlohmann::json snapshot = std::move(m_undoStack.back());
+    m_undoStack.pop_back();
+    restoreState(snapshot);
+}
+
+void SpreadsheetModel::redo() {
+    if (m_redoStack.empty()) {
+        return;
+    }
+
+    m_undoStack.push_back(captureState());
+    if (static_cast<int>(m_undoStack.size()) > kMaxUndoDepth) {
+        m_undoStack.erase(m_undoStack.begin());
+    }
+
+    const nlohmann::json snapshot = std::move(m_redoStack.back());
+    m_redoStack.pop_back();
+    restoreState(snapshot);
 }

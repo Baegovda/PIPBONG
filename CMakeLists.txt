@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.7.36 LANGUAGES CXX)
+project(PIPBONG VERSION 0.7.40 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 

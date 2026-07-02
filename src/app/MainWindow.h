@@ -37,6 +37,7 @@ class QSplitter;
 class TargetWindowDetailPanel;
 class CustomTitleBar;
 class CalculatorDialog;
+class UpdateChecker;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -62,10 +63,15 @@ private slots:
     void onStopWorkflow();
     void onExitRequested();
     void onCheckForUpdates();
+    void onUpdateButtonClicked();
+    void onUpdateCheckFinished(bool success, bool updateAvailable, const QString& errorMessage);
+    void runSilentUpdateCheck();
+    void refreshUpdateButtonState();
     void onProgramSettings();
     void onCalculator();
     void onAlwaysOnTopToggled(bool checked);
     void onPickTargetWindow();
+    void onPickTargetWindowFromList();
     void onShowTargetWindow();
     void onEngineLog(const QString& message);
     void onEngineStarted();
@@ -94,6 +100,7 @@ private slots:
     void syncHotkeys();
 
 private:
+    void setupUpdateChecker();
     void setupUi();
     void setupMenus();
     void setupUiState();
@@ -169,9 +176,11 @@ private:
     QSplitter* m_bottomHorizontalSplitter = nullptr;
     QPlainTextEdit* m_logView = nullptr;
     QPushButton* m_pickWindowButton = nullptr;
+    QPushButton* m_pickWindowListButton = nullptr;
     QPushButton* m_showTargetWindowButton = nullptr;
     QCheckBox* m_alwaysOnTopCheck = nullptr;
     QPushButton* m_exitButton = nullptr;
+    QPushButton* m_updateButton = nullptr;
     QPushButton* m_calculatorButton = nullptr;
     QPushButton* m_settingsButton = nullptr;
     TargetWindowDetailPanel* m_targetWindowDetailPanel = nullptr;
@@ -181,6 +190,9 @@ private:
     UiStateManager* m_uiState = nullptr;
     QTimer* m_autoSaveTimer = nullptr;
     QTimer* m_statusClearTimer = nullptr;
+    QTimer* m_updateCheckTimer = nullptr;
+    UpdateChecker* m_updateChecker = nullptr;
+    bool m_initialUpdateCheckDone = false;
     QString m_persistentStatusMessage;
     QString m_transientStatusMessage;
     std::map<std::string, FeatureRunSession> m_runSessions;

@@ -48,6 +48,8 @@ private slots:
     void onAutoRefreshTimer();
     void onClientBusyChanged(bool busy);
     void onSheetModified();
+    void onUndo();
+    void onRedo();
     void saveSheetState();
     void onFormulaBarCommit();
 

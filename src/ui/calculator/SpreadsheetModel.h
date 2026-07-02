@@ -110,10 +110,18 @@ public:
     nlohmann::json toJson() const;
     void fromJson(const nlohmann::json& document);
 
+    void clearUndoHistory();
+    void pushUndoSnapshot();
+    bool canUndo() const;
+    bool canRedo() const;
+    void undo();
+    void redo();
+
 signals:
     void sheetModified();
     void baseCurrencyChanged();
     void decimalPlacesChanged();
+    void undoHistoryChanged();
 
 private:
     using CellKey = QPair<int, int>;
@@ -154,6 +162,9 @@ private:
     void adjustAllFormulasForColumnInsert(int insertCol);
     void adjustAllFormulasForRowDelete(int minRow, int maxRow);
     void adjustAllFormulasForColumnDelete(int minCol, int maxCol);
+    nlohmann::json captureState() const;
+    void restoreState(const nlohmann::json& state);
+    void pruneCellsOutsideDimensions();
     static void clearCellMapsAt(QMap<CellKey, SpreadsheetCell>& inputs,
                                 QMap<CellKey, CellBorderMask>& borders,
                                 QMap<CellKey, QColor>& backgroundColors,
@@ -173,4 +184,9 @@ private:
     std::optional<EconomySnapshot> m_snapshot;
     QString m_baseCurrencyId = QStringLiteral("currency:exalted");
     int m_decimalPlaces = kDefaultDecimalPlaces;
+
+    static constexpr int kMaxUndoDepth = 100;
+    std::vector<nlohmann::json> m_undoStack;
+    std::vector<nlohmann::json> m_redoStack;
+    bool m_suppressUndoCapture = false;
 };

@@ -8,6 +8,11 @@ class QWidget;
 class UpdateChecker : public QObject {
     Q_OBJECT
 public:
+    enum class CheckUiMode {
+        Interactive,
+        Silent
+    };
+
     struct ReleaseInfo {
         QVersionNumber version;
         QString downloadUrl;
@@ -17,14 +22,22 @@ public:
 
     explicit UpdateChecker(QWidget* parentWidget);
 
-    void checkForUpdates();
+    void checkForUpdates(CheckUiMode mode = CheckUiMode::Interactive);
     void downloadAndInstall(const ReleaseInfo& release);
+    void installPendingUpdate();
+
+    bool hasPendingUpdate() const;
+    ReleaseInfo pendingUpdate() const;
 
 signals:
+    void checkFinished(bool success, bool updateAvailable, const QString& errorMessage);
     void readyToRestartForUpdate();
 
 private:
-    void finishCheck(bool success, const QString& errorMessage, const ReleaseInfo& release, bool updateAvailable);
+    void finishCheck(bool success,
+                     const QString& errorMessage,
+                     const ReleaseInfo& release,
+                     bool updateAvailable);
     void onCheckReplyFinished();
     void onDownloadProgress(qint64 received, qint64 total);
     void onDownloadFinished();
@@ -34,4 +47,7 @@ private:
     class QNetworkReply* m_activeReply = nullptr;
     QString m_pendingDownloadPath;
     ReleaseInfo m_pendingRelease;
+    ReleaseInfo m_availableRelease;
+    bool m_hasPendingUpdate = false;
+    CheckUiMode m_checkUiMode = CheckUiMode::Interactive;
 };

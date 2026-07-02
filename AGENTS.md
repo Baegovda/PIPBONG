@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.36` (from `project(PIPBONG VERSION 0.7.36)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.40` (from `project(PIPBONG VERSION 0.7.40)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -824,6 +824,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.40] - 2026-07-02
+
+### Added
+
+- Main window bottom-left **업데이트** button: silent GitHub check on startup and every 5 minutes; shows **vX 버전으로 업데이트** when a newer release exists, otherwise disabled **vX - 최신 버전입니다** (`MainWindow`, `UpdateChecker`).
+
+### Changed
+
+- In-app update checker uses a persistent `UpdateChecker` with silent vs interactive modes; GitHub API requests send `Accept: application/vnd.github+json` (`UpdateChecker`, `MainWindow`).
+
+## [0.7.39] - 2026-07-02
+
+### Added
+
+- Calculator spreadsheet undo/redo: **Ctrl+Z** / **Ctrl+Y** (and **Ctrl+Shift+Z**) restore sheet edits including cell values, borders, colors, row/column insert/delete, cell moves, currency binding, and formula-builder apply; up to 100 steps (`SpreadsheetModel`, `CalculatorDialog`, `FormulaBuilderDialog`).
+
+## [0.7.38] - 2026-07-02
+
+### Changed
+
+- Calculator **시세 연동** picker: dedicated **즐겨찾기** section at the top (separate from category list) shows base-currency-relative rates beside item names; removed duplicate favorites category from the combo (`CurrencyPickerDialog`, `CalculatorDialog`).
+
+## [0.7.37] - 2026-07-02
+
+### Added
+
+- Main window target panel: added **창 목록** button under **창 지정** to pick the target from currently visible top-level desktop windows (`MainWindow`).
+
+### Changed
+
+- Window-list picker dialog now shows each window as `[HWND] process.exe - window title`, supports refresh, preselects the current target window, and accepts double-click to apply quickly (`MainWindow`, `ScreenCapture::queryWindowInfo`).
 
 ## [0.7.36] - 2026-07-02
 
@@ -2370,4 +2402,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-02. Current application version: 0.7.36.*
+*Last consolidated: 2026-07-02. Current application version: 0.7.40.*
