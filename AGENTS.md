@@ -1054,7 +1054,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Changed
 
 - Application rebrand **SuckbongMachine** → **PIPBONG**: executable `PIPBONG.exe`, updater `PIPBONGUpdater.exe`, Qt org/app name, window title, project file filter, Win32 overlay/hotkey class names, `PipbongVersion.h`, CMake target `PIPBONG`, vcpkg manifest `pipbong`, IDE launch **Run PIPBONG (Release)** (`CMakeLists.txt`, `Application`, `MainWindow`, `UpdateChecker`, overlays, scripts, `.vscode/`, rules, `AGENTS.md`).
-- GitHub: private source **`Baegovda/PIPBONG`**, public releases **`Baegovda/PIPBONG-releases`** (`PipbongVersion.h.in`, `create-github-release.ps1`, git remote).
+- GitHub: public source **`Baegovda/PIPBONG`**, public releases **`Baegovda/PIPBONG-releases`** (`create-github-release.ps1`, git remote).
 - Auto-save migrates from legacy `%LOCALAPPDATA%/SuckbongMachine/SuckbongMachine/` when the PIPBONG data folder is empty (`Application::migrateLegacyAppData`).
 
 ## [0.5.99] - 2026-06-29
