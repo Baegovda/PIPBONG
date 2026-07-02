@@ -3,36 +3,102 @@
 #include "core/poeninja/PoeNinjaEconomyCategories.h"
 #include "ui/calculator/EconomyFavoritesStore.h"
 #include "ui/calculator/FormulaEvaluator.h"
+#include "ui/calculator/SpreadsheetCellColors.h"
 #include "ui/widgets/DragAdjustSpinBox.h"
 #include "ui/widgets/HintLabel.h"
 
 #include <nlohmann/json.hpp>
 
+#include <QApplication>
 #include <QCloseEvent>
 #include <QCheckBox>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QEvent>
+#include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QItemSelection>
 #include <QItemSelectionModel>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMap>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QTableView>
 #include <QTimer>
+#include <QToolButton>
 #include <QTimeZone>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWidgetAction>
 
 #include <QSet>
 
 #include <algorithm>
+#include <climits>
+#include <functional>
+
+class SpreadsheetTableView : public QTableView {
+public:
+    using QTableView::QTableView;
+    bool isEditingView() const { return state() == EditingState; }
+};
+
+QMenu* buildColorPaletteMenu(QWidget* parent,
+                              const QVector<QColor>& palette,
+                              int columns,
+                              const std::function<void(const QColor&)>& onPick,
+                              const std::function<void()>& onClear,
+                              const std::function<void()>& onCustom) {
+    auto* menu = new QMenu(parent);
+
+    auto* paletteHost = new QWidget(menu);
+    auto* grid = new QGridLayout(paletteHost);
+    grid->setContentsMargins(8, 8, 8, 4);
+    grid->setSpacing(4);
+
+    int row = 0;
+    int col = 0;
+    for (const QColor& color : palette) {
+        auto* swatch = new QPushButton(paletteHost);
+        swatch->setFixedSize(26, 26);
+        swatch->setFlat(true);
+        swatch->setToolTip(color.name(QColor::HexRgb));
+        swatch->setStyleSheet(QStringLiteral(
+            "QPushButton { background-color: %1; border: 1px solid #666; border-radius: 2px; }"
+            "QPushButton:hover { border: 2px solid #0078d4; }")
+                                  .arg(color.name(QColor::HexRgb)));
+        QObject::connect(swatch, &QPushButton::clicked, menu, [menu, onPick, color]() {
+            onPick(color);
+            menu->close();
+        });
+        grid->addWidget(swatch, row, col);
+        ++col;
+        if (col >= columns) {
+            col = 0;
+            ++row;
+        }
+    }
+
+    auto* paletteAction = new QWidgetAction(menu);
+    paletteAction->setDefaultWidget(paletteHost);
+    menu->addAction(paletteAction);
+    menu->addSeparator();
+    menu->addAction(QObject::tr("사용자 지정…"), menu, onCustom);
+    menu->addAction(QObject::tr("색 없음"), menu, [menu, onClear]() {
+        onClear();
+        menu->close();
+    });
+    return menu;
+}
 
 namespace {
 
@@ -156,21 +222,157 @@ void CalculatorDialog::setupUi() {
 
     m_hintLabel = new HintLabel(
         tr("셀에 숫자를 입력하거나 수식 만들기로 사칙연산을 구성하세요 (=A1+B1). 시세 연동으로 화폐·파편·룬 등 poe.ninja 시세를 불러올 수 있습니다. "
+           "선택한 셀을 드래그하면 이동하며, 다른 셀의 수식 참조도 함께 따라갑니다. "
+           "행 추가·열 추가로 중간에 빈 줄/열을 넣으면 셀 데이터와 수식 참조(A1 등)가 자동으로 밀립니다. "
+           "셀 기준 화폐로 셀마다 다른 기준 화폐를 지정할 수 있으며, 지정하지 않은 셀은 상단 글로벌 기준 화폐를 사용합니다. "
+           "셀은 드래그·Ctrl+클릭·Shift+클릭으로 여러 개 선택할 수 있으며 Delete로 일괄 지울 수 있습니다. "
            "기준 화폐는 상단 콤보에서 선택하며 GGG 집계로 최대 약 1시간 지연될 수 있습니다."),
         this);
     m_hintLabel->setWordWrap(true);
     rootLayout->addWidget(m_hintLabel);
 
-    m_table = new QTableView(this);
+    auto* formulaBarRow = new QHBoxLayout();
+    formulaBarRow->setSpacing(6);
+
+    m_cellNameLabel = new QLabel(this);
+    m_cellNameLabel->setFixedWidth(72);
+    m_cellNameLabel->setMinimumHeight(28);
+    m_cellNameLabel->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+    m_cellNameLabel->setAlignment(Qt::AlignCenter);
+    m_cellNameLabel->setToolTip(tr("선택한 셀 또는 범위"));
+    formulaBarRow->addWidget(m_cellNameLabel);
+
+    auto* fxLabel = new QLabel(QStringLiteral("fx"), this);
+    fxLabel->setFixedWidth(24);
+    fxLabel->setAlignment(Qt::AlignCenter);
+    fxLabel->setToolTip(tr("셀 내용·수식"));
+    formulaBarRow->addWidget(fxLabel);
+
+    m_formulaBarEdit = new QLineEdit(this);
+    m_formulaBarEdit->setPlaceholderText(tr("셀 내용 또는 =A1+B1 형식의 수식"));
+    m_formulaBarEdit->setClearButtonEnabled(true);
+    m_formulaBarEdit->setMinimumHeight(28);
+    formulaBarRow->addWidget(m_formulaBarEdit, 1);
+    rootLayout->addLayout(formulaBarRow);
+
+    auto* borderRow = new QHBoxLayout();
+    borderRow->setSpacing(6);
+    borderRow->addWidget(new QLabel(tr("테두리"), this));
+
+    auto* borderMenuButton = new QToolButton(this);
+    borderMenuButton->setText(tr("테두리 적용 ▾"));
+    borderMenuButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    borderMenuButton->setPopupMode(QToolButton::InstantPopup);
+    auto* borderMenu = new QMenu(borderMenuButton);
+    const auto addBorderAction = [this, borderMenu](const QString& label, SpreadsheetBorderPreset preset) {
+        QAction* action = borderMenu->addAction(label);
+        connect(action, &QAction::triggered, this, [this, preset]() { applyBorderPreset(preset); });
+    };
+    addBorderAction(tr("모든 테두리"), SpreadsheetBorderPreset::All);
+    addBorderAction(tr("바깥쪽 테두리"), SpreadsheetBorderPreset::Outside);
+    addBorderAction(tr("안쪽 테두리"), SpreadsheetBorderPreset::Inside);
+    borderMenu->addSeparator();
+    addBorderAction(tr("위쪽 테두리"), SpreadsheetBorderPreset::Top);
+    addBorderAction(tr("아래쪽 테두리"), SpreadsheetBorderPreset::Bottom);
+    addBorderAction(tr("왼쪽 테두리"), SpreadsheetBorderPreset::Left);
+    addBorderAction(tr("오른쪽 테두리"), SpreadsheetBorderPreset::Right);
+    borderMenu->addSeparator();
+    addBorderAction(tr("테두리 없음"), SpreadsheetBorderPreset::None);
+    borderMenuButton->setMenu(borderMenu);
+    borderRow->addWidget(borderMenuButton);
+
+    auto* insertRowButton = new QPushButton(tr("행 추가"), this);
+    insertRowButton->setToolTip(tr("선택한 행 위치에 빈 행을 삽입합니다. 아래 셀과 수식 참조가 자동으로 밀립니다."));
+    connect(insertRowButton, &QPushButton::clicked, this, &CalculatorDialog::insertRowAtSelection);
+    borderRow->addWidget(insertRowButton);
+
+    auto* insertColumnButton = new QPushButton(tr("열 추가"), this);
+    insertColumnButton->setToolTip(tr("선택한 열 위치에 빈 열을 삽입합니다. 오른쪽 셀과 수식 참조가 자동으로 밀립니다."));
+    connect(insertColumnButton, &QPushButton::clicked, this, &CalculatorDialog::insertColumnAtSelection);
+    borderRow->addWidget(insertColumnButton);
+
+    auto* cellBaseCurrencyButton = new QPushButton(tr("셀 기준 화폐"), this);
+    cellBaseCurrencyButton->setToolTip(
+        tr("선택한 셀마다 기준 화폐를 개별 지정합니다. 지정하지 않으면 상단 글로벌 기준 화폐를 사용합니다."));
+    connect(cellBaseCurrencyButton, &QPushButton::clicked, this, &CalculatorDialog::applyCellBaseCurrencyToSelection);
+    borderRow->addWidget(cellBaseCurrencyButton);
+
+    auto* clearCellBaseCurrencyButton = new QPushButton(tr("셀 기준 화폐 초기화"), this);
+    clearCellBaseCurrencyButton->setToolTip(
+        tr("선택 셀의 개별 기준 화폐를 지우고 글로벌 기준 화폐를 따릅니다."));
+    connect(clearCellBaseCurrencyButton, &QPushButton::clicked, this,
+            &CalculatorDialog::clearCellBaseCurrencyFromSelection);
+    borderRow->addWidget(clearCellBaseCurrencyButton);
+
+    borderRow->addStretch(1);
+    rootLayout->addLayout(borderRow);
+
+    auto* colorRow = new QHBoxLayout();
+    colorRow->setSpacing(6);
+    colorRow->addWidget(new QLabel(tr("셀 색상"), this));
+
+    auto* backgroundColorButton = new QToolButton(this);
+    backgroundColorButton->setText(tr("배경색 ▾"));
+    backgroundColorButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    backgroundColorButton->setPopupMode(QToolButton::InstantPopup);
+    backgroundColorButton->setMenu(buildColorPaletteMenu(
+        backgroundColorButton,
+        spreadsheetBackgroundPalette(),
+        6,
+        [this](const QColor& color) { applyCellBackgroundColor(color); },
+        [this]() {
+            int minRow = 0;
+            int minCol = 0;
+            int maxRow = 0;
+            int maxCol = 0;
+            if (selectedCellBounds(minRow, minCol, maxRow, maxCol)) {
+                m_model.clearCellBackgroundColors(minRow, minCol, maxRow, maxCol);
+                if (m_table) {
+                    m_table->viewport()->update();
+                }
+            }
+        },
+        [this]() { showCustomBackgroundColorDialog(); }));
+    colorRow->addWidget(backgroundColorButton);
+
+    auto* foregroundColorButton = new QToolButton(this);
+    foregroundColorButton->setText(tr("글자색 ▾"));
+    foregroundColorButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    foregroundColorButton->setPopupMode(QToolButton::InstantPopup);
+    foregroundColorButton->setMenu(buildColorPaletteMenu(
+        foregroundColorButton,
+        spreadsheetForegroundPalette(),
+        4,
+        [this](const QColor& color) { applyCellForegroundColor(color); },
+        [this]() {
+            int minRow = 0;
+            int minCol = 0;
+            int maxRow = 0;
+            int maxCol = 0;
+            if (selectedCellBounds(minRow, minCol, maxRow, maxCol)) {
+                m_model.clearCellForegroundColors(minRow, minCol, maxRow, maxCol);
+                if (m_table) {
+                    m_table->viewport()->update();
+                }
+            }
+        },
+        [this]() { showCustomForegroundColorDialog(); }));
+    colorRow->addWidget(foregroundColorButton);
+    colorRow->addStretch(1);
+    rootLayout->addLayout(colorRow);
+
+    m_table = new SpreadsheetTableView(this);
     m_table->setModel(&m_model);
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     m_table->verticalHeader()->setDefaultSectionSize(32);
     m_table->setAlternatingRowColors(true);
     m_table->setSelectionBehavior(QAbstractItemView::SelectItems);
-    m_table->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     m_cellDelegate = new SpreadsheetCellDelegate(&m_model, &m_iconCache, m_table);
     m_table->setItemDelegate(m_cellDelegate);
+    m_table->installEventFilter(this);
+    m_table->viewport()->installEventFilter(this);
     rootLayout->addWidget(m_table, 1);
 
     m_saveTimer = new QTimer(this);
@@ -201,6 +403,16 @@ void CalculatorDialog::setupUi() {
             this, &CalculatorDialog::onBaseCurrencyContextMenu);
     connect(m_baseCurrencyFavoriteButton, &QPushButton::clicked,
             this, &CalculatorDialog::onBaseCurrencyFavoriteClicked);
+    connect(m_formulaBarEdit, &QLineEdit::returnPressed, this, &CalculatorDialog::onFormulaBarCommit);
+    connect(m_formulaBarEdit, &QLineEdit::editingFinished, this, &CalculatorDialog::onFormulaBarCommit);
+
+    if (QItemSelectionModel* selectionModel = m_table->selectionModel()) {
+        connect(selectionModel, &QItemSelectionModel::currentChanged, this,
+                [this](const QModelIndex&, const QModelIndex&) { updateFormulaBarFromSelection(); });
+        connect(selectionModel, &QItemSelectionModel::selectionChanged, this,
+                [this](const QItemSelection&, const QItemSelection&) { updateFormulaBarFromSelection(); });
+    }
+    updateFormulaBarFromSelection();
 }
 
 void CalculatorDialog::showEvent(QShowEvent* event) {
@@ -225,6 +437,7 @@ void CalculatorDialog::showEvent(QShowEvent* event) {
 
 void CalculatorDialog::closeEvent(QCloseEvent* event) {
     exitFormulaPickMode();
+    cancelCellMoveDrag();
     if (m_autoRefreshTimer) {
         m_autoRefreshTimer->stop();
     }
@@ -304,6 +517,347 @@ void CalculatorDialog::saveSheetState() {
 
 void CalculatorDialog::onSheetModified() {
     m_saveTimer->start();
+    updateFormulaBarFromSelection();
+}
+
+QString CalculatorDialog::cellEditText(const SpreadsheetCell& cell) {
+    switch (cell.kind) {
+    case SpreadsheetCellKind::Formula:
+        return cell.raw.startsWith(QLatin1Char('=')) ? cell.raw : QLatin1Char('=') + cell.raw;
+    case SpreadsheetCellKind::ApiRef:
+        return cell.currencyName;
+    case SpreadsheetCellKind::Empty:
+        return {};
+    default:
+        return cell.raw;
+    }
+}
+
+QString CalculatorDialog::selectionReferenceLabel() const {
+    if (!m_table || !m_table->selectionModel()) {
+        return {};
+    }
+
+    const QModelIndexList indexes = m_table->selectionModel()->selectedIndexes();
+    if (indexes.isEmpty()) {
+        return {};
+    }
+    if (indexes.size() == 1) {
+        const QModelIndex index = indexes.first();
+        return FormulaEvaluator::cellReference(index.row(), index.column());
+    }
+
+    int minRow = INT_MAX;
+    int minCol = INT_MAX;
+    int maxRow = -1;
+    int maxCol = -1;
+    for (const QModelIndex& index : indexes) {
+        if (!index.isValid()) {
+            continue;
+        }
+        minRow = qMin(minRow, index.row());
+        minCol = qMin(minCol, index.column());
+        maxRow = qMax(maxRow, index.row());
+        maxCol = qMax(maxCol, index.column());
+    }
+    if (maxRow < 0) {
+        return {};
+    }
+    return FormulaEvaluator::formatCellRange(minRow, minCol, maxRow, maxCol);
+}
+
+void CalculatorDialog::updateFormulaBarFromSelection() {
+    if (!m_cellNameLabel || !m_formulaBarEdit) {
+        return;
+    }
+    if (m_formulaBarEdit->hasFocus()) {
+        return;
+    }
+
+    m_updatingFormulaBar = true;
+
+    const QString referenceLabel = selectionReferenceLabel();
+    m_cellNameLabel->setText(referenceLabel);
+    m_cellNameLabel->setEnabled(!referenceLabel.isEmpty());
+
+    if (m_table && m_table->currentIndex().isValid()) {
+        const QModelIndex current = m_table->currentIndex();
+        const SpreadsheetCell cell = m_model.cellInput(current.row(), current.column());
+        m_formulaBarEdit->setText(cellEditText(cell));
+        m_formulaBarEdit->setEnabled(true);
+    } else {
+        m_formulaBarEdit->clear();
+        m_formulaBarEdit->setEnabled(false);
+    }
+
+    m_updatingFormulaBar = false;
+}
+
+void CalculatorDialog::commitFormulaBarEdit() {
+    if (m_updatingFormulaBar || !m_table || !m_formulaBarEdit) {
+        return;
+    }
+
+    const QModelIndex index = m_table->currentIndex();
+    if (!index.isValid()) {
+        return;
+    }
+
+    if (m_table->isEditingView()) {
+        const QWidget* editor = m_table->indexWidget(index);
+        if (editor) {
+            m_table->closePersistentEditor(index);
+        }
+    }
+
+    m_model.setData(index, m_formulaBarEdit->text(), Qt::EditRole);
+}
+
+void CalculatorDialog::onFormulaBarCommit() {
+    if (m_updatingFormulaBar) {
+        return;
+    }
+    commitFormulaBarEdit();
+    updateFormulaBarFromSelection();
+}
+
+bool CalculatorDialog::selectedCellBounds(int& minRow, int& minCol, int& maxRow, int& maxCol) const {
+    if (!m_table || !m_table->selectionModel()) {
+        return false;
+    }
+
+    const QModelIndexList indexes = m_table->selectionModel()->selectedIndexes();
+    if (indexes.isEmpty()) {
+        return false;
+    }
+
+    minRow = INT_MAX;
+    minCol = INT_MAX;
+    maxRow = -1;
+    maxCol = -1;
+    for (const QModelIndex& index : indexes) {
+        if (!index.isValid()) {
+            continue;
+        }
+        minRow = qMin(minRow, index.row());
+        minCol = qMin(minCol, index.column());
+        maxRow = qMax(maxRow, index.row());
+        maxCol = qMax(maxCol, index.column());
+    }
+    return maxRow >= 0;
+}
+
+void CalculatorDialog::applyBorderPreset(SpreadsheetBorderPreset preset) {
+    int minRow = 0;
+    int minCol = 0;
+    int maxRow = 0;
+    int maxCol = 0;
+    if (!selectedCellBounds(minRow, minCol, maxRow, maxCol)) {
+        QMessageBox::information(this, tr("테두리"), tr("테두리를 적용할 셀을 먼저 선택하세요."));
+        return;
+    }
+
+    m_model.applyBorderPreset(minRow, minCol, maxRow, maxCol, preset);
+    if (m_table) {
+        m_table->viewport()->update();
+    }
+}
+
+void CalculatorDialog::applyCellBackgroundColor(const QColor& color) {
+    int minRow = 0;
+    int minCol = 0;
+    int maxRow = 0;
+    int maxCol = 0;
+    if (!selectedCellBounds(minRow, minCol, maxRow, maxCol)) {
+        QMessageBox::information(this, tr("셀 색상"), tr("색상을 적용할 셀을 먼저 선택하세요."));
+        return;
+    }
+
+    m_model.applyBackgroundColor(minRow, minCol, maxRow, maxCol, color);
+    if (m_table) {
+        m_table->viewport()->update();
+    }
+}
+
+void CalculatorDialog::applyCellForegroundColor(const QColor& color) {
+    int minRow = 0;
+    int minCol = 0;
+    int maxRow = 0;
+    int maxCol = 0;
+    if (!selectedCellBounds(minRow, minCol, maxRow, maxCol)) {
+        QMessageBox::information(this, tr("셀 색상"), tr("색상을 적용할 셀을 먼저 선택하세요."));
+        return;
+    }
+
+    m_model.applyForegroundColor(minRow, minCol, maxRow, maxCol, color);
+    if (m_table) {
+        m_table->viewport()->update();
+    }
+}
+
+void CalculatorDialog::clearSelectedCellColors() {
+    int minRow = 0;
+    int minCol = 0;
+    int maxRow = 0;
+    int maxCol = 0;
+    if (!selectedCellBounds(minRow, minCol, maxRow, maxCol)) {
+        return;
+    }
+
+    m_model.clearCellColors(minRow, minCol, maxRow, maxCol);
+    if (m_table) {
+        m_table->viewport()->update();
+    }
+}
+
+void CalculatorDialog::showCustomBackgroundColorDialog() {
+    QColor initial(255, 255, 255);
+    if (m_table && m_table->currentIndex().isValid()) {
+        initial = m_model.cellBackgroundColor(m_table->currentIndex().row(),
+                                              m_table->currentIndex().column())
+                      .value_or(initial);
+    }
+    const QColor chosen = QColorDialog::getColor(initial, this, tr("배경색 선택"));
+    if (chosen.isValid()) {
+        applyCellBackgroundColor(chosen);
+    }
+}
+
+void CalculatorDialog::showCustomForegroundColorDialog() {
+    QColor initial(0, 0, 0);
+    if (m_table && m_table->currentIndex().isValid()) {
+        initial = m_model.cellForegroundColor(m_table->currentIndex().row(),
+                                              m_table->currentIndex().column())
+                      .value_or(initial);
+    }
+    const QColor chosen = QColorDialog::getColor(initial, this, tr("글자색 선택"));
+    if (chosen.isValid()) {
+        applyCellForegroundColor(chosen);
+    }
+}
+
+void CalculatorDialog::insertRowAtSelection() {
+    int row = 0;
+    int col = 0;
+    if (!primarySelectedCell(row, col)) {
+        QMessageBox::information(this, tr("행 추가"), tr("행을 삽입할 위치의 셀을 먼저 선택하세요."));
+        return;
+    }
+
+    int minRow = row;
+    int minCol = 0;
+    int maxRow = row;
+    int maxCol = 0;
+    selectedCellBounds(minRow, minCol, maxRow, maxCol);
+
+    if (!m_model.insertRow(minRow)) {
+        return;
+    }
+
+    if (m_table) {
+        m_table->setCurrentIndex(m_model.index(minRow, col));
+        m_table->viewport()->update();
+    }
+    updateFormulaBarFromSelection();
+}
+
+void CalculatorDialog::insertColumnAtSelection() {
+    int row = 0;
+    int col = 0;
+    if (!primarySelectedCell(row, col)) {
+        QMessageBox::information(this, tr("열 추가"), tr("열을 삽입할 위치의 셀을 먼저 선택하세요."));
+        return;
+    }
+
+    int minRow = 0;
+    int minCol = col;
+    int maxRow = 0;
+    int maxCol = col;
+    selectedCellBounds(minRow, minCol, maxRow, maxCol);
+
+    if (!m_model.insertColumn(minCol)) {
+        return;
+    }
+
+    if (m_table) {
+        m_table->setCurrentIndex(m_model.index(row, minCol));
+        m_table->viewport()->update();
+    }
+    updateFormulaBarFromSelection();
+}
+
+void CalculatorDialog::cancelCellMoveDrag() {
+    if (!m_cellMoveDragArmed && !m_cellMoveDragging) {
+        return;
+    }
+    m_cellMoveDragArmed = false;
+    m_cellMoveDragging = false;
+    if (m_table) {
+        m_table->unsetCursor();
+        m_table->viewport()->unsetCursor();
+    }
+    updateStatusLabels();
+}
+
+void CalculatorDialog::selectCellRange(int minRow, int minCol, int maxRow, int maxCol) {
+    if (!m_table || !m_table->selectionModel()) {
+        return;
+    }
+
+    QItemSelection selection;
+    for (int row = minRow; row <= maxRow; ++row) {
+        for (int col = minCol; col <= maxCol; ++col) {
+            const QModelIndex index = m_model.index(row, col);
+            if (!index.isValid()) {
+                continue;
+            }
+            selection.select(index, index);
+        }
+    }
+
+    QItemSelectionModel* selectionModel = m_table->selectionModel();
+    selectionModel->select(selection, QItemSelectionModel::ClearAndSelect);
+    m_table->setCurrentIndex(m_model.index(minRow, minCol));
+}
+
+void CalculatorDialog::commitCellMoveDrag(const QModelIndex& dropIndex) {
+    if (!dropIndex.isValid()
+        || m_cellMoveSrcMinRow < 0
+        || m_cellMoveSrcMinCol < 0
+        || m_cellMoveSrcMaxRow < m_cellMoveSrcMinRow
+        || m_cellMoveSrcMaxCol < m_cellMoveSrcMinCol) {
+        cancelCellMoveDrag();
+        return;
+    }
+
+    const int dstMinRow = dropIndex.row();
+    const int dstMinCol = dropIndex.column();
+    const int blockHeight = m_cellMoveSrcMaxRow - m_cellMoveSrcMinRow + 1;
+    const int blockWidth = m_cellMoveSrcMaxCol - m_cellMoveSrcMinCol + 1;
+    const int dstMaxRow = dstMinRow + blockHeight - 1;
+    const int dstMaxCol = dstMinCol + blockWidth - 1;
+
+    if (dstMinRow < 0 || dstMinCol < 0) {
+        cancelCellMoveDrag();
+        return;
+    }
+
+    if (!m_model.moveCellRange(m_cellMoveSrcMinRow,
+                               m_cellMoveSrcMinCol,
+                               m_cellMoveSrcMaxRow,
+                               m_cellMoveSrcMaxCol,
+                               dstMinRow,
+                               dstMinCol)) {
+        cancelCellMoveDrag();
+        return;
+    }
+
+    cancelCellMoveDrag();
+    selectCellRange(dstMinRow, dstMinCol, dstMaxRow, dstMaxCol);
+    updateFormulaBarFromSelection();
+    if (m_table) {
+        m_table->viewport()->update();
+    }
 }
 
 void CalculatorDialog::populateLeagues(const IndexStateResult& indexState, const QString& preferredLeague) {
@@ -633,25 +1187,71 @@ void CalculatorDialog::onTableContextMenu(const QPoint& pos) {
     if (!index.isValid()) {
         return;
     }
-    m_table->setCurrentIndex(index);
+
+    QItemSelectionModel* selectionModel = m_table->selectionModel();
+    if (!selectionModel->isSelected(index)) {
+        m_table->setCurrentIndex(index);
+    }
+
+    const QModelIndexList selectedIndexes = selectionModel->selectedIndexes();
+    const bool multiSelected = selectedIndexes.size() > 1;
 
     QMenu menu(this);
     QAction* formulaAction = menu.addAction(tr("수식 만들기"));
     QAction* bindAction = menu.addAction(tr("시세 연동"));
-    QAction* clearAction = menu.addAction(tr("셀 지우기"));
+    menu.addSeparator();
+    QAction* backgroundColorAction = menu.addAction(tr("배경색 설정…"));
+    QAction* foregroundColorAction = menu.addAction(tr("글자색 설정…"));
+    QAction* clearColorsAction = menu.addAction(tr("색상 초기화"));
+    menu.addSeparator();
+    QAction* insertRowAction = menu.addAction(tr("행 추가"));
+    QAction* insertColumnAction = menu.addAction(tr("열 추가"));
+    menu.addSeparator();
+    QAction* cellBaseCurrencyAction = menu.addAction(tr("셀 기준 화폐 지정…"));
+    QAction* clearCellBaseCurrencyAction = menu.addAction(tr("셀 기준 화폐 초기화"));
+    menu.addSeparator();
+    QAction* clearAction = menu.addAction(multiSelected ? tr("선택 셀 지우기") : tr("셀 지우기"));
 
-    bindAction->setEnabled(!m_model.availableCurrencies().isEmpty());
+    bindAction->setEnabled(!m_model.availableCurrencies().isEmpty() && !multiSelected);
 
-    const SpreadsheetCell cell = m_model.cellInput(index.row(), index.column());
-    clearAction->setEnabled(cell.kind != SpreadsheetCellKind::Empty);
+    bool anyClearable = false;
+    const QModelIndexList cellsToCheck = multiSelected ? selectedIndexes : QModelIndexList{index};
+    for (const QModelIndex& cellIndex : cellsToCheck) {
+        if (!cellIndex.isValid()) {
+            continue;
+        }
+        if (m_model.cellInput(cellIndex.row(), cellIndex.column()).kind != SpreadsheetCellKind::Empty) {
+            anyClearable = true;
+            break;
+        }
+    }
+    clearAction->setEnabled(anyClearable);
 
     const QAction* chosen = menu.exec(m_table->viewport()->mapToGlobal(pos));
     if (chosen == formulaAction) {
         openFormulaBuilder(index.row(), index.column());
     } else if (chosen == bindAction) {
         bindCurrencyToCellAt(index.row(), index.column());
+    } else if (chosen == backgroundColorAction) {
+        showCustomBackgroundColorDialog();
+    } else if (chosen == foregroundColorAction) {
+        showCustomForegroundColorDialog();
+    } else if (chosen == clearColorsAction) {
+        clearSelectedCellColors();
+    } else if (chosen == insertRowAction) {
+        insertRowAtSelection();
+    } else if (chosen == insertColumnAction) {
+        insertColumnAtSelection();
+    } else if (chosen == cellBaseCurrencyAction) {
+        applyCellBaseCurrencyToSelection();
+    } else if (chosen == clearCellBaseCurrencyAction) {
+        clearCellBaseCurrencyFromSelection();
     } else if (chosen == clearAction) {
-        clearCellAt(index.row(), index.column());
+        if (multiSelected) {
+            clearSelectedCells();
+        } else {
+            clearCellAt(index.row(), index.column());
+        }
     }
 }
 
@@ -680,15 +1280,133 @@ void CalculatorDialog::clearCellAt(int row, int col) {
     SpreadsheetCell cell;
     cell.kind = SpreadsheetCellKind::Empty;
     m_model.setCellInput(row, col, cell);
+    m_model.clearCellBaseCurrency(row, col, row, col);
+}
+
+void CalculatorDialog::applyCellBaseCurrencyToSelection() {
+    const QList<CurrencyRate> currencies = m_model.availableCurrencies();
+    if (currencies.isEmpty()) {
+        QMessageBox::warning(this, tr("셀 기준 화폐"), tr("먼저 시세를 새로고침하세요."));
+        return;
+    }
+
+    int minRow = 0;
+    int minCol = 0;
+    int maxRow = 0;
+    int maxCol = 0;
+    if (!selectedCellBounds(minRow, minCol, maxRow, maxCol)) {
+        QMessageBox::information(this, tr("셀 기준 화폐"), tr("기준 화폐를 지정할 셀을 먼저 선택하세요."));
+        return;
+    }
+
+    CurrencyPickerDialog picker(currencies, &m_iconCache, this, tr("셀 기준 화폐 선택"));
+    if (picker.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    const QString selectedId = picker.selectedCurrencyId();
+    if (selectedId.isEmpty()) {
+        return;
+    }
+
+    m_model.applyCellBaseCurrency(minRow, minCol, maxRow, maxCol, selectedId);
+    if (m_table) {
+        m_table->viewport()->update();
+    }
+    updateFormulaBarFromSelection();
+}
+
+void CalculatorDialog::clearCellBaseCurrencyFromSelection() {
+    int minRow = 0;
+    int minCol = 0;
+    int maxRow = 0;
+    int maxCol = 0;
+    if (!selectedCellBounds(minRow, minCol, maxRow, maxCol)) {
+        return;
+    }
+
+    m_model.clearCellBaseCurrency(minRow, minCol, maxRow, maxCol);
+    if (m_table) {
+        m_table->viewport()->update();
+    }
+    updateFormulaBarFromSelection();
+}
+
+void CalculatorDialog::clearSelectedCells() {
+    if (!m_table || m_table->isEditingView()) {
+        return;
+    }
+
+    const QItemSelectionModel* selection = m_table->selectionModel();
+    if (!selection) {
+        return;
+    }
+
+    QSet<QPair<int, int>> cleared;
+    for (const QModelIndex& index : selection->selectedIndexes()) {
+        if (!index.isValid()) {
+            continue;
+        }
+        const QPair<int, int> key(index.row(), index.column());
+        if (cleared.contains(key)) {
+            continue;
+        }
+        cleared.insert(key);
+        clearCellAt(index.row(), index.column());
+    }
 }
 
 void CalculatorDialog::onFormulaBuilderClicked() {
-    const QModelIndex index = m_table->currentIndex();
-    if (index.isValid()) {
-        openFormulaBuilder(index.row(), index.column());
+    int row = 0;
+    int col = 0;
+    if (primarySelectedCell(row, col)) {
+        openFormulaBuilder(row, col);
         return;
     }
     openFormulaBuilder(0, 0);
+}
+
+bool CalculatorDialog::primarySelectedCell(int& row, int& col) const {
+    if (!m_table) {
+        return false;
+    }
+
+    const QModelIndex current = m_table->currentIndex();
+    if (current.isValid()) {
+        row = current.row();
+        col = current.column();
+        return true;
+    }
+
+    const QItemSelectionModel* selectionModel = m_table->selectionModel();
+    if (!selectionModel) {
+        return false;
+    }
+
+    const QModelIndexList selected = selectionModel->selectedIndexes();
+    if (selected.isEmpty()) {
+        return false;
+    }
+
+    row = selected.first().row();
+    col = selected.first().column();
+    return true;
+}
+
+void CalculatorDialog::applyTargetCellFromCurrentSelection() {
+    if (!m_formulaBuilder) {
+        return;
+    }
+
+    int row = 0;
+    int col = 0;
+    if (!primarySelectedCell(row, col)) {
+        QMessageBox::information(this, tr("수식 만들기"), tr("적용할 셀을 표에서 먼저 선택하세요."));
+        return;
+    }
+
+    m_formulaBuilder->setTargetCell(row, col);
+    m_formulaBuilder->endPickMode();
 }
 
 void CalculatorDialog::openFormulaBuilder(int row, int col) {
@@ -725,7 +1443,11 @@ void CalculatorDialog::openFormulaBuilder(int row, int col) {
 }
 
 void CalculatorDialog::enterFormulaPickMode(FormulaPickSlot slot) {
-    Q_UNUSED(slot);
+    if (slot == FormulaPickSlot::Target) {
+        applyTargetCellFromCurrentSelection();
+        return;
+    }
+
     if (!m_table || m_formulaPickActive) {
         return;
     }
@@ -733,9 +1455,11 @@ void CalculatorDialog::enterFormulaPickMode(FormulaPickSlot slot) {
     m_formulaPickActive = true;
     m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_table->setSelectionBehavior(QAbstractItemView::SelectItems);
-    m_table->installEventFilter(this);
-    m_table->viewport()->installEventFilter(this);
-    m_statusLabel->setText(tr("표에서 셀을 클릭하거나 드래그해 선택하세요. Esc로 취소합니다."));
+    if (slot == FormulaPickSlot::ArrayRange) {
+        m_statusLabel->setText(tr("배열 수식 범위: 표에서 드래그해 사각형을 고르세요. Esc로 취소합니다."));
+    } else {
+        m_statusLabel->setText(tr("표에서 셀을 클릭하거나 드래그해 선택하세요. Esc로 취소합니다."));
+    }
 }
 
 void CalculatorDialog::exitFormulaPickMode() {
@@ -744,11 +1468,6 @@ void CalculatorDialog::exitFormulaPickMode() {
     }
 
     m_formulaPickActive = false;
-    if (m_table) {
-        m_table->viewport()->removeEventFilter(this);
-        m_table->removeEventFilter(this);
-        m_table->setSelectionMode(QAbstractItemView::SingleSelection);
-    }
     if (m_formulaBuilder) {
         const QSignalBlocker blocker(m_formulaBuilder);
         m_formulaBuilder->endPickMode();
@@ -793,7 +1512,7 @@ void CalculatorDialog::commitFormulaPickFromSelection() {
 }
 
 bool CalculatorDialog::eventFilter(QObject* watched, QEvent* event) {
-    if (!m_formulaPickActive || !m_table) {
+    if (!m_table) {
         return QDialog::eventFilter(watched, event);
     }
 
@@ -803,17 +1522,79 @@ bool CalculatorDialog::eventFilter(QObject* watched, QEvent* event) {
         return QDialog::eventFilter(watched, event);
     }
 
-    if (event->type() == QEvent::MouseButtonRelease && isViewport) {
+    if (event->type() == QEvent::MouseButtonRelease && isViewport && m_formulaPickActive) {
         commitFormulaPickFromSelection();
         return false;
     }
-    if (event->type() == QEvent::KeyPress && isTable) {
+
+    if (!m_formulaPickActive && !m_table->isEditingView() && isViewport) {
+        if (event->type() == QEvent::MouseButtonPress) {
+            const auto* mouseEvent = static_cast<const QMouseEvent*>(event);
+            if (mouseEvent->button() == Qt::LeftButton) {
+                const QModelIndex pressIndex = m_table->indexAt(mouseEvent->pos());
+                if (pressIndex.isValid()
+                    && m_table->selectionModel()
+                    && m_table->selectionModel()->isSelected(pressIndex)) {
+                    if (selectedCellBounds(m_cellMoveSrcMinRow,
+                                           m_cellMoveSrcMinCol,
+                                           m_cellMoveSrcMaxRow,
+                                           m_cellMoveSrcMaxCol)) {
+                        m_cellMoveDragArmed = true;
+                        m_cellMoveDragging = false;
+                        m_cellMovePressPos = mouseEvent->pos();
+                    }
+                } else {
+                    cancelCellMoveDrag();
+                }
+            }
+        } else if (event->type() == QEvent::MouseMove) {
+            const auto* mouseEvent = static_cast<const QMouseEvent*>(event);
+            if (m_cellMoveDragArmed
+                && (mouseEvent->buttons() & Qt::LeftButton)
+                && !m_cellMoveDragging
+                && (mouseEvent->pos() - m_cellMovePressPos).manhattanLength()
+                       >= QApplication::startDragDistance()) {
+                m_cellMoveDragging = true;
+                m_table->viewport()->setCursor(Qt::DragMoveCursor);
+                m_statusLabel->setText(tr("셀 이동: 놓을 위치에서 마우스를 떼세요. Esc로 취소합니다."));
+            }
+            if (m_cellMoveDragging) {
+                return true;
+            }
+        } else if (event->type() == QEvent::MouseButtonRelease) {
+            const auto* mouseEvent = static_cast<const QMouseEvent*>(event);
+            if (mouseEvent->button() == Qt::LeftButton && m_cellMoveDragging) {
+                const QModelIndex dropIndex = m_table->indexAt(mouseEvent->pos());
+                commitCellMoveDrag(dropIndex);
+                return true;
+            }
+            if (mouseEvent->button() == Qt::LeftButton) {
+                cancelCellMoveDrag();
+            }
+        }
+    }
+
+    if (event->type() == QEvent::KeyPress && (isTable || isViewport)) {
         const auto* keyEvent = static_cast<QKeyEvent*>(event);
-        if (keyEvent->key() == Qt::Key_Escape) {
+
+        if (m_cellMoveDragging && keyEvent->key() == Qt::Key_Escape) {
+            cancelCellMoveDrag();
+            return true;
+        }
+
+        if (m_formulaPickActive && keyEvent->key() == Qt::Key_Escape) {
             exitFormulaPickMode();
             return true;
         }
+
+        if (!m_formulaPickActive
+            && (keyEvent->key() == Qt::Key_Delete || keyEvent->key() == Qt::Key_Backspace)
+            && !m_table->isEditingView()) {
+            clearSelectedCells();
+            return true;
+        }
     }
+
     return QDialog::eventFilter(watched, event);
 }
 

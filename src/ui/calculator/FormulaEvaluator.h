@@ -29,4 +29,19 @@ public:
     static FormulaResult evaluate(const QString& expression,
                                   const CellValueResolver& resolveCell,
                                   std::unordered_set<std::string>* visiting = nullptr);
+
+    static QString shiftFormulaReferences(const QString& formula, int deltaRow, int deltaCol);
+    static QString shiftFormulaReferencesAtOrAfter(const QString& formula,
+                                                   int minRow,
+                                                   int minCol,
+                                                   int deltaRow,
+                                                   int deltaCol);
+    static QString shiftFormulaReferencesInRegion(const QString& formula,
+                                                    int regionMinRow,
+                                                    int regionMinCol,
+                                                    int regionMaxRow,
+                                                    int regionMaxCol,
+                                                    int deltaRow,
+                                                    int deltaCol);
+    static QString formatCellRange(int minRow, int minCol, int maxRow, int maxCol);
 };

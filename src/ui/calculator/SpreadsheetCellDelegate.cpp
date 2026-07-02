@@ -1,6 +1,7 @@
 #include "ui/calculator/SpreadsheetCellDelegate.h"
 
 #include "ui/calculator/CurrencyIconCache.h"
+#include "ui/calculator/SpreadsheetBorders.h"
 #include "ui/calculator/SpreadsheetModel.h"
 
 #include <QApplication>
@@ -12,6 +13,36 @@ namespace {
 
 constexpr int kIconSize = 22;
 constexpr int kIconTextGap = 6;
+
+void drawCellBorders(QPainter* painter, const QRect& rect, CellBorderMask mask) {
+    if (mask == 0) {
+        return;
+    }
+
+    QPen pen(QColor(64, 64, 64));
+    pen.setWidth(1);
+    pen.setCosmetic(true);
+    painter->setPen(pen);
+    painter->setBrush(Qt::NoBrush);
+
+    const int left = rect.left();
+    const int top = rect.top();
+    const int right = rect.right();
+    const int bottom = rect.bottom();
+
+    if (hasCellBorder(mask, CellBorder::Top)) {
+        painter->drawLine(left, top, right, top);
+    }
+    if (hasCellBorder(mask, CellBorder::Bottom)) {
+        painter->drawLine(left, bottom, right, bottom);
+    }
+    if (hasCellBorder(mask, CellBorder::Left)) {
+        painter->drawLine(left, top, left, bottom);
+    }
+    if (hasCellBorder(mask, CellBorder::Right)) {
+        painter->drawLine(right, top, right, bottom);
+    }
+}
 
 } // namespace
 
@@ -33,6 +64,7 @@ void SpreadsheetCellDelegate::paint(QPainter* painter,
     const SpreadsheetCell cell = m_model->cellInput(index.row(), index.column());
     if (cell.kind != SpreadsheetCellKind::ApiRef || !m_icons) {
         QStyledItemDelegate::paint(painter, option, index);
+        drawCellBorders(painter, option.rect, m_model->cellBorders(index.row(), index.column()));
         return;
     }
 
@@ -82,4 +114,6 @@ void SpreadsheetCellDelegate::paint(QPainter* painter,
         painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, text);
     }
     painter->restore();
+
+    drawCellBorders(painter, option.rect, m_model->cellBorders(index.row(), index.column()));
 }

@@ -32,11 +32,12 @@ bool isPlaceholderItem(const QListWidgetItem* item) {
 
 CurrencyPickerDialog::CurrencyPickerDialog(const QList<CurrencyRate>& rates,
                                            CurrencyIconCache* icons,
-                                           QWidget* parent)
+                                           QWidget* parent,
+                                           const QString& dialogTitle)
     : QDialog(parent)
     , m_rates(rates)
     , m_icons(icons) {
-    setWindowTitle(tr("시세 연동"));
+    setWindowTitle(dialogTitle.isEmpty() ? tr("시세 연동") : dialogTitle);
     setMinimumSize(460, 520);
 
     auto* layout = new QVBoxLayout(this);

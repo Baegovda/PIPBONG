@@ -220,3 +220,155 @@ FormulaResult FormulaEvaluator::evaluate(const QString& expression,
     }
     return result;
 }
+
+QString FormulaEvaluator::formatCellRange(int minRow, int minCol, int maxRow, int maxCol) {
+    if (minRow < 0 || minCol < 0 || maxRow < minRow || maxCol < minCol) {
+        return {};
+    }
+    const QString topLeft = cellReference(minRow, minCol);
+    if (minRow == maxRow && minCol == maxCol) {
+        return topLeft;
+    }
+    return topLeft + QStringLiteral(":") + cellReference(maxRow, maxCol);
+}
+
+QString FormulaEvaluator::shiftFormulaReferences(const QString& formula, int deltaRow, int deltaCol) {
+    if (deltaRow == 0 && deltaCol == 0) {
+        return formula;
+    }
+
+    static const QRegularExpression refPattern(QStringLiteral(R"(\b([A-Z]+)([0-9]+)\b)"));
+    QList<QRegularExpressionMatch> matches;
+    QRegularExpressionMatchIterator iterator = refPattern.globalMatch(formula);
+    while (iterator.hasNext()) {
+        matches.append(iterator.next());
+    }
+
+    QString result = formula;
+    for (int i = matches.size() - 1; i >= 0; --i) {
+        const QRegularExpressionMatch match = matches.at(i);
+        int row = 0;
+        int col = 0;
+        if (!cellAddressFromReference(match.captured(0), row, col)) {
+            continue;
+        }
+
+        row += deltaRow;
+        col += deltaCol;
+        if (row < 0 || col < 0) {
+            return {};
+        }
+
+        result.replace(match.capturedStart(), match.capturedLength(), cellReference(row, col));
+    }
+    return result;
+}
+
+QString FormulaEvaluator::shiftFormulaReferencesAtOrAfter(const QString& formula,
+                                                            int minRow,
+                                                            int minCol,
+                                                            int deltaRow,
+                                                            int deltaCol) {
+    if (deltaRow == 0 && deltaCol == 0) {
+        return formula;
+    }
+
+    static const QRegularExpression refPattern(QStringLiteral(R"(\b([A-Z]+)([0-9]+)\b)"));
+    QList<QRegularExpressionMatch> matches;
+    QRegularExpressionMatchIterator iterator = refPattern.globalMatch(formula);
+    while (iterator.hasNext()) {
+        matches.append(iterator.next());
+    }
+
+    QString result = formula;
+    for (int i = matches.size() - 1; i >= 0; --i) {
+        const QRegularExpressionMatch match = matches.at(i);
+        int row = 0;
+        int col = 0;
+        if (!cellAddressFromReference(match.captured(0), row, col)) {
+            continue;
+        }
+
+        if (minRow >= 0 && row >= minRow) {
+            row += deltaRow;
+        }
+        if (minCol >= 0 && col >= minCol) {
+            col += deltaCol;
+        }
+        if (row < 0 || col < 0) {
+            return {};
+        }
+
+        result.replace(match.capturedStart(), match.capturedLength(), cellReference(row, col));
+    }
+    return result;
+}
+
+namespace {
+
+bool cellInRegion(int row, int col, int regionMinRow, int regionMinCol, int regionMaxRow, int regionMaxCol) {
+    return row >= regionMinRow && row <= regionMaxRow && col >= regionMinCol && col <= regionMaxCol;
+}
+
+QString shiftFormulaReferenceMatches(const QString& formula,
+                                     int deltaRow,
+                                     int deltaCol,
+                                     bool onlyInsideRegion,
+                                     int regionMinRow,
+                                     int regionMinCol,
+                                     int regionMaxRow,
+                                     int regionMaxCol) {
+    if (deltaRow == 0 && deltaCol == 0) {
+        return formula;
+    }
+
+    static const QRegularExpression refPattern(QStringLiteral(R"(\b([A-Z]+)([0-9]+)\b)"));
+    QList<QRegularExpressionMatch> matches;
+    QRegularExpressionMatchIterator iterator = refPattern.globalMatch(formula);
+    while (iterator.hasNext()) {
+        matches.append(iterator.next());
+    }
+
+    QString result = formula;
+    for (int i = matches.size() - 1; i >= 0; --i) {
+        const QRegularExpressionMatch match = matches.at(i);
+        int row = 0;
+        int col = 0;
+        if (!FormulaEvaluator::cellAddressFromReference(match.captured(0), row, col)) {
+            continue;
+        }
+
+        if (onlyInsideRegion
+            && !cellInRegion(row, col, regionMinRow, regionMinCol, regionMaxRow, regionMaxCol)) {
+            continue;
+        }
+
+        row += deltaRow;
+        col += deltaCol;
+        if (row < 0 || col < 0) {
+            return {};
+        }
+
+        result.replace(match.capturedStart(), match.capturedLength(), FormulaEvaluator::cellReference(row, col));
+    }
+    return result;
+}
+
+} // namespace
+
+QString FormulaEvaluator::shiftFormulaReferencesInRegion(const QString& formula,
+                                                           int regionMinRow,
+                                                           int regionMinCol,
+                                                           int regionMaxRow,
+                                                           int regionMaxCol,
+                                                           int deltaRow,
+                                                           int deltaCol) {
+    return shiftFormulaReferenceMatches(formula,
+                                        deltaRow,
+                                        deltaCol,
+                                        true,
+                                        regionMinRow,
+                                        regionMinCol,
+                                        regionMaxRow,
+                                        regionMaxCol);
+}

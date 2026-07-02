@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.15` (from `project(PIPBONG VERSION 0.7.15)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.32` (from `project(PIPBONG VERSION 0.7.32)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -205,7 +205,7 @@ Cursor rule: `.cursor/rules/ide-build-workflow.mdc` (always applied).
 ## 4. Repository Map
 
 ```
-poez/                          # repo root (legacy folder name)
+Sbm1.0/                        # repo root (local workspace)
 ├── AGENTS.md                  # this file — sole project documentation
 ├── CMakeLists.txt             # version source of truth, source list
 ├── CMakePresets.json          # VS2022 + vcpkg preset
@@ -213,7 +213,9 @@ poez/                          # repo root (legacy folder name)
 ├── 빌드.bat                   # one-click Release build → scripts/build-release.ps1
 ├── scripts/
 │   ├── build-release.ps1      # canonical incremental Release build (IDE + AI task close)
-│   └── deploy-qt.ps1          # Qt DLL deploy beside build/Release (once when needed)
+│   ├── deploy-qt.ps1          # Qt DLL deploy beside build/Release (once when needed)
+│   ├── create-github-release.ps1
+│   └── fetch-poe2db-ko-names.py  # regenerate EconomyNameKoData.inc
 ├── .vscode/                   # tracked IDE workflow — tasks, launch, settings (see §3.1)
 │   ├── tasks.json             # Ctrl+Shift+B → build-release.ps1
 │   ├── launch.json            # F5 → Run PIPBONG (Release)
@@ -308,7 +310,6 @@ poez/                          # repo root (legacy folder name)
 | Item | Location |
 |------|----------|
 | Auto-save file | `%LOCALAPPDATA%/PIPBONG/PIPBONG/project.json` via `QStandardPaths::AppDataLocation` |
-| Prior install import | First launch copies `project.json` + `templates/` from `%LOCALAPPDATA%/SuckbongMachine/SuckbongMachine/` or `%LOCALAPPDATA%/poez/poez/` when the PIPBONG folder is empty; merges `QSettings` from the same prior org/app once (`Application`) |
 | Templates | `{projectDirectory}/templates/*.png` |
 | Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
 | Debounce | 800 ms after edits; also on window close |
@@ -461,16 +462,6 @@ poez/                          # repo root (legacy folder name)
 | `randomRange` | `false` | Use min/max instead |
 | `minMs`, `maxMs` | `0` | Random range bounds (5 ms step) |
 
-#### `Loop`
-
-| Field | Default | Notes |
-|-------|---------|-------|
-| `exitCondition` | `"DetectionFailed"` | `DetectionFailed`, `DetectionSucceeded`, `LastMatchSuccess`, `LastMatchFailed` — stop repeating and continue when met after a body iteration |
-| `detectionMissLimit` | `1` | Consecutive ImageFind poll misses inside the body before detection counts as failed (`DetectionFailed` only); omitted when default |
-| `body` | `[]` | Nested workflow repeated until the exit condition is met |
-
-`body` uses the same block JSON schema as the root `workflow` array. Nested `Loop` blocks share the max depth 8 runtime limit.
-
 #### Workflow loop regions (feature `workflow` document)
 
 Root feature `workflow` may be a **block array** (legacy) or an **object** when loop regions are used:
@@ -493,16 +484,10 @@ Root feature `workflow` may be a **block array** (legacy) or an **object** when 
 | Field | Default | Notes |
 |-------|---------|-------|
 | `startBlock` / `endBlock` | — | **1-based inclusive** block numbers matching the workflow list `#` column; regions must not overlap |
-| `exitCondition` | `"DetectionFailed"` | Same values as `Loop` block |
-| `detectionMissLimit` | `1` | Same as `Loop` block; omitted when default |
+| `exitCondition` | `"DetectionFailed"` | `DetectionFailed`, `DetectionSucceeded`, `LastMatchSuccess`, `LastMatchFailed` |
+| `detectionMissLimit` | `1` | Consecutive ImageFind poll misses inside the region before detection counts as failed (`DetectionFailed` only); omitted when default |
 
 When `loopRegions` is empty, `workflow` saves as a plain block array for backward compatibility. `WorkflowRunner` repeats each region until its exit condition is met, then continues with the next block after `endBlock`.
-
-#### `Comment`
-
-| Field | Default |
-|-------|---------|
-| `text` | `""` |
 
 **Stability rule:** Never localize JSON `type` values or enum strings used in serialization.
 
@@ -815,6 +800,114 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.32] - 2026-06-29
+
+### Removed
+
+- Prior-install data migration from **SuckbongMachine** / **poez** app folders (`Application` — no `migratePriorProjectFiles` / `migratePriorSettings`).
+- One-off dev scripts: `probe-poeninja-types.py`, `scrape-poeninja-html.py`, `scrape-poeninja-js.py`, `list-unmapped-ko.py`, `patch-unmapped-ko.py`.
+- Local build artifacts: `build/`, `build-static/`, `build-clangd/`, `dist/` (regenerated on next build).
+
+### Changed
+
+- **AGENTS.md** §4/§5.7/§7: drop obsolete prior-install and removed block-type (`Loop`, `Comment`) JSON docs.
+
+## [0.7.31] - 2026-06-29
+
+### Added
+
+- Calculator per-cell base currency override: **셀 기준 화폐** / **셀 기준 화폐 초기화** toolbar buttons and context menu; global **기준 화폐** combo unchanged as default; ApiRef values and formula references convert using each cell's effective base; persisted in sheet JSON v4 `cellBaseCurrencies` (`SpreadsheetModel`, `CalculatorDialog`, `CurrencyPickerDialog`).
+
+## [0.7.30] - 2026-06-29
+
+### Added
+
+- Calculator **행 추가** / **열 추가** buttons (toolbar + cell context menu): insert a blank row or column at the selected position; cell data, borders, colors, and formula references (`A1` etc.) at or after the insertion point shift automatically (`SpreadsheetModel`, `FormulaEvaluator::shiftFormulaReferencesAtOrAfter`, `CalculatorDialog`).
+
+## [0.7.29] - 2026-06-29
+
+### Changed
+
+- Calculator formula builder **적용 셀** **표에서 고르기** assigns the spreadsheet's currently selected cell immediately (no pick mode); opening **수식 만들기** also uses the active/selected cell as the default target (`CalculatorDialog`, `FormulaBuilderDialog`).
+
+## [0.7.28] - 2026-06-29
+
+### Added
+
+- Calculator cell color palette: **배경색 ▾** / **글자색 ▾** swatch menus on the toolbar (custom color + clear per channel); context menu **배경색 설정…**, **글자색 설정…**, **색상 초기화**; colors persist in sheet JSON v3 `colors` array and move with cell drag (`SpreadsheetModel`, `SpreadsheetCellColors.h`, `CalculatorDialog`).
+
+## [0.7.27] - 2026-06-29
+
+### Changed
+
+- Calculator formula builder: per-gap **+ − × ÷** operator buttons between value rows (replacing a single global operator); each value row has a **( )** toggle to wrap that term in parentheses; formula preview rebuilds from rows + segments (`FormulaBuilderDialog`).
+
+## [0.7.26] - 2026-06-29
+
+### Changed
+
+- Calculator formula builder **수식 미리보기** field is directly editable; live result preview updates while typing; value rows refresh the preview only when the preview field is not focused (`FormulaBuilderDialog`).
+
+## [0.7.25] - 2026-06-29
+
+### Changed
+
+- Calculator formula builder: dynamic **값** rows with **값 추가** / **삭제** (minimum one row); selected operator joins all non-empty terms (e.g. `A1+B1+C1`); each row has its own **표에서 고르기** (`FormulaBuilderDialog`).
+
+## [0.7.24] - 2026-06-29
+
+### Added
+
+- Calculator **drag-move cells**: drag a selected range to a new location (move, not copy); cell content and borders move together; sheet formulas update references that pointed at moved cells (`FormulaEvaluator::shiftFormulaReferencesInRegion`, `SpreadsheetModel::moveCellRange`, `CalculatorDialog`).
+
+## [0.7.23] - 2026-06-29
+
+### Fixed
+
+- Calculator auto-refresh no longer clears the grid selection: economy snapshot and display-only recalculations use `refreshCellStates()` + `dataChanged` instead of `beginResetModel` / `endResetModel` (`SpreadsheetModel`).
+
+## [0.7.22] - 2026-06-29
+
+### Added
+
+- Calculator **cell borders** (Excel-style): select cells then **테두리 적용 ▾** for all/outside/inside/top/bottom/left/right/none; per-edge border mask on cells, drawn in `SpreadsheetCellDelegate`; persisted in sheet JSON v2 `borders` array (`SpreadsheetBorders`, `SpreadsheetModel`, `CalculatorDialog`).
+
+## [0.7.21] - 2026-06-29
+
+### Added
+
+- Calculator Excel-style **formula bar** above the grid: name box shows active cell or range (`A1`, `A1:C3`); **fx** field shows/edits cell content or `=formula`; Enter or focus loss commits to the selected cell (`CalculatorDialog`).
+
+## [0.7.20] - 2026-06-29
+
+### Added
+
+- Calculator spreadsheet **text cells**: non-numeric input (without a leading `=`) is stored and displayed as plain text; persisted as JSON `kind: "text"`; text cells are not numeric in formulas (`SpreadsheetModel`).
+
+## [0.7.19] - 2026-06-29
+
+### Changed
+
+- Calculator spreadsheet supports multi-cell selection (drag, Ctrl+click, Shift+click); Delete/Backspace and context-menu **선택 셀 지우기** clear all selected cells; formula-pick mode no longer resets to single selection (`CalculatorDialog`).
+
+## [0.7.18] - 2026-06-29
+
+### Changed
+
+- Calculator number display: values with no fractional part show as integers (e.g. `0`, `5`) instead of fixed trailing zeros (`0.0000`); fractional values still respect **소수 자릿수** up to the configured maximum (`SpreadsheetModel::formatNumber`).
+
+## [0.7.17] - 2026-06-29
+
+### Added
+
+- Calculator formula builder **배열 수식 (범위)**: apply one formula pattern to a drag-selected rectangle with relative A1 reference shifting (Excel-style fill); **적용 방식** combo (**한 셀** / **배열 수식**), **적용 범위** pick, confirm dialog, and manual section (`FormulaBuilderDialog`, `FormulaEvaluator::shiftFormulaReferences`, `CalculatorDialog`).
+
+## [0.7.16] - 2026-06-29
+
+### Added
+
+- Calculator spreadsheet: **Delete** / **Backspace** clears selected cell(s) when not editing (`CalculatorDialog`).
 
 ## [0.7.15] - 2026-06-29
 
@@ -2217,4 +2310,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-29. Current application version: 0.7.6.*
+*Last consolidated: 2026-06-29. Current application version: 0.7.32.*

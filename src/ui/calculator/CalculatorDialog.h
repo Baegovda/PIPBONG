@@ -4,17 +4,23 @@
 #include "ui/calculator/CurrencyIconCache.h"
 #include "ui/calculator/CurrencyPickerDialog.h"
 #include "ui/calculator/FormulaBuilderDialog.h"
+#include "ui/calculator/SpreadsheetBorders.h"
 #include "ui/calculator/SpreadsheetCellDelegate.h"
 #include "ui/calculator/SpreadsheetModel.h"
 
+#include <QColor>
 #include <QDialog>
 #include <QPointer>
+#include <QPoint>
 
 class QComboBox;
 class QLabel;
+class QLineEdit;
 class QPushButton;
 class QTableView;
 class QTimer;
+
+class SpreadsheetTableView;
 
 class CalculatorDialog : public QDialog {
     Q_OBJECT
@@ -43,6 +49,7 @@ private slots:
     void onClientBusyChanged(bool busy);
     void onSheetModified();
     void saveSheetState();
+    void onFormulaBarCommit();
 
 private:
     void setupUi();
@@ -59,17 +66,38 @@ private:
     void showError(const QString& message);
     void bindCurrencyToCellAt(int row, int col);
     void clearCellAt(int row, int col);
+    void clearSelectedCells();
     void openFormulaBuilder(int row, int col);
+    bool primarySelectedCell(int& row, int& col) const;
+    void applyTargetCellFromCurrentSelection();
     void enterFormulaPickMode(FormulaPickSlot slot);
     void exitFormulaPickMode();
     void commitFormulaPickFromSelection();
     void applyAutoRefreshSchedule();
+    void updateFormulaBarFromSelection();
+    void commitFormulaBarEdit();
+    QString selectionReferenceLabel() const;
+    static QString cellEditText(const SpreadsheetCell& cell);
+    bool selectedCellBounds(int& minRow, int& minCol, int& maxRow, int& maxCol) const;
+    void applyBorderPreset(SpreadsheetBorderPreset preset);
+    void applyCellBackgroundColor(const QColor& color);
+    void applyCellForegroundColor(const QColor& color);
+    void clearSelectedCellColors();
+    void showCustomBackgroundColorDialog();
+    void showCustomForegroundColorDialog();
+    void insertRowAtSelection();
+    void insertColumnAtSelection();
+    void applyCellBaseCurrencyToSelection();
+    void clearCellBaseCurrencyFromSelection();
+    void cancelCellMoveDrag();
+    void commitCellMoveDrag(const QModelIndex& dropIndex);
+    void selectCellRange(int minRow, int minCol, int maxRow, int maxCol);
 
     PoeNinjaClient m_client;
     CurrencyIconCache m_iconCache;
     SpreadsheetModel m_model;
     SpreadsheetCellDelegate* m_cellDelegate = nullptr;
-    QTableView* m_table = nullptr;
+    SpreadsheetTableView* m_table = nullptr;
     QComboBox* m_leagueCombo = nullptr;
     QComboBox* m_baseCurrencyCombo = nullptr;
     QPushButton* m_baseCurrencyFavoriteButton = nullptr;
@@ -82,8 +110,18 @@ private:
     FormulaBuilderDialog* m_formulaBuilder = nullptr;
     QLabel* m_statusLabel = nullptr;
     QLabel* m_hintLabel = nullptr;
+    QLabel* m_cellNameLabel = nullptr;
+    QLineEdit* m_formulaBarEdit = nullptr;
     QTimer* m_saveTimer = nullptr;
     QTimer* m_autoRefreshTimer = nullptr;
     bool m_initialFetchDone = false;
     bool m_formulaPickActive = false;
+    bool m_updatingFormulaBar = false;
+    bool m_cellMoveDragArmed = false;
+    bool m_cellMoveDragging = false;
+    QPoint m_cellMovePressPos;
+    int m_cellMoveSrcMinRow = -1;
+    int m_cellMoveSrcMinCol = -1;
+    int m_cellMoveSrcMaxRow = -1;
+    int m_cellMoveSrcMaxCol = -1;
 };

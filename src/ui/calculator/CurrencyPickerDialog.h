@@ -15,7 +15,8 @@ class CurrencyPickerDialog : public QDialog {
 public:
     CurrencyPickerDialog(const QList<CurrencyRate>& rates,
                          CurrencyIconCache* icons,
-                         QWidget* parent = nullptr);
+                         QWidget* parent = nullptr,
+                         const QString& dialogTitle = QString());
 
     QString selectedCurrencyId() const;
     QString selectedCurrencyName() const;

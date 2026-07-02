@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.7.15 LANGUAGES CXX)
+project(PIPBONG VERSION 0.7.32 LANGUAGES CXX)
 
 option(PIPBONG_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on every incremental dev build; run deploy-qt target when DLLs are needed" ON)
