@@ -50,6 +50,7 @@ private slots:
     void onSheetModified();
     void onUndo();
     void onRedo();
+    void onHelpClicked();
     void saveSheetState();
     void onFormulaBarCommit();
 
@@ -96,6 +97,8 @@ private:
     void cancelCellMoveDrag();
     void commitCellMoveDrag(const QModelIndex& dropIndex);
     void selectCellRange(int minRow, int minCol, int maxRow, int maxCol);
+    QString calculatorHelpHtml() const;
+    void showHelpDialog();
 
     PoeNinjaClient m_client;
     CurrencyIconCache m_iconCache;
@@ -113,7 +116,7 @@ private:
     class DragAdjustSpinBox* m_autoRefreshMinutesSpin = nullptr;
     FormulaBuilderDialog* m_formulaBuilder = nullptr;
     QLabel* m_statusLabel = nullptr;
-    QLabel* m_hintLabel = nullptr;
+    QPushButton* m_helpButton = nullptr;
     QLabel* m_cellNameLabel = nullptr;
     QLineEdit* m_formulaBarEdit = nullptr;
     QTimer* m_saveTimer = nullptr;

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.40` (from `project(PIPBONG VERSION 0.7.40)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.41` (from `project(PIPBONG VERSION 0.7.41)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -824,6 +824,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.41] - 2026-07-02
+
+### Changed
+
+- Calculator: long inline hint text removed; **도움말** button opens a formatted help dialog with sectioned bullet lists (`CalculatorDialog`).
 
 ## [0.7.40] - 2026-07-02
 
@@ -2402,4 +2408,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-02. Current application version: 0.7.40.*
+*Last consolidated: 2026-07-02. Current application version: 0.7.41.*

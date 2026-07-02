@@ -5,7 +5,6 @@
 #include "ui/calculator/FormulaEvaluator.h"
 #include "ui/calculator/SpreadsheetCellColors.h"
 #include "ui/widgets/DragAdjustSpinBox.h"
-#include "ui/widgets/HintLabel.h"
 
 #include <nlohmann/json.hpp>
 
@@ -15,6 +14,8 @@
 #include <QColorDialog>
 #include <QComboBox>
 #include <QDesktopServices>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QEvent>
 #include <QFrame>
 #include <QGridLayout>
@@ -34,6 +35,7 @@
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QTableView>
+#include <QTextBrowser>
 #include <QTimer>
 #include <QToolButton>
 #include <QTimeZone>
@@ -227,24 +229,14 @@ void CalculatorDialog::setupUi() {
     optionsRow->addWidget(m_autoRefreshMinutesSpin);
     optionsRow->addWidget(new QLabel(tr("분마다"), this));
     optionsRow->addStretch(1);
+    m_helpButton = new QPushButton(tr("도움말"), this);
+    m_helpButton->setToolTip(tr("계산기 사용 방법"));
+    optionsRow->addWidget(m_helpButton);
     rootLayout->addLayout(optionsRow);
 
     m_statusLabel = new QLabel(this);
     m_statusLabel->setWordWrap(true);
     rootLayout->addWidget(m_statusLabel);
-
-    m_hintLabel = new HintLabel(
-        tr("셀에 숫자를 입력하거나 수식 만들기로 사칙연산을 구성하세요 (=A1+B1). 시세 연동으로 화폐·파편·룬 등 poe.ninja 시세를 불러올 수 있습니다. "
-           "선택한 셀을 드래그하면 이동하며, 다른 셀의 수식 참조도 함께 따라갑니다. "
-           "행 추가·열 추가로 중간에 빈 줄/열을 넣으면 셀 데이터와 수식 참조(A1 등)가 자동으로 밀립니다. "
-           "행 삭제·열 삭제는 선택한 줄/열을 제거하고 아래·오른쪽 셀과 수식 참조를 당깁니다. "
-           "셀 기준 화폐로 셀마다 다른 기준 화폐를 지정할 수 있으며, 지정하지 않은 셀은 상단 글로벌 기준 화폐를 사용합니다. "
-           "셀은 드래그·Ctrl+클릭·Shift+클릭으로 여러 개 선택할 수 있으며 Delete로 일괄 지울 수 있습니다. "
-           "Ctrl+Z / Ctrl+Y(또는 Ctrl+Shift+Z)로 편집을 되돌리거나 다시 실행할 수 있습니다. "
-           "기준 화폐는 상단 콤보에서 선택하며 GGG 집계로 최대 약 1시간 지연될 수 있습니다."),
-        this);
-    m_hintLabel->setWordWrap(true);
-    rootLayout->addWidget(m_hintLabel);
 
     auto* formulaBarRow = new QHBoxLayout();
     formulaBarRow->setSpacing(6);
@@ -412,6 +404,7 @@ void CalculatorDialog::setupUi() {
     connect(m_refreshButton, &QPushButton::clicked, this, &CalculatorDialog::onRefreshClicked);
     connect(m_bindCurrencyButton, &QPushButton::clicked, this, &CalculatorDialog::onBindCurrencyClicked);
     connect(m_formulaButton, &QPushButton::clicked, this, &CalculatorDialog::onFormulaBuilderClicked);
+    connect(m_helpButton, &QPushButton::clicked, this, &CalculatorDialog::onHelpClicked);
     connect(m_decimalPlacesSpin, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &CalculatorDialog::onDecimalPlacesChanged);
     connect(m_autoRefreshCheck, &QCheckBox::toggled, this, &CalculatorDialog::onAutoRefreshSettingsChanged);
@@ -545,6 +538,83 @@ void CalculatorDialog::saveSheetState() {
 void CalculatorDialog::onSheetModified() {
     m_saveTimer->start();
     updateFormulaBarFromSelection();
+}
+
+void CalculatorDialog::onHelpClicked() {
+    showHelpDialog();
+}
+
+QString CalculatorDialog::calculatorHelpHtml() const {
+    const auto section = [this](const QString& title, const QStringList& bullets) {
+        QString html = QStringLiteral("<p style='margin-top:14px; margin-bottom:6px;'>"
+                                        "<b>%1</b></p><ul style='margin-top:0; margin-bottom:0;'>")
+                             .arg(title.toHtmlEscaped());
+        for (const QString& bullet : bullets) {
+            html += QStringLiteral("<li style='margin-bottom:4px;'>%1</li>").arg(bullet.toHtmlEscaped());
+        }
+        html += QStringLiteral("</ul>");
+        return html;
+    };
+
+    QString html = QStringLiteral(
+        "<body style='font-size:10pt; line-height:1.45;'>"
+        "<p style='margin-top:0;'>%1</p>")
+                       .arg(tr("poe.ninja 시세를 표에서 계산·정리하는 계산기입니다.").toHtmlEscaped());
+
+    html += section(tr("기본 입력"),
+                    {tr("셀에 숫자를 입력하거나 =A1+B1 형식의 수식을 입력합니다."),
+                     tr("수식 만들기 버튼으로 사칙연산을 구성할 수 있습니다."),
+                     tr("수식 바(fx)에서도 셀 내용을 직접 편집할 수 있습니다.")});
+
+    html += section(tr("시세 연동"),
+                    {tr("시세 연동으로 화폐·파편·룬 등 poe.ninja 시세를 셀에 연결합니다."),
+                     tr("리그와 기준 화폐는 상단에서 선택합니다."),
+                     tr("새로고침 또는 자동 새로고침으로 시세를 갱신합니다."),
+                     tr("GGG 집계 기준이라 최대 약 1시간 지연될 수 있습니다.")});
+
+    html += section(tr("셀 선택·편집"),
+                    {tr("드래그·Ctrl+클릭·Shift+클릭으로 여러 셀을 선택합니다."),
+                     tr("Delete로 선택한 셀을 일괄 지웁니다."),
+                     tr("선택한 셀을 드래그하면 이동하며, 다른 셀의 수식 참조도 함께 따라갑니다."),
+                     tr("Ctrl+Z / Ctrl+Y(또는 Ctrl+Shift+Z)로 되돌리기·다시 실행합니다.")});
+
+    html += section(tr("행·열"),
+                    {tr("행 추가·열 추가: 중간에 빈 줄/열을 넣으면 데이터와 수식 참조(A1 등)가 자동으로 밀립니다."),
+                     tr("행 삭제·열 삭제: 선택한 줄/열을 제거하고 아래·오른쪽 셀과 참조를 당깁니다.")});
+
+    html += section(tr("셀 기준 화폐"),
+                    {tr("셀 기준 화폐로 셀마다 다른 기준 화폐를 지정할 수 있습니다."),
+                     tr("지정하지 않은 셀은 상단 글로벌 기준 화폐를 사용합니다.")});
+
+    html += section(tr("서식"),
+                    {tr("테두리·배경색·글자색 메뉴로 셀 표시를 꾸밀 수 있습니다."),
+                     tr("소수 자릿수는 상단에서 전체 표시 형식을 조절합니다.")});
+
+    html += QStringLiteral("</body>");
+    return html;
+}
+
+void CalculatorDialog::showHelpDialog() {
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("계산기 도움말"));
+    dialog.setModal(true);
+    dialog.resize(540, 520);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(8);
+
+    auto* browser = new QTextBrowser(&dialog);
+    browser->setReadOnly(true);
+    browser->setOpenExternalLinks(true);
+    browser->setHtml(calculatorHelpHtml());
+    layout->addWidget(browser, 1);
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::accept);
+    layout->addWidget(buttons);
+
+    dialog.exec();
 }
 
 void CalculatorDialog::onUndo() {
