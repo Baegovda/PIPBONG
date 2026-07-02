@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.33` (from `project(PIPBONG VERSION 0.7.33)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.34` (from `project(PIPBONG VERSION 0.7.34)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -133,7 +133,9 @@ Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static e
 .\scripts\package-release.ps1
 ```
 
-**Output:** `dist/PIPBONG-win64.zip` — extract and run `PIPBONG.exe` from the folder.
+**Output:** `dist/PIPBONG-win64.zip` — extract to get a **`PIPBONG/`** folder with `PIPBONG.exe`, `README.txt`, `PIPBONG 실행.bat`, Qt plugin subfolders, and runtime DLLs only (unused vcpkg modules pruned).
+
+**Local staging folder:** `dist/PIPBONG/` (same layout as inside the ZIP).
 
 **GitHub release:** `.\scripts\create-github-release.ps1` publishes the ZIP to **`Baegovda/PIPBONG-releases`**. In-app **파일 → 업데이트** downloads `PIPBONG-win64.zip` and installs via `PIPBONGUpdater.exe --install-zip`.
 
@@ -802,6 +804,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.34] - 2026-06-29
+
+### Changed
+
+- Release packaging: staged **`dist/PIPBONG/`** folder with `README.txt`, `VERSION.txt`, **`PIPBONG 실행.bat`**, Qt plugin subfolders, and pruned runtime DLLs; ZIP root is **`PIPBONG/`** (`package-release.ps1`, `deploy-qt.ps1`).
+- In-app update: `PIPBONGUpdater --install-zip` strips a single top-level folder from release ZIPs before copying into the install directory (`src/updater/main.cpp`).
 
 ## [0.7.33] - 2026-06-29
 
@@ -2325,4 +2334,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-29. Current application version: 0.7.33.*
+*Last consolidated: 2026-06-29. Current application version: 0.7.34.*

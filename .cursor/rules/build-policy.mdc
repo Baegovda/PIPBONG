@@ -31,7 +31,7 @@ A `CMakeLists.txt` **version bump** reconfigures CMake and regenerates `PipbongV
 
 | Do | Don't |
 |----|-------|
-| `.\scripts\package-release.ps1` — build, deploy Qt + vcpkg DLLs, zip `build/Release/` → `dist/PIPBONG-win64.zip` | Assume a single portable exe |
+| `.\scripts\package-release.ps1` — build, deploy Qt DLLs, stage `dist/PIPBONG/`, zip → `dist/PIPBONG-win64.zip` (root folder `PIPBONG/`) | Assume a single portable exe |
 | `.\scripts\create-github-release.ps1` — package + publish ZIP to **`Baegovda/PIPBONG-releases`** | Run release packaging at ordinary task close |
 
 Ship the **ZIP** (exe + `PIPBONGUpdater.exe` + Qt/OpenCV DLLs). Users extract and run `PIPBONG.exe` from the folder.

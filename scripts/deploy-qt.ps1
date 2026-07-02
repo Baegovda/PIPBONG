@@ -6,13 +6,12 @@ if (-not (Test-Path "build\CMakeCache.txt")) {
     cmake --preset default
 }
 
+Stop-Process -Name PIPBONG -Force -ErrorAction SilentlyContinue
+
 cmake --build build --config Release --target deploy-qt
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$releaseDir = Join-Path $repoRoot "build\Release"
-$vcpkgBin = Join-Path $repoRoot "build\vcpkg_installed\x64-windows\bin"
-if (Test-Path $vcpkgBin) {
-    Copy-Item (Join-Path $vcpkgBin "*.dll") $releaseDir -Force
-}
+# windeployqt already pulls OpenCV and transitive DLLs from the linked exe.
+# Do not copy the entire vcpkg bin folder (adds PostgreSQL, unused OpenCV modules, etc.).
 
-Write-Host "OK: $releaseDir (Qt + runtime DLLs deployed)" -ForegroundColor Green
+Write-Host "OK: build\Release (Qt runtime DLLs deployed)" -ForegroundColor Green

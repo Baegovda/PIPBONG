@@ -114,12 +114,27 @@ bool installFromZip(const std::filesystem::path& zipFile, const std::filesystem:
         return false;
     }
 
+    fs::path contentRoot = extractDir;
+    {
+        std::vector<fs::directory_entry> topLevel;
+        for (const auto& entry : fs::directory_iterator(extractDir, error)) {
+            if (error) {
+                break;
+            }
+            topLevel.push_back(entry);
+        }
+        if (topLevel.size() == 1 && topLevel.front().is_directory(error) && !error) {
+            contentRoot = topLevel.front().path();
+        }
+    }
+
     error.clear();
-    for (const auto& entry : fs::recursive_directory_iterator(extractDir, fs::directory_options::skip_permission_denied, error)) {
+    for (const auto& entry :
+         fs::recursive_directory_iterator(contentRoot, fs::directory_options::skip_permission_denied, error)) {
         if (!entry.is_regular_file(error)) {
             continue;
         }
-        const fs::path relative = fs::relative(entry.path(), extractDir, error);
+        const fs::path relative = fs::relative(entry.path(), contentRoot, error);
         if (error) {
             continue;
         }
