@@ -1,4 +1,4 @@
-# Builds static dist/ binaries and publishes a GitHub Release for the current CMake version.
+# Packages dynamic Release build and publishes a GitHub Release for the current CMake version.
 param(
     [string]$Notes = ""
 )
@@ -14,22 +14,18 @@ if (-not $cmakeVersionLine) {
 $version = ($cmakeVersionLine.Line -replace '.*VERSION\s+([0-9.]+).*', '$1').Trim()
 $tag = "v$version"
 
-Write-Host "Building static Release for $tag..."
+Write-Host "Packaging dynamic Release for $tag..."
 taskkill /IM PIPBONG.exe /F 2>$null | Out-Null
-cmake --preset static
-cmake --build build-static --config Release
+& (Join-Path $repoRoot "scripts\package-release.ps1")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$mainExe = Join-Path $repoRoot "dist\PIPBONG.exe"
-$updaterExe = Join-Path $repoRoot "dist\PIPBONGUpdater.exe"
-if (-not (Test-Path $mainExe)) {
-    throw "Missing $mainExe"
-}
-if (-not (Test-Path $updaterExe)) {
-    throw "Missing $updaterExe"
+$zipPath = Join-Path $repoRoot "dist\PIPBONG-win64.zip"
+if (-not (Test-Path $zipPath)) {
+    throw "Missing $zipPath"
 }
 
 if (-not $Notes) {
-    $Notes = "PIPBONG $tag"
+    $Notes = "PIPBONG $tag — extract the ZIP and run PIPBONG.exe (includes Qt/OpenCV DLLs)."
 }
 
 $gh = Get-Command gh -ErrorAction SilentlyContinue
@@ -40,5 +36,5 @@ if (-not $gh) {
 $releaseRepo = "Baegovda/PIPBONG-releases"
 
 Write-Host "Creating GitHub release $tag on $releaseRepo..."
-gh release create $tag $mainExe $updaterExe --repo $releaseRepo --title "PIPBONG $tag" --notes $Notes
+gh release create $tag $zipPath --repo $releaseRepo --title "PIPBONG $tag" --notes $Notes
 Write-Host "Done: https://github.com/$releaseRepo/releases/tag/$tag"

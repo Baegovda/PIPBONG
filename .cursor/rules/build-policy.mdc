@@ -1,11 +1,11 @@
 ---
-description: Incremental build at task close; static single-exe distribution when user asks
+description: Incremental build at task close; dynamic DLL distribution when user asks
 alwaysApply: true
 ---
 
 # Build Policy — Incremental Close-Out Build
 
-**Status:** Project policy (2026-06). At the **end of every completed task** that touched compile inputs, run an **incremental** Release build. CMake/MSVC recompiles **only changed** `.cpp` / headers / touched units — not a full clean rebuild.
+**Status:** Project policy (2026-07). At the **end of every completed task** that touched compile inputs, run an **incremental** Release build. CMake/MSVC recompiles **only changed** `.cpp` / headers / touched units — not a full clean rebuild.
 
 ## Task close (default — required when code changed)
 
@@ -15,7 +15,7 @@ alwaysApply: true
 | Re-use existing `build/` — changed sources only recompile | `cmake --preset default` on every task |
 | Kill `PIPBONG.exe` before link (`LNK1104`) — `scripts/build-release.ps1` does this | Assume exe is fresh without a build |
 | Run `cmake --preset default` only when `build/` is missing, then `--build` | Full clean rebuild unless user asks |
-| Skip close-out build when the task changed **only** docs / `.cursor/rules` / changelog with **no** C++ or `CMakeLists.txt` sources | Run static `dist/` build automatically |
+| Skip close-out build when the task changed **only** docs / `.cursor/rules` / changelog with **no** C++ or `CMakeLists.txt` sources | Run release packaging automatically |
 
 **Command (preferred):** `.\scripts\build-release.ps1` from repo root (auto-configure if needed, kill exe, incremental `--build`).
 
@@ -31,16 +31,15 @@ A `CMakeLists.txt` **version bump** reconfigures CMake and regenerates `PipbongV
 
 | Do | Don't |
 |----|-------|
-| `cmake --preset static` then `cmake --build build-static --config Release` | Run static build at ordinary task close |
-| Ship **`dist/PIPBONG.exe`** only (~55 MB, no DLLs) | Assume static is the default close-out build |
+| `.\scripts\package-release.ps1` — build, deploy Qt + vcpkg DLLs, zip `build/Release/` → `dist/PIPBONG-win64.zip` | Assume a single portable exe |
+| `.\scripts\create-github-release.ps1` — package + publish ZIP to **`Baegovda/PIPBONG-releases`** | Run release packaging at ordinary task close |
 
-First `cmake --preset static` may install static vcpkg packages (long one-time step).
+Ship the **ZIP** (exe + `PIPBONGUpdater.exe` + Qt/OpenCV DLLs). Users extract and run `PIPBONG.exe` from the folder.
 
-## CMake presets
+## CMake preset
 
 | Preset | Purpose |
 |--------|---------|
-| **`default`** | `x64-windows`, `build/`, fast incremental — **task close and daily dev** |
-| `static` | `x64-windows-static`, `build-static/`, copies to `dist/` — **user-request distribution only** |
+| **`default`** | `x64-windows`, `build/`, dynamic DLL linking — **task close and daily dev** |
 
 Full build docs: [AGENTS.md](../../AGENTS.md) — **§3 Build and Run**, **§3.1 IDE workflow**.

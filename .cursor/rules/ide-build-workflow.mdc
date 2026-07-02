@@ -36,8 +36,7 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
     "dotnet.autoDetect": "off",
     "cmake.enabled": false,
     "files.exclude": {
-        "**/build-clangd": true,
-        "**/build-static": true
+        "**/build-clangd": true
     }
 }
 ```

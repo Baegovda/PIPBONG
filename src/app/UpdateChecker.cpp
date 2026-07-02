@@ -175,14 +175,14 @@ void UpdateChecker::downloadAndInstall(const ReleaseInfo& release) {
             tr("업데이트"),
             tr("업데이터(%1)를 찾을 수 없습니다.\n"
                "프로그램 폴더에 PIPBONGUpdater.exe가 있는지 확인하거나,\n"
-               "GitHub 릴리즈 페이지에서 수동으로 받아 주세요.")
+               "GitHub 릴리즈에서 PIPBONG-win64.zip을 수동으로 받아 주세요.")
                 .arg(updaterExecutablePath()));
         return;
     }
 
     const QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
     m_pendingDownloadPath =
-        QDir(tempDir).filePath(QStringLiteral("PIPBONG-update.exe"));
+        QDir(tempDir).filePath(QStringLiteral("PIPBONG-win64.zip"));
     QFile::remove(m_pendingDownloadPath);
     m_pendingRelease = release;
 
@@ -239,7 +239,7 @@ void UpdateChecker::onDownloadFinished() {
     file.close();
 
     const QFileInfo downloaded(m_pendingDownloadPath);
-    if (!downloaded.exists() || downloaded.size() < 1024 * 1024) {
+    if (!downloaded.exists() || downloaded.size() < 5 * 1024 * 1024) {
         QMessageBox::warning(m_parentWidget,
                              tr("업데이트"),
                              tr("다운로드한 파일이 올바르지 않습니다."));
@@ -247,7 +247,7 @@ void UpdateChecker::onDownloadFinished() {
         return;
     }
 
-    const QString targetExe = QCoreApplication::applicationFilePath();
+    const QString installDir = QCoreApplication::applicationDirPath();
     const QString updaterExe = updaterExecutablePath();
 #ifdef _WIN32
     const QString pid = QString::number(static_cast<qulonglong>(GetCurrentProcessId()));
@@ -257,9 +257,9 @@ void UpdateChecker::onDownloadFinished() {
 
     const bool started = QProcess::startDetached(
         updaterExe,
-        {QStringLiteral("--install"),
+        {QStringLiteral("--install-zip"),
          QDir::toNativeSeparators(m_pendingDownloadPath),
-         QDir::toNativeSeparators(targetExe),
+         QDir::toNativeSeparators(installDir),
          pid});
 
     if (!started) {

@@ -9,4 +9,10 @@ if (-not (Test-Path "build\CMakeCache.txt")) {
 cmake --build build --config Release --target deploy-qt
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host 'OK: build\Release\PIPBONG.exe (DLLs updated)' -ForegroundColor Green
+$releaseDir = Join-Path $repoRoot "build\Release"
+$vcpkgBin = Join-Path $repoRoot "build\vcpkg_installed\x64-windows\bin"
+if (Test-Path $vcpkgBin) {
+    Copy-Item (Join-Path $vcpkgBin "*.dll") $releaseDir -Force
+}
+
+Write-Host "OK: $releaseDir (Qt + runtime DLLs deployed)" -ForegroundColor Green

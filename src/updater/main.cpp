@@ -64,6 +64,80 @@ bool launchExecutable(const std::filesystem::path& targetFile) {
     return reinterpret_cast<INT_PTR>(result) > 32;
 }
 
+bool runProcess(const std::wstring& commandLine, DWORD timeoutMs) {
+    STARTUPINFOW startupInfo{};
+    startupInfo.cb = sizeof(startupInfo);
+    PROCESS_INFORMATION processInfo{};
+    std::vector<wchar_t> buffer(commandLine.begin(), commandLine.end());
+    buffer.push_back(L'\0');
+
+    if (!CreateProcessW(nullptr,
+                        buffer.data(),
+                        nullptr,
+                        nullptr,
+                        FALSE,
+                        CREATE_NO_WINDOW,
+                        nullptr,
+                        nullptr,
+                        &startupInfo,
+                        &processInfo)) {
+        return false;
+    }
+
+    WaitForSingleObject(processInfo.hProcess, timeoutMs);
+    DWORD exitCode = 1;
+    GetExitCodeProcess(processInfo.hProcess, &exitCode);
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
+    return exitCode == 0;
+}
+
+bool extractZipArchive(const std::filesystem::path& zipFile, const std::filesystem::path& destDir) {
+    namespace fs = std::filesystem;
+    std::error_code error;
+    fs::create_directories(destDir, error);
+
+    const std::wstring command =
+        L"tar.exe -xf \"" + zipFile.wstring() + L"\" -C \"" + destDir.wstring() + L"\"";
+    return runProcess(command, 300000);
+}
+
+bool installFromZip(const std::filesystem::path& zipFile, const std::filesystem::path& installDir) {
+    namespace fs = std::filesystem;
+    std::error_code error;
+    const fs::path extractDir = installDir / L".pipbong-update-staging";
+    fs::remove_all(extractDir, error);
+    error.clear();
+
+    if (!extractZipArchive(zipFile, extractDir)) {
+        fs::remove_all(extractDir, error);
+        return false;
+    }
+
+    error.clear();
+    for (const auto& entry : fs::recursive_directory_iterator(extractDir, fs::directory_options::skip_permission_denied, error)) {
+        if (!entry.is_regular_file(error)) {
+            continue;
+        }
+        const fs::path relative = fs::relative(entry.path(), extractDir, error);
+        if (error) {
+            continue;
+        }
+        const fs::path destination = installDir / relative;
+        fs::create_directories(destination.parent_path(), error);
+        error.clear();
+        fs::copy_file(entry.path(), destination, fs::copy_options::overwrite_existing, error);
+        if (error) {
+            fs::remove_all(extractDir, error);
+            return false;
+        }
+    }
+
+    fs::remove_all(extractDir, error);
+    fs::remove(zipFile, error);
+    return true;
+}
+
 } // namespace
 
 int wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
@@ -77,24 +151,30 @@ int wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
 
     const std::wstring mode = argv[1];
-    if (mode != L"--install") {
-        LocalFree(argv);
-        return 1;
-    }
-
-    const std::filesystem::path newFile = argv[2];
-    const std::filesystem::path targetFile = argv[3];
+    const std::filesystem::path payload = argv[2];
+    const std::filesystem::path target = argv[3];
     const DWORD pid = static_cast<DWORD>(std::wcstoul(argv[4], nullptr, 10));
 
     LocalFree(argv);
 
     waitForProcess(pid, 120000);
 
-    if (!replaceExecutable(newFile, targetFile)) {
+    bool installed = false;
+    if (mode == L"--install") {
+        installed = replaceExecutable(payload, target);
+    } else if (mode == L"--install-zip") {
+        installed = installFromZip(payload, target);
+    } else {
+        return 1;
+    }
+
+    if (!installed) {
         return 2;
     }
 
-    if (!launchExecutable(targetFile)) {
+    const std::filesystem::path launchTarget =
+        (mode == L"--install-zip") ? target / L"PIPBONG.exe" : target;
+    if (!launchExecutable(launchTarget)) {
         return 3;
     }
 

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.32` (from `project(PIPBONG VERSION 0.7.32)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.33` (from `project(PIPBONG VERSION 0.7.33)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -121,20 +121,21 @@ Equivalent: `cmake --build build --config Release --target deploy-qt`
 | Mid-implementation (unless compile check needed) | **No** | — |
 | User explicitly asks mid-task (e.g. “빌드해줘”) | **Yes** | same incremental command |
 | `build/` missing at close | Configure once, then build | `cmake --preset default` then `--build` |
-| Distribution exe requested | Static preset | `cmake --preset static` then `cmake --build build-static --config Release` |
+| Distribution / GitHub release requested | Package ZIP | `scripts/package-release.ps1` or `scripts/create-github-release.ps1` |
 
 Before link, kill a running `PIPBONG.exe` only when a build is actually run (`LNK1104`).
 
-### Distribution — single portable exe (user request only)
+### Distribution — dynamic DLL ZIP (user request only)
 
-Build this **only when the user explicitly asks** for a release / single-exe / distribution build. Static link via vcpkg `x64-windows-static`; first configure may take a long time.
+Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static executable.
 
 ```powershell
-cmake --preset static
-cmake --build build-static --config Release
+.\scripts\package-release.ps1
 ```
 
-**Ship:** `dist/PIPBONG.exe` only (~55 MB, no DLLs). Post-build copies from `build-static/Release/PIPBONG.exe`.
+**Output:** `dist/PIPBONG-win64.zip` — extract and run `PIPBONG.exe` from the folder.
+
+**GitHub release:** `.\scripts\create-github-release.ps1` publishes the ZIP to **`Baegovda/PIPBONG-releases`**. In-app **파일 → 업데이트** downloads `PIPBONG-win64.zip` and installs via `PIPBONGUpdater.exe --install-zip`.
 
 ### Run
 
@@ -144,12 +145,12 @@ cmake --build build-static --config Release
 
 **One-click build (Windows):** double-click `빌드.bat` in the repo root, or in Cursor press **Ctrl+Shift+B** (default build task → `scripts/build-release.ps1`). Kills a running `PIPBONG.exe` before link when building.
 
-Distribution build: `.\dist\PIPBONG.exe`
+**Distribution:** extract `dist/PIPBONG-win64.zip` and run `PIPBONG.exe` from that folder.
 
 ### Build pitfalls
 
 - **LNK1104:** Kill any running `PIPBONG.exe` before linking (only when building).
-- **Slow builds:** Do not run `cmake --preset default` on every task — use incremental `--build` only. Avoid static preset for daily work. A version bump regenerates `PipbongVersion.h` and recompiles only `Application.cpp` + `UpdateChecker.cpp` (not every `.cpp`).
+- **Slow builds:** Do not run `cmake --preset default` on every task — use incremental `--build` only. A version bump regenerates `PipbongVersion.h` and recompiles only `Application.cpp` + `UpdateChecker.cpp` (not every `.cpp`).
 - **Missing DLLs at runtime:** Run `.\scripts\deploy-qt.ps1` once — dev builds no longer call `windeployqt` every link.
 - **vcpkg path:** `CMakePresets.json` may reference a machine-specific `CMAKE_TOOLCHAIN_FILE`; adjust if vcpkg is installed elsewhere.
 
@@ -213,7 +214,8 @@ Sbm1.0/                        # repo root (local workspace)
 ├── 빌드.bat                   # one-click Release build → scripts/build-release.ps1
 ├── scripts/
 │   ├── build-release.ps1      # canonical incremental Release build (IDE + AI task close)
-│   ├── deploy-qt.ps1          # Qt DLL deploy beside build/Release (once when needed)
+│   ├── deploy-qt.ps1          # Qt + vcpkg runtime DLLs beside build/Release
+│   ├── package-release.ps1    # build + deploy + dist/PIPBONG-win64.zip
 │   ├── create-github-release.ps1
 │   └── fetch-poe2db-ko-names.py  # regenerate EconomyNameKoData.inc
 ├── .vscode/                   # tracked IDE workflow — tasks, launch, settings (see §3.1)
@@ -731,7 +733,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 ### After every completed task
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
-2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave an empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip for docs/rules-only. Static `dist/PIPBONG.exe` **only when the user explicitly requests** distribution. **Never** leave shipped work only under `[Unreleased]` with an unchanged version.
+2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave an empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip for docs/rules-only. Release ZIP (`package-release.ps1`) **only when the user explicitly requests** distribution. **Never** leave shipped work only under `[Unreleased]` with an unchanged version.
 3. Keep diffs minimal; match existing C++ / Qt conventions.
 4. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
 5. **Do not regress IDE build workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files and `cmake.enabled: false`; never replace F5 with CMake Tools configure-on-open.
@@ -760,7 +762,7 @@ When the user’s request is **done** (code merged, changelog written, version b
 | 2 | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history) |
 | 3 | Leave empty `[Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` headers only, or blank) |
 | 4 | Update **Current version** at the top of this file |
-| 5 | **Incremental build at task close** when compile inputs changed — `cmake --build build --config Release` (or `scripts/build-release.ps1`; `--preset default` only if `build/` missing). Skip docs/rules-only. Static `dist/` only if user asked for distribution. |
+| 5 | **Incremental build at task close** when compile inputs changed — `cmake --build build --config Release` (or `scripts/build-release.ps1`; `--preset default` only if `build/` missing). Skip docs/rules-only. Release ZIP only if user asked for distribution. |
 
 **Do not** accumulate many tasks under `[Unreleased]` without bumping. **Do not** finish a chat task with changelog entries still unreleased and the same version number.
 
@@ -779,7 +781,7 @@ When in doubt, **patch bump**.
 1. Update `project(PIPBONG VERSION ...)` in `CMakeLists.txt`.
 2. Move `[Unreleased]` items into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history).
 3. Leave empty `[Unreleased]` section.
-4. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `cmake --build build --config Release` (kill running exe before link). Skip docs/rules-only. Static `dist/PIPBONG.exe` only when the user requests distribution.
+4. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `cmake --build build --config Release` (kill running exe before link). Skip docs/rules-only. Release ZIP (`package-release.ps1`) only when the user requests distribution.
 
 ### Changelog format
 
@@ -801,6 +803,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Removed
 
+## [0.7.33] - 2026-06-29
+
+### Changed
+
+- Distribution model: **dynamic DLL layout** only — removed static single-exe preset (`PIPBONG_STATIC_BUILD`, `build-static/`, `cmake --preset static`); `deploy-qt.ps1` also copies vcpkg runtime DLLs; `package-release.ps1` ships `dist/PIPBONG-win64.zip` (`CMakeLists.txt`, `CMakePresets.json`, `scripts/*`).
+- In-app update: downloads `PIPBONG-win64.zip` and installs with `PIPBONGUpdater --install-zip` (`PipbongVersion.h.in`, `UpdateChecker`, `src/updater/main.cpp`, `create-github-release.ps1`).
+- Build policy rule renamed `.cursor/rules/build-policy.mdc` (replaces `static-single-exe-build.mdc`); AGENTS.md §3 distribution docs updated.
+
+### Removed
+
+- Static single-exe build path and `dist/PIPBONG.exe`-only release workflow.
+
 ## [0.7.32] - 2026-06-29
 
 ### Removed
@@ -812,6 +826,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Changed
 
 - **AGENTS.md** §4/§5.7/§7: drop obsolete prior-install and removed block-type (`Loop`, `Comment`) JSON docs.
+- GitHub source repository **`Baegovda/PIPBONG`** visibility set to **public**; **`v0.7.32`** published to **`Baegovda/PIPBONG-releases`** (`PIPBONG.exe`, `PIPBONGUpdater.exe`).
 
 ## [0.7.31] - 2026-06-29
 
@@ -2296,10 +2311,10 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - Default numeric inputs: `DragAdjustSpinBox` / `DragAdjustDoubleSpinBox` — no arrows; horizontal drag to adjust.
 - Full rules in [§8.7](#87-drag-adjust-numeric-input-mandatory-default).
 
-### `static-single-exe-build.mdc`
+### `build-policy.mdc`
 
 - **Task close:** incremental `cmake --build build --config Release` when C++/headers/`CMakeLists.txt` changed (changed `.cpp` only); skip docs/rules-only.
-- **Distribution:** static single exe → `dist/PIPBONG.exe` **only when the user explicitly asks**.
+- **Distribution:** `package-release.ps1` → `dist/PIPBONG-win64.zip` **only when the user explicitly asks**.
 - Full policy in [§3](#3-build-and-run). **IDE/F5 path:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) + `ide-build-workflow.mdc`.
 
 ### `ide-build-workflow.mdc`
@@ -2310,4 +2325,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-06-29. Current application version: 0.7.32.*
+*Last consolidated: 2026-06-29. Current application version: 0.7.33.*

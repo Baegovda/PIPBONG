@@ -19,13 +19,13 @@ alwaysApply: true
 ## After Every Completed Task
 
 1. Append entries under `[Unreleased]` in **AGENTS.md** section **11. Changelog and Version History** as you implement.
-2. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip build for docs/rules-only tasks. Static `dist/PIPBONG.exe` **only when the user explicitly requests** distribution. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
+2. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip build for docs/rules-only tasks. Release ZIP (`package-release.ps1`) **only when the user explicitly requests** distribution. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
 3. Keep diffs minimal; match existing C++ / Qt conventions in surrounding code.
 
 ## References
 
 - **Single master document:** [AGENTS.md](../../AGENTS.md) — handover, changelog, build, JSON format, governance, patterns
 - Changelog + version bump: `.cursor/rules/changelog-versioning.mdc`
-- Incremental / static build: `.cursor/rules/static-single-exe-build.mdc`
+- Incremental / release build: `.cursor/rules/build-policy.mdc`
 - IDE build workflow (Ctrl+Shift+B, F5, `.vscode/`, CMake Tools off): `.cursor/rules/ide-build-workflow.mdc`
 - Screen capture overlay (Win32 — do not regress): `.cursor/rules/screen-capture-overlay.mdc`

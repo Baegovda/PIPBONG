@@ -6,7 +6,6 @@
     "cmake.enabled": false,
 
     "files.exclude": {
-        "**/build-clangd": true,
-        "**/build-static": true
+        "**/build-clangd": true
     }
 }

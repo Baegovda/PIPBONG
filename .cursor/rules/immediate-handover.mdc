@@ -22,7 +22,7 @@ Do **not** defer handover to a follow-up chat or assume the user will ask “doc
 | Release / update / deploy scripts or URLs | §3.6 + changelog |
 | `gh`, CI, signing, hosting, credentials one-time setup | §3.6 (human steps + AI steps) |
 | User phrase → AI action (“백업해줘”, “릴리즈 해줘”) | §3.6 table |
-| New mandatory build preset or close-out policy | §3 + `.cursor/rules/static-single-exe-build.mdc` |
+| New mandatory build preset or close-out policy | §3 + `.cursor/rules/build-policy.mdc` |
 | New subsystem / critical pattern (overlay, input, etc.) | §8 + dedicated `.cursor/rules/*.mdc` if always-applied |
 | New scripts in `scripts/` that agents must run | §3 or §4 path table |
 

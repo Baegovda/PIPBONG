@@ -1,18 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.7.32 LANGUAGES CXX)
+project(PIPBONG VERSION 0.7.33 LANGUAGES CXX)
 
-option(PIPBONG_STATIC_BUILD "Link Qt/OpenCV statically for a single portable executable" OFF)
-option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on every incremental dev build; run deploy-qt target when DLLs are needed" ON)
+option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
-
-if(PIPBONG_STATIC_BUILD)
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 find_package(OpenCV CONFIG REQUIRED)
@@ -129,7 +124,7 @@ target_link_libraries(PIPBONG PRIVATE
     nlohmann_json::nlohmann_json
 )
 
-if(WIN32 AND NOT PIPBONG_STATIC_BUILD)
+if(WIN32)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "$ENV{Qt6_DIR}/../../../bin" "${Qt6_DIR}/../../../bin")
     if(WINDEPLOYQT_EXECUTABLE)
         if(NOT PIPBONG_SKIP_WINDEPLOY)
@@ -141,26 +136,9 @@ if(WIN32 AND NOT PIPBONG_STATIC_BUILD)
         add_custom_target(deploy-qt
             COMMAND "${WINDEPLOYQT_EXECUTABLE}" "$<TARGET_FILE:PIPBONG>"
             DEPENDS PIPBONG
-            COMMENT "Deploying Qt/OpenCV runtime DLLs next to PIPBONG.exe"
+            COMMENT "Deploying Qt runtime DLLs next to PIPBONG.exe"
         )
     endif()
-endif()
-
-if(PIPBONG_STATIC_BUILD)
-    qt_import_plugins(PIPBONG
-        INCLUDE Qt6::QWindowsIntegrationPlugin
-        INCLUDE Qt6::QModernWindowsStylePlugin
-        INCLUDE Qt6::QGifPlugin
-        INCLUDE Qt6::QICOPlugin
-        INCLUDE Qt6::QJpegPlugin
-        INCLUDE Qt6::QSchannelBackendPlugin
-    )
-    add_custom_command(TARGET PIPBONG POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/dist"
-        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:PIPBONG>" "${CMAKE_SOURCE_DIR}/dist/PIPBONG.exe"
-        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:PIPBONGUpdater>" "${CMAKE_SOURCE_DIR}/dist/PIPBONGUpdater.exe"
-        COMMENT "Copying single-exe build to dist/"
-    )
 endif()
 
 if(WIN32)
@@ -173,10 +151,6 @@ target_compile_definitions(PIPBONG PRIVATE
     UNICODE
     _UNICODE
 )
-
-if(PIPBONG_STATIC_BUILD)
-    target_compile_definitions(PIPBONG PRIVATE QT_STATIC_BUILD)
-endif()
 
 if(WIN32)
     add_executable(PIPBONGUpdater WIN32 src/updater/main.cpp)
