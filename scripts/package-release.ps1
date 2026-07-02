@@ -193,3 +193,4 @@ Compress-Archive -Path $stageRoot -DestinationPath $zipPath -CompressionLevel Op
 $dllCount = (Get-ChildItem $stageRoot -Filter "*.dll" -File).Count
 Write-Host "OK: $zipPath ($dllCount runtime DLLs, root folder PIPBONG/)" -ForegroundColor Green
 Write-Host "Run from: $stageRoot\PIPBONG.exe" -ForegroundColor Green
+exit 0
