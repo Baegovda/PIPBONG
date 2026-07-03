@@ -1,5 +1,7 @@
 #include "model/Feature.h"
 
+#include "core/workflow/blocks/ImageFindBlock.h"
+
 #include <algorithm>
 
 #include <QUuid>
@@ -17,6 +19,10 @@ bool Feature::roiCorrectionSessionEligible() const {
         return true;
     }
     return m_runMode == FeatureRunMode::RepeatCount && m_repeatCount >= 2;
+}
+
+void Feature::setRoiCorrectionExpandPercent(int percent) {
+    m_roiCorrectionExpandPercent = snapRoiCorrectionExpandPercent(percent);
 }
 
 Feature::Feature()
@@ -41,6 +47,7 @@ std::unique_ptr<Feature> Feature::clone() const {
     copy->m_lockMouseToScreenCenterDuringRun = m_lockMouseToScreenCenterDuringRun;
     copy->m_lockMouseToCurrentPositionDuringRun = m_lockMouseToCurrentPositionDuringRun;
     copy->m_roiCorrection = m_roiCorrection;
+    copy->m_roiCorrectionExpandPercent = m_roiCorrectionExpandPercent;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_triggerCooldownMs = m_triggerCooldownMs;
     copy->m_hotkey = m_hotkey;
@@ -62,6 +69,7 @@ std::unique_ptr<Feature> Feature::duplicateAsNewInstance() const {
     copy->m_lockMouseToScreenCenterDuringRun = m_lockMouseToScreenCenterDuringRun;
     copy->m_lockMouseToCurrentPositionDuringRun = m_lockMouseToCurrentPositionDuringRun;
     copy->m_roiCorrection = m_roiCorrection;
+    copy->m_roiCorrectionExpandPercent = m_roiCorrectionExpandPercent;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_triggerCooldownMs = m_triggerCooldownMs;
     copy->m_hotkey = {};

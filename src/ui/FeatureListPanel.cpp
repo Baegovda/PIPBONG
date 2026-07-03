@@ -1096,6 +1096,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
                              feature->pointerVisualFeedback(),
                              feature->restoreMousePositionOnEnd(),
                              feature->roiCorrection(),
+                             feature->roiCorrectionExpandPercent(),
                              feature->editFirstTemplateRoiOnStart(),
                              feature->triggerCooldownMs(),
                              m_project,
@@ -1113,6 +1114,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setPointerVisualFeedback(dialog.pointerVisualFeedback());
     feature->setRestoreMousePositionOnEnd(dialog.restoreMousePositionOnEnd());
     feature->setRoiCorrection(dialog.roiCorrection());
+    feature->setRoiCorrectionExpandPercent(dialog.roiCorrectionExpandPercent());
     feature->setEditFirstTemplateRoiOnStart(dialog.editFirstTemplateRoiOnStart());
     feature->setTriggerCooldownMs(dialog.triggerCooldownMs());
     refresh();

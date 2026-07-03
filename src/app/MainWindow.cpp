@@ -1565,6 +1565,8 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
 
     session.sessionContext->setRoiCorrectionSession(feature->roiCorrectionSessionEligible(),
                                                     feature->roiCorrection());
+    session.sessionContext->setFeatureRoiCorrectionExpandPercent(
+        feature->roiCorrectionExpandPercent());
     session.sessionContext->setRunLoopNumber(session.sessionIteration + 1);
 }
 

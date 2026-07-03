@@ -1,6 +1,7 @@
 #include "core/workflow/ExecutionContext.h"
 
 #include "core/input/InputSimulator.h"
+#include "core/workflow/blocks/ImageFindBlock.h"
 #include <chrono>
 #include <filesystem>
 #include <thread>
@@ -363,6 +364,14 @@ bool ExecutionContext::roiCorrectionSessionEligible() const {
 
 bool ExecutionContext::featureRoiCorrectionGlobal() const {
     return m_featureRoiCorrectionGlobal;
+}
+
+void ExecutionContext::setFeatureRoiCorrectionExpandPercent(int percent) {
+    m_featureRoiCorrectionExpandPercent = snapRoiCorrectionExpandPercent(percent);
+}
+
+int ExecutionContext::featureRoiCorrectionExpandPercent() const {
+    return m_featureRoiCorrectionExpandPercent;
 }
 
 bool ExecutionContext::shouldUseRoiCorrectionForBlock(bool blockRoiCorrection) const {

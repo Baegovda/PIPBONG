@@ -22,6 +22,12 @@ int snapImageFindPollIntervalMs(int ms) {
            * kImageFindPollIntervalStepMs;
 }
 
+int snapRoiCorrectionExpandPercent(int percent) {
+    percent = std::clamp(percent, kRoiCorrectionExpandPercentMin, kRoiCorrectionExpandPercentMax);
+    return ((percent + kRoiCorrectionExpandPercentStep / 2) / kRoiCorrectionExpandPercentStep)
+           * kRoiCorrectionExpandPercentStep;
+}
+
 namespace {
 
 bool sleepUnlessStopped(ExecutionContext& ctx, int delayMs) {
@@ -289,15 +295,14 @@ PercentRegion pixelOffsetToWindowPercent(const CaptureRegion& offset) {
     return percent;
 }
 
-constexpr double kRoiCorrectionExpandRatio = 1.10;
-
-PercentRegion expandWindowPercentRegion(const PercentRegion& matched) {
+PercentRegion expandWindowPercentRegion(const PercentRegion& matched, int expandPercent) {
     PercentRegion region = matched;
     if (region.width <= 0.0 || region.height <= 0.0) {
         return region;
     }
-    double expandedWidth = region.width * kRoiCorrectionExpandRatio;
-    double expandedHeight = region.height * kRoiCorrectionExpandRatio;
+    const double ratio = static_cast<double>(snapRoiCorrectionExpandPercent(expandPercent)) / 100.0;
+    double expandedWidth = region.width * ratio;
+    double expandedHeight = region.height * ratio;
     if (expandedWidth < region.width + 0.01) {
         expandedWidth = region.width + 0.01;
     }
@@ -310,28 +315,6 @@ PercentRegion expandWindowPercentRegion(const PercentRegion& matched) {
     region.height = expandedHeight;
     region.x = centerX - expandedWidth / 2.0;
     region.y = centerY - expandedHeight / 2.0;
-    return region;
-}
-
-CaptureRegion expandRoiCorrectionRegion(const CaptureRegion& matched) {
-    CaptureRegion region = matched;
-    if (region.width <= 0 || region.height <= 0) {
-        return region;
-    }
-    int expandedWidth = static_cast<int>(std::ceil(region.width * kRoiCorrectionExpandRatio));
-    int expandedHeight = static_cast<int>(std::ceil(region.height * kRoiCorrectionExpandRatio));
-    if (expandedWidth < region.width + 1) {
-        expandedWidth = region.width + 1;
-    }
-    if (expandedHeight < region.height + 1) {
-        expandedHeight = region.height + 1;
-    }
-    const int centerX = region.x + region.width / 2;
-    const int centerY = region.y + region.height / 2;
-    region.width = expandedWidth;
-    region.height = expandedHeight;
-    region.x = centerX - expandedWidth / 2;
-    region.y = centerY - expandedHeight / 2;
     return region;
 }
 
@@ -557,6 +540,7 @@ BlockResult imageFindDetectionFailureResult(ExecutionContext& ctx) {
 
 void maybeRecordRoiCorrection(ExecutionContext& ctx,
                               bool blockRoiCorrection,
+                              int roiCorrectionExpandPercent,
                               const MatchResult& match,
                               SearchArea searchArea,
                               const CaptureRegion& customRegion,
@@ -579,12 +563,13 @@ void maybeRecordRoiCorrection(ExecutionContext& ctx,
     if (!isValidWindowPercentRegion(percent)) {
         return;
     }
-    percent = expandWindowPercentRegion(percent);
+    percent = expandWindowPercentRegion(percent, roiCorrectionExpandPercent);
     ctx.setCorrectedRoi(blockIndex, percent);
 }
 
 BlockResult imageFindSuccessResult(ExecutionContext& ctx,
                                    bool blockRoiCorrection,
+                                   int roiCorrectionExpandPercent,
                                    const cv::Mat& haystack,
                                    const ImageFindSelection& selection,
                                    SearchArea searchArea,
@@ -655,7 +640,13 @@ BlockResult imageFindSuccessResult(ExecutionContext& ctx,
         result.message += " [" + std::to_string(selectedIndex) + "/" + std::to_string(foundCount) + "]";
     }
     result.message += extraMessageSuffix;
-    maybeRecordRoiCorrection(ctx, blockRoiCorrection, match, searchArea, customRegion, percentRegion);
+    maybeRecordRoiCorrection(ctx,
+                             blockRoiCorrection,
+                             roiCorrectionExpandPercent,
+                             match,
+                             searchArea,
+                             customRegion,
+                             percentRegion);
     ctx.reportProgress(BlockProgressKind::ImageFindSuccess);
     ctx.log(result.message);
     return result;
@@ -764,6 +755,10 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
     }
 
     normalizeImageFindSearchArea(runtimeSearchArea, runtimeWindowPercentRegions);
+
+    const int effectiveRoiCorrectionExpandPercent =
+        ctx.featureRoiCorrectionGlobal() ? ctx.featureRoiCorrectionExpandPercent()
+                                         : roiCorrectionExpandPercent;
 
     std::vector<std::string> relativePaths;
     std::vector<const PreparedTemplate*> templates;
@@ -886,6 +881,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                         accumulateMatchWork();
                         BlockResult result = imageFindSuccessResult(ctx,
                                                                   roiCorrection,
+                                                                  effectiveRoiCorrectionExpandPercent,
                                                                   haystack,
                                                                   selection,
                                                                   runtimeSearchArea,
@@ -937,6 +933,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                 accumulateMatchWork();
                 BlockResult result = imageFindSuccessResult(ctx,
                                                             roiCorrection,
+                                                            effectiveRoiCorrectionExpandPercent,
                                                             haystack,
                                                             selections.front(),
                                                             runtimeSearchArea,
@@ -1021,6 +1018,9 @@ nlohmann::json ImageFindBlock::toJson() const {
     }
     if (roiCorrection) {
         json["roiCorrection"] = true;
+    }
+    if (roiCorrectionExpandPercent != kDefaultRoiCorrectionExpandPercent) {
+        json["roiCorrectionExpandPercent"] = roiCorrectionExpandPercent;
     }
     if (returnToPreviousImageFindOnFailure) {
         json["returnToPreviousImageFindOnFailure"] = true;
@@ -1108,6 +1108,8 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
         normalizeImageFindSearchArea(block->searchArea, block->customRegionsWindowPercent);
     }
     block->roiCorrection = json.value("roiCorrection", false);
+    block->roiCorrectionExpandPercent = snapRoiCorrectionExpandPercent(
+        json.value("roiCorrectionExpandPercent", kDefaultRoiCorrectionExpandPercent));
     block->returnToPreviousImageFindOnFailure = json.value("returnToPreviousImageFindOnFailure", false);
     block->retryAfterNextActionOnFailure = json.value("retryAfterNextActionOnFailure", false);
     block->templateColorMode =

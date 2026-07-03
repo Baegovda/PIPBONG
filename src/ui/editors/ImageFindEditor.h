@@ -179,6 +179,10 @@ private:
 
     QCheckBox* m_roiCorrectionCheck = nullptr;
 
+    QWidget* m_roiCorrectionExpandRow = nullptr;
+
+    DragAdjustSpinBox* m_roiCorrectionExpandSpin = nullptr;
+
     QCheckBox* m_returnToPreviousImageFindCheck = nullptr;
 
     QCheckBox* m_retryAfterNextActionCheck = nullptr;

@@ -117,6 +117,8 @@ public:
     void setRoiCorrectionSession(bool eligible, bool featureGlobal);
     bool roiCorrectionSessionEligible() const;
     bool featureRoiCorrectionGlobal() const;
+    void setFeatureRoiCorrectionExpandPercent(int percent);
+    int featureRoiCorrectionExpandPercent() const;
     bool shouldUseRoiCorrectionForBlock(bool blockRoiCorrection) const;
 
     void setRunLoopNumber(int loopNumber);
@@ -189,6 +191,7 @@ private:
     int m_imageFindPrimedBlockIndex = -1;
     bool m_roiCorrectionSessionEligible = false;
     bool m_featureRoiCorrectionGlobal = false;
+    int m_featureRoiCorrectionExpandPercent = 110;
     int m_runLoopNumber = 1;
     int m_activeBlockIndex = -1;
     std::unordered_map<int, PercentRegion> m_correctedRoisByBlockIndex;

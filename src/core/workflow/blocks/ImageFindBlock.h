@@ -30,6 +30,12 @@ constexpr int kImageFindPollIntervalStepMs = 5;
 constexpr int kDefaultImageFindPollIntervalMs = 200;
 int snapImageFindPollIntervalMs(int ms);
 
+constexpr int kDefaultRoiCorrectionExpandPercent = 110;
+constexpr int kRoiCorrectionExpandPercentMin = 50;
+constexpr int kRoiCorrectionExpandPercentMax = 300;
+constexpr int kRoiCorrectionExpandPercentStep = 5;
+int snapRoiCorrectionExpandPercent(int percent);
+
 class ImageFindBlock : public Block {
 public:
     std::vector<std::string> templatePaths;
@@ -51,6 +57,8 @@ public:
     PercentRegion percentRegion;
     /// When feature-level ROI correction is off, enables session ROI correction for this block only.
     bool roiCorrection = false;
+    /// Loop 2+ corrected search ROI size as % of matched template (100 = same size, 110 = 10% wider/taller).
+    int roiCorrectionExpandPercent = kDefaultRoiCorrectionExpandPercent;
     /// On detection failure (miss limit), workflow jumps to the previous ImageFind block.
     bool returnToPreviousImageFindOnFailure = false;
     /// On detection failure: run the next block once, retry this block; on second failure jump to next ImageFind.

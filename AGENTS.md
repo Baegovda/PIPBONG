@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.78` (from `project(PIPBONG VERSION 0.7.78)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.79` (from `project(PIPBONG VERSION 0.7.78)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -448,6 +448,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `lockMouseToScreenCenterDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to the target window center (DWM bounds) for the feature run session; follows window moves (`MouseCenterLock`, mouse block editor) |
 | `lockMouseToCurrentPositionDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to its feature-start screen position for the run session (configured in mouse block editor; mutually exclusive with center lock in UI) |
 | `roiCorrection` | `false` (omitted) | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
+| `roiCorrectionExpandPercent` | `110` (omitted) | Template-relative corrected search ROI size on loop 2+ when feature `roiCorrection` is on (see ImageFind `roiCorrectionExpandPercent`) |
 | `editFirstTemplateRoiOnStart` | `false` (omitted) | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run |
 
 `hotkey` is optional. `virtualKey` is Win32 VK code.
@@ -472,6 +473,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `multiScale` | `false` | Written as `true` when enabled |
 | `minScale` / `maxScale` | `0.9` / `1.1` | Written only when non-default |
 | `roiCorrection` | `false` (omitted) | Per-block ROI correction when feature `roiCorrection` is off; loop 2+ uses session-only matched template rect from loop 1, stored as window % and re-resolved each poll |
+| `roiCorrectionExpandPercent` | `110` (omitted) | Loop 2+ corrected search ROI size as % of matched template (100 = same size, 110 = 10% wider/taller per axis); feature JSON uses same field for global correction |
 | `returnToPreviousImageFindOnFailure` | `false` (omitted) | On detection failure (miss limit), jump workflow execution to the previous `ImageFind` block in the list |
 | `retryAfterNextActionOnFailure` | `false` (omitted) | On first detection failure: run the next block once, then retry this block; on second failure jump to the next `ImageFind` block |
 
@@ -849,6 +851,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.79] - 2026-07-04
+
+### Added
+
+- Configurable **보정 영역 (템플릿 대비)** % for ROI correction on loop 2+ (default 110%, range 50–300%, 5% step): per ImageFind block when per-block ROI correction is used, or in **기능 편집** when **전체 ROI 보정** is on (`roiCorrectionExpandPercent` JSON on feature and block, `ImageFindEditor`, `FeatureEditDialog`, `ExecutionContext`).
 
 ## [0.7.78] - 2026-07-04
 
@@ -2664,4 +2672,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-04. Current application version: 0.7.78.*
+*Last consolidated: 2026-07-04. Current application version: 0.7.79.*

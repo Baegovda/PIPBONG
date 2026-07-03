@@ -54,6 +54,9 @@ public:
     bool roiCorrection() const { return m_roiCorrection; }
     void setRoiCorrection(bool enabled) { m_roiCorrection = enabled; }
 
+    int roiCorrectionExpandPercent() const { return m_roiCorrectionExpandPercent; }
+    void setRoiCorrectionExpandPercent(int percent);
+
     bool editFirstTemplateRoiOnStart() const { return m_editFirstTemplateRoiOnStart; }
     void setEditFirstTemplateRoiOnStart(bool enabled) { m_editFirstTemplateRoiOnStart = enabled; }
 
@@ -87,6 +90,7 @@ private:
     bool m_lockMouseToScreenCenterDuringRun = false;
     bool m_lockMouseToCurrentPositionDuringRun = false;
     bool m_roiCorrection = false;
+    int m_roiCorrectionExpandPercent = 110;
     bool m_editFirstTemplateRoiOnStart = false;
     int m_triggerCooldownMs = kDefaultTriggerCooldownMs;
     HotkeyBinding m_hotkey;

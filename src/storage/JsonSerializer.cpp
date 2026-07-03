@@ -2,6 +2,7 @@
 
 #include "core/workflow/BlockFactory.h"
 #include "core/workflow/WorkflowLoopRegion.h"
+#include "core/workflow/blocks/ImageFindBlock.h"
 #include "model/FeatureRunMode.h"
 #include "model/UserInputInterruptMode.h"
 #include "model/Feature.h"
@@ -56,6 +57,9 @@ nlohmann::json featureToJson(const Feature& feature) {
     if (feature.roiCorrection()) {
         json["roiCorrection"] = true;
     }
+    if (feature.roiCorrectionExpandPercent() != kDefaultRoiCorrectionExpandPercent) {
+        json["roiCorrectionExpandPercent"] = feature.roiCorrectionExpandPercent();
+    }
     if (feature.editFirstTemplateRoiOnStart()) {
         json["editFirstTemplateRoiOnStart"] = true;
     }
@@ -85,6 +89,8 @@ void featureFromJson(const nlohmann::json& json, Feature& feature) {
     feature.setLockMouseToCurrentPositionDuringRun(
         json.value("lockMouseToCurrentPositionDuringRun", false));
     feature.setRoiCorrection(json.value("roiCorrection", false));
+    feature.setRoiCorrectionExpandPercent(
+        json.value("roiCorrectionExpandPercent", kDefaultRoiCorrectionExpandPercent));
     feature.setEditFirstTemplateRoiOnStart(json.value("editFirstTemplateRoiOnStart", false));
     feature.setTriggerCooldownMs(
         snapTriggerCooldownMs(json.value("triggerCooldownMs", kDefaultTriggerCooldownMs)));

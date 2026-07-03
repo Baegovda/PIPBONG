@@ -22,6 +22,8 @@
 #include "ui/widgets/DragAdjustSpinBox.h"
 #include <QVBoxLayout>
 
+#include "core/workflow/blocks/ImageFindBlock.h"
+
 FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      const HotkeyBinding& hotkey,
                                      FeatureRunMode runMode,
@@ -31,6 +33,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      bool pointerVisualFeedback,
                                      bool restoreMousePositionOnEnd,
                                      bool roiCorrection,
+                                     int roiCorrectionExpandPercent,
                                      bool editFirstTemplateRoiOnStart,
                                      int triggerCooldownMs,
                                      Project* project,
@@ -70,6 +73,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     m_pointerVisualFeedbackCheck->setChecked(pointerVisualFeedback);
     m_restoreMousePositionOnEndCheck->setChecked(restoreMousePositionOnEnd);
     m_roiCorrectionCheck->setChecked(roiCorrection);
+    m_roiCorrectionExpandSpin->setValue(snapRoiCorrectionExpandPercent(roiCorrectionExpandPercent));
     m_editFirstTemplateRoiOnStartCheck->setChecked(editFirstTemplateRoiOnStart);
     m_triggerCooldownSpin->setValue(snapTriggerCooldownMs(triggerCooldownMs));
 
@@ -179,6 +183,25 @@ void FeatureEditDialog::setupUi() {
            "보정 ROI는 실행 중에만 사용되며 저장되지 않습니다."));
     form->addRow(QString(), m_roiCorrectionCheck);
 
+    m_roiCorrectionExpandRow = new QWidget(this);
+    auto* roiCorrectionExpandLayout = new QHBoxLayout(m_roiCorrectionExpandRow);
+    roiCorrectionExpandLayout->setContentsMargins(0, 0, 0, 0);
+    roiCorrectionExpandLayout->setSpacing(4);
+    m_roiCorrectionExpandSpin = new DragAdjustSpinBox(m_roiCorrectionExpandRow);
+    m_roiCorrectionExpandSpin->setRange(kRoiCorrectionExpandPercentMin, kRoiCorrectionExpandPercentMax);
+    m_roiCorrectionExpandSpin->setSingleStep(kRoiCorrectionExpandPercentStep);
+    m_roiCorrectionExpandSpin->setValue(kDefaultRoiCorrectionExpandPercent);
+    m_roiCorrectionExpandSpin->setMinimumWidth(72);
+    m_roiCorrectionExpandSpin->setMaximumWidth(96);
+    m_roiCorrectionExpandSpin->setToolTip(
+        tr("두 번째 루프부터 매칭된 템플릿 크기 대비 보정 탐색 영역 비율입니다. "
+           "110% = 가로·세로 각각 10% 확장(기본값)."));
+    roiCorrectionExpandLayout->addWidget(new QLabel(tr("보정 영역 (템플릿 대비)"), m_roiCorrectionExpandRow));
+    roiCorrectionExpandLayout->addWidget(m_roiCorrectionExpandSpin);
+    roiCorrectionExpandLayout->addWidget(new QLabel(QStringLiteral("%"), m_roiCorrectionExpandRow));
+    roiCorrectionExpandLayout->addStretch(1);
+    form->addRow(QString(), m_roiCorrectionExpandRow);
+
     m_editFirstTemplateRoiOnStartCheck =
         new QCheckBox(tr("첫 시작 시 첫 번째 템플릿의 ROI 수정한 뒤 바로 시작"), this);
     m_editFirstTemplateRoiOnStartCheck->setToolTip(
@@ -271,6 +294,9 @@ void FeatureEditDialog::updateModeDependentUi() {
                                        || triggerMode
                                        || (repeatCountMode && m_repeatSpin->value() >= 2);
     m_roiCorrectionCheck->setVisible(roiCorrectionEligible);
+    if (m_roiCorrectionExpandRow) {
+        m_roiCorrectionExpandRow->setVisible(roiCorrectionEligible);
+    }
 
     adjustSize();
 }
@@ -384,6 +410,11 @@ bool FeatureEditDialog::restoreMousePositionOnEnd() const {
 
 bool FeatureEditDialog::roiCorrection() const {
     return m_roiCorrectionCheck->isChecked();
+}
+
+int FeatureEditDialog::roiCorrectionExpandPercent() const {
+    return m_roiCorrectionExpandSpin ? m_roiCorrectionExpandSpin->value()
+                                       : kDefaultRoiCorrectionExpandPercent;
 }
 
 bool FeatureEditDialog::editFirstTemplateRoiOnStart() const {

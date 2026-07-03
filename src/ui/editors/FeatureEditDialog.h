@@ -14,6 +14,7 @@ class QComboBox;
 class QLineEdit;
 class QLabel;
 class QPushButton;
+class QWidget;
 class DragAdjustSpinBox;
 
 class FeatureEditDialog : public QDialog {
@@ -28,6 +29,7 @@ public:
                       bool pointerVisualFeedback,
                       bool restoreMousePositionOnEnd,
                       bool roiCorrection,
+                      int roiCorrectionExpandPercent,
                       bool editFirstTemplateRoiOnStart,
                       int triggerCooldownMs,
                       Project* project,
@@ -43,6 +45,7 @@ public:
     bool pointerVisualFeedback() const;
     bool restoreMousePositionOnEnd() const;
     bool roiCorrection() const;
+    int roiCorrectionExpandPercent() const;
     bool editFirstTemplateRoiOnStart() const;
     int triggerCooldownMs() const;
 
@@ -80,6 +83,8 @@ private:
     QCheckBox* m_pointerVisualFeedbackCheck = nullptr;
     QCheckBox* m_restoreMousePositionOnEndCheck = nullptr;
     QCheckBox* m_roiCorrectionCheck = nullptr;
+    QWidget* m_roiCorrectionExpandRow = nullptr;
+    DragAdjustSpinBox* m_roiCorrectionExpandSpin = nullptr;
     QCheckBox* m_editFirstTemplateRoiOnStartCheck = nullptr;
     QLabel* m_triggerCooldownLabel = nullptr;
     QWidget* m_triggerCooldownRow = nullptr;

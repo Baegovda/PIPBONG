@@ -219,6 +219,11 @@ void ImageFindEditor::reload() {
         QSignalBlocker blocker(m_roiCorrectionCheck);
         m_roiCorrectionCheck->setChecked(m_block->roiCorrection);
     }
+    if (m_roiCorrectionExpandSpin) {
+        QSignalBlocker blocker(m_roiCorrectionExpandSpin);
+        m_roiCorrectionExpandSpin->setValue(
+            snapRoiCorrectionExpandPercent(m_block->roiCorrectionExpandPercent));
+    }
     if (m_returnToPreviousImageFindCheck) {
         QSignalBlocker blocker(m_returnToPreviousImageFindCheck);
         m_returnToPreviousImageFindCheck->setChecked(m_block->returnToPreviousImageFindOnFailure);
@@ -246,6 +251,9 @@ void ImageFindEditor::updateRoiCorrectionUi() {
     const bool showPerBlock = m_roiCorrectionSessionEligible && !m_featureRoiCorrectionGlobal;
     if (m_roiCorrectionCheck) {
         m_roiCorrectionCheck->setVisible(showPerBlock);
+    }
+    if (m_roiCorrectionExpandRow) {
+        m_roiCorrectionExpandRow->setVisible(showPerBlock);
     }
     if (m_roiCorrectionGlobalHint) {
         m_roiCorrectionGlobalHint->setVisible(m_roiCorrectionSessionEligible && m_featureRoiCorrectionGlobal);
@@ -310,9 +318,28 @@ void ImageFindEditor::setupUi() {
 
     m_roiCorrectionCheck = new QCheckBox(tr("ROI 보정"), this);
     m_roiCorrectionCheck->setToolTip(
-        tr("두 번째 루프부터 첫 루프 매칭 위치 기준으로 템플릿보다 약 10%% 넓은 영역만 탐색합니다. "
+        tr("두 번째 루프부터 첫 루프 매칭 위치 기준으로 템플릿 대비 설정한 비율만큼 넓은 영역만 탐색합니다. "
            "기능 편집의 전체 ROI 보정이 꺼져 있을 때만 이 블록에 적용됩니다."));
     matchForm->addRow(QString(), m_roiCorrectionCheck);
+
+    m_roiCorrectionExpandRow = new QWidget(this);
+    auto* roiCorrectionExpandLayout = new QHBoxLayout(m_roiCorrectionExpandRow);
+    roiCorrectionExpandLayout->setContentsMargins(0, 0, 0, 0);
+    roiCorrectionExpandLayout->setSpacing(4);
+    m_roiCorrectionExpandSpin = new DragAdjustSpinBox(m_roiCorrectionExpandRow);
+    m_roiCorrectionExpandSpin->setRange(kRoiCorrectionExpandPercentMin, kRoiCorrectionExpandPercentMax);
+    m_roiCorrectionExpandSpin->setSingleStep(kRoiCorrectionExpandPercentStep);
+    m_roiCorrectionExpandSpin->setValue(kDefaultRoiCorrectionExpandPercent);
+    m_roiCorrectionExpandSpin->setMinimumWidth(72);
+    m_roiCorrectionExpandSpin->setMaximumWidth(96);
+    m_roiCorrectionExpandSpin->setToolTip(
+        tr("두 번째 루프부터 매칭된 템플릿 크기 대비 보정 탐색 영역 비율입니다. "
+           "110% = 가로·세로 각각 10% 확장(기본값)."));
+    roiCorrectionExpandLayout->addWidget(new QLabel(tr("보정 영역 (템플릿 대비)"), m_roiCorrectionExpandRow));
+    roiCorrectionExpandLayout->addWidget(m_roiCorrectionExpandSpin);
+    roiCorrectionExpandLayout->addWidget(new QLabel(QStringLiteral("%"), m_roiCorrectionExpandRow));
+    roiCorrectionExpandLayout->addStretch(1);
+    matchForm->addRow(QString(), m_roiCorrectionExpandRow);
 
     m_returnToPreviousImageFindCheck =
         new QCheckBox(tr("매칭 실패 시 바로 이전 템플릿 매칭 블록으로 돌아감"), this);
@@ -333,7 +360,8 @@ void ImageFindEditor::setupUi() {
     matchForm->addRow(QString(), m_retryAfterNextActionCheck);
 
     m_roiCorrectionGlobalHint = new HintLabel(
-        tr("기능 편집에서 전체 ROI 보정이 켜져 있습니다."), this);
+        tr("기능 편집에서 전체 ROI 보정이 켜져 있습니다. 보정 영역 비율은 기능 편집에서 설정합니다."),
+        this);
     m_roiCorrectionGlobalHint->hide();
     matchForm->addRow(QString(), m_roiCorrectionGlobalHint);
 
@@ -506,6 +534,11 @@ void ImageFindEditor::syncUiToBlockValues() {
         m_matchModeSwitch->isRightSelected() ? ImageFindTemplateMatchMode::All : ImageFindTemplateMatchMode::Any;
     if (m_roiCorrectionCheck && m_roiCorrectionCheck->isVisible()) {
         m_block->roiCorrection = m_roiCorrectionCheck->isChecked();
+    }
+    if (m_roiCorrectionExpandSpin && m_roiCorrectionExpandRow
+        && m_roiCorrectionExpandRow->isVisible()) {
+        m_block->roiCorrectionExpandPercent =
+            snapRoiCorrectionExpandPercent(m_roiCorrectionExpandSpin->value());
     }
     if (m_returnToPreviousImageFindCheck) {
         m_block->returnToPreviousImageFindOnFailure = m_returnToPreviousImageFindCheck->isChecked();
