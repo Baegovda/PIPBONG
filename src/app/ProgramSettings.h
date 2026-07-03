@@ -15,6 +15,9 @@ public:
     static bool runAsAdministrator();
     static void setRunAsAdministrator(bool enabled);
 
+    static bool autoInstallUpdates();
+    static void setAutoInstallUpdates(bool enabled);
+
     /// Reconcile the Windows Run key with the saved startup preference.
     static void syncWindowsStartupRegistration();
     static void syncWindowsRunAsAdminRegistration();

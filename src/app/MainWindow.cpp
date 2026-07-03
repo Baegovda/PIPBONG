@@ -3,6 +3,7 @@
 #include "app/Application.h"
 #include "app/ProgramSettings.h"
 #include "app/WindowsRunAsAdmin.h"
+#include "app/MouseCenterLock.h"
 #include "app/UserInputInterruptMonitor.h"
 #include "ui/calculator/CalculatorDialog.h"
 #include "ui/ProgramSettingsDialog.h"
@@ -17,6 +18,7 @@
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/Workflow.h"
 #include "core/workflow/WorkflowEngine.h"
+#include "core/workflow/WorkflowRunner.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "model/Feature.h"
 #include "model/Project.h"
@@ -555,6 +557,7 @@ void MainWindow::runSilentUpdateCheck() {
     if (!m_updateChecker) {
         return;
     }
+    m_lastUpdateCheckWasSilent = true;
     m_updateChecker->checkForUpdates(UpdateChecker::CheckUiMode::Silent);
 }
 
@@ -563,6 +566,11 @@ void MainWindow::onUpdateCheckFinished(bool success, bool updateAvailable, const
     if (!success && !updateAvailable && !errorMessage.isEmpty() && m_updateButton) {
         m_updateButton->setToolTip(errorMessage);
     }
+    if (success && updateAvailable && m_lastUpdateCheckWasSilent && ProgramSettings::autoInstallUpdates()) {
+        m_autoUpdateDeferred = true;
+        maybeStartAutomaticUpdate();
+    }
+    m_lastUpdateCheckWasSilent = false;
 }
 
 void MainWindow::onUpdateButtonClicked() {
@@ -602,7 +610,27 @@ void MainWindow::onCheckForUpdates() {
     if (!m_updateChecker) {
         return;
     }
+    m_lastUpdateCheckWasSilent = false;
     m_updateChecker->checkForUpdates(UpdateChecker::CheckUiMode::Interactive);
+}
+
+void MainWindow::maybeStartAutomaticUpdate() {
+    if (m_autoUpdateInstallStarted || !m_autoUpdateDeferred || !m_updateChecker
+        || !m_updateChecker->hasPendingUpdate() || !ProgramSettings::autoInstallUpdates()) {
+        return;
+    }
+
+    if (hasAnyRunningSession()) {
+        const QString version = m_updateChecker->pendingUpdate().version.toString();
+        showTransientStatus(tr("v%1 업데이트 감지 — 실행 종료 후 자동 업데이트").arg(version), 5000);
+        return;
+    }
+
+    m_autoUpdateDeferred = false;
+    m_autoUpdateInstallStarted = true;
+    const QString version = m_updateChecker->pendingUpdate().version.toString();
+    showTransientStatus(tr("v%1 자동 업데이트를 시작합니다.").arg(version), 5000);
+    m_updateChecker->installPendingUpdate();
 }
 
 void MainWindow::onProgramSettings() {
@@ -611,6 +639,10 @@ void MainWindow::onProgramSettings() {
         return;
     }
     applyCloseToTrayPolicy();
+    if (ProgramSettings::autoInstallUpdates() && m_updateChecker && m_updateChecker->hasPendingUpdate()) {
+        m_autoUpdateDeferred = true;
+        maybeStartAutomaticUpdate();
+    }
 
     if (ProgramSettings::runAsAdministrator() && !WindowsRunAsAdmin::isProcessElevated()) {
         const auto reply = QMessageBox::question(
@@ -817,6 +849,7 @@ void MainWindow::onReadyToRestartForUpdate() {
 void MainWindow::prepareForShutdown() {
     m_hotkeyManager->unregisterAll();
     UserInputInterruptMonitor::instance().unregisterAll();
+    MouseCenterLock::releaseAll();
     stopAllSessions();
     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
     ScreenRegionOverlay::dismissAll();
@@ -1096,6 +1129,8 @@ void MainWindow::connectSessionEngine(FeatureRunSession& session) {
     connect(engine, &WorkflowEngine::blockImageFindAttempt, this, &MainWindow::onBlockImageFindAttempt);
     connect(engine, &WorkflowEngine::imageFindFailureHandling, this,
             &MainWindow::onImageFindFailureHandling);
+    connect(engine, &WorkflowEngine::imageFindReturnToPrevious, this,
+            &MainWindow::onImageFindReturnToPrevious);
     connect(engine, &WorkflowEngine::pointerFeedbackAtClientPoint, this,
             &MainWindow::onPointerFeedbackAtClientPoint);
 }
@@ -1116,14 +1151,20 @@ void MainWindow::updateRunUiState() {
 
     if (hasAnyRunningSession()) {
         bool anyPaused = false;
+        bool anyTriggerMonitoring = false;
         for (const auto& entry : m_runSessions) {
             if (entry.second.sessionContext && entry.second.sessionContext->isPaused()) {
                 anyPaused = true;
-                break;
+            }
+            if (entry.second.runningMode == FeatureRunMode::Trigger
+                && entry.second.triggerPhase == TriggerSessionPhase::Monitoring) {
+                anyTriggerMonitoring = true;
             }
         }
         if (anyPaused) {
             setPersistentStatus(tr("일시정지 — 입력하여 재개"));
+        } else if (anyTriggerMonitoring) {
+            setPersistentStatus(tr("트리거 감시 중 (%1)").arg(m_runSessions.size()));
         } else {
             setPersistentStatus(tr("실행 중 (%1)").arg(m_runSessions.size()));
         }
@@ -1133,6 +1174,8 @@ void MainWindow::updateRunUiState() {
             refreshTitleBarStatus();
         }
     }
+
+    maybeStartAutomaticUpdate();
 }
 
 void MainWindow::stopFeatureRun(const std::string& featureId) {
@@ -1144,6 +1187,7 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     session->userStopRequested = true;
     session->repeatSession = false;
     session->holdRunActive = false;
+    ++session->triggerCooldownGeneration;
     session->engine->stop();
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
     appendSessionLog(*session, tr("중지 요청됨."));
@@ -1151,11 +1195,13 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
 
 void MainWindow::stopAllSessions() {
     UserInputInterruptMonitor::instance().unregisterAll();
+    MouseCenterLock::releaseAll();
     for (auto& entry : m_runSessions) {
         if (entry.second.engine) {
             entry.second.userStopRequested = true;
             entry.second.repeatSession = false;
             entry.second.holdRunActive = false;
+            ++entry.second.triggerCooldownGeneration;
             entry.second.engine->stopAndWait();
         }
         restoreRunStartCursorPosition(entry.second);
@@ -1203,6 +1249,13 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
         QMessageBox::information(this, tr("실행"), tr("선택한 기능에 블록이 없습니다."));
         return;
     }
+    if (feature->runMode() == FeatureRunMode::Trigger
+        && WorkflowRunner::firstImageFindBlockIndex(feature->workflow()) < 0) {
+        QMessageBox::information(this,
+                                 tr("실행"),
+                                 tr("트리거 모드에는 템플릿이 지정된 템플릿 매칭 블록이 최소 하나 필요합니다."));
+        return;
+    }
     if (isFeatureRunning(feature->id())) {
         return;
     }
@@ -1215,13 +1268,19 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     session.hotkeyLaunchedSession = fromHotkey;
     session.repeatSession = session.runningMode == FeatureRunMode::RepeatInfinite
                             || session.runningMode == FeatureRunMode::RepeatCount
-                            || session.runningMode == FeatureRunMode::Hold;
+                            || session.runningMode == FeatureRunMode::Hold
+                            || session.runningMode == FeatureRunMode::Trigger;
     session.repeatRemaining = feature->repeatCount();
     session.holdRunActive = session.runningMode == FeatureRunMode::Hold;
+    if (session.runningMode == FeatureRunMode::Trigger) {
+        session.triggerPhase = TriggerSessionPhase::Monitoring;
+        session.triggerBlockIndex = WorkflowRunner::firstImageFindBlockIndex(feature->workflow());
+    }
     if (session.runningMode == FeatureRunMode::Hold) {
         ++session.holdRepeatGeneration;
     }
     session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
+    session.lockMouseToScreenCenterDuringRun = feature->lockMouseToScreenCenterDuringRun();
 
     const std::string featureId = session.featureId;
     connectSessionEngine(session);
@@ -1229,6 +1288,10 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     selectRunningFeatureForDisplay(feature);
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
     if (tryBeginFirstTemplateRoiEdit(activeSession, feature)) {
+        return;
+    }
+    if (feature->runMode() == FeatureRunMode::Trigger) {
+        launchTriggerMonitor(activeSession, feature, true);
         return;
     }
     launchWorkflowRun(activeSession, feature, false);
@@ -1293,7 +1356,11 @@ bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Featur
         self->m_modified = true;
         self->scheduleAutoSave();
         self->refreshWorkflowEditor();
-        self->launchWorkflowRun(*activeSession, activeFeature, false);
+        if (activeFeature->runMode() == FeatureRunMode::Trigger) {
+            self->launchTriggerMonitor(*activeSession, activeFeature, true);
+        } else {
+            self->launchWorkflowRun(*activeSession, activeFeature, false);
+        }
     };
 
     const bool shown = RoiPreviewOverlay::show(
@@ -1347,9 +1414,11 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
     session.pointerVisualFeedback = feature->pointerVisualFeedback();
     session.sessionContext->setPointerVisualFeedback(feature->pointerVisualFeedback());
     session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
+    session.lockMouseToScreenCenterDuringRun = feature->lockMouseToScreenCenterDuringRun();
 
     const bool infiniteStyle = session.runningMode == FeatureRunMode::RepeatInfinite
-                             || session.runningMode == FeatureRunMode::Hold;
+                             || session.runningMode == FeatureRunMode::Hold
+                             || session.runningMode == FeatureRunMode::Trigger;
     const int exitAfter = feature->infiniteExitAfterConsecutiveMisses();
     if (infiniteStyle && exitAfter > 0) {
         session.sessionContext->setImageFindMaxMissAttempts(1);
@@ -1434,6 +1503,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         session.completedLoopCount = 0;
         session.lastLoopAverageMs = 0;
         captureRunStartCursorPosition(session);
+        if (session.lockMouseToScreenCenterDuringRun) {
+            MouseCenterLock::engage();
+        }
         if (isDisplayedRunningFeature(&session)) {
             syncLoopTimingToWorkflowEditor(&session);
             m_workflowEditor->clearBlockMatchResults();
@@ -1510,6 +1582,8 @@ bool MainWindow::shouldContinueRunSession(const FeatureRunSession& session, Feat
                && m_hotkeyManager->isHoldBindingDown(session.featureId);
     case FeatureRunMode::RepeatInfinite:
         return session.repeatSession;
+    case FeatureRunMode::Trigger:
+        return session.repeatSession;
     case FeatureRunMode::RepeatCount:
         return session.repeatSession && session.repeatRemaining > 0;
     default:
@@ -1543,6 +1617,252 @@ void MainWindow::scheduleHoldRepeat(FeatureRunSession& session,
     });
 }
 
+void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* feature, bool firstSessionStart) {
+    if (!feature || !session.engine || session.engine->isRunning()) {
+        return;
+    }
+
+    if (firstSessionStart) {
+        syncTargetWindowTitleToCapture();
+        session.sessionIteration = 0;
+        session.hasLastLoopTiming = false;
+        session.totalLoopElapsedMs = 0;
+        session.completedLoopCount = 0;
+        session.lastLoopAverageMs = 0;
+        captureRunStartCursorPosition(session);
+        if (session.lockMouseToScreenCenterDuringRun) {
+            MouseCenterLock::engage();
+        }
+        if (isDisplayedRunningFeature(&session)) {
+            syncLoopTimingToWorkflowEditor(&session);
+            m_workflowEditor->clearBlockMatchResults();
+            m_workflowEditor->clearExecutionHighlight();
+            m_workflowEditor->persistRunFeedbackForCurrentFeature();
+        }
+        appendSessionLog(session, tr("트리거 감시 시작"));
+        updateRunUiState();
+        session.runningBlockIndex = -1;
+        session.runningBlockHighlight = BlockListWidget::ExecutionHighlight::None;
+    }
+
+    session.triggerPhase = TriggerSessionPhase::Monitoring;
+    if (!session.sessionContext) {
+        session.sessionContext = std::make_shared<ExecutionContext>();
+    }
+    syncRunSessionContext(session);
+    applyFeatureRunPoliciesToContext(session, feature);
+    session.sessionContext->setTriggerMonitorBlockIndex(session.triggerBlockIndex);
+    session.sessionContext->setImageFindPrimedBlockIndex(-1);
+    session.sessionContext->clearConsumedMatchRegions();
+    session.sessionContext->clearLastMatch();
+    session.sessionContext->clearLastMatchAttempt();
+    syncUserInputInterruptForSession(session, feature);
+
+    ensureRunSessionResources(session, feature, session.sessionIteration > 0);
+
+    const std::wstring targetTitle = currentTargetWindowTitleW();
+    const std::string projectDir = Application::instance()->projectDirectory().toStdString();
+    const bool skipTargetActivation = session.hotkeyLaunchedSession && firstSessionStart;
+    WorkflowEngine* engine = session.engine.get();
+
+    Feature* featurePtr = feature;
+    engine->runPrepared([this, featurePtr, &session, targetTitle, projectDir, skipTargetActivation]() {
+        PreparedWorkflowRun run;
+        run.workflow = session.sessionWorkflow;
+        if (!run.workflow) {
+            run.workflow = std::shared_ptr<Workflow>(featurePtr->workflow().clone());
+        }
+        run.context = session.sessionContext;
+        run.context->setTargetWindowTitle(targetTitle);
+        run.context->setProjectDirectory(projectDir);
+        ScreenCapture::setTargetWindowTitle(targetTitle);
+        run.context->resetStop();
+        run.context->setTriggerMonitorBlockIndex(session.triggerBlockIndex);
+        run.context->setImageFindPrimedBlockIndex(-1);
+#ifdef _WIN32
+        if (!skipTargetActivation) {
+            ScreenCapture::activateTargetWindow();
+        }
+#endif
+        return run;
+    });
+}
+
+void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* feature) {
+    if (!feature || !session.engine || session.engine->isRunning()) {
+        return;
+    }
+
+    pauseOtherSessionsForTrigger(session);
+
+    session.triggerPhase = TriggerSessionPhase::RunningAction;
+    if (session.sessionContext) {
+        session.sessionContext->setTriggerMonitorBlockIndex(-1);
+        session.sessionContext->setImageFindPrimedBlockIndex(session.triggerBlockIndex);
+    }
+    appendSessionLog(session, tr("트리거 발동 — 워크플로 실행"));
+    launchWorkflowRun(session, feature, session.sessionIteration > 0);
+}
+
+void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession) {
+    triggerSession.triggerPreemptedSessions.clear();
+    triggerSession.triggerPreemptSavedCursor = false;
+    triggerSession.triggerReleasedOwnMouseCenterLockForPreempt = false;
+
+    for (auto& entry : m_runSessions) {
+        if (entry.first == triggerSession.featureId) {
+            continue;
+        }
+
+        FeatureRunSession& other = entry.second;
+        if (other.userStopRequested || !other.sessionContext) {
+            continue;
+        }
+
+        TriggerPreemptedSession snap;
+        snap.featureId = other.featureId;
+
+        if (!other.sessionContext->isPaused()) {
+            other.sessionContext->setPaused(true);
+            snap.pausedByTrigger = true;
+        }
+
+        if (other.lockMouseToScreenCenterDuringRun) {
+            MouseCenterLock::release();
+            snap.releasedMouseCenterLock = true;
+        }
+
+        if (snap.pausedByTrigger || snap.releasedMouseCenterLock) {
+            triggerSession.triggerPreemptedSessions.push_back(std::move(snap));
+            appendSessionLog(other, tr("트리거 발동 — 일시정지"));
+        }
+    }
+
+    if (triggerSession.triggerPreemptedSessions.empty()) {
+        return;
+    }
+
+    int screenX = 0;
+    int screenY = 0;
+    if (InputSimulator::getCursorScreenPosition(screenX, screenY)) {
+        triggerSession.triggerPreemptCursorScreenX = screenX;
+        triggerSession.triggerPreemptCursorScreenY = screenY;
+        triggerSession.triggerPreemptSavedCursor = true;
+    }
+
+    if (triggerSession.lockMouseToScreenCenterDuringRun) {
+        MouseCenterLock::release();
+        triggerSession.triggerReleasedOwnMouseCenterLockForPreempt = true;
+    }
+
+    appendSessionLog(triggerSession,
+                     tr("다른 기능 %1개 일시정지").arg(triggerSession.triggerPreemptedSessions.size()));
+    updateRunUiState();
+}
+
+void MainWindow::resumePreemptedSessionsForTrigger(FeatureRunSession& triggerSession) {
+    if (triggerSession.triggerPreemptedSessions.empty()
+        && !triggerSession.triggerPreemptSavedCursor
+        && !triggerSession.triggerReleasedOwnMouseCenterLockForPreempt) {
+        return;
+    }
+
+    if (triggerSession.triggerPreemptSavedCursor) {
+        InputSimulator::moveMouse(triggerSession.triggerPreemptCursorScreenX,
+                                  triggerSession.triggerPreemptCursorScreenY);
+        triggerSession.triggerPreemptSavedCursor = false;
+    }
+
+    if (triggerSession.triggerReleasedOwnMouseCenterLockForPreempt) {
+        MouseCenterLock::engage();
+        triggerSession.triggerReleasedOwnMouseCenterLockForPreempt = false;
+    }
+
+    for (const TriggerPreemptedSession& snap : triggerSession.triggerPreemptedSessions) {
+        FeatureRunSession* other = sessionFor(snap.featureId);
+        if (!other || !other->sessionContext) {
+            continue;
+        }
+
+        if (snap.releasedMouseCenterLock) {
+            MouseCenterLock::engage();
+        }
+        if (snap.pausedByTrigger) {
+            other->sessionContext->setPaused(false);
+            appendSessionLog(*other, tr("트리거 완료 — 재개"));
+        }
+    }
+
+    triggerSession.triggerPreemptedSessions.clear();
+    updateRunUiState();
+}
+
+void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* feature) {
+    if (!shouldContinueRunSession(session, feature)) {
+        finishRunSession(session.featureId, session.lastLoopSuccess, QString());
+        return;
+    }
+    if (!feature) {
+        finishRunSession(session.featureId, false, tr("기능을 찾을 수 없음"));
+        return;
+    }
+
+    session.triggerPhase = TriggerSessionPhase::Cooldown;
+    updateRunUiState();
+
+    const int cooldownMs = feature->triggerCooldownMs();
+    if (cooldownMs <= 0) {
+        launchTriggerMonitor(session, feature, false);
+        return;
+    }
+
+    appendSessionLog(session, tr("재감지 대기 %1 ms").arg(cooldownMs));
+    const quint64 generation = ++session.triggerCooldownGeneration;
+    const std::string featureId = session.featureId;
+    QTimer::singleShot(cooldownMs, this, [this, featureId, generation]() {
+        FeatureRunSession* activeSession = sessionFor(featureId);
+        if (!activeSession || generation != activeSession->triggerCooldownGeneration) {
+            return;
+        }
+        if (activeSession->userStopRequested || !activeSession->repeatSession) {
+            finishRunSession(featureId, activeSession->lastLoopSuccess, QString());
+            return;
+        }
+        Feature* current = m_project ? m_project->featureById(featureId) : nullptr;
+        if (!current) {
+            finishRunSession(featureId, false, tr("기능을 찾을 수 없음"));
+            return;
+        }
+        launchTriggerMonitor(*activeSession, current, false);
+    });
+}
+
+void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
+                                             Feature* feature,
+                                             bool success,
+                                             const QString& message) {
+    if (session.triggerPhase == TriggerSessionPhase::Monitoring) {
+        if (session.sessionContext) {
+            session.sessionContext->setTriggerMonitorBlockIndex(-1);
+        }
+        if (!success) {
+            finishRunSession(session.featureId, false, message);
+            return;
+        }
+        launchTriggerActionRun(session, feature);
+        return;
+    }
+
+    if (session.triggerPhase == TriggerSessionPhase::RunningAction) {
+        logLoopCompletion(session, success, message);
+        if (!success && !session.userStopRequested) {
+            appendSessionLog(session, tr("워크플로 실패 — 감시 재개"));
+        }
+        resumePreemptedSessionsForTrigger(session);
+        scheduleTriggerCooldown(session, feature);
+    }
+}
+
 void MainWindow::finishRunSession(const std::string& featureId, bool success, const QString& message) {
     FeatureRunSession* session = sessionFor(featureId);
     if (session && isDisplayedRunningFeature(session)) {
@@ -1560,7 +1880,15 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
         session->sessionContext->endRunKeyboardSession();
     }
 
+    if (session && session->runningMode == FeatureRunMode::Trigger) {
+        resumePreemptedSessionsForTrigger(*session);
+    }
+
     if (session) {
+        ++session->triggerCooldownGeneration;
+        if (session->lockMouseToScreenCenterDuringRun) {
+            MouseCenterLock::release();
+        }
         restoreRunStartCursorPosition(*session);
     }
 
@@ -1872,6 +2200,11 @@ void MainWindow::onEngineStarted() {
     if (!session) {
         return;
     }
+    if (session->runningMode == FeatureRunMode::Trigger
+        && session->triggerPhase != TriggerSessionPhase::RunningAction) {
+        updateRunUiState();
+        return;
+    }
     session->loopTimer.start();
     updateRunUiState();
 }
@@ -1883,6 +2216,11 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
     }
 
     Feature* feature = m_project ? m_project->featureById(session->featureId) : nullptr;
+
+    if (session->runningMode == FeatureRunMode::Trigger) {
+        handleTriggerEngineFinished(*session, feature, success, message);
+        return;
+    }
 
     logLoopCompletion(*session, success, message);
 
@@ -2049,6 +2387,14 @@ void MainWindow::onImageFindFailureHandling(int index,
     }
     m_workflowEditor->setBlockImageFindFailureHandlingCounts(
         index, returnToPreviousCount, retryAfterNextCount);
+}
+
+void MainWindow::onImageFindReturnToPrevious(int sourceIndex, int targetIndex) {
+    FeatureRunSession* session = sessionForEngine(sender());
+    if (!session || !isDisplayedRunningFeature(session)) {
+        return;
+    }
+    m_workflowEditor->notifyImageFindReturnToPrevious(sourceIndex, targetIndex);
 }
 
 void MainWindow::appendLog(const QString& message) {

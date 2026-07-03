@@ -40,11 +40,14 @@ struct WorkflowRunHooks {
         onBlockMatchResult;
     std::function<void(int blockIndex, int returnToPreviousCount, int retryAfterNextCount)>
         onImageFindFailureHandling;
+    std::function<void(int sourceBlockIndex, int targetBlockIndex)> onImageFindReturnToPrevious;
     std::function<void(int clientX, int clientY)> onPointerFeedbackAtClientPoint;
 };
 
 class WorkflowRunner {
 public:
+    static int firstImageFindBlockIndex(const Workflow& workflow);
+
     static WorkflowRunResult run(const Workflow& workflow,
                                  ExecutionContext& ctx,
                                  const WorkflowRunHooks* hooks = nullptr);

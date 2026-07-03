@@ -231,6 +231,7 @@ void attachChipHeaderRowActions(BlockListWidget* table,
 constexpr int kMissFlashMs = 72;
 constexpr int kSuccessFlashMs = 140;
 constexpr int kFailedFlashMs = 170;
+constexpr int kReturnToPreviousFlashMs = 480;
 constexpr qreal kRunningGlassIntensity = 0.16;
 constexpr int kMaxGlassAlpha = 52;
 
@@ -278,6 +279,9 @@ GlassColors glassColorsFor(BlockListWidget::ExecutionHighlight highlight,
         break;
     case BlockListWidget::ExecutionHighlight::Failed:
         colors.tint = QColor(214, 96, 96);
+        break;
+    case BlockListWidget::ExecutionHighlight::ReturnToPrevious:
+        colors.tint = QColor(168, 108, 232);
         break;
     case BlockListWidget::ExecutionHighlight::None:
     default:
@@ -1439,6 +1443,10 @@ void BlockListWidget::commitRowSuccess(int row) {
 }
 
 BlockListWidget::ExecutionHighlight BlockListWidget::rowVisualHighlight(int row) const {
+    if (m_flashKind == ExecutionHighlight::ReturnToPrevious && m_flashIntensity > 0.0
+        && (row == m_flashRow || row == m_flashRowSecondary)) {
+        return ExecutionHighlight::ReturnToPrevious;
+    }
     if (row == m_activeRow && m_activeHighlight != ExecutionHighlight::None) {
         if (m_activeHighlight == ExecutionHighlight::Running) {
             return ExecutionHighlight::Running;
@@ -1869,6 +1877,15 @@ void BlockListWidget::notifyImageFindRetry(int row) {
     applyActiveRowVisuals();
 }
 
+void BlockListWidget::notifyImageFindReturnToPrevious(int sourceRow, int targetRow) {
+    if (sourceRow < 0 || targetRow < 0 || sourceRow >= m_blockCount || targetRow >= m_blockCount) {
+        return;
+    }
+    triggerDualRowFlash(
+        sourceRow, targetRow, ExecutionHighlight::ReturnToPrevious, kReturnToPreviousFlashMs);
+    applyActiveRowVisuals();
+}
+
 void BlockListWidget::clearActiveRow() {
     setActiveRow(-1, ExecutionHighlight::None);
 }
@@ -1879,6 +1896,26 @@ void BlockListWidget::triggerRowFlash(int row, ExecutionHighlight highlight, int
     }
 
     m_flashRow = row;
+    m_flashRowSecondary = -1;
+    m_flashKind = highlight;
+    m_flashIntensity = 1.0;
+    m_flashAnimation->stop();
+    m_flashAnimation->setDuration(durationMs);
+    m_flashAnimation->setStartValue(1.0);
+    m_flashAnimation->setEndValue(0.0);
+    m_flashAnimation->start();
+}
+
+void BlockListWidget::triggerDualRowFlash(int primaryRow,
+                                          int secondaryRow,
+                                          ExecutionHighlight highlight,
+                                          int durationMs) {
+    if (!m_flashAnimation || primaryRow < 0 || secondaryRow < 0 || durationMs <= 0) {
+        return;
+    }
+
+    m_flashRow = primaryRow;
+    m_flashRowSecondary = secondaryRow;
     m_flashKind = highlight;
     m_flashIntensity = 1.0;
     m_flashAnimation->stop();
@@ -1901,6 +1938,7 @@ void BlockListWidget::onFlashAnimationFinished() {
         m_rowCompletedHighlight[m_flashRow] = ExecutionHighlight::None;
     }
     m_flashRow = -1;
+    m_flashRowSecondary = -1;
     m_flashKind = ExecutionHighlight::None;
     applyActiveRowVisuals();
 }
@@ -1909,7 +1947,8 @@ qreal BlockListWidget::rowGlassIntensity(int row, ExecutionHighlight highlight) 
     if (highlight == ExecutionHighlight::Running) {
         return kRunningGlassIntensity;
     }
-    if (m_flashRow == row && m_flashKind == highlight && m_flashIntensity > 0.0) {
+    if (m_flashKind == highlight && m_flashIntensity > 0.0
+        && (m_flashRow == row || m_flashRowSecondary == row)) {
         return m_flashIntensity;
     }
     return 0.0;
@@ -1975,6 +2014,14 @@ void BlockListWidget::applyActiveRowVisuals() {
         } else if (tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow]
                    && blockRow == qMin(m_loopRegionPickAnchorRow, m_loopRegionPickCurrentRow)) {
             indexText = QStringLiteral("↻ %1").arg(blockRow + 1);
+        } else if (m_flashKind == ExecutionHighlight::ReturnToPrevious && m_flashIntensity > 0.0) {
+            if (blockRow == m_flashRow) {
+                indexText = QStringLiteral("↓ %1").arg(blockRow + 1);
+                rowFont.setBold(true);
+            } else if (blockRow == m_flashRowSecondary) {
+                indexText = QStringLiteral("↩ %1").arg(blockRow + 1);
+                rowFont.setBold(true);
+            }
         }
 
         const bool inLoopRegion = tableRow < m_loopRegionMember.size() && m_loopRegionMember[tableRow];

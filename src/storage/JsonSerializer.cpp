@@ -4,6 +4,7 @@
 #include "core/workflow/WorkflowLoopRegion.h"
 #include "model/FeatureRunMode.h"
 #include "model/UserInputInterruptMode.h"
+#include "model/Feature.h"
 
 #include <QDir>
 #include <QFile>
@@ -46,11 +47,17 @@ nlohmann::json featureToJson(const Feature& feature) {
     if (feature.restoreMousePositionOnEnd()) {
         json["restoreMousePositionOnEnd"] = true;
     }
+    if (feature.lockMouseToScreenCenterDuringRun()) {
+        json["lockMouseToScreenCenterDuringRun"] = true;
+    }
     if (feature.roiCorrection()) {
         json["roiCorrection"] = true;
     }
     if (feature.editFirstTemplateRoiOnStart()) {
         json["editFirstTemplateRoiOnStart"] = true;
+    }
+    if (feature.triggerCooldownMs() != kDefaultTriggerCooldownMs) {
+        json["triggerCooldownMs"] = feature.triggerCooldownMs();
     }
     if (!feature.hotkey().isEmpty()) {
         json["hotkey"] = feature.hotkey().toJson();
@@ -71,8 +78,11 @@ void featureFromJson(const nlohmann::json& json, Feature& feature) {
         userInputInterruptModeFromString(json.value("userInputInterrupt", "Stop")));
     feature.setPointerVisualFeedback(json.value("pointerVisualFeedback", true));
     feature.setRestoreMousePositionOnEnd(json.value("restoreMousePositionOnEnd", false));
+    feature.setLockMouseToScreenCenterDuringRun(json.value("lockMouseToScreenCenterDuringRun", false));
     feature.setRoiCorrection(json.value("roiCorrection", false));
     feature.setEditFirstTemplateRoiOnStart(json.value("editFirstTemplateRoiOnStart", false));
+    feature.setTriggerCooldownMs(
+        snapTriggerCooldownMs(json.value("triggerCooldownMs", kDefaultTriggerCooldownMs)));
     if (json.contains("hotkey")) {
         feature.setHotkey(HotkeyBinding::fromJson(json["hotkey"]));
     } else {

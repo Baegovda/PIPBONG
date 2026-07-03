@@ -7,7 +7,8 @@
 enum class FeatureRunMode {
     Hold,
     RepeatInfinite,
-    RepeatCount
+    RepeatCount,
+    Trigger
 };
 
 std::string featureRunModeToString(FeatureRunMode mode);

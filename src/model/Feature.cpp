@@ -1,9 +1,19 @@
 #include "model/Feature.h"
 
+#include <algorithm>
+
 #include <QUuid>
 
+int snapTriggerCooldownMs(int ms) {
+    if (ms < 0) {
+        return 0;
+    }
+    const int snapped = (ms / kTriggerCooldownStepMs) * kTriggerCooldownStepMs;
+    return std::min(snapped, 600000);
+}
+
 bool Feature::roiCorrectionSessionEligible() const {
-    if (m_runMode == FeatureRunMode::RepeatInfinite) {
+    if (m_runMode == FeatureRunMode::RepeatInfinite || m_runMode == FeatureRunMode::Trigger) {
         return true;
     }
     return m_runMode == FeatureRunMode::RepeatCount && m_repeatCount >= 2;
@@ -28,8 +38,10 @@ std::unique_ptr<Feature> Feature::clone() const {
     copy->m_userInputInterruptMode = m_userInputInterruptMode;
     copy->m_pointerVisualFeedback = m_pointerVisualFeedback;
     copy->m_restoreMousePositionOnEnd = m_restoreMousePositionOnEnd;
+    copy->m_lockMouseToScreenCenterDuringRun = m_lockMouseToScreenCenterDuringRun;
     copy->m_roiCorrection = m_roiCorrection;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
+    copy->m_triggerCooldownMs = m_triggerCooldownMs;
     copy->m_hotkey = m_hotkey;
     copy->m_workflow.assignFrom(m_workflow);
     return copy;
@@ -46,8 +58,10 @@ std::unique_ptr<Feature> Feature::duplicateAsNewInstance() const {
     copy->m_userInputInterruptMode = m_userInputInterruptMode;
     copy->m_pointerVisualFeedback = m_pointerVisualFeedback;
     copy->m_restoreMousePositionOnEnd = m_restoreMousePositionOnEnd;
+    copy->m_lockMouseToScreenCenterDuringRun = m_lockMouseToScreenCenterDuringRun;
     copy->m_roiCorrection = m_roiCorrection;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
+    copy->m_triggerCooldownMs = m_triggerCooldownMs;
     copy->m_hotkey = {};
     copy->m_workflow.assignFrom(m_workflow);
     return copy;

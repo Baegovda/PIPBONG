@@ -29,6 +29,7 @@ public:
                       bool restoreMousePositionOnEnd,
                       bool roiCorrection,
                       bool editFirstTemplateRoiOnStart,
+                      int triggerCooldownMs,
                       Project* project,
                       const std::string& featureId,
                       QWidget* parent = nullptr);
@@ -43,6 +44,7 @@ public:
     bool restoreMousePositionOnEnd() const;
     bool roiCorrection() const;
     bool editFirstTemplateRoiOnStart() const;
+    int triggerCooldownMs() const;
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -79,4 +81,7 @@ private:
     QCheckBox* m_restoreMousePositionOnEndCheck = nullptr;
     QCheckBox* m_roiCorrectionCheck = nullptr;
     QCheckBox* m_editFirstTemplateRoiOnStartCheck = nullptr;
+    QLabel* m_triggerCooldownLabel = nullptr;
+    QWidget* m_triggerCooldownRow = nullptr;
+    DragAdjustSpinBox* m_triggerCooldownSpin = nullptr;
 };

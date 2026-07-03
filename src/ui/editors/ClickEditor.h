@@ -27,6 +27,9 @@ public:
     void reload();
     void apply();
 
+    void setFeatureRunOptions(bool lockMouseToScreenCenterDuringRun);
+    bool lockMouseToScreenCenterDuringRun() const;
+
 signals:
     void layoutChanged();
 
@@ -95,4 +98,7 @@ private:
     QCheckBox* m_altCheck = nullptr;
     QCheckBox* m_shiftCheck = nullptr;
     QWidget* m_modifierRow = nullptr;
+
+    QGroupBox* m_featureRunGroup = nullptr;
+    QCheckBox* m_lockMouseToScreenCenterCheck = nullptr;
 };

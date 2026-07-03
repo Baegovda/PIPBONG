@@ -22,6 +22,37 @@ inline QColor secondaryHintTextColor(const QPalette& pal) {
     return QColor(0x3d, 0x5a, 0x72);
 }
 
+/// Primary text on custom-painted rows that use QPalette::Base as the fill.
+/// On some Windows/Qt combos (often laptops in dark mode) Base is dark while Text stays black.
+inline QColor primaryContentTextColor(const QPalette& pal, bool selected = false) {
+    const QColor base = pal.color(QPalette::Base);
+    const bool darkRow = base.isValid() ? base.lightness() < 128 : isDarkTheme(pal);
+
+    if (selected) {
+        const QColor highlighted = pal.color(QPalette::HighlightedText);
+        if (highlighted.isValid()) {
+            const bool highlightedIsLight = highlighted.lightness() > 128;
+            if (darkRow == highlightedIsLight) {
+                return highlighted;
+            }
+        }
+    }
+
+    if (darkRow) {
+        const QColor windowText = pal.color(QPalette::WindowText);
+        if (windowText.isValid() && windowText.lightness() > 128) {
+            return windowText;
+        }
+        return QColor(0xe8, 0xee, 0xf4);
+    }
+
+    const QColor text = pal.color(QPalette::Text);
+    if (text.isValid() && text.lightness() < 140) {
+        return text;
+    }
+    return QColor(0x1a, 0x1a, 0x1a);
+}
+
 /// Warning/info note text (e.g. block type change notice).
 inline QColor warningNoteTextColor(const QPalette& pal) {
     if (isDarkTheme(pal)) {

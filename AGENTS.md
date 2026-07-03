@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.61` (from `project(PIPBONG VERSION 0.7.61)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.68` (from `project(PIPBONG VERSION 0.7.68)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -337,7 +337,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Templates | `{projectDirectory}/templates/*.png` |
 | Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
 | Debounce | 800 ms after edits; also on window close |
-| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); `program/launchAtWindowsStartup` (default `false`, Windows Run key via `WindowsLaunchAtStartup`); `program/closeToTray` (default `false`, hide to notification area on window close); `program/runAsAdministrator` (default `false`, Windows `RUNASADMIN` compatibility flag via `WindowsRunAsAdmin`); `program/pointerFeedback/click/*` for click pointer animation; bottom **설정** button opens program settings dialog |
+| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); `program/launchAtWindowsStartup` (default `false`, Windows Run key via `WindowsLaunchAtStartup`); `program/closeToTray` (default `false`, hide to notification area on window close); `program/autoInstallUpdates` (default `false`, silently detected updates install automatically, deferred until workflow sessions stop); `program/runAsAdministrator` (default `false`, Windows `RUNASADMIN` compatibility flag via `WindowsRunAsAdmin`); `program/pointerFeedback/click/*` for click pointer animation; bottom **설정** button opens program settings dialog |
 | Calculator sheet | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry` |
 
 ### 5.8 poe.ninja economy calculator
@@ -422,12 +422,14 @@ Sbm1.0/                        # repo root (local workspace)
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `runMode` | `"Toggle"` | `Toggle`, `Hold`, `RepeatInfinite`, `RepeatCount` |
+| `runMode` | `"RepeatCount"` | `Hold`, `RepeatInfinite`, `RepeatCount`, `Trigger` (legacy `"Toggle"` loads as `RepeatCount`) |
 | `repeatCount` | `1` | Used when `runMode` is `RepeatCount` |
+| `triggerCooldownMs` | `1000` | After a trigger fires in `Trigger` mode, wait this many ms before monitoring again (5 ms step, `0` = immediate); omitted when default |
 | `infiniteExitAfterConsecutiveMisses` | `0` (omitted) | When `> 0` with `RepeatInfinite` or `Hold`, stop after this many consecutive loop iterations where template matching fails |
 | `userInputInterrupt` | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run. Legacy `"None"` loads as `"Stop"`. Excludes mouse movement, injected input, and the feature's own hotkey |
 | `pointerVisualFeedback` | `true` (omitted) | When `false`, disables target-window click/match pulse overlay for this feature during runs |
 | `restoreMousePositionOnEnd` | `false` (omitted) | When `true`, moves the mouse cursor back to its screen position when the workflow session started |
+| `lockMouseToScreenCenterDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to the virtual-screen center for the feature run session (configured in mouse block editor) |
 | `roiCorrection` | `false` (omitted) | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
 | `editFirstTemplateRoiOnStart` | `false` (omitted) | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run |
 
@@ -442,6 +444,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `templates` | `[]` | Relative paths under `templates/`; multiple entries per block |
 | `template` | `""` | Legacy single path; loaded when `templates` is empty; first `templates` entry is also written for backward compat |
 | `templateMatchMode` | `"Any"` | `"Any"` (one hit succeeds) or `"All"` (every template must match on the same capture) |
+| `templateColorMode` | `"Auto"` | `"Auto"` (analyze template), `"Grayscale"` (reject saturated color UI regions in haystack), or `"Color"` (no grayscale haystack filter); omitted when `Auto` |
 | `threshold` | `0.85` | Match confidence threshold |
 | `pollIntervalMs` | `200` | Delay between retries when no match (5–60000 ms, 5 ms step); block polls until success or workflow stop |
 | `searchArea` | `"TargetWindow"` | `FullScreen`, `TargetWindow`, `CustomRegion`, `ScreenPercent` |
@@ -825,6 +828,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.68] - 2026-07-03
+
+### Fixed
+
+- Feature list feature name text unreadable on some Windows dark-theme machines: derive name color from row `Base` luminance instead of stale `QPalette::Text` (`UiThemeColors::primaryContentTextColor`, `FeatureListPanel`).
+
+## [0.7.67] - 2026-07-03
+
+### Added
+
+- ImageFind **이전 복귀** activation: purple glass pulse on both the failing block and the previous template-matching block jumped to (`BlockListWidget`, `WorkflowRunner`, `WorkflowEngine`, `MainWindow`).
+
+## [0.7.66] - 2026-07-03
+
+### Added
+
+- Program settings **새 버전 감지 시 자동 업데이트** (`program/autoInstallUpdates`): silent GitHub update checks automatically start download/install when a newer release is detected; if workflow sessions are running, installation is deferred until all sessions stop (`ProgramSettings`, `ProgramSettingsDialog`, `MainWindow`).
+
+## [0.7.65] - 2026-07-03
+
+### Added
+
+- Trigger mode preemption: when a trigger fires while other features are running, those sessions pause in place (workflow `ExecutionContext` pause), release **마우스 중앙 고정** temporarily, then resume from the same point after the trigger action; cursor is restored to the pre-trigger position so trigger mouse blocks do not affect the preempted run (`MainWindow`, `FeatureRunSession`).
+
+## [0.7.64] - 2026-07-03
+
+### Added
+
+- Feature **트리거 모드** run mode: monitors only the first workflow ImageFind block with templates; on match runs the full workflow once, then waits `triggerCooldownMs` before monitoring again; hotkey or feature run button toggles the armed session (`FeatureRunMode::Trigger`, `MainWindow`, `WorkflowRunner`, `ImageFindBlock`, `FeatureEditDialog`, JSON `triggerCooldownMs`).
+
+## [0.7.63] - 2026-07-03
+
+### Added
+
+- ImageFind block **템플릿 색상** option in **매칭 설정**: **자동** / **흑백** / **컬러** controls whether grayscale haystack filtering runs during workflow and match test (`templateColorMode` JSON, `ImageMatcher`, `ImageFindBlock`, `ImageFindEditor`).
+
+## [0.7.62] - 2026-07-03
+
+### Added
+
+- Feature option **기능이 켜져 있는 동안 마우스를 화면 중앙에 고정** in the mouse block editor; clips the physical cursor to the virtual-screen center for the feature run session via `MouseCenterLock` (`Feature`, `ClickEditor`, `MainWindow`, JSON `lockMouseToScreenCenterDuringRun`).
 
 ## [0.7.61] - 2026-07-03
 
@@ -2535,4 +2580,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-03. Current application version: 0.7.61.*
+*Last consolidated: 2026-07-03. Current application version: 0.7.68.*

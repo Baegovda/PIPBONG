@@ -325,6 +325,26 @@ void ExecutionContext::clearConsumedMatchRegions() {
     m_consumedMatchRegions.clear();
 }
 
+void ExecutionContext::setTriggerMonitorBlockIndex(int blockIndex) {
+    m_triggerMonitorBlockIndex = blockIndex;
+}
+
+int ExecutionContext::triggerMonitorBlockIndex() const {
+    return m_triggerMonitorBlockIndex;
+}
+
+void ExecutionContext::setImageFindPrimedBlockIndex(int blockIndex) {
+    m_imageFindPrimedBlockIndex = blockIndex;
+}
+
+bool ExecutionContext::consumeImageFindPrimedBlockIndex(int blockIndex) {
+    if (m_imageFindPrimedBlockIndex < 0 || m_imageFindPrimedBlockIndex != blockIndex) {
+        return false;
+    }
+    m_imageFindPrimedBlockIndex = -1;
+    return true;
+}
+
 void ExecutionContext::setRoiCorrectionSession(bool eligible, bool featureGlobal) {
     m_roiCorrectionSessionEligible = eligible;
     m_featureRoiCorrectionGlobal = featureGlobal;

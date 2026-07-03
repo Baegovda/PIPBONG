@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.7.61 LANGUAGES CXX)
+project(PIPBONG VERSION 0.7.68 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -22,6 +22,7 @@ set(PIPBONG_SOURCES
     src/app/HotkeyManager.cpp
     src/app/FeatureHotkeyGate.cpp
     src/app/UserInputInterruptMonitor.cpp
+    src/app/MouseCenterLock.cpp
     src/app/ProgramSettings.cpp
     src/app/WindowsLaunchAtStartup.cpp
     src/app/WindowsRunAsAdmin.cpp

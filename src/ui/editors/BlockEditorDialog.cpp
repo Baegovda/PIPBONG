@@ -70,6 +70,16 @@ void BlockEditorDialog::setRoiCorrectionUiPolicy(bool featureGlobalEnabled, bool
     }
 }
 
+void BlockEditorDialog::setClickFeatureRunOptions(bool lockMouseToScreenCenterDuringRun) {
+    if (m_clickEditor) {
+        m_clickEditor->setFeatureRunOptions(lockMouseToScreenCenterDuringRun);
+    }
+}
+
+bool BlockEditorDialog::lockMouseToScreenCenterDuringRun() const {
+    return m_clickEditor ? m_clickEditor->lockMouseToScreenCenterDuringRun() : false;
+}
+
 void BlockEditorDialog::setupUi() {
     auto* layout = new QVBoxLayout(this);
     layout->setSpacing(10);

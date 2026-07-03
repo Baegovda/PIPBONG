@@ -11,6 +11,7 @@ constexpr const char* kAutoSelectRunningFeatureKey = "program/autoSelectRunningF
 constexpr const char* kLaunchAtWindowsStartupKey = "program/launchAtWindowsStartup";
 constexpr const char* kCloseToTrayKey = "program/closeToTray";
 constexpr const char* kRunAsAdministratorKey = "program/runAsAdministrator";
+constexpr const char* kAutoInstallUpdatesKey = "program/autoInstallUpdates";
 
 } // namespace
 
@@ -54,6 +55,16 @@ void ProgramSettings::setRunAsAdministrator(bool enabled) {
     QSettings settings;
     settings.setValue(kRunAsAdministratorKey, enabled);
     syncWindowsRunAsAdminRegistration();
+}
+
+bool ProgramSettings::autoInstallUpdates() {
+    QSettings settings;
+    return settings.value(kAutoInstallUpdatesKey, false).toBool();
+}
+
+void ProgramSettings::setAutoInstallUpdates(bool enabled) {
+    QSettings settings;
+    settings.setValue(kAutoInstallUpdatesKey, enabled);
 }
 
 void ProgramSettings::syncWindowsStartupRegistration() {

@@ -666,6 +666,13 @@ void WorkflowEditorPanel::notifyImageFindRetry(int blockIndex) {
     m_blockList->notifyImageFindRetry(blockIndex);
 }
 
+void WorkflowEditorPanel::notifyImageFindReturnToPrevious(int sourceBlockIndex, int targetBlockIndex) {
+    if (sourceBlockIndex < 0 || targetBlockIndex < 0) {
+        return;
+    }
+    m_blockList->notifyImageFindReturnToPrevious(sourceBlockIndex, targetBlockIndex);
+}
+
 bool WorkflowEditorPanel::isBlockMatchSuccessCommitted(int blockIndex) const {
     return m_blockList->isMatchSuccessLocked(blockIndex);
 }
@@ -984,13 +991,18 @@ void WorkflowEditorPanel::addBlockOfType(BlockType type) {
         dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()) + 1,
                                         static_cast<int>(m_feature->workflow().blocks().size()));
         dialog.setRoiCorrectionUiPolicy(m_feature->roiCorrection(), m_feature->roiCorrectionSessionEligible());
+        dialog.setClickFeatureRunOptions(m_feature->lockMouseToScreenCenterDuringRun());
     }
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
 
     pushUndoSnapshot();
-    m_feature->workflow().addBlock(dialog.takeBlock());
+    auto newBlock = dialog.takeBlock();
+    if (m_feature && newBlock && newBlock->type() == BlockType::Click) {
+        m_feature->setLockMouseToScreenCenterDuringRun(dialog.lockMouseToScreenCenterDuringRun());
+    }
+    m_feature->workflow().addBlock(std::move(newBlock));
     refresh();
     m_blockList->selectBlockRow(static_cast<int>(m_feature->workflow().blocks().size()) - 1);
     emit workflowModified();
@@ -1502,12 +1514,17 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
     BlockEditorDialog dialog(block, m_projectDirectory, this);
     dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()), row);
     dialog.setRoiCorrectionUiPolicy(m_feature->roiCorrection(), m_feature->roiCorrectionSessionEligible());
+    dialog.setClickFeatureRunOptions(m_feature->lockMouseToScreenCenterDuringRun());
     if (dialog.exec() != QDialog::Accepted) {
         return false;
     }
 
     pushUndoSnapshot();
-    m_feature->workflow().replaceBlock(row, dialog.takeBlock());
+    auto updatedBlock = dialog.takeBlock();
+    if (updatedBlock && updatedBlock->type() == BlockType::Click) {
+        m_feature->setLockMouseToScreenCenterDuringRun(dialog.lockMouseToScreenCenterDuringRun());
+    }
+    m_feature->workflow().replaceBlock(row, std::move(updatedBlock));
     refresh();
     m_blockList->selectBlockRow(row);
     emit workflowModified();

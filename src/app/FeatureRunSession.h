@@ -9,6 +9,19 @@
 #include <memory>
 #include <string>
 
+enum class TriggerSessionPhase {
+    None,
+    Monitoring,
+    RunningAction,
+    Cooldown
+};
+
+struct TriggerPreemptedSession {
+    std::string featureId;
+    bool pausedByTrigger = false;
+    bool releasedMouseCenterLock = false;
+};
+
 struct FeatureRunSession {
     std::string featureId;
     std::unique_ptr<WorkflowEngine> engine;
@@ -26,6 +39,7 @@ struct FeatureRunSession {
     bool hotkeyLaunchedSession = false;
     bool pointerVisualFeedback = true;
     bool restoreMousePositionOnEnd = false;
+    bool lockMouseToScreenCenterDuringRun = false;
     bool hasRunStartCursorPosition = false;
     int runStartCursorScreenX = 0;
     int runStartCursorScreenY = 0;
@@ -38,4 +52,12 @@ struct FeatureRunSession {
     int completedLoopCount = 0;
     bool lastLoopSuccess = true;
     int consecutiveDetectionFailLoops = 0;
+    TriggerSessionPhase triggerPhase = TriggerSessionPhase::None;
+    int triggerBlockIndex = -1;
+    quint64 triggerCooldownGeneration = 0;
+    std::vector<TriggerPreemptedSession> triggerPreemptedSessions;
+    bool triggerPreemptSavedCursor = false;
+    int triggerPreemptCursorScreenX = 0;
+    int triggerPreemptCursorScreenY = 0;
+    bool triggerReleasedOwnMouseCenterLockForPreempt = false;
 };

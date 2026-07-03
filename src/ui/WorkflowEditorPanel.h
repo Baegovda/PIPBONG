@@ -37,6 +37,7 @@ public:
     void clearBlockMatchResults();
     void setActiveBlockIndex(int index, BlockListWidget::ExecutionHighlight highlight = BlockListWidget::ExecutionHighlight::Running);
     void notifyImageFindRetry(int blockIndex);
+    void notifyImageFindReturnToPrevious(int sourceBlockIndex, int targetBlockIndex);
     bool isBlockMatchSuccessCommitted(int blockIndex) const;
     void clearExecutionHighlight();
     void setBlockMatchResult(int blockIndex,

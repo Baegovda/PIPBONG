@@ -542,7 +542,17 @@ std::vector<MatchResult> ImageMatcher::filterMatchesToGrayscaleHaystack(
 
 }
 
-
+bool ImageMatcher::requiresGrayscaleHaystackRegion(TemplateColorMode mode, const PreparedTemplate& templ) {
+    switch (mode) {
+    case TemplateColorMode::Grayscale:
+        return true;
+    case TemplateColorMode::Color:
+        return false;
+    case TemplateColorMode::Auto:
+    default:
+        return templ.isGrayscaleTemplate;
+    }
+}
 
 PreparedTemplate ImageMatcher::loadTemplate(const std::string& path) {
 

@@ -2,6 +2,7 @@
 
 #include "app/HotkeyManager.h"
 #include "model/Project.h"
+#include "model/Feature.h"
 #include "ui/UiStrings.h"
 #include "ui/UiThemeColors.h"
 
@@ -31,6 +32,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      bool restoreMousePositionOnEnd,
                                      bool roiCorrection,
                                      bool editFirstTemplateRoiOnStart,
+                                     int triggerCooldownMs,
                                      Project* project,
                                      const std::string& featureId,
                                      QWidget* parent)
@@ -69,6 +71,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     m_restoreMousePositionOnEndCheck->setChecked(restoreMousePositionOnEnd);
     m_roiCorrectionCheck->setChecked(roiCorrection);
     m_editFirstTemplateRoiOnStartCheck->setChecked(editFirstTemplateRoiOnStart);
+    m_triggerCooldownSpin->setValue(snapTriggerCooldownMs(triggerCooldownMs));
 
     updateModeDependentUi();
 }
@@ -104,8 +107,13 @@ void FeatureEditDialog::setupUi() {
     m_modeCombo->addItem(tr("N회 반복"), static_cast<int>(FeatureRunMode::RepeatCount));
     m_modeCombo->addItem(tr("누를 동안"), static_cast<int>(FeatureRunMode::Hold));
     m_modeCombo->addItem(tr("무한 반복"), static_cast<int>(FeatureRunMode::RepeatInfinite));
+    m_modeCombo->addItem(tr("트리거 모드"), static_cast<int>(FeatureRunMode::Trigger));
     m_modeCombo->setItemData(1,
                              tr("단축키를 누르고 있는 동안 워크플로를 무한 반복합니다. 키를 떼면 중지됩니다."),
+                             Qt::ToolTipRole);
+    m_modeCombo->setItemData(3,
+                             tr("첫 번째 템플릿 매칭 블록만 상시 감시합니다. 감지되면 워크플로를 1회 실행한 뒤 "
+                                "재감지 대기 시간 후 다시 감시합니다. 단축키로 감시를 켜고 끕니다."),
                              Qt::ToolTipRole);
     form->addRow(tr("동작 방식"), m_modeCombo);
 
@@ -127,6 +135,23 @@ void FeatureEditDialog::setupUi() {
     m_infiniteExitSpin->setToolTip(tr("연속으로 감지에 실패한 루프 횟수가 이 값에 도달하면 실행을 종료합니다."));
     m_infiniteExitCountLabel = new QLabel(tr("연속 실패 허용"), this);
     form->addRow(m_infiniteExitCountLabel, m_infiniteExitSpin);
+
+    m_triggerCooldownSpin = new DragAdjustSpinBox(this);
+    m_triggerCooldownSpin->setRange(0, 600000);
+    m_triggerCooldownSpin->setSingleStep(kTriggerCooldownStepMs);
+    m_triggerCooldownSpin->setToolTip(
+        tr("트리거 발동 후 같은 트리거가 바로 다시 잡히지 않도록 대기하는 시간입니다."));
+    m_triggerCooldownLabel = new QLabel(tr("재감지 대기"), this);
+    m_triggerCooldownRow = new QWidget(this);
+    auto* triggerCooldownLayout = new QHBoxLayout(m_triggerCooldownRow);
+    triggerCooldownLayout->setContentsMargins(0, 0, 0, 0);
+    triggerCooldownLayout->setSpacing(4);
+    triggerCooldownLayout->addWidget(m_triggerCooldownSpin);
+    triggerCooldownLayout->addWidget(new QLabel(QStringLiteral("ms"), m_triggerCooldownRow));
+    form->addRow(m_triggerCooldownLabel, m_triggerCooldownRow);
+    connect(m_triggerCooldownSpin, &QAbstractSpinBox::editingFinished, this, [this]() {
+        m_triggerCooldownSpin->setValue(snapTriggerCooldownMs(m_triggerCooldownSpin->value()));
+    });
 
     m_userInputInterruptCombo = new QComboBox(this);
     m_userInputInterruptCombo->addItem(tr("완전 정지"), static_cast<int>(UserInputInterruptMode::Stop));
@@ -220,6 +245,7 @@ void FeatureEditDialog::updateModeDependentUi() {
     const auto mode = static_cast<FeatureRunMode>(m_modeCombo->currentData().toInt());
     const bool repeatCountMode = mode == FeatureRunMode::RepeatCount;
     const bool infiniteStyle = mode == FeatureRunMode::RepeatInfinite || mode == FeatureRunMode::Hold;
+    const bool triggerMode = mode == FeatureRunMode::Trigger;
 
     if (m_repeatCountLabel) {
         m_repeatCountLabel->setVisible(repeatCountMode);
@@ -234,7 +260,15 @@ void FeatureEditDialog::updateModeDependentUi() {
     }
     m_infiniteExitSpin->setVisible(showInfiniteExitCount);
 
+    if (m_triggerCooldownLabel) {
+        m_triggerCooldownLabel->setVisible(triggerMode);
+    }
+    if (m_triggerCooldownRow) {
+        m_triggerCooldownRow->setVisible(triggerMode);
+    }
+
     const bool roiCorrectionEligible = mode == FeatureRunMode::RepeatInfinite
+                                       || triggerMode
                                        || (repeatCountMode && m_repeatSpin->value() >= 2);
     m_roiCorrectionCheck->setVisible(roiCorrectionEligible);
 
@@ -296,6 +330,7 @@ bool FeatureEditDialog::isInteractiveWidget(const QWidget* widget) const {
     while (widget && widget != this) {
         if (widget == m_nameEdit || widget == m_modeCombo || widget == m_repeatSpin
             || widget == m_infiniteExitCheck || widget == m_infiniteExitSpin
+            || widget == m_triggerCooldownSpin
             || widget == m_userInputInterruptCombo || widget == m_pointerVisualFeedbackCheck
             || widget == m_restoreMousePositionOnEndCheck || widget == m_roiCorrectionCheck || widget == m_editFirstTemplateRoiOnStartCheck) {
             return true;
@@ -353,6 +388,10 @@ bool FeatureEditDialog::roiCorrection() const {
 
 bool FeatureEditDialog::editFirstTemplateRoiOnStart() const {
     return m_editFirstTemplateRoiOnStartCheck->isChecked();
+}
+
+int FeatureEditDialog::triggerCooldownMs() const {
+    return snapTriggerCooldownMs(m_triggerCooldownSpin->value());
 }
 
 void FeatureEditDialog::keyPressEvent(QKeyEvent* event) {

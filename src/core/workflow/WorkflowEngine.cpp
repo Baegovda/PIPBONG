@@ -130,6 +130,9 @@ protected:
                 emit m_engine->imageFindFailureHandling(
                     blockIndex, returnToPreviousCount, retryAfterNextCount);
             };
+            hooks.onImageFindReturnToPrevious = [this](int sourceBlockIndex, int targetBlockIndex) {
+                emit m_engine->imageFindReturnToPrevious(sourceBlockIndex, targetBlockIndex);
+            };
             hooks.onBlockProgress = [this](int i, BlockProgressKind kind) {
                 emit m_engine->blockProgress(i, kind);
             };

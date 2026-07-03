@@ -8,6 +8,10 @@
 #include <memory>
 #include <string>
 
+constexpr int kTriggerCooldownStepMs = 5;
+constexpr int kDefaultTriggerCooldownMs = 1000;
+int snapTriggerCooldownMs(int ms);
+
 class Feature {
 public:
     Feature();
@@ -41,11 +45,17 @@ public:
     bool restoreMousePositionOnEnd() const { return m_restoreMousePositionOnEnd; }
     void setRestoreMousePositionOnEnd(bool enabled) { m_restoreMousePositionOnEnd = enabled; }
 
+    bool lockMouseToScreenCenterDuringRun() const { return m_lockMouseToScreenCenterDuringRun; }
+    void setLockMouseToScreenCenterDuringRun(bool enabled) { m_lockMouseToScreenCenterDuringRun = enabled; }
+
     bool roiCorrection() const { return m_roiCorrection; }
     void setRoiCorrection(bool enabled) { m_roiCorrection = enabled; }
 
     bool editFirstTemplateRoiOnStart() const { return m_editFirstTemplateRoiOnStart; }
     void setEditFirstTemplateRoiOnStart(bool enabled) { m_editFirstTemplateRoiOnStart = enabled; }
+
+    int triggerCooldownMs() const { return m_triggerCooldownMs; }
+    void setTriggerCooldownMs(int ms) { m_triggerCooldownMs = snapTriggerCooldownMs(ms); }
 
     /// True when run mode supports ROI correction (infinite repeat or N≥2).
     bool roiCorrectionSessionEligible() const;
@@ -71,8 +81,10 @@ private:
     UserInputInterruptMode m_userInputInterruptMode = UserInputInterruptMode::Stop;
     bool m_pointerVisualFeedback = true;
     bool m_restoreMousePositionOnEnd = false;
+    bool m_lockMouseToScreenCenterDuringRun = false;
     bool m_roiCorrection = false;
     bool m_editFirstTemplateRoiOnStart = false;
+    int m_triggerCooldownMs = kDefaultTriggerCooldownMs;
     HotkeyBinding m_hotkey;
     Workflow m_workflow;
 };

@@ -133,10 +133,10 @@ MatchResult bestMatchByConfidence(const std::vector<MatchResult>& matches) {
 }
 
 void applyGrayscaleHaystackFilter(const cv::Mat& haystack,
-                                  const PreparedTemplate& templ,
+                                  bool requireGrayscaleHaystack,
                                   std::vector<MatchResult>& matches,
                                   MatchResult& peak) {
-    if (!templ.isGrayscaleTemplate || haystack.empty()) {
+    if (!requireGrayscaleHaystack || haystack.empty()) {
         return;
     }
 
@@ -171,6 +171,9 @@ ImageFindSelection trySelectImageFindMatch(const cv::Mat& haystack,
         return selection;
     }
 
+    const bool requireGrayscaleHaystack =
+        ImageMatcher::requiresGrayscaleHaystackRegion(options.templateColorMode, templ);
+
     selection.peak = ImageMatcher::findPeakMatchGray(hayGray, templ, options);
     if (!selection.peak.found
         || !ImageMatcher::meetsThreshold(selection.peak.confidence, options.threshold)) {
@@ -178,7 +181,7 @@ ImageFindSelection trySelectImageFindMatch(const cv::Mat& haystack,
     }
 
     if (!ctx.hasConsumedMatchRegions()) {
-        if (templ.isGrayscaleTemplate
+        if (requireGrayscaleHaystack
             && !ImageMatcher::isMatchRegionGrayscale(haystack, selection.peak)) {
             return selection;
         }
@@ -189,7 +192,7 @@ ImageFindSelection trySelectImageFindMatch(const cv::Mat& haystack,
 
     selection.allMatches =
         ImageMatcher::findAllTemplatesGray(hayGray, templ, options, true);
-    applyGrayscaleHaystackFilter(haystack, templ, selection.allMatches, selection.peak);
+    applyGrayscaleHaystackFilter(haystack, requireGrayscaleHaystack, selection.allMatches, selection.peak);
     if (selection.allMatches.empty()) {
         return selection;
     }
@@ -311,6 +314,28 @@ std::string templateMatchModeToString(ImageFindTemplateMatchMode mode) {
     case ImageFindTemplateMatchMode::Any:
     default:
         return "Any";
+    }
+}
+
+TemplateColorMode templateColorModeFromString(const std::string& value) {
+    if (value == "Grayscale") {
+        return TemplateColorMode::Grayscale;
+    }
+    if (value == "Color") {
+        return TemplateColorMode::Color;
+    }
+    return TemplateColorMode::Auto;
+}
+
+std::string templateColorModeToString(TemplateColorMode mode) {
+    switch (mode) {
+    case TemplateColorMode::Grayscale:
+        return "Grayscale";
+    case TemplateColorMode::Color:
+        return "Color";
+    case TemplateColorMode::Auto:
+    default:
+        return "Auto";
     }
 }
 
@@ -606,6 +631,7 @@ MatchOptions ImageFindBlock::matchOptions() const {
     options.multiScale = multiScale;
     options.minScale = minScale;
     options.maxScale = maxScale;
+    options.templateColorMode = templateColorMode;
     return options;
 }
 
@@ -662,6 +688,20 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         BlockResult result;
         result.success = false;
         result.message = "템플릿이 지정되지 않음";
+        return result;
+    }
+
+    if (ctx.consumeImageFindPrimedBlockIndex(ctx.activeBlockIndex())) {
+        BlockResult result;
+        if (!ctx.hasLastMatch()) {
+            result.success = false;
+            result.message = "트리거 상태가 유효하지 않음";
+            return result;
+        }
+        result.success = true;
+        result.message = "트리거 발동";
+        ctx.reportProgress(BlockProgressKind::ImageFindSuccess);
+        ctx.log(result.message);
         return result;
     }
 
@@ -882,6 +922,9 @@ nlohmann::json ImageFindBlock::toJson() const {
     if (retryAfterNextActionOnFailure) {
         json["retryAfterNextActionOnFailure"] = true;
     }
+    if (templateColorMode != TemplateColorMode::Auto) {
+        json["templateColorMode"] = templateColorModeToString(templateColorMode);
+    }
     return json;
 }
 
@@ -931,6 +974,8 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
     block->roiCorrection = json.value("roiCorrection", false);
     block->returnToPreviousImageFindOnFailure = json.value("returnToPreviousImageFindOnFailure", false);
     block->retryAfterNextActionOnFailure = json.value("retryAfterNextActionOnFailure", false);
+    block->templateColorMode =
+        templateColorModeFromString(json.value("templateColorMode", "Auto"));
     return block;
 }
 
@@ -994,7 +1039,9 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
     const cv::Mat hayGray = ImageMatcher::toGrayscale(result.haystack);
     MatchResult peak = ImageMatcher::findPeakMatchGray(hayGray, templ, matchOptions);
     result.matches = ImageMatcher::findAllTemplatesGray(hayGray, templ, matchOptions, true);
-    applyGrayscaleHaystackFilter(result.haystack, templ, result.matches, peak);
+    const bool requireGrayscaleHaystack =
+        ImageMatcher::requiresGrayscaleHaystackRegion(matchOptions.templateColorMode, templ);
+    applyGrayscaleHaystackFilter(result.haystack, requireGrayscaleHaystack, result.matches, peak);
     if (!result.matches.empty()) {
         result.match = result.matches.front();
     } else {
@@ -1086,7 +1133,9 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
             std::vector<MatchResult> templateMatches =
                 ImageMatcher::findAllTemplatesGray(hayGray, templ, matchOptions, true);
             MatchResult peak = ImageMatcher::findPeakMatchGray(hayGray, templ, matchOptions);
-            applyGrayscaleHaystackFilter(haystack, templ, templateMatches, peak);
+            const bool requireGrayscaleHaystack =
+                ImageMatcher::requiresGrayscaleHaystackRegion(matchOptions.templateColorMode, templ);
+            applyGrayscaleHaystackFilter(haystack, requireGrayscaleHaystack, templateMatches, peak);
             if (multiCustomRoi) {
                 regionMatches.insert(regionMatches.end(), templateMatches.begin(), templateMatches.end());
             } else {

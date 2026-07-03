@@ -108,6 +108,12 @@ public:
     void consumeMatchRegion(const cv::Point& topLeft, const cv::Size& size);
     void clearConsumedMatchRegions();
 
+    void setTriggerMonitorBlockIndex(int blockIndex);
+    int triggerMonitorBlockIndex() const;
+
+    void setImageFindPrimedBlockIndex(int blockIndex);
+    bool consumeImageFindPrimedBlockIndex(int blockIndex);
+
     void setRoiCorrectionSession(bool eligible, bool featureGlobal);
     bool roiCorrectionSessionEligible() const;
     bool featureRoiCorrectionGlobal() const;
@@ -174,6 +180,8 @@ private:
     bool m_hasLastMatchAttemptPoint = false;
     cv::Point m_lastMatchAttemptClientPoint;
     std::vector<ConsumedMatchRegion> m_consumedMatchRegions;
+    int m_triggerMonitorBlockIndex = -1;
+    int m_imageFindPrimedBlockIndex = -1;
     bool m_roiCorrectionSessionEligible = false;
     bool m_featureRoiCorrectionGlobal = false;
     int m_runLoopNumber = 1;

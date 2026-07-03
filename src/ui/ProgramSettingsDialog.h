@@ -20,6 +20,7 @@ private:
     QCheckBox* m_launchAtWindowsStartupCheck = nullptr;
     QCheckBox* m_closeToTrayCheck = nullptr;
     QCheckBox* m_runAsAdministratorCheck = nullptr;
+    QCheckBox* m_autoInstallUpdatesCheck = nullptr;
     QLabel* m_clickFeedbackSummary = nullptr;
     QPushButton* m_clickFeedbackButton = nullptr;
 };

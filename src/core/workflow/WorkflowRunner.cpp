@@ -108,6 +108,9 @@ ImageFindFailureResolution resolveImageFindDetectionFailure(const Workflow& work
             ctx.clearImageFindDeferRetryUsed(currentIndex);
             ctx.incrementImageFindReturnToPreviousCount(currentIndex);
             notifyImageFindFailureHandling(currentIndex, ctx, hooks);
+            if (hooks && hooks->onImageFindReturnToPrevious) {
+                hooks->onImageFindReturnToPrevious(currentIndex, previousImageFind);
+            }
             ctx.clearDetectionFailedFlag();
             ctx.log("매칭 실패 — 이전 템플릿 매칭 블록 #"
                     + std::to_string(previousImageFind + 1) + "으로 돌아감");
@@ -419,9 +422,28 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
 
 } // namespace
 
+int WorkflowRunner::firstImageFindBlockIndex(const Workflow& workflow) {
+    const auto& blocks = workflow.blocks();
+    for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
+        if (!blocks[i] || blocks[i]->type() != BlockType::ImageFind) {
+            continue;
+        }
+        const auto* imageFind = static_cast<const ImageFindBlock*>(blocks[i].get());
+        if (imageFind->hasTemplates()) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 WorkflowRunResult WorkflowRunner::run(const Workflow& workflow,
                                       ExecutionContext& ctx,
                                       const WorkflowRunHooks* hooks) {
+    const int monitorOnly = ctx.triggerMonitorBlockIndex();
+    if (monitorOnly >= 0) {
+        return executeSingleBlock(workflow, monitorOnly, ctx, hooks);
+    }
+
     WorkflowRunResult overall;
     overall.success = true;
     overall.message = "완료";

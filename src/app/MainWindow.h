@@ -70,6 +70,7 @@ private slots:
     void onReadyToRestartForUpdate();
     void runSilentUpdateCheck();
     void refreshUpdateButtonState();
+    void maybeStartAutomaticUpdate();
     void onProgramSettings();
     void onCalculator();
     void onAlwaysOnTopToggled(bool checked);
@@ -98,6 +99,7 @@ private slots:
                                  double detectedConfidence,
                                  bool matched);
     void onImageFindFailureHandling(int index, int returnToPreviousCount, int retryAfterNextCount);
+    void onImageFindReturnToPrevious(int sourceIndex, int targetIndex);
     void onHotkeyTriggered(const QString& featureId);
     void onHotkeyHoldStarted(const QString& featureId);
     void onHotkeyHoldEnded(const QString& featureId);
@@ -148,6 +150,15 @@ private:
     bool shouldContinueRunSession(const FeatureRunSession& session, Feature* feature) const;
     void finishRunSession(const std::string& featureId, bool success, const QString& message);
     void scheduleHoldRepeat(FeatureRunSession& session, Feature* feature, bool success, const QString& message);
+    void launchTriggerMonitor(FeatureRunSession& session, Feature* feature, bool firstSessionStart);
+    void launchTriggerActionRun(FeatureRunSession& session, Feature* feature);
+    void scheduleTriggerCooldown(FeatureRunSession& session, Feature* feature);
+    void handleTriggerEngineFinished(FeatureRunSession& session,
+                                     Feature* feature,
+                                     bool success,
+                                     const QString& message);
+    void pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession);
+    void resumePreemptedSessionsForTrigger(FeatureRunSession& triggerSession);
     void runFeature(Feature* feature);
     bool isDisplayedRunningFeature(const FeatureRunSession* session) const;
     void applyRunningBlockVisuals(FeatureRunSession& session,
@@ -202,6 +213,9 @@ private:
     QTimer* m_updateCheckTimer = nullptr;
     UpdateChecker* m_updateChecker = nullptr;
     bool m_initialUpdateCheckDone = false;
+    bool m_lastUpdateCheckWasSilent = false;
+    bool m_autoUpdateDeferred = false;
+    bool m_autoUpdateInstallStarted = false;
     QString m_persistentStatusMessage;
     QString m_transientStatusMessage;
     std::map<std::string, FeatureRunSession> m_runSessions;

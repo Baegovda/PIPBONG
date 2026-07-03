@@ -33,6 +33,8 @@ class QKeyEvent;
 
 class QCheckBox;
 
+class QComboBox;
+
 class HintLabel;
 
 class AnimatedTwoWaySwitch;
@@ -172,6 +174,8 @@ private:
     DragAdjustDoubleSpinBox* m_thresholdSpin = nullptr;
 
     DragAdjustSpinBox* m_pollIntervalSpin = nullptr;
+
+    QComboBox* m_templateColorModeCombo = nullptr;
 
     QCheckBox* m_roiCorrectionCheck = nullptr;
 

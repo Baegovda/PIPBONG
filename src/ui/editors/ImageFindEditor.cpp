@@ -16,6 +16,7 @@
 #include "ui/widgets/HintLabel.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QCursor>
 #include <QDateTime>
 #include <QDir>
@@ -196,6 +197,12 @@ void ImageFindEditor::reload() {
         QSignalBlocker blocker(m_retryAfterNextActionCheck);
         m_retryAfterNextActionCheck->setChecked(m_block->retryAfterNextActionOnFailure);
     }
+    if (m_templateColorModeCombo) {
+        QSignalBlocker blocker(m_templateColorModeCombo);
+        const int index =
+            m_templateColorModeCombo->findData(static_cast<int>(m_block->templateColorMode));
+        m_templateColorModeCombo->setCurrentIndex(index >= 0 ? index : 0);
+    }
     updateRoiCorrectionUi();
 }
 
@@ -252,6 +259,15 @@ void ImageFindEditor::setupUi() {
     pollIntervalLayout->addWidget(m_pollIntervalSpin);
     pollIntervalLayout->addWidget(new QLabel(QStringLiteral("ms"), pollIntervalRow));
 
+    m_templateColorModeCombo = new QComboBox(this);
+    m_templateColorModeCombo->addItem(tr("자동"), static_cast<int>(TemplateColorMode::Auto));
+    m_templateColorModeCombo->addItem(tr("흑백"), static_cast<int>(TemplateColorMode::Grayscale));
+    m_templateColorModeCombo->addItem(tr("컬러"), static_cast<int>(TemplateColorMode::Color));
+    m_templateColorModeCombo->setToolTip(
+        tr("자동: 템플릿 이미지를 분석해 흑백·컬러를 판별합니다.\n"
+           "흑백: 채도가 높은 UI 영역은 매칭에서 제외합니다.\n"
+           "컬러: 흑백 필터 없이 색이 있는 영역도 매칭합니다."));
+
     auto* matchGroup = new QGroupBox(tr("매칭 설정"), this);
     auto* matchForm = new QFormLayout(matchGroup);
     matchForm->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
@@ -260,6 +276,7 @@ void ImageFindEditor::setupUi() {
     matchForm->setVerticalSpacing(8);
     matchForm->addRow(tr("임계값"), m_thresholdSpin);
     matchForm->addRow(tr("탐지 재시도"), pollIntervalRow);
+    matchForm->addRow(tr("템플릿 색상"), m_templateColorModeCombo);
 
     m_roiCorrectionCheck = new QCheckBox(tr("ROI 보정"), this);
     m_roiCorrectionCheck->setToolTip(
@@ -465,6 +482,10 @@ void ImageFindEditor::syncUiToBlockValues() {
     }
     if (m_retryAfterNextActionCheck) {
         m_block->retryAfterNextActionOnFailure = m_retryAfterNextActionCheck->isChecked();
+    }
+    if (m_templateColorModeCombo) {
+        m_block->templateColorMode =
+            static_cast<TemplateColorMode>(m_templateColorModeCombo->currentData().toInt());
     }
     syncBlockTemplatePathsFromList();
     syncBlockCustomRegionsFromList();

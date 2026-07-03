@@ -50,6 +50,14 @@ void ProgramSettingsDialog::setupUi() {
         tr("창 닫기(X)를 누르면 종료하지 않고 알림 영역에서 계속 실행합니다. 단축키와 워크플로가 유지됩니다."));
     layout->addWidget(m_closeToTrayCheck);
 
+    m_autoInstallUpdatesCheck =
+        new QCheckBox(tr("새 버전 감지 시 자동 업데이트"), this);
+    m_autoInstallUpdatesCheck->setChecked(ProgramSettings::autoInstallUpdates());
+    m_autoInstallUpdatesCheck->setToolTip(
+        tr("프로그램 실행 중 새 버전이 감지되면 자동으로 다운로드하고 설치합니다. "
+           "워크플로 실행 중이면 실행이 끝난 뒤 자동 업데이트합니다."));
+    layout->addWidget(m_autoInstallUpdatesCheck);
+
     m_runAsAdministratorCheck =
         new QCheckBox(tr("항상 관리자 권한으로 실행"), this);
     m_runAsAdministratorCheck->setChecked(ProgramSettings::runAsAdministrator());
@@ -94,6 +102,7 @@ void ProgramSettingsDialog::setupUi() {
         ProgramSettings::setAutoSelectRunningFeature(m_autoSelectRunningFeatureCheck->isChecked());
         ProgramSettings::setLaunchAtWindowsStartup(m_launchAtWindowsStartupCheck->isChecked());
         ProgramSettings::setCloseToTray(m_closeToTrayCheck->isChecked());
+        ProgramSettings::setAutoInstallUpdates(m_autoInstallUpdatesCheck->isChecked());
         ProgramSettings::setRunAsAdministrator(m_runAsAdministratorCheck->isChecked());
         accept();
     });

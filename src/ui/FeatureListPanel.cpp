@@ -86,6 +86,8 @@ QString featureRunModeLabel(FeatureRunMode mode) {
         return QObject::tr("누를 동안");
     case FeatureRunMode::RepeatInfinite:
         return QObject::tr("무한");
+    case FeatureRunMode::Trigger:
+        return QObject::tr("트리거");
     case FeatureRunMode::RepeatCount:
         return QObject::tr("N회");
     }
@@ -97,6 +99,8 @@ QString featureRunModeCompact(FeatureRunMode mode, int repeatCount) {
         return QObject::tr("홀드");
     case FeatureRunMode::RepeatInfinite:
         return QStringLiteral("\u221e");
+    case FeatureRunMode::Trigger:
+        return QObject::tr("T");
     case FeatureRunMode::RepeatCount:
         return repeatCount <= 1 ? QStringLiteral("\u00d71") : QStringLiteral("\u00d7%1").arg(repeatCount);
     }
@@ -257,8 +261,8 @@ void paintFeatureName(QPainter* painter,
     const QFontMetrics metrics(nameFont);
     const QString elided = elideCellText(metrics, name, rect.width());
     const Qt::Alignment align = Qt::AlignHCenter | Qt::AlignVCenter;
-    const QColor baseText = option.palette.color(
-        (option.state & QStyle::State_Selected) ? QPalette::HighlightedText : QPalette::Text);
+    const bool selected = option.state & QStyle::State_Selected;
+    const QColor baseText = primaryContentTextColor(option.palette, selected);
     if (!runningGlow) {
         painter->setFont(nameFont);
         painter->setPen(baseText);
@@ -931,6 +935,10 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
     if (feature.runMode() == FeatureRunMode::RepeatCount) {
         tooltip += tr(" (%1회)").arg(feature.repeatCount());
     }
+    if (feature.runMode() == FeatureRunMode::Trigger) {
+        tooltip += QStringLiteral("\n")
+                   + tr("재감지 대기: %1 ms").arg(feature.triggerCooldownMs());
+    }
     if (feature.infiniteExitAfterConsecutiveMisses() > 0) {
         tooltip += QStringLiteral("\n")
                    + tr("연속 감지 실패 %1회 시 종료").arg(feature.infiniteExitAfterConsecutiveMisses());
@@ -1089,6 +1097,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
                              feature->restoreMousePositionOnEnd(),
                              feature->roiCorrection(),
                              feature->editFirstTemplateRoiOnStart(),
+                             feature->triggerCooldownMs(),
                              m_project,
                              feature->id(),
                              this);
@@ -1105,6 +1114,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setRestoreMousePositionOnEnd(dialog.restoreMousePositionOnEnd());
     feature->setRoiCorrection(dialog.roiCorrection());
     feature->setEditFirstTemplateRoiOnStart(dialog.editFirstTemplateRoiOnStart());
+    feature->setTriggerCooldownMs(dialog.triggerCooldownMs());
     refresh();
     m_list->setCurrentRow(index);
     emit projectModified();

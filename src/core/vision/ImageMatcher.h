@@ -14,11 +14,18 @@ struct MatchResult {
     bool found = false;
 };
 
+enum class TemplateColorMode {
+    Auto,
+    Grayscale,
+    Color
+};
+
 struct MatchOptions {
     double threshold = 0.85;
     bool multiScale = false;
     double minScale = 0.9;
     double maxScale = 1.1;
+    TemplateColorMode templateColorMode = TemplateColorMode::Auto;
 };
 
 struct PreparedTemplate {
@@ -47,6 +54,7 @@ public:
         const cv::Mat& haystack,
         const std::vector<MatchResult>& matches,
         double maxMeanChannelSpread = 10.0);
+    static bool requiresGrayscaleHaystackRegion(TemplateColorMode mode, const PreparedTemplate& templ);
     static MatchResult findTemplate(const cv::Mat& haystack,
                                     const PreparedTemplate& templ,
                                     const MatchOptions& options = {});

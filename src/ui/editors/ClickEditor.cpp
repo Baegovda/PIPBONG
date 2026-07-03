@@ -308,6 +308,16 @@ void ClickEditor::apply() {
     }
 }
 
+void ClickEditor::setFeatureRunOptions(bool lockMouseToScreenCenterDuringRun) {
+    if (m_lockMouseToScreenCenterCheck) {
+        m_lockMouseToScreenCenterCheck->setChecked(lockMouseToScreenCenterDuringRun);
+    }
+}
+
+bool ClickEditor::lockMouseToScreenCenterDuringRun() const {
+    return m_lockMouseToScreenCenterCheck && m_lockMouseToScreenCenterCheck->isChecked();
+}
+
 bool ClickEditor::isMoveOnlySelected() const {
     return m_moveOnlyCheck && m_moveOnlyCheck->isChecked();
 }
@@ -673,6 +683,22 @@ void ClickEditor::setupUi() {
     layout->addWidget(m_clientCoordsRow);
     layout->addWidget(m_fixedCoordGroup);
     layout->addWidget(m_actionGroup);
+
+    m_featureRunGroup = new QGroupBox(tr("기능 실행"), this);
+    m_featureRunGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    auto* featureRunLayout = new QVBoxLayout(m_featureRunGroup);
+    featureRunLayout->setContentsMargins(9, 9, 9, 9);
+    featureRunLayout->setSpacing(6);
+
+    m_lockMouseToScreenCenterCheck =
+        new QCheckBox(tr("기능이 켜져 있는 동안 마우스를 화면 중앙에 고정"), m_featureRunGroup);
+    m_lockMouseToScreenCenterCheck->setToolTip(
+        tr("이 기능이 실행되는 동안 실제 마우스 커서를 가상 화면 중앙에 고정합니다. "
+           "워크플로가 보내는 클릭 이동은 그대로 동작합니다."));
+    featureRunLayout->addWidget(m_lockMouseToScreenCenterCheck);
+    connect(m_lockMouseToScreenCenterCheck, &QCheckBox::toggled, this, [this]() { emit layoutChanged(); });
+
+    layout->addWidget(m_featureRunGroup);
 
     if (!m_embedded) {
         auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);

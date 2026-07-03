@@ -58,7 +58,9 @@ public:
 
         Success,
 
-        Failed
+        Failed,
+
+        ReturnToPrevious
 
     };
 
@@ -123,6 +125,8 @@ public:
     void setActiveRow(int row, ExecutionHighlight highlight = ExecutionHighlight::Running);
 
     void notifyImageFindRetry(int row);
+
+    void notifyImageFindReturnToPrevious(int sourceRow, int targetRow);
 
     void clearActiveRow();
 
@@ -218,6 +222,11 @@ private:
 
     void triggerRowFlash(int row, ExecutionHighlight highlight, int durationMs);
 
+    void triggerDualRowFlash(int primaryRow,
+                             int secondaryRow,
+                             ExecutionHighlight highlight,
+                             int durationMs);
+
     void updateLoopRegionPickPreview();
 
     void updateLoopRegionChrome();
@@ -283,6 +292,8 @@ private:
     QVariantAnimation* m_flashAnimation = nullptr;
 
     int m_flashRow = -1;
+
+    int m_flashRowSecondary = -1;
 
     ExecutionHighlight m_flashKind = ExecutionHighlight::None;
 

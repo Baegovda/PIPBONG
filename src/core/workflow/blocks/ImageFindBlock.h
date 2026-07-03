@@ -34,6 +34,7 @@ class ImageFindBlock : public Block {
 public:
     std::vector<std::string> templatePaths;
     ImageFindTemplateMatchMode templateMatchMode = ImageFindTemplateMatchMode::Any;
+    TemplateColorMode templateColorMode = TemplateColorMode::Auto;
     double threshold = 0.85;
     bool multiScale = false;
     double minScale = 0.9;

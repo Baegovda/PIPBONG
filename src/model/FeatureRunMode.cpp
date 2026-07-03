@@ -8,6 +8,8 @@ std::string featureRunModeToString(FeatureRunMode mode) {
         return "RepeatInfinite";
     case FeatureRunMode::RepeatCount:
         return "RepeatCount";
+    case FeatureRunMode::Trigger:
+        return "Trigger";
     }
     return "RepeatCount";
 }
@@ -18,6 +20,9 @@ FeatureRunMode featureRunModeFromString(const std::string& value) {
     }
     if (value == "RepeatInfinite") {
         return FeatureRunMode::RepeatInfinite;
+    }
+    if (value == "Trigger") {
+        return FeatureRunMode::Trigger;
     }
     return FeatureRunMode::RepeatCount;
 }
