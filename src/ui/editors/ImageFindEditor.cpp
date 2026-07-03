@@ -134,22 +134,12 @@ void installTemplateCaptureHotkeyHookIfNeeded(ImageFindEditor* editor) {
 
 std::vector<CaptureRegion> physicalCustomRegionsForDisplay(const ImageFindBlock& block) {
     std::vector<CaptureRegion> physical;
-    if (block.customRegionsAnchoredToTargetWindow) {
-        physical.reserve(block.customRegionsWindowPercent.size());
-        for (const PercentRegion& percent : block.customRegionsWindowPercent) {
-            if (percent.width <= 0.0 || percent.height <= 0.0) {
-                continue;
-            }
-            physical.push_back(ScreenCapture::resolveWindowPercentRegion(percent));
-        }
-        return physical;
-    }
-    physical.reserve(block.customRegions.size());
-    for (const CaptureRegion& region : block.customRegions) {
-        if (region.width < 2 || region.height < 2) {
+    physical.reserve(block.customRegionsWindowPercent.size());
+    for (const PercentRegion& percent : block.customRegionsWindowPercent) {
+        if (percent.width <= 0.0 || percent.height <= 0.0) {
             continue;
         }
-        physical.push_back(region);
+        physical.push_back(ScreenCapture::resolveWindowPercentRegion(percent));
     }
     return physical;
 }
@@ -219,10 +209,6 @@ void ImageFindEditor::reload() {
     m_pollIntervalSpin->setValue(snapImageFindPollIntervalMs(m_block->pollIntervalMs));
     m_matchModeSwitch->setRightSelected(m_block->templateMatchMode == ImageFindTemplateMatchMode::All, false);
     refreshTemplateList();
-    if (!m_block->customRegionsAnchoredToTargetWindow && m_block->customRegions.empty()
-        && m_block->customRegion.width >= 2 && m_block->customRegion.height >= 2) {
-        m_block->customRegions.push_back(m_block->customRegion);
-    }
     refreshRoiList();
     updatePreview();
     updateMatchTestButton(MatchTestOverlay::isVisible());
@@ -625,32 +611,7 @@ void ImageFindEditor::syncBlockTemplatePathsFromList() {
 }
 
 void ImageFindEditor::syncBlockCustomRegionsFromList() {
-    if (!m_block || !m_roiList) {
-        return;
-    }
-    m_block->customRegions.clear();
-    for (int row = 0; row < m_roiList->count(); ++row) {
-        const QListWidgetItem* item = m_roiList->item(row);
-        if (!item) {
-            continue;
-        }
-        const QRect rect = item->data(Qt::UserRole).toRect();
-        if (rect.width() < 2 || rect.height() < 2) {
-            continue;
-        }
-        CaptureRegion region;
-        region.x = rect.x();
-        region.y = rect.y();
-        region.width = rect.width();
-        region.height = rect.height();
-        m_block->customRegions.push_back(region);
-    }
-    if (!m_block->customRegions.empty()) {
-        m_block->customRegion = m_block->customRegions.front();
-        m_block->searchArea = SearchArea::CustomRegion;
-    } else {
-        m_block->customRegion = {};
-    }
+    // ROIs are stored as target-window % in customRegionsWindowPercent; list UI is display-only.
 }
 
 void ImageFindEditor::refreshRoiList() {
@@ -658,55 +619,39 @@ void ImageFindEditor::refreshRoiList() {
         return;
     }
 
-    QRect selectedRect;
-    if (m_roiList->currentRow() >= 0 && m_roiList->currentItem()) {
-        selectedRect = m_roiList->currentItem()->data(Qt::UserRole).toRect();
+    int selectedRow = m_roiList->currentRow();
+    QString selectedLabel;
+    if (selectedRow >= 0 && m_roiList->currentItem()) {
+        selectedLabel = m_roiList->currentItem()->data(Qt::UserRole).toString();
     }
 
     m_roiList->blockSignals(true);
     m_roiList->clear();
     int index = 1;
-    if (m_block->customRegionsAnchoredToTargetWindow) {
-        for (const PercentRegion& region : m_block->customRegionsWindowPercent) {
-            if (region.width <= 0.0 || region.height <= 0.0) {
-                continue;
-            }
-            const QString label =
-                tr("ROI %1: %2%, %3% — %4%×%5%")
-                    .arg(index++)
-                    .arg(region.x, 0, 'f', 1)
-                    .arg(region.y, 0, 'f', 1)
-                    .arg(region.width, 0, 'f', 1)
-                    .arg(region.height, 0, 'f', 1);
-            auto* item = new QListWidgetItem(label, m_roiList);
-            item->setData(Qt::UserRole, label);
-            item->setToolTip(label);
+    for (const PercentRegion& region : m_block->customRegionsWindowPercent) {
+        if (region.width <= 0.0 || region.height <= 0.0) {
+            continue;
         }
-    } else {
-        for (const CaptureRegion& region : m_block->customRegions) {
-            if (region.width < 2 || region.height < 2) {
-                continue;
-            }
-            const QRect rect(region.x, region.y, region.width, region.height);
-            const QString label =
-                tr("ROI %1: %2, %3 — %4×%5")
-                    .arg(index++)
-                    .arg(region.x)
-                    .arg(region.y)
-                    .arg(region.width)
-                    .arg(region.height);
-            auto* item = new QListWidgetItem(label, m_roiList);
-            item->setData(Qt::UserRole, rect);
-            item->setToolTip(label);
-        }
+        const QString label =
+            tr("ROI %1: %2%, %3% — %4%×%5%")
+                .arg(index++)
+                .arg(region.x, 0, 'f', 1)
+                .arg(region.y, 0, 'f', 1)
+                .arg(region.width, 0, 'f', 1)
+                .arg(region.height, 0, 'f', 1);
+        auto* item = new QListWidgetItem(label, m_roiList);
+        item->setData(Qt::UserRole, label);
+        item->setToolTip(label);
     }
-    if (!selectedRect.isNull()) {
+    if (!selectedLabel.isEmpty()) {
         for (int row = 0; row < m_roiList->count(); ++row) {
-            if (m_roiList->item(row)->data(Qt::UserRole).toRect() == selectedRect) {
+            if (m_roiList->item(row)->data(Qt::UserRole).toString() == selectedLabel) {
                 m_roiList->setCurrentRow(row);
                 break;
             }
         }
+    } else if (selectedRow >= 0 && selectedRow < m_roiList->count()) {
+        m_roiList->setCurrentRow(selectedRow);
     } else if (m_roiList->count() > 0) {
         m_roiList->setCurrentRow(0);
     }
@@ -729,25 +674,10 @@ bool ImageFindEditor::hasConfiguredRoiForPreview() const {
     if (!m_block) {
         return false;
     }
-    if (m_block->customRegionsAnchoredToTargetWindow) {
-        for (const PercentRegion& region : m_block->customRegionsWindowPercent) {
-            if (region.width > 0.0 && region.height > 0.0) {
-                return true;
-            }
-        }
-    }
-    for (const CaptureRegion& region : m_block->customRegions) {
-        if (region.width >= 2 && region.height >= 2) {
+    for (const PercentRegion& region : m_block->customRegionsWindowPercent) {
+        if (region.width > 0.0 && region.height > 0.0) {
             return true;
         }
-    }
-    if (m_block->searchArea == SearchArea::CustomRegion && m_block->customRegion.width >= 2
-        && m_block->customRegion.height >= 2) {
-        return true;
-    }
-    if (m_block->searchArea == SearchArea::ScreenPercent && m_block->percentRegion.width > 0.0
-        && m_block->percentRegion.height > 0.0) {
-        return true;
     }
     return false;
 }
@@ -799,9 +729,7 @@ RoiPreviewOverlay::EditableOptions ImageFindEditor::makeRoiPreviewEditableOption
     if (!m_block) {
         return options;
     }
-    const bool hasRoi = m_block->customRegionsAnchoredToTargetWindow
-                            ? !m_block->customRegionsWindowPercent.empty()
-                            : !m_block->customRegions.empty();
+    const bool hasRoi = !m_block->customRegionsWindowPercent.empty();
     if (!hasRoi) {
         return options;
     }
@@ -817,24 +745,15 @@ RoiPreviewOverlay::EditableOptions ImageFindEditor::makeRoiPreviewEditableOption
         if (!self || !self->m_block) {
             return;
         }
-        if (self->m_block->customRegionsAnchoredToTargetWindow) {
-            if (index < 0
-                || index >= static_cast<int>(self->m_block->customRegionsWindowPercent.size())) {
-                return;
-            }
-            self->m_block->customRegionsWindowPercent[static_cast<size_t>(index)] =
-                storePickedCustomRegionPercent(region);
-        } else {
-            if (index < 0 || index >= static_cast<int>(self->m_block->customRegions.size())) {
-                return;
-            }
-            self->m_block->customRegions[static_cast<size_t>(index)] = region;
-            if (!self->m_block->customRegions.empty()) {
-                self->m_block->customRegion = self->m_block->customRegions.front();
-            }
+        if (index < 0
+            || index >= static_cast<int>(self->m_block->customRegionsWindowPercent.size())) {
+            return;
         }
+        self->m_block->customRegionsWindowPercent[static_cast<size_t>(index)] =
+            storePickedCustomRegionPercent(region);
         self->m_block->customRegionsAnchoredToTargetWindow = true;
         self->m_block->customRegions.clear();
+        self->m_block->customRegion = {};
         self->m_block->searchArea = SearchArea::CustomRegion;
         self->refreshRoiList();
         if (self->m_roiList && index >= 0 && index < self->m_roiList->count()) {
@@ -1062,13 +981,9 @@ void ImageFindEditor::onRemoveRoi() {
     }
     const int row = m_roiList->currentRow();
     delete m_roiList->takeItem(row);
-    if (m_block->customRegionsAnchoredToTargetWindow) {
-        if (row >= 0 && row < static_cast<int>(m_block->customRegionsWindowPercent.size())) {
-            m_block->customRegionsWindowPercent.erase(
-                m_block->customRegionsWindowPercent.begin() + row);
-        }
-    } else {
-        syncBlockCustomRegionsFromList();
+    if (row >= 0 && row < static_cast<int>(m_block->customRegionsWindowPercent.size())) {
+        m_block->customRegionsWindowPercent.erase(
+            m_block->customRegionsWindowPercent.begin() + row);
     }
     if (m_roiList->count() > 0) {
         m_roiList->setCurrentRow(qMin(m_roiList->currentRow(), m_roiList->count() - 1));
@@ -1119,13 +1034,10 @@ void ImageFindEditor::onMatchTest() {
 
     const ImageFindMatchTestResult testResult = ImageFindBlock::testMatchTemplates(
         m_block->searchArea,
-        m_block->customRegion,
         m_block->percentRegion,
-        m_block->customRegions,
         m_block->templatePaths,
         options,
         m_projectDirectory.toStdString(),
-        m_block->customRegionsAnchoredToTargetWindow,
         m_block->customRegionsWindowPercent);
 
     if (!testResult.captureOk) {

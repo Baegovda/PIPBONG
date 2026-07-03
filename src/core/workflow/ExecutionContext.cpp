@@ -391,14 +391,14 @@ int ExecutionContext::activeBlockIndex() const {
     return m_activeBlockIndex;
 }
 
-void ExecutionContext::setCorrectedRoi(int blockIndex, const CaptureRegion& region) {
+void ExecutionContext::setCorrectedRoi(int blockIndex, const PercentRegion& region) {
     if (blockIndex < 0) {
         return;
     }
     m_correctedRoisByBlockIndex[blockIndex] = region;
 }
 
-std::optional<CaptureRegion> ExecutionContext::correctedRoi(int blockIndex) const {
+std::optional<PercentRegion> ExecutionContext::correctedRoi(int blockIndex) const {
     const auto it = m_correctedRoisByBlockIndex.find(blockIndex);
     if (it == m_correctedRoisByBlockIndex.end()) {
         return std::nullopt;

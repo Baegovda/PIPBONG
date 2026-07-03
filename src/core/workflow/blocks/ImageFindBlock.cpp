@@ -216,26 +216,22 @@ ImageFindSelection trySelectImageFindMatch(const cv::Mat& haystack,
     return selection;
 }
 
-void normalizeImageFindSearchArea(SearchArea& searchArea,
-                                  const std::vector<CaptureRegion>& customRegions,
-                                  const CaptureRegion& legacyCustomRegion) {
-    for (const CaptureRegion& region : customRegions) {
-        if (region.width > 0 && region.height > 0) {
-            searchArea = SearchArea::CustomRegion;
-            return;
-        }
-    }
-    if (legacyCustomRegion.width > 0 && legacyCustomRegion.height > 0) {
-        searchArea = SearchArea::CustomRegion;
-    }
-}
-
 bool isValidCustomRegion(const CaptureRegion& region) {
     return region.width >= 2 && region.height >= 2;
 }
 
 bool isValidWindowPercentRegion(const PercentRegion& region) {
     return region.width > 0.0 && region.height > 0.0;
+}
+
+void normalizeImageFindSearchArea(SearchArea& searchArea,
+                                  const std::vector<PercentRegion>& windowPercentRegions) {
+    for (const PercentRegion& region : windowPercentRegions) {
+        if (isValidWindowPercentRegion(region)) {
+            searchArea = SearchArea::CustomRegion;
+            return;
+        }
+    }
 }
 
 void pruneInvalidWindowPercentRegions(std::vector<PercentRegion>& regions) {
@@ -295,6 +291,28 @@ PercentRegion pixelOffsetToWindowPercent(const CaptureRegion& offset) {
 
 constexpr double kRoiCorrectionExpandRatio = 1.10;
 
+PercentRegion expandWindowPercentRegion(const PercentRegion& matched) {
+    PercentRegion region = matched;
+    if (region.width <= 0.0 || region.height <= 0.0) {
+        return region;
+    }
+    double expandedWidth = region.width * kRoiCorrectionExpandRatio;
+    double expandedHeight = region.height * kRoiCorrectionExpandRatio;
+    if (expandedWidth < region.width + 0.01) {
+        expandedWidth = region.width + 0.01;
+    }
+    if (expandedHeight < region.height + 0.01) {
+        expandedHeight = region.height + 0.01;
+    }
+    const double centerX = region.x + region.width / 2.0;
+    const double centerY = region.y + region.height / 2.0;
+    region.width = expandedWidth;
+    region.height = expandedHeight;
+    region.x = centerX - expandedWidth / 2.0;
+    region.y = centerY - expandedHeight / 2.0;
+    return region;
+}
+
 CaptureRegion expandRoiCorrectionRegion(const CaptureRegion& matched) {
     CaptureRegion region = matched;
     if (region.width <= 0 || region.height <= 0) {
@@ -336,13 +354,11 @@ std::vector<CaptureRegion> effectiveCustomRegions(const std::vector<CaptureRegio
     return regions;
 }
 
-std::vector<CaptureRegion> physicalCustomPollRegions(SearchArea searchArea,
-                                                     const std::vector<CaptureRegion>& storedRegions,
-                                                     const CaptureRegion& storedLegacyRegion,
-                                                     bool anchoredToTargetWindow,
-                                                     const std::vector<PercentRegion>& windowPercentRegions) {
-    if (anchoredToTargetWindow) {
-        std::vector<CaptureRegion> pollRegions;
+std::vector<CaptureRegion> physicalCustomPollRegions(
+    SearchArea searchArea,
+    const std::vector<PercentRegion>& windowPercentRegions) {
+    std::vector<CaptureRegion> pollRegions;
+    if (searchArea == SearchArea::CustomRegion) {
         pollRegions.reserve(windowPercentRegions.size());
         for (const PercentRegion& percent : windowPercentRegions) {
             if (!isValidWindowPercentRegion(percent)) {
@@ -350,18 +366,8 @@ std::vector<CaptureRegion> physicalCustomPollRegions(SearchArea searchArea,
             }
             pollRegions.push_back(ScreenCapture::resolveWindowPercentRegion(percent));
         }
-        if (searchArea != SearchArea::CustomRegion) {
-            pollRegions.assign(1, CaptureRegion{});
-        }
-        return pollRegions;
-    }
-
-    std::vector<CaptureRegion> pollRegions =
-        effectiveCustomRegions(storedRegions, storedLegacyRegion);
-    if (searchArea != SearchArea::CustomRegion) {
+    } else {
         pollRegions.assign(1, CaptureRegion{});
-    } else if (pollRegions.empty()) {
-        pollRegions.push_back(storedLegacyRegion);
     }
     return pollRegions;
 }
@@ -477,9 +483,9 @@ cv::Point matchCenterToClickPoint(SearchArea searchArea,
         screenY += customRegion.y;
         break;
     case SearchArea::ScreenPercent: {
-        const CaptureRegion relative = ScreenCapture::captureRegionFromPercent(percentRegion);
-        screenX += relative.x + GetSystemMetrics(SM_XVIRTUALSCREEN);
-        screenY += relative.y + GetSystemMetrics(SM_YVIRTUALSCREEN);
+        const CaptureRegion relative = ScreenCapture::resolveWindowPercentRegion(percentRegion);
+        screenX = relative.x + haystackCenter.x;
+        screenY = relative.y + haystackCenter.y;
         break;
     }
     case SearchArea::FullScreen:
@@ -564,16 +570,17 @@ void maybeRecordRoiCorrection(ExecutionContext& ctx,
     }
     const cv::Point physicalTopLeft = ScreenCapture::haystackTopLeftToPhysical(
         searchArea, customRegion, percentRegion, match.location);
-    CaptureRegion region;
-    region.x = physicalTopLeft.x;
-    region.y = physicalTopLeft.y;
-    region.width = match.matchedSize.width;
-    region.height = match.matchedSize.height;
-    region = expandRoiCorrectionRegion(region);
-    if (!isValidCustomRegion(region)) {
+    CaptureRegion physical;
+    physical.x = physicalTopLeft.x;
+    physical.y = physicalTopLeft.y;
+    physical.width = match.matchedSize.width;
+    physical.height = match.matchedSize.height;
+    PercentRegion percent = ScreenCapture::storeWindowPercentFromPhysical(physical);
+    if (!isValidWindowPercentRegion(percent)) {
         return;
     }
-    ctx.setCorrectedRoi(blockIndex, region);
+    percent = expandWindowPercentRegion(percent);
+    ctx.setCorrectedRoi(blockIndex, percent);
 }
 
 BlockResult imageFindSuccessResult(ExecutionContext& ctx,
@@ -692,25 +699,20 @@ std::string ImageFindBlock::primaryTemplatePath() const {
 }
 
 std::string ImageFindBlock::summary() const {
-    if (searchArea == SearchArea::ScreenPercent) {
-        return "화면 " + std::to_string(static_cast<int>(percentRegion.x)) + "%," +
-               std::to_string(static_cast<int>(percentRegion.y)) + "% " +
-               std::to_string(static_cast<int>(percentRegion.width)) + "x" +
-               std::to_string(static_cast<int>(percentRegion.height)) + "%";
-    }
     if (searchArea == SearchArea::CustomRegion) {
-        const int roiCount = customRegionsAnchoredToTargetWindow
-                                 ? static_cast<int>(customRegionsWindowPercent.size())
-                                 : static_cast<int>(
-                                       effectiveCustomRegions(customRegions, customRegion).size());
+        const int roiCount = static_cast<int>(customRegionsWindowPercent.size());
         if (roiCount > 1) {
             return "ROI " + std::to_string(roiCount) + "개";
         }
-        if (customRegionsAnchoredToTargetWindow && !customRegionsWindowPercent.empty()) {
+        if (!customRegionsWindowPercent.empty()) {
             const PercentRegion& region = customRegionsWindowPercent.front();
             return "ROI " + std::to_string(static_cast<int>(region.x)) + "%," +
                    std::to_string(static_cast<int>(region.y)) + "%";
         }
+    }
+    if (searchArea == SearchArea::ScreenPercent) {
+        return "ROI " + std::to_string(static_cast<int>(percentRegion.x)) + "%," +
+               std::to_string(static_cast<int>(percentRegion.y)) + "%";
     }
     const int templateCount = static_cast<int>(templatePaths.size());
     if (templateCount > 1) {
@@ -745,28 +747,23 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
     RunRoiOverlayGuard roiOverlayGuard;
 
     SearchArea runtimeSearchArea = searchArea;
-    std::vector<CaptureRegion> runtimeCustomRegions = customRegions;
     std::vector<PercentRegion> runtimeWindowPercentRegions = customRegionsWindowPercent;
-    CaptureRegion runtimeCustomRegion = customRegion;
     PercentRegion runtimePercentRegion = percentRegion;
 
     if (ctx.shouldUseRoiCorrectionForBlock(roiCorrection) && ctx.runLoopNumber() >= 2) {
-        if (const std::optional<CaptureRegion> corrected = ctx.correctedRoi(ctx.activeBlockIndex())) {
+        if (const std::optional<PercentRegion> corrected = ctx.correctedRoi(ctx.activeBlockIndex())) {
             runtimeSearchArea = SearchArea::CustomRegion;
-            runtimeCustomRegions = { *corrected };
-            runtimeCustomRegion = *corrected;
+            runtimeWindowPercentRegions = { *corrected };
             runtimePercentRegion = {};
         }
     }
 
-    normalizeImageFindSearchArea(runtimeSearchArea, runtimeCustomRegions, runtimeCustomRegion);
-    syncLegacyCustomRegionFromList(runtimeCustomRegion, runtimeCustomRegions);
-
-    bool runtimeRegionsAnchored = customRegionsAnchoredToTargetWindow;
-    if (ctx.shouldUseRoiCorrectionForBlock(roiCorrection) && ctx.runLoopNumber() >= 2
-        && ctx.correctedRoi(ctx.activeBlockIndex()).has_value()) {
-        runtimeRegionsAnchored = false;
+    if (runtimeSearchArea == SearchArea::ScreenPercent && isValidWindowPercentRegion(runtimePercentRegion)) {
+        runtimeSearchArea = SearchArea::CustomRegion;
+        runtimeWindowPercentRegions = { runtimePercentRegion };
     }
+
+    normalizeImageFindSearchArea(runtimeSearchArea, runtimeWindowPercentRegions);
 
     std::vector<std::string> relativePaths;
     std::vector<const PreparedTemplate*> templates;
@@ -827,14 +824,10 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
 
     while (true) {
         ++pollAttemptCount;
-        const std::vector<CaptureRegion> pollRegions = physicalCustomPollRegions(
-            runtimeSearchArea,
-            runtimeCustomRegions,
-            runtimeCustomRegion,
-            runtimeRegionsAnchored,
-            runtimeWindowPercentRegions);
+        const std::vector<CaptureRegion> pollRegions =
+            physicalCustomPollRegions(runtimeSearchArea, runtimeWindowPercentRegions);
 
-        if (pollAttemptCount == 1 || runtimeRegionsAnchored) {
+        if (pollAttemptCount == 1) {
             const CaptureRegion overlayLegacy =
                 pollRegions.empty() ? CaptureRegion{} : pollRegions.front();
             std::vector<CaptureRegion> overlayRegions = pollRegions;
@@ -1007,25 +1000,15 @@ nlohmann::json ImageFindBlock::toJson() const {
           {"y", percentRegion.y},
           {"width", percentRegion.width},
           {"height", percentRegion.height}}}};
-    std::vector<CaptureRegion> regionsToSave = customRegions;
-    pruneInvalidCustomRegions(regionsToSave);
-    if (customRegionsAnchoredToTargetWindow) {
-        std::vector<PercentRegion> percentToSave = customRegionsWindowPercent;
-        pruneInvalidWindowPercentRegions(percentToSave);
-        if (!percentToSave.empty()) {
-            nlohmann::json regionsJson = nlohmann::json::array();
-            for (const PercentRegion& region : percentToSave) {
-                regionsJson.push_back(percentRegionToJson(region));
-            }
-            json["customRegions"] = std::move(regionsJson);
-            json["customRegionsAnchoredToTargetWindow"] = true;
-        }
-    } else if (!regionsToSave.empty()) {
+    std::vector<PercentRegion> percentToSave = customRegionsWindowPercent;
+    pruneInvalidWindowPercentRegions(percentToSave);
+    if (!percentToSave.empty()) {
         nlohmann::json regionsJson = nlohmann::json::array();
-        for (const CaptureRegion& region : regionsToSave) {
-            regionsJson.push_back(captureRegionToJson(region));
+        for (const PercentRegion& region : percentToSave) {
+            regionsJson.push_back(percentRegionToJson(region));
         }
         json["customRegions"] = std::move(regionsJson);
+        json["customRegionsAnchoredToTargetWindow"] = true;
     }
     if (multiScale) {
         json["multiScale"] = true;
@@ -1076,16 +1059,16 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
     block->pollIntervalMs = snapImageFindPollIntervalMs(
         json.value("pollIntervalMs", kDefaultImageFindPollIntervalMs));
     block->searchArea = searchAreaFromString(json.value("searchArea", "TargetWindow"));
-    block->customRegionsAnchoredToTargetWindow =
-        json.value("customRegionsAnchoredToTargetWindow", false);
     block->customRegions.clear();
     block->customRegionsWindowPercent.clear();
+    block->customRegion = {};
+    const bool legacyAnchored = json.value("customRegionsAnchoredToTargetWindow", false);
     if (json.contains("customRegions") && json["customRegions"].is_array()) {
         for (const auto& region : json["customRegions"]) {
             if (!region.is_object()) {
                 continue;
             }
-            if (block->customRegionsAnchoredToTargetWindow) {
+            if (legacyAnchored || anchoredJsonLooksLikePixelOffset(region)) {
                 if (anchoredJsonLooksLikePixelOffset(region)) {
                     block->customRegionsWindowPercent.push_back(
                         pixelOffsetToWindowPercent(captureRegionFromJson(region)));
@@ -1093,13 +1076,19 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
                     block->customRegionsWindowPercent.push_back(percentRegionFromJson(region));
                 }
             } else {
-                block->customRegions.push_back(captureRegionFromJson(region));
+                block->customRegionsWindowPercent.push_back(
+                    ScreenCapture::storeWindowPercentFromPhysical(captureRegionFromJson(region)));
             }
         }
     }
-    pruneInvalidCustomRegions(block->customRegions);
+    if (block->customRegionsWindowPercent.empty() && json.contains("customRegion")) {
+        const CaptureRegion legacy = captureRegionFromJson(json["customRegion"]);
+        if (isValidCustomRegion(legacy)) {
+            block->customRegionsWindowPercent.push_back(
+                ScreenCapture::storeWindowPercentFromPhysical(legacy));
+        }
+    }
     pruneInvalidWindowPercentRegions(block->customRegionsWindowPercent);
-    syncLegacyCustomRegionFromList(block->customRegion, block->customRegions);
     if (json.contains("percentRegion")) {
         const auto& region = json["percentRegion"];
         block->percentRegion.x = region.value("x", 0.0);
@@ -1107,26 +1096,30 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
         block->percentRegion.width = region.value("width", 100.0);
         block->percentRegion.height = region.value("height", 100.0);
     }
+    if (block->searchArea == SearchArea::ScreenPercent
+        && isValidWindowPercentRegion(block->percentRegion)) {
+        block->customRegionsWindowPercent.push_back(block->percentRegion);
+        block->searchArea = SearchArea::CustomRegion;
+    }
+    block->customRegionsAnchoredToTargetWindow = true;
+    if (!block->customRegionsWindowPercent.empty()) {
+        block->searchArea = SearchArea::CustomRegion;
+    } else {
+        normalizeImageFindSearchArea(block->searchArea, block->customRegionsWindowPercent);
+    }
     block->roiCorrection = json.value("roiCorrection", false);
     block->returnToPreviousImageFindOnFailure = json.value("returnToPreviousImageFindOnFailure", false);
     block->retryAfterNextActionOnFailure = json.value("retryAfterNextActionOnFailure", false);
     block->templateColorMode =
         templateColorModeFromString(json.value("templateColorMode", "Auto"));
-    if (block->customRegionsAnchoredToTargetWindow && !block->customRegionsWindowPercent.empty()) {
-        block->searchArea = SearchArea::CustomRegion;
-    } else {
-        normalizeImageFindSearchArea(block->searchArea, block->customRegions, block->customRegion);
-    }
     return block;
 }
 
 ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
-                                                   const CaptureRegion& customRegion,
                                                    const PercentRegion& percentRegion,
                                                    const std::string& templatePath,
                                                    const MatchOptions& options,
                                                    const std::string& projectDirectory,
-                                                   bool customRegionsAnchoredToTargetWindow,
                                                    const std::vector<PercentRegion>& customRegionsWindowPercent) {
     ImageFindMatchTestResult result;
     const auto lapStart = std::chrono::steady_clock::now();
@@ -1139,13 +1132,18 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
     };
 
     SearchArea resolvedSearchArea = searchArea;
-    CaptureRegion resolvedCustomRegion = customRegion;
-    normalizeImageFindSearchArea(resolvedSearchArea, {}, resolvedCustomRegion);
-    if (resolvedSearchArea == SearchArea::CustomRegion && customRegionsAnchoredToTargetWindow
-        && !customRegionsWindowPercent.empty()) {
-        resolvedCustomRegion =
-            ScreenCapture::resolveWindowPercentRegion(customRegionsWindowPercent.front());
+    std::vector<PercentRegion> resolvedWindowPercent = customRegionsWindowPercent;
+    PercentRegion resolvedPercentRegion = percentRegion;
+    if (resolvedSearchArea == SearchArea::ScreenPercent
+        && isValidWindowPercentRegion(resolvedPercentRegion)) {
+        resolvedSearchArea = SearchArea::CustomRegion;
+        resolvedWindowPercent = { resolvedPercentRegion };
     }
+    normalizeImageFindSearchArea(resolvedSearchArea, resolvedWindowPercent);
+    const std::vector<CaptureRegion> pollRegions =
+        physicalCustomPollRegions(resolvedSearchArea, resolvedWindowPercent);
+    CaptureRegion resolvedCustomRegion =
+        pollRegions.empty() ? CaptureRegion{} : pollRegions.front();
 
 #ifdef _WIN32
     if (resolvedSearchArea == SearchArea::TargetWindow && !ScreenCapture::findTargetWindow()) {
@@ -1201,13 +1199,10 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
 }
 
 ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchArea,
-                                                            const CaptureRegion& customRegion,
                                                             const PercentRegion& percentRegion,
-                                                            const std::vector<CaptureRegion>& customRegions,
                                                             const std::vector<std::string>& templatePaths,
                                                             const MatchOptions& options,
                                                             const std::string& projectDirectory,
-                                                            bool customRegionsAnchoredToTargetWindow,
                                                             const std::vector<PercentRegion>& customRegionsWindowPercent) {
     ImageFindMatchTestResult result;
     const auto lapStart = std::chrono::steady_clock::now();
@@ -1233,15 +1228,17 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
     }
 
     SearchArea resolvedSearchArea = searchArea;
-    CaptureRegion resolvedCustomRegion = customRegion;
-    normalizeImageFindSearchArea(resolvedSearchArea, customRegions, resolvedCustomRegion);
+    std::vector<PercentRegion> resolvedWindowPercent = customRegionsWindowPercent;
+    PercentRegion resolvedPercentRegion = percentRegion;
+    if (resolvedSearchArea == SearchArea::ScreenPercent
+        && isValidWindowPercentRegion(resolvedPercentRegion)) {
+        resolvedSearchArea = SearchArea::CustomRegion;
+        resolvedWindowPercent = { resolvedPercentRegion };
+    }
+    normalizeImageFindSearchArea(resolvedSearchArea, resolvedWindowPercent);
 
-    std::vector<CaptureRegion> pollRegions = physicalCustomPollRegions(
-        resolvedSearchArea,
-        customRegions,
-        resolvedCustomRegion,
-        customRegionsAnchoredToTargetWindow,
-        customRegionsWindowPercent);
+    std::vector<CaptureRegion> pollRegions =
+        physicalCustomPollRegions(resolvedSearchArea, resolvedWindowPercent);
 
 #ifdef _WIN32
     if (resolvedSearchArea == SearchArea::TargetWindow && !ScreenCapture::findTargetWindow()) {

@@ -341,27 +341,7 @@ cv::Mat ScreenCapture::captureRegion(const CaptureRegion& region) {
 }
 
 CaptureRegion ScreenCapture::captureRegionFromPercent(const PercentRegion& percent) {
-    CaptureRegion region;
-#ifdef _WIN32
-    const int screenW = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    const int screenH = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-    if (screenW <= 0 || screenH <= 0) {
-        return region;
-    }
-
-    const double clampedX = std::clamp(percent.x, 0.0, 100.0);
-    const double clampedY = std::clamp(percent.y, 0.0, 100.0);
-    const double maxWidth = std::max(0.0, 100.0 - clampedX);
-    const double maxHeight = std::max(0.0, 100.0 - clampedY);
-    const double clampedW = std::clamp(percent.width, 1.0, maxWidth);
-    const double clampedH = std::clamp(percent.height, 1.0, maxHeight);
-
-    region.x = static_cast<int>(std::lround(screenW * clampedX / 100.0));
-    region.y = static_cast<int>(std::lround(screenH * clampedY / 100.0));
-    region.width = static_cast<int>(std::lround(screenW * clampedW / 100.0));
-    region.height = static_cast<int>(std::lround(screenH * clampedH / 100.0));
-#endif
-    return region;
+    return resolveWindowPercentRegion(percent);
 }
 
 CaptureRegion ScreenCapture::resolveWindowPercentRegion(const PercentRegion& percent) {
@@ -482,11 +462,8 @@ cv::Point ScreenCapture::haystackTopLeftToPhysical(SearchArea area,
     case SearchArea::CustomRegion:
         return cv::Point(custom.x + haystackTopLeft.x, custom.y + haystackTopLeft.y);
     case SearchArea::ScreenPercent: {
-        const CaptureRegion resolved = captureRegionFromPercent(percent);
-        const int originX = GetSystemMetrics(SM_XVIRTUALSCREEN);
-        const int originY = GetSystemMetrics(SM_YVIRTUALSCREEN);
-        return cv::Point(originX + resolved.x + haystackTopLeft.x,
-                         originY + resolved.y + haystackTopLeft.y);
+        const CaptureRegion resolved = resolveWindowPercentRegion(percent);
+        return cv::Point(resolved.x + haystackTopLeft.x, resolved.y + haystackTopLeft.y);
     }
     case SearchArea::FullScreen: {
         const int originX = GetSystemMetrics(SM_XVIRTUALSCREEN);
@@ -523,13 +500,11 @@ bool ScreenCapture::searchAreaPhysicalRect(SearchArea area,
         outRect = QRect(custom.x, custom.y, custom.width, custom.height);
         return true;
     case SearchArea::ScreenPercent: {
-        const CaptureRegion resolved = captureRegionFromPercent(percent);
+        const CaptureRegion resolved = resolveWindowPercentRegion(percent);
         if (resolved.width <= 0 || resolved.height <= 0) {
             return false;
         }
-        const int originX = GetSystemMetrics(SM_XVIRTUALSCREEN);
-        const int originY = GetSystemMetrics(SM_YVIRTUALSCREEN);
-        outRect = QRect(originX + resolved.x, originY + resolved.y, resolved.width, resolved.height);
+        outRect = QRect(resolved.x, resolved.y, resolved.width, resolved.height);
         return true;
     }
     case SearchArea::FullScreen:

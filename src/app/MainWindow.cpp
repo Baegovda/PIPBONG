@@ -1420,11 +1420,7 @@ ImageFindBlock* firstImageFindWithEditableRoi(Workflow& workflow) {
         if (!imageFind->hasTemplates()) {
             continue;
         }
-        if (imageFind->customRegionsAnchoredToTargetWindow) {
-            if (imageFind->customRegionsWindowPercent.empty()) {
-                continue;
-            }
-        } else if (imageFind->customRegions.empty()) {
+        if (imageFind->customRegionsWindowPercent.empty()) {
             continue;
         }
         return imageFind;
@@ -1490,22 +1486,12 @@ bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Featur
 
     const std::vector<CaptureRegion> physicalRegions = [&]() {
         std::vector<CaptureRegion> physical;
-        if (block->customRegionsAnchoredToTargetWindow) {
-            physical.reserve(block->customRegionsWindowPercent.size());
-            for (const PercentRegion& percent : block->customRegionsWindowPercent) {
-                if (percent.width <= 0.0 || percent.height <= 0.0) {
-                    continue;
-                }
-                physical.push_back(ScreenCapture::resolveWindowPercentRegion(percent));
+        physical.reserve(block->customRegionsWindowPercent.size());
+        for (const PercentRegion& percent : block->customRegionsWindowPercent) {
+            if (percent.width <= 0.0 || percent.height <= 0.0) {
+                continue;
             }
-        } else {
-            physical.reserve(block->customRegions.size());
-            for (const CaptureRegion& region : block->customRegions) {
-                if (region.width < 2 || region.height < 2) {
-                    continue;
-                }
-                physical.push_back(region);
-            }
+            physical.push_back(ScreenCapture::resolveWindowPercentRegion(percent));
         }
         return physical;
     }();

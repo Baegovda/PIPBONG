@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.77` (from `project(PIPBONG VERSION 0.7.77)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.78` (from `project(PIPBONG VERSION 0.7.78)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -313,7 +313,7 @@ Sbm1.0/                        # repo root (local workspace)
 - Finds target window by title; stores `HWND`.
 - **DWM extended frame bounds** for accurate borderless/windowed game window rect.
 - **Multi-strategy capture:** PrintWindow, screen BitBlt, full-screen crop (GPU-rendered game fallback).
-- **Search areas:** `FullScreen`, `TargetWindow`, `CustomRegion`, `ScreenPercent` (virtual desktop %).
+- **Search areas:** `FullScreen`, `TargetWindow`, `CustomRegion`; legacy `ScreenPercent` loads as `CustomRegion` with window-relative %.
 - **Physical vs logical pixels:** `capturePhysicalRect`, `getTargetWindowScreenRect`, Win32 `PhysicalToLogicalPointForPerMonitorDPI` / `LogicalToPhysicalPointForPerMonitorDPI`.
 
 ### 5.3 Vision (`ImageMatcher`)
@@ -464,14 +464,14 @@ Sbm1.0/                        # repo root (local workspace)
 | `templateColorMode` | `"Auto"` | `"Auto"` (analyze template), `"Grayscale"` (reject saturated color UI regions in haystack), or `"Color"` (no grayscale haystack filter); omitted when `Auto` |
 | `threshold` | `0.85` | Match confidence threshold |
 | `pollIntervalMs` | `200` | Delay between retries when no match (5–60000 ms, 5 ms step); block polls until success or workflow stop |
-| `searchArea` | `"TargetWindow"` | `FullScreen`, `TargetWindow`, `CustomRegion`, `ScreenPercent` |
-| `customRegion` | `{x,y,width,height}` | Legacy single ROI; first entry mirror when `customRegions` is set |
-| `customRegions` | `[{x,y,width,height}, …]` | Absolute screen-pixel ROIs when `customRegionsAnchoredToTargetWindow` is false |
-| `customRegionsAnchoredToTargetWindow` | `false` (omitted) | When `true`, `customRegions` JSON holds **window-relative percent** (0–100 of target DWM bounds); resolved at capture time so ROI follows window move and resize |
-| `percentRegion` | `{x,y,width,height}` | 0–100 % of virtual desktop when `ScreenPercent` |
+| `searchArea` | `"TargetWindow"` | `FullScreen`, `TargetWindow`, `CustomRegion`; legacy `"ScreenPercent"` loads as `CustomRegion` |
+| `customRegion` | `{x,y,width,height}` | Legacy single ROI (screen pixels); migrated to `customRegions` window % on load |
+| `customRegions` | `[{x,y,width,height}, …]` | **Window-relative percent** (0–100 of target DWM bounds); resolved at capture time so ROI follows window move and resize |
+| `customRegionsAnchoredToTargetWindow` | `true` (omitted) | Always window %; legacy absolute-pixel and virtual-desktop `ScreenPercent` JSON auto-migrates on load |
+| `percentRegion` | `{x,y,width,height}` | Legacy `ScreenPercent`; migrated to `customRegions` on load |
 | `multiScale` | `false` | Written as `true` when enabled |
 | `minScale` / `maxScale` | `0.9` / `1.1` | Written only when non-default |
-| `roiCorrection` | `false` (omitted) | Per-block ROI correction when feature `roiCorrection` is off; loop 2+ uses session-only matched template rect from loop 1 |
+| `roiCorrection` | `false` (omitted) | Per-block ROI correction when feature `roiCorrection` is off; loop 2+ uses session-only matched template rect from loop 1, stored as window % and re-resolved each poll |
 | `returnToPreviousImageFindOnFailure` | `false` (omitted) | On detection failure (miss limit), jump workflow execution to the previous `ImageFind` block in the list |
 | `retryAfterNextActionOnFailure` | `false` (omitted) | On first detection failure: run the next block once, then retry this block; on second failure jump to the next `ImageFind` block |
 
@@ -849,6 +849,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.78] - 2026-07-04
+
+### Changed
+
+- ImageFind ROI units unified to **target-window percent** (0–100 of DWM bounds): user ROIs, ROI correction session cache, and `ScreenCapture::captureRegionFromPercent` all resolve via `resolveWindowPercentRegion`; legacy absolute-pixel `customRegions`, pixel-offset anchored JSON, and `ScreenPercent` virtual-desktop % auto-migrate on load (`ImageFindBlock`, `ExecutionContext`, `ScreenCapture`, `ImageFindEditor`, `MainWindow`).
 
 ## [0.7.77] - 2026-07-04
 
@@ -2658,4 +2664,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-04. Current application version: 0.7.77.*
+*Last consolidated: 2026-07-04. Current application version: 0.7.78.*

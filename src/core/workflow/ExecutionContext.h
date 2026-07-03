@@ -125,8 +125,9 @@ public:
     void setActiveBlockIndex(int blockIndex);
     int activeBlockIndex() const;
 
-    void setCorrectedRoi(int blockIndex, const CaptureRegion& region);
-    std::optional<CaptureRegion> correctedRoi(int blockIndex) const;
+    /// Session-only ROI correction stored as % of target window (DWM bounds).
+    void setCorrectedRoi(int blockIndex, const PercentRegion& region);
+    std::optional<PercentRegion> correctedRoi(int blockIndex) const;
     void clearCorrectedRois();
 
     void setTargetWindowTitle(const std::wstring& title);
@@ -190,7 +191,7 @@ private:
     bool m_featureRoiCorrectionGlobal = false;
     int m_runLoopNumber = 1;
     int m_activeBlockIndex = -1;
-    std::unordered_map<int, CaptureRegion> m_correctedRoisByBlockIndex;
+    std::unordered_map<int, PercentRegion> m_correctedRoisByBlockIndex;
     std::wstring m_targetWindowTitle;
     std::string m_projectDirectory;
 #ifdef _WIN32

@@ -41,12 +41,12 @@ public:
     double maxScale = 1.1;
     int pollIntervalMs = kDefaultImageFindPollIntervalMs;
     SearchArea searchArea = SearchArea::TargetWindow;
-    /// Screen-pixel search ROIs when `searchArea` is `CustomRegion` (order = try order).
+    /// Legacy screen-pixel ROIs; migrated to `customRegionsWindowPercent` on load.
     std::vector<CaptureRegion> customRegions;
-    /// Legacy single ROI; kept in sync with `customRegions.front()` when the list is non-empty.
+    /// Legacy single ROI; not written on save.
     CaptureRegion customRegion;
-    /// When true, `customRegionsWindowPercent` stores ROI as % of target window (DWM bounds).
-    bool customRegionsAnchoredToTargetWindow = false;
+    /// Always true for saved projects; ROIs are % of target window (DWM bounds).
+    bool customRegionsAnchoredToTargetWindow = true;
     std::vector<PercentRegion> customRegionsWindowPercent;
     PercentRegion percentRegion;
     /// When feature-level ROI correction is off, enables session ROI correction for this block only.
@@ -71,23 +71,18 @@ public:
     static std::unique_ptr<ImageFindBlock> fromJson(const nlohmann::json& json);
 
     static ImageFindMatchTestResult testMatch(SearchArea searchArea,
-                                              const CaptureRegion& customRegion,
                                               const PercentRegion& percentRegion,
                                               const std::string& templatePath,
                                               const MatchOptions& options,
                                               const std::string& projectDirectory,
-                                              bool customRegionsAnchoredToTargetWindow = false,
                                               const std::vector<PercentRegion>& customRegionsWindowPercent =
                                                   {});
 
     static ImageFindMatchTestResult testMatchTemplates(SearchArea searchArea,
-                                                       const CaptureRegion& customRegion,
                                                        const PercentRegion& percentRegion,
-                                                       const std::vector<CaptureRegion>& customRegions,
                                                        const std::vector<std::string>& templatePaths,
                                                        const MatchOptions& options,
                                                        const std::string& projectDirectory,
-                                                       bool customRegionsAnchoredToTargetWindow = false,
                                                        const std::vector<PercentRegion>& customRegionsWindowPercent =
                                                            {});
 
