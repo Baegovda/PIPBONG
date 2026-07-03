@@ -51,6 +51,9 @@ public:
     static cv::Mat captureTargetWindow();
     static cv::Mat captureRegion(const CaptureRegion& region);
     static CaptureRegion captureRegionFromPercent(const PercentRegion& percent);
+    /// Converts window-relative percent ROI (0–100 of target DWM bounds) to physical screen pixels.
+    static CaptureRegion resolveWindowPercentRegion(const PercentRegion& percent);
+    static PercentRegion storeWindowPercentFromPhysical(const CaptureRegion& physical);
     static cv::Mat captureSearchArea(SearchArea area,
                                      const CaptureRegion& custom = {},
                                      const PercentRegion& percent = {});

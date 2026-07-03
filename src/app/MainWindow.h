@@ -106,9 +106,14 @@ private slots:
     void syncHotkeys();
 
 private:
+    void setupUi();
     void setupUpdateChecker();
     void applyUpdateCheckInterval();
-    void setupUi();
+    void engageFeatureMouseLock(FeatureRunSession& session);
+    void captureFeatureMouseLockPosition(FeatureRunSession& session);
+    static bool hasFeatureMouseLock(const FeatureRunSession& session);
+    void scheduleMouseLockPositionSync();
+    void syncMouseLockPositions();
     void setupMenus();
     void setupUiState();
     void connectSignals();
@@ -212,6 +217,7 @@ private:
     QTimer* m_autoSaveTimer = nullptr;
     QTimer* m_statusClearTimer = nullptr;
     QTimer* m_updateCheckTimer = nullptr;
+    QTimer* m_mouseLockSyncTimer = nullptr;
     UpdateChecker* m_updateChecker = nullptr;
     bool m_initialUpdateCheckDone = false;
     bool m_lastUpdateCheckWasSilent = false;

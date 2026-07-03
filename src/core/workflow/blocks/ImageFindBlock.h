@@ -45,6 +45,9 @@ public:
     std::vector<CaptureRegion> customRegions;
     /// Legacy single ROI; kept in sync with `customRegions.front()` when the list is non-empty.
     CaptureRegion customRegion;
+    /// When true, `customRegionsWindowPercent` stores ROI as % of target window (DWM bounds).
+    bool customRegionsAnchoredToTargetWindow = false;
+    std::vector<PercentRegion> customRegionsWindowPercent;
     PercentRegion percentRegion;
     /// When feature-level ROI correction is off, enables session ROI correction for this block only.
     bool roiCorrection = false;
@@ -72,7 +75,10 @@ public:
                                               const PercentRegion& percentRegion,
                                               const std::string& templatePath,
                                               const MatchOptions& options,
-                                              const std::string& projectDirectory);
+                                              const std::string& projectDirectory,
+                                              bool customRegionsAnchoredToTargetWindow = false,
+                                              const std::vector<PercentRegion>& customRegionsWindowPercent =
+                                                  {});
 
     static ImageFindMatchTestResult testMatchTemplates(SearchArea searchArea,
                                                        const CaptureRegion& customRegion,
@@ -80,7 +86,10 @@ public:
                                                        const std::vector<CaptureRegion>& customRegions,
                                                        const std::vector<std::string>& templatePaths,
                                                        const MatchOptions& options,
-                                                       const std::string& projectDirectory);
+                                                       const std::string& projectDirectory,
+                                                       bool customRegionsAnchoredToTargetWindow = false,
+                                                       const std::vector<PercentRegion>& customRegionsWindowPercent =
+                                                           {});
 
 private:
     const PreparedTemplate& cachedTemplateFor(const std::string& resolvedPath) const;

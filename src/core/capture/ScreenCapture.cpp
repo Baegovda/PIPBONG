@@ -364,6 +364,45 @@ CaptureRegion ScreenCapture::captureRegionFromPercent(const PercentRegion& perce
     return region;
 }
 
+CaptureRegion ScreenCapture::resolveWindowPercentRegion(const PercentRegion& percent) {
+    CaptureRegion region;
+#ifdef _WIN32
+    const ScreenRect target = getTargetWindowScreenRect();
+    if (!target.valid || target.width <= 0 || target.height <= 0) {
+        return region;
+    }
+
+    const double clampedX = std::clamp(percent.x, 0.0, 100.0);
+    const double clampedY = std::clamp(percent.y, 0.0, 100.0);
+    const double maxWidth = std::max(0.0, 100.0 - clampedX);
+    const double maxHeight = std::max(0.0, 100.0 - clampedY);
+    const double clampedW = std::clamp(percent.width, 0.01, maxWidth);
+    const double clampedH = std::clamp(percent.height, 0.01, maxHeight);
+
+    region.x = target.x + static_cast<int>(std::lround(target.width * clampedX / 100.0));
+    region.y = target.y + static_cast<int>(std::lround(target.height * clampedY / 100.0));
+    region.width = std::max(1, static_cast<int>(std::lround(target.width * clampedW / 100.0)));
+    region.height = std::max(1, static_cast<int>(std::lround(target.height * clampedH / 100.0)));
+#endif
+    return region;
+}
+
+PercentRegion ScreenCapture::storeWindowPercentFromPhysical(const CaptureRegion& physical) {
+    PercentRegion percent;
+#ifdef _WIN32
+    const ScreenRect target = getTargetWindowScreenRect();
+    if (!target.valid || target.width <= 0 || target.height <= 0 || physical.width <= 0
+        || physical.height <= 0) {
+        return percent;
+    }
+    percent.x = (physical.x - target.x) * 100.0 / target.width;
+    percent.y = (physical.y - target.y) * 100.0 / target.height;
+    percent.width = physical.width * 100.0 / target.width;
+    percent.height = physical.height * 100.0 / target.height;
+#endif
+    return percent;
+}
+
 cv::Mat ScreenCapture::captureSearchArea(SearchArea area,
                                          const CaptureRegion& custom,
                                          const PercentRegion& percent) {

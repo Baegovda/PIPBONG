@@ -132,6 +132,50 @@ void installTemplateCaptureHotkeyHookIfNeeded(ImageFindEditor* editor) {
 }
 #endif
 
+std::vector<CaptureRegion> physicalCustomRegionsForDisplay(const ImageFindBlock& block) {
+    std::vector<CaptureRegion> physical;
+    if (block.customRegionsAnchoredToTargetWindow) {
+        physical.reserve(block.customRegionsWindowPercent.size());
+        for (const PercentRegion& percent : block.customRegionsWindowPercent) {
+            if (percent.width <= 0.0 || percent.height <= 0.0) {
+                continue;
+            }
+            physical.push_back(ScreenCapture::resolveWindowPercentRegion(percent));
+        }
+        return physical;
+    }
+    physical.reserve(block.customRegions.size());
+    for (const CaptureRegion& region : block.customRegions) {
+        if (region.width < 2 || region.height < 2) {
+            continue;
+        }
+        physical.push_back(region);
+    }
+    return physical;
+}
+
+CaptureRegion physicalCustomRegionForDisplay(const ImageFindBlock& block) {
+    const std::vector<CaptureRegion> physical = physicalCustomRegionsForDisplay(block);
+    if (!physical.empty()) {
+        return physical.front();
+    }
+    return block.customRegion;
+}
+
+PercentRegion storePickedCustomRegionPercent(const CaptureRegion& physical) {
+#ifdef _WIN32
+    if (ScreenCapture::getTargetWindowScreenRect().valid) {
+        return ScreenCapture::storeWindowPercentFromPhysical(physical);
+    }
+#endif
+    PercentRegion percent;
+    percent.x = physical.x;
+    percent.y = physical.y;
+    percent.width = physical.width;
+    percent.height = physical.height;
+    return percent;
+}
+
 } // namespace
 
 ImageFindEditor::ImageFindEditor(ImageFindBlock* block, const QString& projectDirectory, QWidget* parent,
@@ -175,8 +219,8 @@ void ImageFindEditor::reload() {
     m_pollIntervalSpin->setValue(snapImageFindPollIntervalMs(m_block->pollIntervalMs));
     m_matchModeSwitch->setRightSelected(m_block->templateMatchMode == ImageFindTemplateMatchMode::All, false);
     refreshTemplateList();
-    if (m_block->customRegions.empty() && m_block->customRegion.width >= 2
-        && m_block->customRegion.height >= 2) {
+    if (!m_block->customRegionsAnchoredToTargetWindow && m_block->customRegions.empty()
+        && m_block->customRegion.width >= 2 && m_block->customRegion.height >= 2) {
         m_block->customRegions.push_back(m_block->customRegion);
     }
     refreshRoiList();
@@ -622,21 +666,39 @@ void ImageFindEditor::refreshRoiList() {
     m_roiList->blockSignals(true);
     m_roiList->clear();
     int index = 1;
-    for (const CaptureRegion& region : m_block->customRegions) {
-        if (region.width < 2 || region.height < 2) {
-            continue;
+    if (m_block->customRegionsAnchoredToTargetWindow) {
+        for (const PercentRegion& region : m_block->customRegionsWindowPercent) {
+            if (region.width <= 0.0 || region.height <= 0.0) {
+                continue;
+            }
+            const QString label =
+                tr("ROI %1: %2%, %3% — %4%×%5%")
+                    .arg(index++)
+                    .arg(region.x, 0, 'f', 1)
+                    .arg(region.y, 0, 'f', 1)
+                    .arg(region.width, 0, 'f', 1)
+                    .arg(region.height, 0, 'f', 1);
+            auto* item = new QListWidgetItem(label, m_roiList);
+            item->setData(Qt::UserRole, label);
+            item->setToolTip(label);
         }
-        const QRect rect(region.x, region.y, region.width, region.height);
-        const QString label =
-            tr("ROI %1: %2, %3 — %4×%5")
-                .arg(index++)
-                .arg(region.x)
-                .arg(region.y)
-                .arg(region.width)
-                .arg(region.height);
-        auto* item = new QListWidgetItem(label, m_roiList);
-        item->setData(Qt::UserRole, rect);
-        item->setToolTip(label);
+    } else {
+        for (const CaptureRegion& region : m_block->customRegions) {
+            if (region.width < 2 || region.height < 2) {
+                continue;
+            }
+            const QRect rect(region.x, region.y, region.width, region.height);
+            const QString label =
+                tr("ROI %1: %2, %3 — %4×%5")
+                    .arg(index++)
+                    .arg(region.x)
+                    .arg(region.y)
+                    .arg(region.width)
+                    .arg(region.height);
+            auto* item = new QListWidgetItem(label, m_roiList);
+            item->setData(Qt::UserRole, rect);
+            item->setToolTip(label);
+        }
     }
     if (!selectedRect.isNull()) {
         for (int row = 0; row < m_roiList->count(); ++row) {
@@ -666,6 +728,13 @@ void ImageFindEditor::updateRoiPreviewButton(bool overlayVisible) {
 bool ImageFindEditor::hasConfiguredRoiForPreview() const {
     if (!m_block) {
         return false;
+    }
+    if (m_block->customRegionsAnchoredToTargetWindow) {
+        for (const PercentRegion& region : m_block->customRegionsWindowPercent) {
+            if (region.width > 0.0 && region.height > 0.0) {
+                return true;
+            }
+        }
     }
     for (const CaptureRegion& region : m_block->customRegions) {
         if (region.width >= 2 && region.height >= 2) {
@@ -706,11 +775,15 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
     }
 
     QPointer<ImageFindEditor> self = this;
+    const std::vector<CaptureRegion> physicalRegions = physicalCustomRegionsForDisplay(*m_block);
+    const CaptureRegion physicalLegacy = physicalRegions.empty()
+                                           ? physicalCustomRegionForDisplay(*m_block)
+                                           : physicalRegions.front();
     const bool visible = RoiPreviewOverlay::show(
         m_block->searchArea,
-        m_block->customRegion,
+        physicalLegacy,
         m_block->percentRegion,
-        m_block->customRegions,
+        physicalRegions,
         this,
         [self](bool overlayVisible) {
             if (self) {
@@ -723,7 +796,13 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
 
 RoiPreviewOverlay::EditableOptions ImageFindEditor::makeRoiPreviewEditableOptions() {
     RoiPreviewOverlay::EditableOptions options;
-    if (!m_block || m_block->customRegions.empty()) {
+    if (!m_block) {
+        return options;
+    }
+    const bool hasRoi = m_block->customRegionsAnchoredToTargetWindow
+                            ? !m_block->customRegionsWindowPercent.empty()
+                            : !m_block->customRegions.empty();
+    if (!hasRoi) {
         return options;
     }
 
@@ -738,15 +817,25 @@ RoiPreviewOverlay::EditableOptions ImageFindEditor::makeRoiPreviewEditableOption
         if (!self || !self->m_block) {
             return;
         }
-        if (index < 0 || index >= static_cast<int>(self->m_block->customRegions.size())) {
-            return;
+        if (self->m_block->customRegionsAnchoredToTargetWindow) {
+            if (index < 0
+                || index >= static_cast<int>(self->m_block->customRegionsWindowPercent.size())) {
+                return;
+            }
+            self->m_block->customRegionsWindowPercent[static_cast<size_t>(index)] =
+                storePickedCustomRegionPercent(region);
+        } else {
+            if (index < 0 || index >= static_cast<int>(self->m_block->customRegions.size())) {
+                return;
+            }
+            self->m_block->customRegions[static_cast<size_t>(index)] = region;
+            if (!self->m_block->customRegions.empty()) {
+                self->m_block->customRegion = self->m_block->customRegions.front();
+            }
         }
-
-        self->m_block->customRegions[static_cast<size_t>(index)] = region;
+        self->m_block->customRegionsAnchoredToTargetWindow = true;
+        self->m_block->customRegions.clear();
         self->m_block->searchArea = SearchArea::CustomRegion;
-        if (!self->m_block->customRegions.empty()) {
-            self->m_block->customRegion = self->m_block->customRegions.front();
-        }
         self->refreshRoiList();
         if (self->m_roiList && index >= 0 && index < self->m_roiList->count()) {
             self->m_roiList->blockSignals(true);
@@ -909,10 +998,11 @@ void ImageFindEditor::startRoiPick() {
     ScreenRegionOverlay::StartPickOptions pickOptions;
     pickOptions.parkHostDuringPick = false;
     if (m_block) {
-        for (const CaptureRegion& region : m_block->customRegions) {
-            if (region.width >= 2 && region.height >= 2) {
+        const std::vector<CaptureRegion> physicalRegions = physicalCustomRegionsForDisplay(*m_block);
+        for (const CaptureRegion& physical : physicalRegions) {
+            if (physical.width >= 2 && physical.height >= 2) {
                 pickOptions.existingRoiPhysicalRects.emplace_back(
-                    region.x, region.y, region.width, region.height);
+                    physical.x, physical.y, physical.width, physical.height);
             }
         }
     }
@@ -929,17 +1019,18 @@ void ImageFindEditor::startRoiPick() {
             return;
         }
 
-        CaptureRegion region;
-        region.x = selectionRect.x();
-        region.y = selectionRect.y();
-        region.width = selectionRect.width();
-        region.height = selectionRect.height();
+        CaptureRegion physical;
+        physical.x = selectionRect.x();
+        physical.y = selectionRect.y();
+        physical.width = selectionRect.width();
+        physical.height = selectionRect.height();
 
         self->m_block->searchArea = SearchArea::CustomRegion;
-        self->m_block->customRegions.push_back(region);
-        if (!self->m_block->customRegions.empty()) {
-            self->m_block->customRegion = self->m_block->customRegions.front();
-        }
+        self->m_block->customRegionsAnchoredToTargetWindow = true;
+        self->m_block->customRegions.clear();
+        self->m_block->customRegion = {};
+        self->m_block->customRegionsWindowPercent.push_back(
+            storePickedCustomRegionPercent(physical));
         self->refreshRoiList();
         if (self->m_roiList && self->m_roiList->count() > 0) {
             self->m_roiList->setCurrentRow(self->m_roiList->count() - 1);
@@ -969,8 +1060,16 @@ void ImageFindEditor::onRemoveRoi() {
     if (!m_roiList || m_roiList->currentRow() < 0 || !m_block) {
         return;
     }
-    delete m_roiList->takeItem(m_roiList->currentRow());
-    syncBlockCustomRegionsFromList();
+    const int row = m_roiList->currentRow();
+    delete m_roiList->takeItem(row);
+    if (m_block->customRegionsAnchoredToTargetWindow) {
+        if (row >= 0 && row < static_cast<int>(m_block->customRegionsWindowPercent.size())) {
+            m_block->customRegionsWindowPercent.erase(
+                m_block->customRegionsWindowPercent.begin() + row);
+        }
+    } else {
+        syncBlockCustomRegionsFromList();
+    }
     if (m_roiList->count() > 0) {
         m_roiList->setCurrentRow(qMin(m_roiList->currentRow(), m_roiList->count() - 1));
     }
@@ -1025,7 +1124,9 @@ void ImageFindEditor::onMatchTest() {
         m_block->customRegions,
         m_block->templatePaths,
         options,
-        m_projectDirectory.toStdString());
+        m_projectDirectory.toStdString(),
+        m_block->customRegionsAnchoredToTargetWindow,
+        m_block->customRegionsWindowPercent);
 
     if (!testResult.captureOk) {
         QMessageBox::warning(this, tr("매칭 테스트"), QString::fromStdString(testResult.errorMessage));
@@ -1033,10 +1134,11 @@ void ImageFindEditor::onMatchTest() {
     }
 
     QPointer<ImageFindEditor> self = this;
+    const CaptureRegion physicalCustomRegion = physicalCustomRegionForDisplay(*m_block);
     const bool visible = MatchTestOverlay::show(testResult.matches,
                                                 m_thresholdSpin->value(),
                                                 m_block->searchArea,
-                                                m_block->customRegion,
+                                                physicalCustomRegion,
                                                 m_block->percentRegion,
                                                 this,
                                                 [self](bool overlayVisible) {

@@ -1,5 +1,7 @@
 #include "app/MouseCenterLock.h"
 
+#include "core/capture/ScreenCapture.h"
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -10,34 +12,74 @@
 namespace {
 
 #ifdef _WIN32
+enum class LockAnchor {
+    None,
+    FixedScreenPoint,
+    TargetWindowCenter,
+    TargetWindowOffset,
+};
+
 int g_refCount = 0;
 HHOOK g_mouseHook = nullptr;
 POINT g_lockPoint{};
+LockAnchor g_anchor = LockAnchor::None;
+int g_windowOffsetX = 0;
+int g_windowOffsetY = 0;
 
-POINT virtualScreenCenter() {
-    POINT center{};
-    center.x = GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN) / 2;
-    center.y = GetSystemMetrics(SM_YVIRTUALSCREEN) + GetSystemMetrics(SM_CYVIRTUALSCREEN) / 2;
-    return center;
-}
-
-void applyCenterClip() {
-    const POINT center = virtualScreenCenter();
-    g_lockPoint = center;
-    RECT clipRect{g_lockPoint.x, g_lockPoint.y, g_lockPoint.x + 1, g_lockPoint.y + 1};
-    ClipCursor(&clipRect);
-    SetCursorPos(g_lockPoint.x, g_lockPoint.y);
-}
-
-void applyPointClip(const POINT& point) {
+void applyPointClip(const POINT& point, bool moveCursor) {
     g_lockPoint = point;
     RECT clipRect{g_lockPoint.x, g_lockPoint.y, g_lockPoint.x + 1, g_lockPoint.y + 1};
     ClipCursor(&clipRect);
-    SetCursorPos(g_lockPoint.x, g_lockPoint.y);
+    if (moveCursor) {
+        SetCursorPos(g_lockPoint.x, g_lockPoint.y);
+    }
 }
 
 void installMouseHook();
 void uninstallMouseHook();
+
+void refreshAnchoredLockPoint(bool moveCursor) {
+    if (g_refCount <= 0) {
+        return;
+    }
+
+    switch (g_anchor) {
+    case LockAnchor::TargetWindowCenter: {
+        const ScreenCapture::ScreenRect target = ScreenCapture::getTargetWindowScreenRect();
+        if (!target.valid) {
+            return;
+        }
+        POINT point{target.x + target.width / 2, target.y + target.height / 2};
+        applyPointClip(point, moveCursor);
+        return;
+    }
+    case LockAnchor::TargetWindowOffset: {
+        const ScreenCapture::ScreenRect target = ScreenCapture::getTargetWindowScreenRect();
+        if (!target.valid) {
+            return;
+        }
+        POINT point{target.x + g_windowOffsetX, target.y + g_windowOffsetY};
+        applyPointClip(point, moveCursor);
+        return;
+    }
+    case LockAnchor::FixedScreenPoint:
+        applyPointClip(g_lockPoint, moveCursor);
+        return;
+    case LockAnchor::None:
+    default:
+        return;
+    }
+}
+
+void beginLock(LockAnchor anchor) {
+    g_anchor = anchor;
+    if (g_refCount++ == 0) {
+        refreshAnchoredLockPoint(true);
+        installMouseHook();
+        return;
+    }
+    refreshAnchoredLockPoint(true);
+}
 
 LRESULT CALLBACK mouseHookProc(int code, WPARAM wParam, LPARAM lParam) {
     if (code != HC_ACTION || g_refCount <= 0) {
@@ -47,6 +89,7 @@ LRESULT CALLBACK mouseHookProc(int code, WPARAM wParam, LPARAM lParam) {
     if (wParam == WM_MOUSEMOVE) {
         const auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
         if (info && !(info->flags & LLMHF_INJECTED)) {
+            refreshAnchoredLockPoint(g_anchor == LockAnchor::FixedScreenPoint);
             SetCursorPos(g_lockPoint.x, g_lockPoint.y);
             return 1;
         }
@@ -74,28 +117,30 @@ void uninstallMouseHook() {
 
 } // namespace
 
-void MouseCenterLock::engage() {
+void MouseCenterLock::engageTargetWindowCenter() {
 #ifdef _WIN32
-    if (g_refCount++ == 0) {
-        applyCenterClip();
-        installMouseHook();
-    } else {
-        applyCenterClip();
-    }
+    beginLock(LockAnchor::TargetWindowCenter);
 #else
     (void)0;
 #endif
 }
 
+void MouseCenterLock::engageAtTargetWindowOffset(int offsetX, int offsetY) {
+#ifdef _WIN32
+    g_windowOffsetX = offsetX;
+    g_windowOffsetY = offsetY;
+    beginLock(LockAnchor::TargetWindowOffset);
+#else
+    (void)offsetX;
+    (void)offsetY;
+#endif
+}
+
 void MouseCenterLock::engageAt(int screenX, int screenY) {
 #ifdef _WIN32
-    POINT point{screenX, screenY};
-    if (g_refCount++ == 0) {
-        applyPointClip(point);
-        installMouseHook();
-    } else {
-        applyPointClip(point);
-    }
+    g_lockPoint.x = screenX;
+    g_lockPoint.y = screenY;
+    beginLock(LockAnchor::FixedScreenPoint);
 #else
     (void)screenX;
     (void)screenY;
@@ -122,6 +167,7 @@ void MouseCenterLock::release() {
         return;
     }
     if (--g_refCount == 0) {
+        g_anchor = LockAnchor::None;
         uninstallMouseHook();
         ClipCursor(nullptr);
     }
@@ -131,7 +177,33 @@ void MouseCenterLock::release() {
 void MouseCenterLock::releaseAll() {
 #ifdef _WIN32
     g_refCount = 0;
+    g_anchor = LockAnchor::None;
     uninstallMouseHook();
     ClipCursor(nullptr);
+#endif
+}
+
+bool MouseCenterLock::isActive() {
+#ifdef _WIN32
+    return g_refCount > 0;
+#else
+    return false;
+#endif
+}
+
+bool MouseCenterLock::isAnchoredToTargetWindow() {
+#ifdef _WIN32
+    return g_refCount > 0
+           && (g_anchor == LockAnchor::TargetWindowCenter || g_anchor == LockAnchor::TargetWindowOffset);
+#else
+    return false;
+#endif
+}
+
+void MouseCenterLock::refreshAnchoredPosition() {
+#ifdef _WIN32
+    refreshAnchoredLockPoint(false);
+#else
+    (void)0;
 #endif
 }

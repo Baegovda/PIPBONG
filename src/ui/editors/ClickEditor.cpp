@@ -699,9 +699,10 @@ void ClickEditor::setupUi() {
     featureRunLayout->setSpacing(6);
 
     m_lockMouseToScreenCenterCheck =
-        new QCheckBox(tr("기능이 켜져 있는 동안 마우스를 화면 중앙에 고정"), m_featureRunGroup);
+        new QCheckBox(tr("기능이 켜져 있는 동안 마우스를 대상 창 중앙에 고정"), m_featureRunGroup);
     m_lockMouseToScreenCenterCheck->setToolTip(
-        tr("이 기능이 실행되는 동안 실제 마우스 커서를 가상 화면 중앙에 고정합니다. "
+        tr("이 기능이 실행되는 동안 실제 마우스 커서를 대상 창 중앙에 고정합니다. "
+           "대상 창을 옮기면 고정 위치도 함께 따라갑니다. "
            "워크플로가 보내는 클릭 이동은 그대로 동작합니다."));
     featureRunLayout->addWidget(m_lockMouseToScreenCenterCheck);
 
@@ -709,6 +710,7 @@ void ClickEditor::setupUi() {
         new QCheckBox(tr("기능이 켜져 있는 동안 마우스 위치 잠금"), m_featureRunGroup);
     m_lockMouseToCurrentPositionCheck->setToolTip(
         tr("기능 시작 시점의 실제 마우스 위치에 커서를 고정합니다. "
+           "대상 창이 지정되어 있으면 창을 옮겨도 같은 상대 위치를 유지합니다. "
            "워크플로가 보내는 클릭 이동은 그대로 동작하지만, 사용자가 마우스를 움직일 수 없게 합니다."));
     featureRunLayout->addWidget(m_lockMouseToCurrentPositionCheck);
     connect(m_lockMouseToCurrentPositionCheck, &QCheckBox::toggled, this, [this](bool checked) {

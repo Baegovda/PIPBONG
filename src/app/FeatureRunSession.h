@@ -42,8 +42,11 @@ struct FeatureRunSession {
     bool lockMouseToScreenCenterDuringRun = false;
     bool lockMouseToCurrentPositionDuringRun = false;
     bool hasMouseLockPosition = false;
+    bool mouseLockAnchoredToTargetWindow = false;
     int mouseLockScreenX = 0;
     int mouseLockScreenY = 0;
+    int mouseLockWindowOffsetX = 0;
+    int mouseLockWindowOffsetY = 0;
     bool hasRunStartCursorPosition = false;
     int runStartCursorScreenX = 0;
     int runStartCursorScreenY = 0;

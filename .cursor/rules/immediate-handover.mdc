@@ -22,6 +22,7 @@ Do **not** defer handover to a follow-up chat or assume the user will ask “doc
 | Release / update / deploy scripts or URLs | §3.6 + changelog |
 | `gh`, CI, signing, hosting, credentials one-time setup | §3.6 (human steps + AI steps) |
 | User phrase → AI action (“백업해줘”, “릴리즈 해줘”) | §3.6 table |
+| **Version bump at task close** → backup + GitHub release | §3.6 mandatory table + `.cursor/rules/build-policy.mdc` |
 | New mandatory build preset or close-out policy | §3 + `.cursor/rules/build-policy.mdc` |
 | New subsystem / critical pattern (overlay, input, etc.) | §8 + dedicated `.cursor/rules/*.mdc` if always-applied |
 | New scripts in `scripts/` that agents must run | §3 or §4 path table |
@@ -32,7 +33,7 @@ Do **not** defer handover to a follow-up chat or assume the user will ask “doc
 2. **AGENTS.md** updated — not only §11 changelog: add or extend the **relevant section** (e.g. §3.6, §8.x).
 3. **`.cursor/rules`** — if the rule must be always-applied for every future agent, add or update an `alwaysApply: true` rule.
 4. **§13 Cursor Rules Summary** — one-line pointer if a new rule file was added.
-5. Version bump per [changelog-versioning.mdc](./changelog-versioning.mdc).
+5. Version bump per [changelog-versioning.mdc](./changelog-versioning.mdc), then **backup + release** per §3.6.
 
 If any trigger row applied and AGENTS.md section is still empty → **task is not done**.
 

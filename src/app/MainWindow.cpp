@@ -141,42 +141,6 @@ void restoreRunStartCursorPosition(const FeatureRunSession& session) {
     InputSimulator::moveMouse(session.runStartCursorScreenX, session.runStartCursorScreenY);
 }
 
-void captureFeatureMouseLockPosition(FeatureRunSession& session) {
-    session.hasMouseLockPosition = false;
-    if (!session.lockMouseToCurrentPositionDuringRun) {
-        return;
-    }
-
-    int screenX = 0;
-    int screenY = 0;
-    if (!InputSimulator::getCursorScreenPosition(screenX, screenY)) {
-        return;
-    }
-    session.mouseLockScreenX = screenX;
-    session.mouseLockScreenY = screenY;
-    session.hasMouseLockPosition = true;
-}
-
-bool hasFeatureMouseLock(const FeatureRunSession& session) {
-    return session.lockMouseToCurrentPositionDuringRun || session.lockMouseToScreenCenterDuringRun;
-}
-
-void engageFeatureMouseLock(FeatureRunSession& session) {
-    if (session.lockMouseToCurrentPositionDuringRun) {
-        if (!session.hasMouseLockPosition) {
-            captureFeatureMouseLockPosition(session);
-        }
-        if (session.hasMouseLockPosition) {
-            MouseCenterLock::engageAt(session.mouseLockScreenX, session.mouseLockScreenY);
-        }
-        return;
-    }
-
-    if (session.lockMouseToScreenCenterDuringRun) {
-        MouseCenterLock::engage();
-    }
-}
-
 QVector<WindowListEntry> collectWindowListEntries() {
     QVector<WindowListEntry> entries;
     EnumWindows(
@@ -242,6 +206,9 @@ MainWindow::MainWindow(QWidget* parent)
     setupMenus();
     connectSignals();
     setupUpdateChecker();
+    m_mouseLockSyncTimer = new QTimer(this);
+    m_mouseLockSyncTimer->setInterval(100);
+    connect(m_mouseLockSyncTimer, &QTimer::timeout, this, &MainWindow::syncMouseLockPositions);
     refreshUpdateButtonState();
     ProgramSettings::syncWindowsStartupRegistration();
     ProgramSettings::syncWindowsRunAsAdminRegistration();
@@ -582,6 +549,80 @@ void MainWindow::applyUpdateCheckInterval() {
     m_updateCheckTimer->start();
 }
 
+void MainWindow::captureFeatureMouseLockPosition(FeatureRunSession& session) {
+    session.hasMouseLockPosition = false;
+    session.mouseLockAnchoredToTargetWindow = false;
+    if (!session.lockMouseToCurrentPositionDuringRun) {
+        return;
+    }
+
+    int screenX = 0;
+    int screenY = 0;
+    if (!InputSimulator::getCursorScreenPosition(screenX, screenY)) {
+        return;
+    }
+
+#ifdef _WIN32
+    const ScreenCapture::ScreenRect target = ScreenCapture::getTargetWindowScreenRect();
+    if (target.valid) {
+        session.mouseLockWindowOffsetX = screenX - target.x;
+        session.mouseLockWindowOffsetY = screenY - target.y;
+        session.mouseLockAnchoredToTargetWindow = true;
+    } else
+#endif
+    {
+        session.mouseLockScreenX = screenX;
+        session.mouseLockScreenY = screenY;
+    }
+    session.hasMouseLockPosition = true;
+}
+
+bool MainWindow::hasFeatureMouseLock(const FeatureRunSession& session) {
+    return session.lockMouseToCurrentPositionDuringRun || session.lockMouseToScreenCenterDuringRun;
+}
+
+void MainWindow::engageFeatureMouseLock(FeatureRunSession& session) {
+    if (session.lockMouseToCurrentPositionDuringRun) {
+        if (!session.hasMouseLockPosition) {
+            captureFeatureMouseLockPosition(session);
+        }
+        if (!session.hasMouseLockPosition) {
+            return;
+        }
+        if (session.mouseLockAnchoredToTargetWindow) {
+            MouseCenterLock::engageAtTargetWindowOffset(session.mouseLockWindowOffsetX,
+                                                        session.mouseLockWindowOffsetY);
+        } else {
+            MouseCenterLock::engageAt(session.mouseLockScreenX, session.mouseLockScreenY);
+        }
+        scheduleMouseLockPositionSync();
+        return;
+    }
+
+    if (session.lockMouseToScreenCenterDuringRun) {
+        MouseCenterLock::engageTargetWindowCenter();
+        scheduleMouseLockPositionSync();
+    }
+}
+
+void MainWindow::scheduleMouseLockPositionSync() {
+    if (!m_mouseLockSyncTimer || !MouseCenterLock::isAnchoredToTargetWindow()) {
+        return;
+    }
+    if (!m_mouseLockSyncTimer->isActive()) {
+        m_mouseLockSyncTimer->start();
+    }
+}
+
+void MainWindow::syncMouseLockPositions() {
+    if (MouseCenterLock::isAnchoredToTargetWindow()) {
+        MouseCenterLock::refreshAnchoredPosition();
+    }
+    if (!MouseCenterLock::isActive() && m_mouseLockSyncTimer) {
+        m_mouseLockSyncTimer->stop();
+    }
+}
+
 void MainWindow::refreshUpdateButtonState() {
     if (!m_updateButton || !m_updateChecker) {
         return;
@@ -614,7 +655,13 @@ void MainWindow::onUpdateCheckFinished(bool success, bool updateAvailable, const
     if (!success && !updateAvailable && !errorMessage.isEmpty() && m_updateButton) {
         m_updateButton->setToolTip(errorMessage);
     }
-    if (success && updateAvailable && m_lastUpdateCheckWasSilent && ProgramSettings::autoInstallUpdates()) {
+    const bool wasSilentCheck = m_lastUpdateCheckWasSilent;
+    if (success && !updateAvailable && !wasSilentCheck) {
+        showTransientStatus(
+            tr("현재 최신 버전입니다. (v%1)").arg(QCoreApplication::applicationVersion()),
+            3000);
+    }
+    if (success && updateAvailable && wasSilentCheck && ProgramSettings::autoInstallUpdates()) {
         m_autoUpdateDeferred = true;
         maybeStartAutomaticUpdate();
     }
@@ -1370,7 +1417,14 @@ ImageFindBlock* firstImageFindWithEditableRoi(Workflow& workflow) {
             continue;
         }
         auto* imageFind = static_cast<ImageFindBlock*>(block.get());
-        if (!imageFind->hasTemplates() || imageFind->customRegions.empty()) {
+        if (!imageFind->hasTemplates()) {
+            continue;
+        }
+        if (imageFind->customRegionsAnchoredToTargetWindow) {
+            if (imageFind->customRegionsWindowPercent.empty()) {
+                continue;
+            }
+        } else if (imageFind->customRegions.empty()) {
             continue;
         }
         return imageFind;
@@ -1396,14 +1450,18 @@ bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Featur
     options.enabled = true;
     options.activeIndex = 0;
     options.onRoiEdited = [block](int index, const CaptureRegion& region) {
-        if (index < 0 || index >= static_cast<int>(block->customRegions.size())) {
+        if (index < 0) {
             return;
         }
-        block->customRegions[static_cast<size_t>(index)] = region;
+        block->customRegionsAnchoredToTargetWindow = true;
+        block->customRegions.clear();
+        block->customRegion = {};
         block->searchArea = SearchArea::CustomRegion;
-        if (!block->customRegions.empty()) {
-            block->customRegion = block->customRegions.front();
+        if (index >= static_cast<int>(block->customRegionsWindowPercent.size())) {
+            return;
         }
+        block->customRegionsWindowPercent[static_cast<size_t>(index)] =
+            ScreenCapture::storeWindowPercentFromPhysical(region);
     };
     options.onConfirm = [self, featureId, confirmed]() {
         if (!self) {
@@ -1430,11 +1488,36 @@ bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Featur
         }
     };
 
+    const std::vector<CaptureRegion> physicalRegions = [&]() {
+        std::vector<CaptureRegion> physical;
+        if (block->customRegionsAnchoredToTargetWindow) {
+            physical.reserve(block->customRegionsWindowPercent.size());
+            for (const PercentRegion& percent : block->customRegionsWindowPercent) {
+                if (percent.width <= 0.0 || percent.height <= 0.0) {
+                    continue;
+                }
+                physical.push_back(ScreenCapture::resolveWindowPercentRegion(percent));
+            }
+        } else {
+            physical.reserve(block->customRegions.size());
+            for (const CaptureRegion& region : block->customRegions) {
+                if (region.width < 2 || region.height < 2) {
+                    continue;
+                }
+                physical.push_back(region);
+            }
+        }
+        return physical;
+    }();
+    const CaptureRegion physicalLegacy = physicalRegions.empty()
+                                           ? CaptureRegion{}
+                                           : physicalRegions.front();
+
     const bool shown = RoiPreviewOverlay::show(
         block->searchArea,
-        block->customRegion,
+        physicalLegacy,
         block->percentRegion,
-        block->customRegions,
+        physicalRegions,
         this,
         [self, featureId, confirmed](bool visible) {
             if (visible || !self) {

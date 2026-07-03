@@ -1,5 +1,5 @@
 ---
-description: Incremental build at task close; dynamic DLL distribution when user asks
+description: Incremental build at task close; mandatory GitHub release on version bump
 alwaysApply: true
 ---
 
@@ -15,7 +15,7 @@ alwaysApply: true
 | Re-use existing `build/` — changed sources only recompile | `cmake --preset default` on every task |
 | Kill `PIPBONG.exe` before link (`LNK1104`) — `scripts/build-release.ps1` does this | Assume exe is fresh without a build |
 | Run `cmake --preset default` only when `build/` is missing, then `--build` | Full clean rebuild unless user asks |
-| Skip close-out build when the task changed **only** docs / `.cursor/rules` / changelog with **no** C++ or `CMakeLists.txt` sources | Run release packaging automatically |
+| Skip close-out build when the task changed **only** docs / `.cursor/rules` / changelog with **no** C++ or `CMakeLists.txt` sources | Run incremental build when code changed |
 
 **Command (preferred):** `.\scripts\build-release.ps1` from repo root (auto-configure if needed, kill exe, incremental `--build`).
 
@@ -27,12 +27,25 @@ Equivalent: `Stop-Process -Name PIPBONG -ErrorAction SilentlyContinue; cmake --b
 
 A `CMakeLists.txt` **version bump** reconfigures CMake and regenerates `PipbongVersion.h` — only `Application.cpp` and `UpdateChecker.cpp` recompile (not the whole target).
 
-## Distribution — user request only
+## Version bump close — mandatory backup + GitHub release
 
-| Do | Don't |
-|----|-------|
-| `.\scripts\package-release.ps1` — build, deploy Qt DLLs, stage `dist/PIPBONG/`, zip → `dist/PIPBONG-win64.zip` (root folder `PIPBONG/`) | Assume a single portable exe |
-| `.\scripts\create-github-release.ps1` — package + publish ZIP to **`Baegovda/PIPBONG`** | Run release packaging at ordinary task close |
+**Every version bump** (task close per AGENTS.md §10) **must** also:
+
+| Step | Command |
+|------|---------|
+| Backup | `git add` (tracked files; not `build/`) → `git commit` → `git push origin main` on **`Baegovda/PIPBONG`** |
+| Release | `.\scripts\create-github-release.ps1` — runs `package-release.ps1`, uploads `dist/PIPBONG-win64.zip`, tag `vX.Y.Z`, deletes older releases |
+
+Prerequisites: `gh auth login` once. Full procedure: [AGENTS.md §3.6](../../AGENTS.md#36-github-backup-and-release).
+
+**Do not** finish a version-bump task with only local commits or without publishing the matching GitHub Release.
+
+## Distribution packaging
+
+| Script | When |
+|--------|------|
+| `.\scripts\package-release.ps1` | Called by `create-github-release.ps1`; ad-hoc local ZIP only if needed |
+| `.\scripts\create-github-release.ps1` | **Mandatory** at every version-bump task close |
 
 Ship the **ZIP** (exe + `PIPBONGUpdater.exe` + Qt/OpenCV DLLs). Users extract and run `PIPBONG.exe` from the folder.
 

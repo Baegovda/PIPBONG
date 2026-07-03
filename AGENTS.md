@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.73` (from `project(PIPBONG VERSION 0.7.73)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.77` (from `project(PIPBONG VERSION 0.7.77)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -123,11 +123,12 @@ Equivalent: `cmake --build build --config Release --target deploy-qt`
 | Mid-implementation (unless compile check needed) | **No** | — |
 | User explicitly asks mid-task (e.g. “빌드해줘”) | **Yes** | same incremental command |
 | `build/` missing at close | Configure once, then build | `cmake --preset default` then `--build` |
-| Distribution / GitHub release requested | Package ZIP | `scripts/package-release.ps1` or `scripts/create-github-release.ps1` |
+| **Version bump at task close** | **Yes** — backup + GitHub release (mandatory) | `git commit` / `git push` then `scripts/create-github-release.ps1` — see [§3.6](#36-github-backup-and-release) |
+| Ad-hoc distribution only (no version bump) | Package ZIP | `scripts/package-release.ps1` |
 
 Before link, kill a running `PIPBONG.exe` only when a build is actually run (`LNK1104`).
 
-### Distribution — dynamic DLL ZIP (user request only)
+### Distribution — dynamic DLL ZIP
 
 Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static executable.
 
@@ -139,7 +140,7 @@ Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static e
 
 **Local staging folder:** `dist/PIPBONG/` (same layout as inside the ZIP).
 
-**GitHub release:** `.\scripts\create-github-release.ps1` publishes the ZIP to **`Baegovda/PIPBONG`** (same repo as source), then **deletes all older releases** on that repo so only the latest remains visible. In-app **파일 → 업데이트** downloads `PIPBONG-win64.zip` from that repo and installs via `PIPBONGUpdater.exe --install-zip`. See [§3.6](#36-github-backup-and-release).
+**GitHub release (mandatory on every version bump):** After each task-close version bump, run **`.\scripts\create-github-release.ps1`** (packages + publishes ZIP to **`Baegovda/PIPBONG`**, deletes older releases). Prerequisite: commit and push source first — see [§3.6](#36-github-backup-and-release). In-app **파일 → 업데이트** downloads `PIPBONG-win64.zip` from that repo.
 
 ### Run
 
@@ -209,17 +210,32 @@ Cursor rule: `.cursor/rules/ide-build-workflow.mdc` (always applied).
 
 **Single repository:** **`Baegovda/PIPBONG`** — source code, git history, and GitHub Releases (ZIP) all live here. Legacy **`Baegovda/PIPBONG-releases`** is obsolete; delete it once (see below).
 
+#### Mandatory on every version bump (task close)
+
+Whenever an AI task closes with a **version bump** (`CMakeLists.txt` `project(PIPBONG VERSION …)` incremented per [§10](#10-versioning-policy)), **always** run backup **and** release in the same task — do not wait for the user to ask.
+
+| Step | Action |
+|------|--------|
+| 1 | Finish code/docs, changelog, and version bump ([§10](#10-versioning-policy)) |
+| 2 | Incremental Release build when C++/headers/`CMakeLists.txt` changed (`scripts/build-release.ps1` or `cmake --build build --config Release`); skip for docs/rules-only |
+| 3 | **Backup:** `git add` (tracked sources only — not `build/`), `git commit`, `git push origin main` on **`Baegovda/PIPBONG`** |
+| 4 | **Release:** `.\scripts\create-github-release.ps1` (runs `package-release.ps1`, uploads `dist/PIPBONG-win64.zip`, tag `vX.Y.Z`, deletes older releases) |
+
+**Prerequisites:** [GitHub CLI](https://cli.github.com/) (`gh auth login` once). Remote: `https://github.com/Baegovda/PIPBONG.git`.
+
+**Do not** finish a version-bump task with only local commits or only `[Unreleased]` changelog — push and publish the matching GitHub Release every time.
+
+#### Ad-hoc (user phrase — same commands)
+
 | User says (Korean) | AI action |
 |--------------------|-----------|
 | **백업해줘** | `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** |
 | **릴리즈 해줘** | `scripts/create-github-release.ps1` only (package + publish) |
-| **백업하고 릴리즈까지 해줘** | Commit + push + `create-github-release.ps1` |
+| **백업하고 릴리즈까지 해줘** | Commit + push + `create-github-release.ps1` (same as mandatory version-bump close) |
 
 **Release script:** `scripts/create-github-release.ps1` reads version from `CMakeLists.txt`, runs `package-release.ps1`, uploads `dist/PIPBONG-win64.zip` to **`Baegovda/PIPBONG`** Releases, then deletes older releases (latest only visible).
 
 **In-app update:** `PipbongVersion.h.in` → `PIPBONG_UPDATE_GITHUB_REPO` = `Baegovda/PIPBONG`; asset `PIPBONG-win64.zip` (`UpdateChecker.cpp`).
-
-**Prerequisites:** [GitHub CLI](https://cli.github.com/) (`gh auth login` once). Remote: `https://github.com/Baegovda/PIPBONG.git`.
 
 **Delete legacy `PIPBONG-releases` repo (one-time):** requires `delete_repo` scope — `gh auth refresh -h github.com -s delete_repo`, then `gh repo delete Baegovda/PIPBONG-releases --yes`. Or delete from GitHub **Settings → Danger zone** on that repo.
 
@@ -429,7 +445,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `userInputInterrupt` | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run. Legacy `"None"` loads as `"Stop"`. Excludes mouse movement, injected input, and the feature's own hotkey |
 | `pointerVisualFeedback` | `true` (omitted) | When `false`, disables target-window click/match pulse overlay for this feature during runs |
 | `restoreMousePositionOnEnd` | `false` (omitted) | When `true`, moves the mouse cursor back to its screen position when the workflow session started |
-| `lockMouseToScreenCenterDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to the virtual-screen center for the feature run session (configured in mouse block editor) |
+| `lockMouseToScreenCenterDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to the target window center (DWM bounds) for the feature run session; follows window moves (`MouseCenterLock`, mouse block editor) |
 | `lockMouseToCurrentPositionDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to its feature-start screen position for the run session (configured in mouse block editor; mutually exclusive with center lock in UI) |
 | `roiCorrection` | `false` (omitted) | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
 | `editFirstTemplateRoiOnStart` | `false` (omitted) | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run |
@@ -450,7 +466,8 @@ Sbm1.0/                        # repo root (local workspace)
 | `pollIntervalMs` | `200` | Delay between retries when no match (5–60000 ms, 5 ms step); block polls until success or workflow stop |
 | `searchArea` | `"TargetWindow"` | `FullScreen`, `TargetWindow`, `CustomRegion`, `ScreenPercent` |
 | `customRegion` | `{x,y,width,height}` | Legacy single ROI; first entry mirror when `customRegions` is set |
-| `customRegions` | `[{x,y,width,height}, …]` | Optional multiple screen-pixel ROIs when `CustomRegion`; tried in list order |
+| `customRegions` | `[{x,y,width,height}, …]` | Absolute screen-pixel ROIs when `customRegionsAnchoredToTargetWindow` is false |
+| `customRegionsAnchoredToTargetWindow` | `false` (omitted) | When `true`, `customRegions` JSON holds **window-relative percent** (0–100 of target DWM bounds); resolved at capture time so ROI follows window move and resize |
 | `percentRegion` | `{x,y,width,height}` | 0–100 % of virtual desktop when `ScreenPercent` |
 | `multiScale` | `false` | Written as `true` when enabled |
 | `minScale` / `maxScale` | `0.9` / `1.1` | Written only when non-default |
@@ -760,7 +777,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 ### After every completed task
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
-2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave an empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip for docs/rules-only. Release ZIP (`package-release.ps1`) **only when the user explicitly requests** distribution. **Never** leave shipped work only under `[Unreleased]` with an unchanged version.
+2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release): `git commit` / `git push origin main` and `scripts/create-github-release.ps1`. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
 3. Keep diffs minimal; match existing C++ / Qt conventions.
 4. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
 5. **Do not regress IDE build workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files and `cmake.enabled: false`; never replace F5 with CMake Tools configure-on-open.
@@ -789,9 +806,11 @@ When the user’s request is **done** (code merged, changelog written, version b
 | 2 | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history) |
 | 3 | Leave empty `[Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` headers only, or blank) |
 | 4 | Update **Current version** at the top of this file |
-| 5 | **Incremental build at task close** when compile inputs changed — `cmake --build build --config Release` (or `scripts/build-release.ps1`; `--preset default` only if `build/` missing). Skip docs/rules-only. Release ZIP only if user asked for distribution. |
+| 5 | **Incremental build at task close** when compile inputs changed — `cmake --build build --config Release` (or `scripts/build-release.ps1`; `--preset default` only if `build/` missing). Skip docs/rules-only. |
+| 6 | **Backup:** `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** ([§3.6](#36-github-backup-and-release)) |
+| 7 | **Release:** `.\scripts\create-github-release.ps1` (package + publish `vX.Y.Z` ZIP) — **mandatory on every version bump** |
 
-**Do not** accumulate many tasks under `[Unreleased]` without bumping. **Do not** finish a chat task with changelog entries still unreleased and the same version number.
+**Do not** accumulate many tasks under `[Unreleased]` without bumping. **Do not** finish a chat task with changelog entries still unreleased and the same version number. **Do not** bump version without push + GitHub Release in the same task.
 
 ### Which segment to increment
 
@@ -808,7 +827,8 @@ When in doubt, **patch bump**.
 1. Update `project(PIPBONG VERSION ...)` in `CMakeLists.txt`.
 2. Move `[Unreleased]` items into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history).
 3. Leave empty `[Unreleased]` section.
-4. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `cmake --build build --config Release` (kill running exe before link). Skip docs/rules-only. Release ZIP (`package-release.ps1`) only when the user requests distribution.
+4. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `cmake --build build --config Release` (kill running exe before link). Skip docs/rules-only.
+5. **Backup + release** (mandatory): `git commit` / `git push origin main`, then `scripts/create-github-release.ps1` ([§3.6](#36-github-backup-and-release)).
 
 ### Changelog format
 
@@ -829,6 +849,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.77] - 2026-07-04
+
+### Changed
+
+- Agent policy: **every version bump at task close** must include GitHub **backup** (`git push origin main`) and **release** (`scripts/create-github-release.ps1`); documented in AGENTS.md §3.6, §9, §10 and `.cursor/rules/changelog-versioning.mdc`, `build-policy.mdc`, `ai-governance.mdc`, `immediate-handover.mdc`.
+
+## [0.7.76] - 2026-07-04
+
+### Changed
+
+- Anchored ImageFind ROI storage switched from window pixel offset to **window-relative percent** (0–100 of target DWM bounds) so ROI follows both window move and resize (`ScreenCapture::resolveWindowPercentRegion`, `ImageFindBlock::customRegionsWindowPercent`, `ImageFindEditor`); legacy anchored pixel-offset JSON auto-migrates on load.
+
+## [0.7.75] - 2026-07-03
+
+### Changed
+
+- Feature **대상 창 중앙 마우스 고정** and **마우스 위치 잠금** now anchor to the target window and refresh while the window moves (`MouseCenterLock`, `MainWindow`, `FeatureRunSession`).
+- ImageFind **탐색 ROI** picked or edited with a configured target window is stored relative to that window (`customRegionsAnchoredToTargetWindow` JSON, `ScreenCapture`, `ImageFindBlock`, `ImageFindEditor`); workflow capture, ROI flash overlay, and match test resolve to physical pixels each poll.
+- Mouse block editor labels/tooltips: **화면 중앙** → **대상 창 중앙** (`ClickEditor`).
+
+## [0.7.74] - 2026-07-03
+
+### Changed
+
+- Interactive update check **현재 최신 버전입니다** feedback is now a 3 s title-bar transient status instead of a modal OK dialog (`UpdateChecker`, `MainWindow::onUpdateCheckFinished`).
 
 ## [0.7.73] - 2026-07-03
 
@@ -2601,7 +2647,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 ### `build-policy.mdc`
 
 - **Task close:** incremental `cmake --build build --config Release` when C++/headers/`CMakeLists.txt` changed (changed `.cpp` only); skip docs/rules-only.
-- **Distribution:** `package-release.ps1` → `dist/PIPBONG-win64.zip` **only when the user explicitly asks**.
+- **Version bump close:** mandatory `git push` + `create-github-release.ps1` ([§3.6](#36-github-backup-and-release)).
 - Full policy in [§3](#3-build-and-run). **IDE/F5 path:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) + `ide-build-workflow.mdc`.
 
 ### `ide-build-workflow.mdc`
@@ -2612,4 +2658,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-03. Current application version: 0.7.73.*
+*Last consolidated: 2026-07-04. Current application version: 0.7.77.*

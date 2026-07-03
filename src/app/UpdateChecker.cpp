@@ -170,10 +170,6 @@ void UpdateChecker::finishCheck(bool success,
     }
 
     if (!updateAvailable) {
-        QMessageBox::information(
-            m_parentWidget,
-            tr("업데이트"),
-            tr("현재 최신 버전입니다. (v%1)").arg(QCoreApplication::applicationVersion()));
         return;
     }
 
