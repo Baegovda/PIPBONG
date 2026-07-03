@@ -10,6 +10,7 @@
 #include <opencv2/core.hpp>
 #include <string>
 #include <unordered_map>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -67,6 +68,11 @@ public:
     bool imageFindDeferRetryUsed(int blockIndex) const;
     void markImageFindDeferRetryUsed(int blockIndex);
     void clearImageFindDeferRetryUsed(int blockIndex);
+
+    void incrementImageFindReturnToPreviousCount(int blockIndex);
+    void incrementImageFindRetryAfterNextCount(int blockIndex);
+    int imageFindReturnToPreviousCount(int blockIndex) const;
+    int imageFindRetryAfterNextCount(int blockIndex) const;
 
     static constexpr int kMaxWorkflowNestingDepth = 8;
 
@@ -152,6 +158,8 @@ private:
     int m_imageFindPollAttempt = 0;
     bool m_detectionFailedThisRun = false;
     std::unordered_set<int> m_imageFindDeferRetryUsedBlockIndexes;
+    std::unordered_map<int, int> m_imageFindReturnToPreviousCounts;
+    std::unordered_map<int, int> m_imageFindRetryAfterNextCounts;
     int m_nestingDepth = 0;
     bool m_hasLastMatch = false;
     cv::Point m_lastMatchPoint;

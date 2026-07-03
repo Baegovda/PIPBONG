@@ -2,6 +2,7 @@
 
 #include "app/Application.h"
 #include "app/ProgramSettings.h"
+#include "app/WindowsRunAsAdmin.h"
 #include "app/UserInputInterruptMonitor.h"
 #include "ui/calculator/CalculatorDialog.h"
 #include "ui/ProgramSettingsDialog.h"
@@ -36,6 +37,7 @@
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QAbstractItemView>
+#include <QApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QEventLoop>
@@ -56,6 +58,8 @@
 #include <QSizePolicy>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QSystemTrayIcon>
+#include <QMenu>
 #include <QPointer>
 #include <QTimer>
 #include <QVector>
@@ -161,6 +165,9 @@ MainWindow::MainWindow(QWidget* parent)
     connectSignals();
     setupUpdateChecker();
     refreshUpdateButtonState();
+    ProgramSettings::syncWindowsStartupRegistration();
+    ProgramSettings::syncWindowsRunAsAdminRegistration();
+    setupTrayIcon();
 
     const QString autoSavePath = Application::autoSaveFilePath();
     if (QFileInfo::exists(autoSavePath)) {
@@ -400,6 +407,77 @@ void MainWindow::connectSignals() {
 }
 
 void MainWindow::onExitRequested() {
+    requestApplicationQuit();
+}
+
+void MainWindow::setupTrayIcon() {
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        return;
+    }
+
+    m_trayIcon = new QSystemTrayIcon(windowIcon(), this);
+    m_trayIcon->setToolTip(tr("PIPBONG"));
+
+    m_trayMenu = new QMenu(this);
+    m_trayMenu->addAction(tr("열기"), this, &MainWindow::showFromTray);
+    m_trayMenu->addSeparator();
+    m_trayMenu->addAction(tr("종료"), this, &MainWindow::requestApplicationQuit);
+    m_trayIcon->setContextMenu(m_trayMenu);
+
+    connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+            showFromTray();
+        }
+    });
+
+    applyCloseToTrayPolicy();
+}
+
+void MainWindow::applyCloseToTrayPolicy() {
+    const bool closeToTray =
+        ProgramSettings::closeToTray() && QSystemTrayIcon::isSystemTrayAvailable();
+    QApplication::setQuitOnLastWindowClosed(!closeToTray);
+    if (m_trayIcon) {
+        m_trayIcon->setVisible(closeToTray);
+    }
+}
+
+void MainWindow::hideToTray() {
+    if (m_calculatorDialog) {
+        m_calculatorDialog->hide();
+    }
+    hide();
+    if (!m_trayIcon) {
+        return;
+    }
+    m_trayIcon->show();
+    if (!m_trayMinimizeNotified) {
+        m_trayIcon->showMessage(tr("PIPBONG"),
+                                tr("알림 영역에서 계속 실행 중입니다."),
+                                QSystemTrayIcon::Information,
+                                3000);
+        m_trayMinimizeNotified = true;
+    }
+}
+
+void MainWindow::showFromTray() {
+    showNormal();
+    raise();
+    activateWindow();
+}
+
+void MainWindow::requestApplicationQuit() {
+    if (hasAnyRunningSession()) {
+        const auto reply = QMessageBox::question(this,
+                                                 tr("종료"),
+                                                 tr("워크플로가 실행 중입니다. 종료하시겠습니까?"),
+                                                 QMessageBox::Yes | QMessageBox::No,
+                                                 QMessageBox::No);
+        if (reply != QMessageBox::Yes) {
+            return;
+        }
+    }
+    m_forceQuit = true;
     close();
 }
 
@@ -489,7 +567,32 @@ void MainWindow::onCheckForUpdates() {
 
 void MainWindow::onProgramSettings() {
     ProgramSettingsDialog dialog(this);
-    dialog.exec();
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    applyCloseToTrayPolicy();
+
+    if (ProgramSettings::runAsAdministrator() && !WindowsRunAsAdmin::isProcessElevated()) {
+        const auto reply = QMessageBox::question(
+            this,
+            tr("관리자 권한"),
+            tr("관리자 권한으로 실행하려면 PIPBONG을 다시 시작해야 합니다.\n"
+               "지금 관리자 권한으로 다시 시작하시겠습니까?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::Yes);
+        if (reply != QMessageBox::Yes) {
+            return;
+        }
+        if (!WindowsRunAsAdmin::relaunchElevated()) {
+            QMessageBox::warning(this,
+                                 tr("관리자 권한"),
+                                 tr("관리자 권한으로 다시 시작하지 못했습니다."));
+            return;
+        }
+        m_forceQuit = true;
+        prepareForShutdown();
+        QApplication::quit();
+    }
 }
 
 void MainWindow::onCalculator() {
@@ -690,7 +793,13 @@ void MainWindow::prepareForShutdown() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
-    if (hasAnyRunningSession()) {
+    if (!m_forceQuit && ProgramSettings::closeToTray() && QSystemTrayIcon::isSystemTrayAvailable()) {
+        hideToTray();
+        event->ignore();
+        return;
+    }
+
+    if (!m_forceQuit && hasAnyRunningSession()) {
         const auto reply = QMessageBox::question(
             this,
             tr("종료"),
@@ -701,6 +810,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
             event->ignore();
             return;
         }
+        m_forceQuit = true;
     }
 
     prepareForShutdown();
@@ -844,8 +954,6 @@ void MainWindow::refreshWorkflowEditor() {
                 m_workflowEditor->setActiveBlockIndex(session->runningBlockIndex, session->runningBlockHighlight);
             }
             syncLoopTimingToWorkflowEditor(session);
-        } else {
-            m_workflowEditor->clearLoopTiming();
         }
     } else {
         m_workflowEditor->clearLoopTiming();
@@ -939,6 +1047,8 @@ void MainWindow::connectSessionEngine(FeatureRunSession& session) {
     connect(engine, &WorkflowEngine::blockProgress, this, &MainWindow::onBlockProgress);
     connect(engine, &WorkflowEngine::blockMatchResult, this, &MainWindow::onBlockMatchResult);
     connect(engine, &WorkflowEngine::blockImageFindAttempt, this, &MainWindow::onBlockImageFindAttempt);
+    connect(engine, &WorkflowEngine::imageFindFailureHandling, this,
+            &MainWindow::onImageFindFailureHandling);
     connect(engine, &WorkflowEngine::pointerFeedbackAtClientPoint, this,
             &MainWindow::onPointerFeedbackAtClientPoint);
 }
@@ -1275,6 +1385,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         session.lastLoopAverageMs = 0;
         if (isDisplayedRunningFeature(&session)) {
             syncLoopTimingToWorkflowEditor(&session);
+            m_workflowEditor->clearBlockMatchResults();
+            m_workflowEditor->clearExecutionHighlight();
+            m_workflowEditor->persistRunFeedbackForCurrentFeature();
         }
 
         if (shouldLogRunDetails(session)) {
@@ -1283,10 +1396,6 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         updateRunUiState();
         session.runningBlockIndex = -1;
         session.runningBlockHighlight = BlockListWidget::ExecutionHighlight::None;
-        if (isDisplayedRunningFeature(&session)) {
-            m_workflowEditor->clearBlockMatchResults();
-            m_workflowEditor->clearExecutionHighlight();
-        }
     } else {
         ++session.sessionIteration;
     }
@@ -1387,7 +1496,7 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
     FeatureRunSession* session = sessionFor(featureId);
     if (session && isDisplayedRunningFeature(session)) {
         m_workflowEditor->clearExecutionHighlight();
-        m_workflowEditor->clearLoopTiming();
+        m_workflowEditor->persistRunFeedbackForCurrentFeature();
     }
 
     if (session) {
@@ -1824,6 +1933,17 @@ void MainWindow::onBlockImageFindAttempt(int index,
     if (!matched) {
         m_workflowEditor->setBlockMatchResult(index, matchThreshold, detectedConfidence, QPixmap(), false);
     }
+}
+
+void MainWindow::onImageFindFailureHandling(int index,
+                                            int returnToPreviousCount,
+                                            int retryAfterNextCount) {
+    FeatureRunSession* session = sessionForEngine(sender());
+    if (!session || !isDisplayedRunningFeature(session)) {
+        return;
+    }
+    m_workflowEditor->setBlockImageFindFailureHandlingCounts(
+        index, returnToPreviousCount, retryAfterNextCount);
 }
 
 void MainWindow::appendLog(const QString& message) {

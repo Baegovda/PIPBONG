@@ -574,6 +574,14 @@ void WorkflowEditorPanel::clearCurrentRunFeedbackVectors() {
     m_rowBlockDurations.clear();
     m_rowImageFindMatchDurations.clear();
     m_rowImageFindAttemptCounts.clear();
+    m_rowImageFindReturnCounts.clear();
+    m_rowImageFindRetryCounts.clear();
+}
+
+void WorkflowEditorPanel::persistRunFeedbackForCurrentFeature() {
+    if (m_feature) {
+        saveRunFeedbackForFeature(m_feature->id());
+    }
 }
 
 void WorkflowEditorPanel::saveRunFeedbackForFeature(const std::string& featureId) {
@@ -589,6 +597,8 @@ void WorkflowEditorPanel::saveRunFeedbackForFeature(const std::string& featureId
     feedback.rowBlockDurations = m_rowBlockDurations;
     feedback.rowImageFindMatchDurations = m_rowImageFindMatchDurations;
     feedback.rowImageFindAttemptCounts = m_rowImageFindAttemptCounts;
+    feedback.rowImageFindReturnCounts = m_rowImageFindReturnCounts;
+    feedback.rowImageFindRetryCounts = m_rowImageFindRetryCounts;
     feedback.activeBlockIndex = m_activeBlockIndex;
     feedback.executionHighlight = m_executionHighlight;
     feedback.hasLoopTiming = m_hasLoopTiming;
@@ -624,6 +634,8 @@ void WorkflowEditorPanel::restoreRunFeedbackForFeature(const std::string& featur
     m_rowBlockDurations = feedback.rowBlockDurations;
     m_rowImageFindMatchDurations = feedback.rowImageFindMatchDurations;
     m_rowImageFindAttemptCounts = feedback.rowImageFindAttemptCounts;
+    m_rowImageFindReturnCounts = feedback.rowImageFindReturnCounts;
+    m_rowImageFindRetryCounts = feedback.rowImageFindRetryCounts;
     m_activeBlockIndex = feedback.activeBlockIndex;
     m_executionHighlight = feedback.executionHighlight;
     if (feedback.hasLoopTiming) {
@@ -744,6 +756,24 @@ void WorkflowEditorPanel::setBlockImageFindAttemptCount(int blockIndex, int atte
     }
     m_rowImageFindAttemptCounts[blockIndex] = attemptCount;
     m_blockList->setBlockImageFindAttemptCount(blockIndex, attemptCount);
+}
+
+void WorkflowEditorPanel::setBlockImageFindFailureHandlingCounts(int blockIndex,
+                                                               int returnToPreviousCount,
+                                                               int retryAfterNextCount) {
+    if (blockIndex < 0) {
+        return;
+    }
+    if (blockIndex >= m_rowImageFindReturnCounts.size()) {
+        m_rowImageFindReturnCounts.resize(blockIndex + 1, -1);
+    }
+    if (blockIndex >= m_rowImageFindRetryCounts.size()) {
+        m_rowImageFindRetryCounts.resize(blockIndex + 1, -1);
+    }
+    m_rowImageFindReturnCounts[blockIndex] = returnToPreviousCount;
+    m_rowImageFindRetryCounts[blockIndex] = retryAfterNextCount;
+    m_blockList->setBlockImageFindFailureHandlingCounts(
+        blockIndex, returnToPreviousCount, retryAfterNextCount);
 }
 
 void WorkflowEditorPanel::setFeature(Feature* feature) {
@@ -885,6 +915,14 @@ void WorkflowEditorPanel::refresh() {
         }
         if (i < m_rowImageFindAttemptCounts.size() && m_rowImageFindAttemptCounts[i] > 0) {
             m_blockList->setBlockImageFindAttemptCount(i, m_rowImageFindAttemptCounts[i]);
+        }
+        const int returnCount =
+            i < m_rowImageFindReturnCounts.size() ? m_rowImageFindReturnCounts[i] : -1;
+        const int retryCount =
+            i < m_rowImageFindRetryCounts.size() ? m_rowImageFindRetryCounts[i] : -1;
+        if (returnCount > 0 || retryCount > 0) {
+            m_blockList->setBlockImageFindFailureHandlingCounts(
+                i, qMax(0, returnCount), qMax(0, retryCount));
         }
     }
     if (m_activeBlockIndex >= 0 && m_activeBlockIndex < static_cast<int>(blocks.size())) {

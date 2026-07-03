@@ -2,6 +2,7 @@
 
 #include <QChar>
 #include <QRegularExpression>
+#include <QSet>
 
 #include <cctype>
 #include <cmath>
@@ -233,6 +234,30 @@ QString FormulaEvaluator::formatCellRange(int minRow, int minCol, int maxRow, in
         return topLeft;
     }
     return topLeft + QStringLiteral(":") + cellReference(maxRow, maxCol);
+}
+
+QList<QPair<int, int>> FormulaEvaluator::collectCellReferences(const QString& expression) {
+    static const QRegularExpression refPattern(QStringLiteral(R"(\b([A-Z]+)([0-9]+)\b)"));
+    QList<QPair<int, int>> references;
+    QSet<QString> seen;
+
+    QRegularExpressionMatchIterator iterator = refPattern.globalMatch(expression.toUpper());
+    while (iterator.hasNext()) {
+        const QRegularExpressionMatch match = iterator.next();
+        const QString ref = match.captured(0);
+        if (seen.contains(ref)) {
+            continue;
+        }
+        int row = 0;
+        int col = 0;
+        if (!cellAddressFromReference(ref, row, col)) {
+            continue;
+        }
+        seen.insert(ref);
+        references.append({row, col});
+    }
+
+    return references;
 }
 
 QString FormulaEvaluator::shiftFormulaReferences(const QString& formula, int deltaRow, int deltaCol) {

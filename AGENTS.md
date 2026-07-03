@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.41` (from `project(PIPBONG VERSION 0.7.41)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.47` (from `project(PIPBONG VERSION 0.7.47)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -337,7 +337,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Templates | `{projectDirectory}/templates/*.png` |
 | Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
 | Debounce | 800 ms after edits; also on window close |
-| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); `program/pointerFeedback/click/*` for click pointer animation; bottom **설정** button opens program settings dialog |
+| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); `program/launchAtWindowsStartup` (default `false`, Windows Run key via `WindowsLaunchAtStartup`); `program/closeToTray` (default `false`, hide to notification area on window close); `program/runAsAdministrator` (default `false`, Windows `RUNASADMIN` compatibility flag via `WindowsRunAsAdmin`); `program/pointerFeedback/click/*` for click pointer animation; bottom **설정** button opens program settings dialog |
 | Calculator sheet | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry` |
 
 ### 5.8 poe.ninja economy calculator
@@ -824,6 +824,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.47] - 2026-07-03
+
+### Changed
+
+- Workflow panel title keeps the last loop duration and session average after a run stops; values persist when switching features and clear only when a new run starts (`MainWindow`, `WorkflowEditorPanel`).
+
+## [0.7.46] - 2026-07-03
+
+### Added
+
+- Program settings: **항상 관리자 권한으로 실행** sets Windows `RUNASADMIN` compatibility for the current `PIPBONG.exe` path; optional immediate elevated relaunch after enabling (`WindowsRunAsAdmin`, `ProgramSettings`, `ProgramSettingsDialog`, `MainWindow`).
+
+## [0.7.45] - 2026-07-03
+
+### Added
+
+- Program settings: **Windows 시작 시 PIPBONG 자동 실행** registers the app in the current-user Windows Run key (`ProgramSettings`, `WindowsLaunchAtStartup`, `ProgramSettingsDialog`).
+- Program settings: **닫기 시 트레이로 최소화** keeps PIPBONG running in the notification area when the window is closed (X); tray menu **열기** / **종료**; bottom **종료** and **파일 → 종료** still fully quit (`MainWindow`, `ProgramSettings`).
+
+## [0.7.44] - 2026-07-03
+
+### Added
+
+- Workflow block list: **이전 복귀** and **재시도** columns show per-run activation counts for ImageFind **매칭 실패 시 바로 이전 템플릿 매칭 블록으로 돌아감** and **바로 다음 동작 후 다시 감지 시도** options; counts persist when switching features during a run (`ExecutionContext`, `WorkflowRunner`, `BlockListWidget`, `WorkflowEditorPanel`, `MainWindow`).
+
+## [0.7.43] - 2026-07-02
+
+### Fixed
+
+- Calculator **수식 만들기** no longer crashes on open: operand rows are created only after the preview widgets exist, and `rebuildFormulaPreview` guards against uninitialized controls (`FormulaBuilderDialog`).
+
+## [0.7.42] - 2026-07-02
+
+### Added
+
+- Calculator spreadsheet: selecting a formula cell now highlights referenced input cells with a gentle pulsing overlay so dependencies are visible at a glance (`CalculatorDialog`, `FormulaEvaluator`, `SpreadsheetCellDelegate`).
 
 ## [0.7.41] - 2026-07-02
 
@@ -2408,4 +2445,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-02. Current application version: 0.7.41.*
+*Last consolidated: 2026-07-03. Current application version: 0.7.47.*

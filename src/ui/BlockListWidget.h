@@ -67,7 +67,7 @@ public:
     explicit BlockListWidget(QWidget* parent = nullptr);
 
     static constexpr int PreviewColumn = 1;
-    static constexpr int LastDataColumn = 9;
+    static constexpr int LastDataColumn = 11;
 
     void setRoiCorrectionColumnVisible(bool visible);
 
@@ -100,6 +100,9 @@ public:
     void setBlockImageFindMatchDuration(int row, qint64 matchDurationMs);
 
     void setBlockImageFindAttemptCount(int row, int attemptCount);
+    void setBlockImageFindFailureHandlingCounts(int row,
+                                                int returnToPreviousCount,
+                                                int retryAfterNextCount);
 
     void clearBlockMatchResults();
 
@@ -300,6 +303,8 @@ private:
     QVector<double> m_rowImageFindThresholds;
 
     QVector<int> m_rowImageFindAttemptCounts;
+    QVector<int> m_rowImageFindReturnCounts;
+    QVector<int> m_rowImageFindRetryCounts;
 
     DragAdjustSpinMouseState m_thresholdDragMouse;
 

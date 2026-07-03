@@ -17,6 +17,9 @@ private:
     void onOpenClickFeedbackSettings();
 
     QCheckBox* m_autoSelectRunningFeatureCheck = nullptr;
+    QCheckBox* m_launchAtWindowsStartupCheck = nullptr;
+    QCheckBox* m_closeToTrayCheck = nullptr;
+    QCheckBox* m_runAsAdministratorCheck = nullptr;
     QLabel* m_clickFeedbackSummary = nullptr;
     QPushButton* m_clickFeedbackButton = nullptr;
 };

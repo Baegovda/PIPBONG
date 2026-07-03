@@ -124,6 +124,12 @@ protected:
                 emit m_engine->blockImageFindAttempt(
                     blockIndex, attemptCount, matchThreshold, detectedConfidence, matched);
             };
+            hooks.onImageFindFailureHandling = [this](int blockIndex,
+                                                       int returnToPreviousCount,
+                                                       int retryAfterNextCount) {
+                emit m_engine->imageFindFailureHandling(
+                    blockIndex, returnToPreviousCount, retryAfterNextCount);
+            };
             hooks.onBlockProgress = [this](int i, BlockProgressKind kind) {
                 emit m_engine->blockProgress(i, kind);
             };

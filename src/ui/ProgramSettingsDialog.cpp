@@ -2,6 +2,7 @@
 
 #include "app/PointerFeedbackSettings.h"
 #include "app/ProgramSettings.h"
+#include "app/WindowsRunAsAdmin.h"
 #include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/UiStrings.h"
 #include "ui/widgets/HintLabel.h"
@@ -18,7 +19,7 @@ ProgramSettingsDialog::ProgramSettingsDialog(QWidget* parent)
     : QDialog(parent) {
     setWindowTitle(tr("프로그램 설정"));
     setModal(true);
-    resize(460, 220);
+    resize(460, 340);
     setupUi();
 }
 
@@ -35,6 +36,33 @@ void ProgramSettingsDialog::setupUi() {
     m_autoSelectRunningFeatureCheck->setToolTip(
         tr("단축키나 실행 메뉴로 기능이 시작되면 워크플로우 패널에 그 기능을 표시합니다."));
     layout->addWidget(m_autoSelectRunningFeatureCheck);
+
+    m_launchAtWindowsStartupCheck =
+        new QCheckBox(tr("Windows 시작 시 PIPBONG 자동 실행"), this);
+    m_launchAtWindowsStartupCheck->setChecked(ProgramSettings::launchAtWindowsStartup());
+    m_launchAtWindowsStartupCheck->setToolTip(
+        tr("Windows에 로그인하면 PIPBONG이 자동으로 실행됩니다."));
+    layout->addWidget(m_launchAtWindowsStartupCheck);
+
+    m_closeToTrayCheck = new QCheckBox(tr("닫기 시 트레이로 최소화 (백그라운드 실행)"), this);
+    m_closeToTrayCheck->setChecked(ProgramSettings::closeToTray());
+    m_closeToTrayCheck->setToolTip(
+        tr("창 닫기(X)를 누르면 종료하지 않고 알림 영역에서 계속 실행합니다. 단축키와 워크플로가 유지됩니다."));
+    layout->addWidget(m_closeToTrayCheck);
+
+    m_runAsAdministratorCheck =
+        new QCheckBox(tr("항상 관리자 권한으로 실행"), this);
+    m_runAsAdministratorCheck->setChecked(ProgramSettings::runAsAdministrator());
+    m_runAsAdministratorCheck->setToolTip(
+        tr("대상 프로그램이 관리자 권한으로 실행될 때 입력·화면 캡처가 동작합니다. "
+           "실행할 때마다 Windows UAC 확인이 표시될 수 있습니다."));
+    layout->addWidget(m_runAsAdministratorCheck);
+
+    if (WindowsRunAsAdmin::isProcessElevated()) {
+        auto* elevatedHint =
+            new HintLabel(tr("현재 관리자 권한으로 실행 중입니다."), this);
+        layout->addWidget(elevatedHint);
+    }
 
     auto* clickGroup = new QGroupBox(tr("마우스 클릭 피드백 애니메이션"), this);
     auto* clickLayout = new QVBoxLayout(clickGroup);
@@ -64,6 +92,9 @@ void ProgramSettingsDialog::setupUi() {
     localizeDialogButtons(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
         ProgramSettings::setAutoSelectRunningFeature(m_autoSelectRunningFeatureCheck->isChecked());
+        ProgramSettings::setLaunchAtWindowsStartup(m_launchAtWindowsStartupCheck->isChecked());
+        ProgramSettings::setCloseToTray(m_closeToTrayCheck->isChecked());
+        ProgramSettings::setRunAsAdministrator(m_runAsAdministratorCheck->isChecked());
         accept();
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);

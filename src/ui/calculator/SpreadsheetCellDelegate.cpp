@@ -8,6 +8,7 @@
 #include <QFontMetrics>
 #include <QPainter>
 #include <QStyle>
+#include <cmath>
 
 namespace {
 
@@ -53,6 +54,14 @@ SpreadsheetCellDelegate::SpreadsheetCellDelegate(SpreadsheetModel* model,
     , m_model(model)
     , m_icons(icons) {}
 
+void SpreadsheetCellDelegate::setReferencedCells(const QSet<QPair<int, int>>& referencedCells) {
+    m_referencedCells = referencedCells;
+}
+
+void SpreadsheetCellDelegate::setReferencePulsePhase(qreal phase) {
+    m_referencePulsePhase = phase;
+}
+
 void SpreadsheetCellDelegate::paint(QPainter* painter,
                                     const QStyleOptionViewItem& option,
                                     const QModelIndex& index) const {
@@ -64,6 +73,16 @@ void SpreadsheetCellDelegate::paint(QPainter* painter,
     const SpreadsheetCell cell = m_model->cellInput(index.row(), index.column());
     if (cell.kind != SpreadsheetCellKind::ApiRef || !m_icons) {
         QStyledItemDelegate::paint(painter, option, index);
+        if (!(option.state & QStyle::State_Selected)
+            && m_referencedCells.contains({index.row(), index.column()})) {
+            const double wave = (std::sin(static_cast<double>(m_referencePulsePhase) * 6.283185307179586) + 1.0) * 0.5;
+            const int alpha = 24 + static_cast<int>(wave * 38.0);
+            painter->save();
+            painter->fillRect(option.rect, QColor(95, 175, 255, alpha));
+            painter->setPen(QColor(110, 190, 255, alpha + 30));
+            painter->drawRect(option.rect.adjusted(0, 0, -1, -1));
+            painter->restore();
+        }
         drawCellBorders(painter, option.rect, m_model->cellBorders(index.row(), index.column()));
         return;
     }
@@ -114,6 +133,17 @@ void SpreadsheetCellDelegate::paint(QPainter* painter,
         painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, text);
     }
     painter->restore();
+
+    if (!(option.state & QStyle::State_Selected)
+        && m_referencedCells.contains({index.row(), index.column()})) {
+        const double wave = (std::sin(static_cast<double>(m_referencePulsePhase) * 6.283185307179586) + 1.0) * 0.5;
+        const int alpha = 24 + static_cast<int>(wave * 38.0);
+        painter->save();
+        painter->fillRect(option.rect, QColor(95, 175, 255, alpha));
+        painter->setPen(QColor(110, 190, 255, alpha + 30));
+        painter->drawRect(option.rect.adjusted(0, 0, -1, -1));
+        painter->restore();
+    }
 
     drawCellBorders(painter, option.rect, m_model->cellBorders(index.row(), index.column()));
 }

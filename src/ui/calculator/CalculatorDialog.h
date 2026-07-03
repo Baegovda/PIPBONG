@@ -12,6 +12,7 @@
 #include <QDialog>
 #include <QPointer>
 #include <QPoint>
+#include <QSet>
 
 class QComboBox;
 class QLabel;
@@ -99,6 +100,7 @@ private:
     void selectCellRange(int minRow, int minCol, int maxRow, int maxCol);
     QString calculatorHelpHtml() const;
     void showHelpDialog();
+    void updateReferencedCellHighlight();
 
     PoeNinjaClient m_client;
     CurrencyIconCache m_iconCache;
@@ -121,6 +123,9 @@ private:
     QLineEdit* m_formulaBarEdit = nullptr;
     QTimer* m_saveTimer = nullptr;
     QTimer* m_autoRefreshTimer = nullptr;
+    QTimer* m_referencePulseTimer = nullptr;
+    QSet<QPair<int, int>> m_referencedCells;
+    qreal m_referencePulsePhase = 0.0;
     bool m_initialFetchDone = false;
     bool m_formulaPickActive = false;
     bool m_updatingFormulaBar = false;

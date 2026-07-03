@@ -168,6 +168,28 @@ void ExecutionContext::clearImageFindDeferRetryUsed(int blockIndex) {
     }
 }
 
+void ExecutionContext::incrementImageFindReturnToPreviousCount(int blockIndex) {
+    if (blockIndex >= 0) {
+        ++m_imageFindReturnToPreviousCounts[blockIndex];
+    }
+}
+
+void ExecutionContext::incrementImageFindRetryAfterNextCount(int blockIndex) {
+    if (blockIndex >= 0) {
+        ++m_imageFindRetryAfterNextCounts[blockIndex];
+    }
+}
+
+int ExecutionContext::imageFindReturnToPreviousCount(int blockIndex) const {
+    const auto it = m_imageFindReturnToPreviousCounts.find(blockIndex);
+    return it == m_imageFindReturnToPreviousCounts.end() ? 0 : it->second;
+}
+
+int ExecutionContext::imageFindRetryAfterNextCount(int blockIndex) const {
+    const auto it = m_imageFindRetryAfterNextCounts.find(blockIndex);
+    return it == m_imageFindRetryAfterNextCounts.end() ? 0 : it->second;
+}
+
 bool ExecutionContext::enterNestingScope() {
     if (m_nestingDepth >= kMaxWorkflowNestingDepth) {
         return false;

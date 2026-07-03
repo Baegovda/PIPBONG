@@ -44,6 +44,7 @@ signals:
                                double matchThreshold,
                                double detectedConfidence,
                                bool matched);
+    void imageFindFailureHandling(int index, int returnToPreviousCount, int retryAfterNextCount);
     void blockProgress(int index, BlockProgressKind kind);
     void blockMatchResult(int index,
                           double matchThreshold,

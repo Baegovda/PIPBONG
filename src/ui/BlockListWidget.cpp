@@ -47,10 +47,12 @@ constexpr int kColSummary = 3;
 constexpr int kColDuration = 4;
 constexpr int kColMatchDuration = 5;
 constexpr int kColAttempts = 6;
-constexpr int kColScore = 7;
-constexpr int kColRoiCorrection = 8;
-constexpr int kColMatch = 9;
-constexpr int kColumnCount = 10;
+constexpr int kColReturnPrev = 7;
+constexpr int kColRetryAfterNext = 8;
+constexpr int kColScore = 9;
+constexpr int kColRoiCorrection = 10;
+constexpr int kColMatch = 11;
+constexpr int kColumnCount = 12;
 
 void applyDefaultBlockListColumnWidths(QTableWidget* table) {
     const QSignalBlocker blocker(table->horizontalHeader());
@@ -60,6 +62,8 @@ void applyDefaultBlockListColumnWidths(QTableWidget* table) {
     table->setColumnWidth(kColDuration, 72);
     table->setColumnWidth(kColMatchDuration, 72);
     table->setColumnWidth(kColAttempts, 58);
+    table->setColumnWidth(kColReturnPrev, 52);
+    table->setColumnWidth(kColRetryAfterNext, 52);
     table->setColumnWidth(kColScore, 78);
     table->setColumnWidth(kColRoiCorrection, 52);
     table->setColumnWidth(kColMatch, kThumbnailSize + 6);
@@ -88,6 +92,8 @@ void initBlockListColumnHeader(BlockListWidget* table) {
                                     BlockListWidget::tr("동작 시간"),
                                     BlockListWidget::tr("매칭 시간"),
                                     BlockListWidget::tr("시도 횟수"),
+                                    BlockListWidget::tr("이전 복귀"),
+                                    BlockListWidget::tr("재시도"),
                                     BlockListWidget::tr("기준/감지"),
                                     BlockListWidget::tr("ROI 보정"),
                                     BlockListWidget::tr("매칭")});
@@ -966,6 +972,8 @@ void BlockListWidget::setBlockCount(int count) {
     m_rowIsImageFind = QVector<bool>(count, false);
     m_rowImageFindThresholds = QVector<double>(count, 0.85);
     m_rowImageFindAttemptCounts = QVector<int>(count, -1);
+    m_rowImageFindReturnCounts = QVector<int>(count, -1);
+    m_rowImageFindRetryCounts = QVector<int>(count, -1);
     m_rowCompletedHighlight = QVector<ExecutionHighlight>(count, ExecutionHighlight::None);
 }
 
@@ -1513,6 +1521,20 @@ void BlockListWidget::setBlockInfo(int row,
     attemptsItem->setToolTip(tr("템플릿 매칭 감지 시도 횟수"));
     setItem(tableRow, kColAttempts, attemptsItem);
 
+    auto* returnPrevItem = new QTableWidgetItem(QStringLiteral("—"));
+    returnPrevItem->setTextAlignment(Qt::AlignCenter);
+    returnPrevItem->setFlags(itemFlags);
+    returnPrevItem->setToolTip(
+        tr("매칭 실패 시 바로 이전 템플릿 매칭 블록으로 돌아감 — 발동 횟수"));
+    setItem(tableRow, kColReturnPrev, returnPrevItem);
+
+    auto* retryAfterNextItem = new QTableWidgetItem(QStringLiteral("—"));
+    retryAfterNextItem->setTextAlignment(Qt::AlignCenter);
+    retryAfterNextItem->setFlags(itemFlags);
+    retryAfterNextItem->setToolTip(
+        tr("바로 다음 동작 후 다시 감지 시도 / 다음 템플릿 매칭 블록으로 넘어감 — 발동 횟수"));
+    setItem(tableRow, kColRetryAfterNext, retryAfterNextItem);
+
     auto* scoreItem = new QTableWidgetItem(QStringLiteral("—"));
     scoreItem->setTextAlignment(Qt::AlignCenter);
     scoreItem->setFlags(itemFlags);
@@ -1690,6 +1712,52 @@ void BlockListWidget::setBlockImageFindAttemptCount(int row, int attemptCount) {
     }
 }
 
+void BlockListWidget::setBlockImageFindFailureHandlingCounts(int row,
+                                                           int returnToPreviousCount,
+                                                           int retryAfterNextCount) {
+    const int tableRow = tableRowForBlockRow(row);
+    if (row < 0 || row >= m_blockCount || tableRow < 0) {
+        return;
+    }
+    if (row < m_rowImageFindReturnCounts.size()) {
+        m_rowImageFindReturnCounts[row] = returnToPreviousCount;
+    }
+    if (row < m_rowImageFindRetryCounts.size()) {
+        m_rowImageFindRetryCounts[row] = retryAfterNextCount;
+    }
+
+    QTableWidgetItem* returnPrevItem = item(tableRow, kColReturnPrev);
+    if (!returnPrevItem) {
+        returnPrevItem = new QTableWidgetItem();
+        returnPrevItem->setTextAlignment(Qt::AlignCenter);
+        returnPrevItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
+        returnPrevItem->setToolTip(
+            tr("매칭 실패 시 바로 이전 템플릿 매칭 블록으로 돌아감 — 발동 횟수"));
+        setItem(tableRow, kColReturnPrev, returnPrevItem);
+    }
+    QTableWidgetItem* retryItem = item(tableRow, kColRetryAfterNext);
+    if (!retryItem) {
+        retryItem = new QTableWidgetItem();
+        retryItem->setTextAlignment(Qt::AlignCenter);
+        retryItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
+        retryItem->setToolTip(
+            tr("바로 다음 동작 후 다시 감지 시도 / 다음 템플릿 매칭 블록으로 넘어감 — 발동 횟수"));
+        setItem(tableRow, kColRetryAfterNext, retryItem);
+    }
+
+    const bool isImageFind = row < m_rowIsImageFind.size() && m_rowIsImageFind[row];
+    if (isImageFind && returnToPreviousCount > 0) {
+        returnPrevItem->setText(QString::number(returnToPreviousCount));
+    } else {
+        returnPrevItem->setText(QStringLiteral("—"));
+    }
+    if (isImageFind && retryAfterNextCount > 0) {
+        retryItem->setText(QString::number(retryAfterNextCount));
+    } else {
+        retryItem->setText(QStringLiteral("—"));
+    }
+}
+
 void BlockListWidget::clearBlockMatchResults() {
     m_rowMatchHasScore.fill(false);
     m_rowMatchSucceeded.fill(false);
@@ -1715,8 +1783,20 @@ void BlockListWidget::clearBlockMatchResults() {
         if (QTableWidgetItem* attemptsItem = item(tableRow, kColAttempts)) {
             attemptsItem->setText(QStringLiteral("—"));
         }
+        if (QTableWidgetItem* returnPrevItem = item(tableRow, kColReturnPrev)) {
+            returnPrevItem->setText(QStringLiteral("—"));
+        }
+        if (QTableWidgetItem* retryItem = item(tableRow, kColRetryAfterNext)) {
+            retryItem->setText(QStringLiteral("—"));
+        }
         if (row < m_rowImageFindAttemptCounts.size()) {
             m_rowImageFindAttemptCounts[row] = -1;
+        }
+        if (row < m_rowImageFindReturnCounts.size()) {
+            m_rowImageFindReturnCounts[row] = -1;
+        }
+        if (row < m_rowImageFindRetryCounts.size()) {
+            m_rowImageFindRetryCounts[row] = -1;
         }
         if (QTableWidgetItem* scoreItem = item(tableRow, kColScore)) {
             scoreItem->setText(QStringLiteral("—"));
@@ -1942,7 +2022,8 @@ void BlockListWidget::applyActiveRowVisuals() {
                 cellItem->setForeground(normalForeground);
             }
             if (c == kColIndex || c == kColPreview || c == kColAction || c == kColDuration || c == kColMatchDuration
-                || c == kColAttempts || c == kColScore || c == kColRoiCorrection) {
+                || c == kColAttempts || c == kColReturnPrev || c == kColRetryAfterNext || c == kColScore
+                || c == kColRoiCorrection) {
                 cellItem->setTextAlignment(Qt::AlignCenter);
             }
             if (c == kColIndex) {

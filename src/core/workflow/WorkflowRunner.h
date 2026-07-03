@@ -38,6 +38,8 @@ struct WorkflowRunHooks {
                        int clientX,
                        int clientY)>
         onBlockMatchResult;
+    std::function<void(int blockIndex, int returnToPreviousCount, int retryAfterNextCount)>
+        onImageFindFailureHandling;
     std::function<void(int clientX, int clientY)> onPointerFeedbackAtClientPoint;
 };
 

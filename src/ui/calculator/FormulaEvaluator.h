@@ -2,6 +2,8 @@
 
 #include <QString>
 #include <functional>
+#include <QList>
+#include <QPair>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -50,4 +52,5 @@ public:
                                                          int deleteMinCol,
                                                          int deleteMaxCol);
     static QString formatCellRange(int minRow, int minCol, int maxRow, int maxCol);
+    static QList<QPair<int, int>> collectCellReferences(const QString& expression);
 };

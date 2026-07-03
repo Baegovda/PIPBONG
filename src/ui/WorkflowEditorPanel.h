@@ -48,8 +48,12 @@ public:
     void setBlockDuration(int blockIndex, qint64 durationMs);
     void setBlockImageFindMatchDuration(int blockIndex, qint64 matchDurationMs);
     void setBlockImageFindAttemptCount(int blockIndex, int attemptCount);
+    void setBlockImageFindFailureHandlingCounts(int blockIndex,
+                                                int returnToPreviousCount,
+                                                int retryAfterNextCount);
     void setLoopTiming(int loopNumber, qint64 elapsedMs, qint64 averageMs, bool success);
     void clearLoopTiming();
+    void persistRunFeedbackForCurrentFeature();
 
     QSplitter* workflowSplitter() const;
 
@@ -111,6 +115,8 @@ private:
         QVector<qint64> rowBlockDurations;
         QVector<qint64> rowImageFindMatchDurations;
         QVector<int> rowImageFindAttemptCounts;
+        QVector<int> rowImageFindReturnCounts;
+        QVector<int> rowImageFindRetryCounts;
         QVector<bool> rowMatchLockedSuccess;
         int activeBlockIndex = -1;
         BlockListWidget::ExecutionHighlight executionHighlight = BlockListWidget::ExecutionHighlight::None;
@@ -153,6 +159,8 @@ private:
     QVector<qint64> m_rowBlockDurations;
     QVector<qint64> m_rowImageFindMatchDurations;
     QVector<int> m_rowImageFindAttemptCounts;
+    QVector<int> m_rowImageFindReturnCounts;
+    QVector<int> m_rowImageFindRetryCounts;
 
     std::unordered_map<std::string, FeatureRunFeedback> m_featureRunFeedback;
 

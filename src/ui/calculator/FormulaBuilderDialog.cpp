@@ -142,9 +142,6 @@ FormulaBuilderDialog::FormulaBuilderDialog(SpreadsheetModel* model, QWidget* par
     operandGroupLayout->addLayout(operandToolbar);
     rootLayout->addWidget(operandGroup);
 
-    addOperandRow();
-    addOperandRow();
-
     auto* previewForm = new QFormLayout();
     m_formulaPreview = new QLineEdit(this);
     m_formulaPreview->setPlaceholderText(tr("=A1+B1 또는 직접 입력"));
@@ -153,6 +150,9 @@ FormulaBuilderDialog::FormulaBuilderDialog(SpreadsheetModel* model, QWidget* par
     m_resultPreviewLabel = new QLabel(tr("—"), this);
     previewForm->addRow(tr("계산 결과:"), m_resultPreviewLabel);
     rootLayout->addLayout(previewForm);
+
+    addOperandRow();
+    addOperandRow();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     m_applyButton = new QPushButton(tr("적용"), this);
@@ -633,7 +633,10 @@ void FormulaBuilderDialog::applyPickedCellRefs(const QStringList& cellRefs) {
 }
 
 void FormulaBuilderDialog::rebuildFormulaPreview() {
-    if (m_formulaPreview && m_formulaPreview->hasFocus()) {
+    if (!m_formulaPreview || !m_resultPreviewLabel) {
+        return;
+    }
+    if (m_formulaPreview->hasFocus()) {
         return;
     }
 

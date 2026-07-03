@@ -34,6 +34,8 @@ class QPushButton;
 class QLabel;
 class QMenuBar;
 class QSplitter;
+class QSystemTrayIcon;
+class QMenu;
 class TargetWindowDetailPanel;
 class CustomTitleBar;
 class CalculatorDialog;
@@ -94,6 +96,7 @@ private slots:
                                  double matchThreshold,
                                  double detectedConfidence,
                                  bool matched);
+    void onImageFindFailureHandling(int index, int returnToPreviousCount, int retryAfterNextCount);
     void onHotkeyTriggered(const QString& featureId);
     void onHotkeyHoldStarted(const QString& featureId);
     void onHotkeyHoldEnded(const QString& featureId);
@@ -127,6 +130,11 @@ private:
     void autoSaveProject();
     bool ensureProjectFilePath();
     void prepareForShutdown();
+    void setupTrayIcon();
+    void applyCloseToTrayPolicy();
+    void hideToTray();
+    void showFromTray();
+    void requestApplicationQuit();
     void startFeatureRun(Feature* feature, bool fromHotkey = false);
     bool tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Feature* feature);
     void selectRunningFeatureForDisplay(Feature* feature);
@@ -197,5 +205,9 @@ private:
     QString m_transientStatusMessage;
     std::map<std::string, FeatureRunSession> m_runSessions;
     QPointer<CalculatorDialog> m_calculatorDialog;
+    QSystemTrayIcon* m_trayIcon = nullptr;
+    QMenu* m_trayMenu = nullptr;
+    bool m_forceQuit = false;
+    bool m_trayMinimizeNotified = false;
     bool m_modified = false;
 };

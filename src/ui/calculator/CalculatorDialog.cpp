@@ -401,6 +401,22 @@ void CalculatorDialog::setupUi() {
     m_autoRefreshTimer->setSingleShot(false);
     connect(m_autoRefreshTimer, &QTimer::timeout, this, &CalculatorDialog::onAutoRefreshTimer);
 
+    m_referencePulseTimer = new QTimer(this);
+    m_referencePulseTimer->setSingleShot(false);
+    m_referencePulseTimer->setInterval(60);
+    connect(m_referencePulseTimer, &QTimer::timeout, this, [this]() {
+        m_referencePulsePhase += 0.07;
+        if (m_referencePulsePhase >= 1.0) {
+            m_referencePulsePhase -= 1.0;
+        }
+        if (m_cellDelegate) {
+            m_cellDelegate->setReferencePulsePhase(m_referencePulsePhase);
+        }
+        if (m_table && !m_referencedCells.isEmpty()) {
+            m_table->viewport()->update();
+        }
+    });
+
     connect(m_refreshButton, &QPushButton::clicked, this, &CalculatorDialog::onRefreshClicked);
     connect(m_bindCurrencyButton, &QPushButton::clicked, this, &CalculatorDialog::onBindCurrencyClicked);
     connect(m_formulaButton, &QPushButton::clicked, this, &CalculatorDialog::onFormulaBuilderClicked);
@@ -426,11 +442,18 @@ void CalculatorDialog::setupUi() {
 
     if (QItemSelectionModel* selectionModel = m_table->selectionModel()) {
         connect(selectionModel, &QItemSelectionModel::currentChanged, this,
-                [this](const QModelIndex&, const QModelIndex&) { updateFormulaBarFromSelection(); });
+                [this](const QModelIndex&, const QModelIndex&) {
+                    updateFormulaBarFromSelection();
+                    updateReferencedCellHighlight();
+                });
         connect(selectionModel, &QItemSelectionModel::selectionChanged, this,
-                [this](const QItemSelection&, const QItemSelection&) { updateFormulaBarFromSelection(); });
+                [this](const QItemSelection&, const QItemSelection&) {
+                    updateFormulaBarFromSelection();
+                    updateReferencedCellHighlight();
+                });
     }
     updateFormulaBarFromSelection();
+    updateReferencedCellHighlight();
 }
 
 void CalculatorDialog::showEvent(QShowEvent* event) {
@@ -538,6 +561,7 @@ void CalculatorDialog::saveSheetState() {
 void CalculatorDialog::onSheetModified() {
     m_saveTimer->start();
     updateFormulaBarFromSelection();
+    updateReferencedCellHighlight();
 }
 
 void CalculatorDialog::onHelpClicked() {
@@ -634,6 +658,7 @@ void CalculatorDialog::onUndo() {
         m_table->viewport()->update();
     }
     updateFormulaBarFromSelection();
+    updateReferencedCellHighlight();
 }
 
 void CalculatorDialog::onRedo() {
@@ -653,6 +678,7 @@ void CalculatorDialog::onRedo() {
         m_table->viewport()->update();
     }
     updateFormulaBarFromSelection();
+    updateReferencedCellHighlight();
 }
 
 QString CalculatorDialog::cellEditText(const SpreadsheetCell& cell) {
@@ -699,6 +725,42 @@ QString CalculatorDialog::selectionReferenceLabel() const {
         return {};
     }
     return FormulaEvaluator::formatCellRange(minRow, minCol, maxRow, maxCol);
+}
+
+void CalculatorDialog::updateReferencedCellHighlight() {
+    m_referencedCells.clear();
+    if (!m_table || !m_cellDelegate) {
+        return;
+    }
+
+    const QModelIndex current = m_table->currentIndex();
+    if (current.isValid()) {
+        const SpreadsheetCell cell = m_model.cellInput(current.row(), current.column());
+        if (cell.kind == SpreadsheetCellKind::Formula && !cell.raw.isEmpty()) {
+            const QList<QPair<int, int>> references = FormulaEvaluator::collectCellReferences(cell.raw);
+            for (const QPair<int, int>& ref : references) {
+                if (ref.first < 0 || ref.second < 0
+                    || ref.first >= m_model.rowCount()
+                    || ref.second >= m_model.columnCount()) {
+                    continue;
+                }
+                m_referencedCells.insert(ref);
+            }
+        }
+    }
+
+    m_cellDelegate->setReferencedCells(m_referencedCells);
+    m_cellDelegate->setReferencePulsePhase(m_referencePulsePhase);
+
+    if (m_referencedCells.isEmpty()) {
+        if (m_referencePulseTimer) {
+            m_referencePulseTimer->stop();
+        }
+    } else if (m_referencePulseTimer && !m_referencePulseTimer->isActive()) {
+        m_referencePulseTimer->start();
+    }
+
+    m_table->viewport()->update();
 }
 
 void CalculatorDialog::updateFormulaBarFromSelection() {
@@ -754,6 +816,7 @@ void CalculatorDialog::onFormulaBarCommit() {
     }
     commitFormulaBarEdit();
     updateFormulaBarFromSelection();
+    updateReferencedCellHighlight();
 }
 
 bool CalculatorDialog::selectedCellBounds(int& minRow, int& minCol, int& maxRow, int& maxCol) const {
@@ -1650,6 +1713,7 @@ void CalculatorDialog::openFormulaBuilder(int row, int col) {
                     if (m_table) {
                         m_table->setCurrentIndex(m_model.index(targetRow, targetCol));
                     }
+                    updateReferencedCellHighlight();
                 });
         connect(m_formulaBuilder, &QDialog::finished, this, [this]() {
             exitFormulaPickMode();

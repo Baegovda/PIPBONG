@@ -57,6 +57,17 @@ bool propagateNonDetectionStepFailure(const WorkflowRunResult& step, ExecutionCo
     return !step.success && !ctx.detectionFailedThisRun() && !ctx.shouldStop();
 }
 
+void notifyImageFindFailureHandling(int blockIndex,
+                                    ExecutionContext& ctx,
+                                    const WorkflowRunHooks* hooks) {
+    if (!hooks || !hooks->onImageFindFailureHandling) {
+        return;
+    }
+    hooks->onImageFindFailureHandling(blockIndex,
+                                      ctx.imageFindReturnToPreviousCount(blockIndex),
+                                      ctx.imageFindRetryAfterNextCount(blockIndex));
+}
+
 ImageFindFailureResolution resolveImageFindDetectionFailure(const Workflow& workflow,
                                                             int currentIndex,
                                                             ExecutionContext& ctx,
@@ -70,6 +81,8 @@ ImageFindFailureResolution resolveImageFindDetectionFailure(const Workflow& work
 
     if (imageFind->retryAfterNextActionOnFailure && !ctx.imageFindDeferRetryUsed(currentIndex)) {
         ctx.markImageFindDeferRetryUsed(currentIndex);
+        ctx.incrementImageFindRetryAfterNextCount(currentIndex);
+        notifyImageFindFailureHandling(currentIndex, ctx, hooks);
         ctx.clearDetectionFailedFlag();
 
         const int blockCount = static_cast<int>(workflow.blocks().size());
@@ -93,6 +106,8 @@ ImageFindFailureResolution resolveImageFindDetectionFailure(const Workflow& work
         previousImageFind = previousImageFindBlockIndex(workflow, currentIndex);
         if (previousImageFind >= 0) {
             ctx.clearImageFindDeferRetryUsed(currentIndex);
+            ctx.incrementImageFindReturnToPreviousCount(currentIndex);
+            notifyImageFindFailureHandling(currentIndex, ctx, hooks);
             ctx.clearDetectionFailedFlag();
             ctx.log("매칭 실패 — 이전 템플릿 매칭 블록 #"
                     + std::to_string(previousImageFind + 1) + "으로 돌아감");
@@ -107,6 +122,8 @@ ImageFindFailureResolution resolveImageFindDetectionFailure(const Workflow& work
         ctx.clearImageFindDeferRetryUsed(currentIndex);
         ctx.clearDetectionFailedFlag();
         if (nextImageFind >= 0) {
+            ctx.incrementImageFindRetryAfterNextCount(currentIndex);
+            notifyImageFindFailureHandling(currentIndex, ctx, hooks);
             ctx.log("감지 실패 — 다음 템플릿 매칭 블록 #"
                     + std::to_string(nextImageFind + 1) + "으로 이동");
             resolution.handled = true;
