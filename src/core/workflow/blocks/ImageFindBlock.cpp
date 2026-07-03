@@ -941,6 +941,14 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
                                                    const MatchOptions& options,
                                                    const std::string& projectDirectory) {
     ImageFindMatchTestResult result;
+    const auto lapStart = std::chrono::steady_clock::now();
+    const auto recordMatchDuration = [&]() {
+        result.matchDurationMs = std::max<int64_t>(
+            0,
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()
+                                                                  - lapStart)
+                .count());
+    };
 
     SearchArea resolvedSearchArea = searchArea;
     CaptureRegion resolvedCustomRegion = customRegion;
@@ -993,6 +1001,7 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
         result.match = peak;
     }
     result.captureOk = true;
+    recordMatchDuration();
     return result;
 }
 
@@ -1004,6 +1013,14 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
                                                             const MatchOptions& options,
                                                             const std::string& projectDirectory) {
     ImageFindMatchTestResult result;
+    const auto lapStart = std::chrono::steady_clock::now();
+    const auto recordMatchDuration = [&]() {
+        result.matchDurationMs = std::max<int64_t>(
+            0,
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()
+                                                                  - lapStart)
+                .count());
+    };
 
     std::vector<std::string> resolvedPaths;
     resolvedPaths.reserve(templatePaths.size());
@@ -1111,5 +1128,6 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
         result.match = bestPeak;
     }
     result.captureOk = true;
+    recordMatchDuration();
     return result;
 }

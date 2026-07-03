@@ -25,6 +25,10 @@ struct FeatureRunSession {
     int sessionIteration = 0;
     bool hotkeyLaunchedSession = false;
     bool pointerVisualFeedback = true;
+    bool restoreMousePositionOnEnd = false;
+    bool hasRunStartCursorPosition = false;
+    int runStartCursorScreenX = 0;
+    int runStartCursorScreenY = 0;
     QElapsedTimer loopTimer;
     bool hasLastLoopTiming = false;
     int lastLoopNumber = 0;

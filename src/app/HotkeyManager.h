@@ -19,6 +19,9 @@ public:
     struct RegistrationFailure {
         std::string featureId;
         std::string featureName;
+#ifdef _WIN32
+        unsigned long win32Error = 0;
+#endif
     };
 
     explicit HotkeyManager(QObject* parent = nullptr);
@@ -32,10 +35,15 @@ public:
                                               const HotkeyBinding& binding);
 
     bool isHoldBindingDown(const std::string& featureId) const;
+#ifdef _WIN32
+    bool isKeyboardHookActive() const { return m_keyboardHookInstalled; }
+    bool isMouseHookActive() const { return m_mouseHookInstalled; }
+    void dispatchWin32Hotkey(int hotkeyId);
+#endif
 
 #ifdef _WIN32
     /** Returns true when the event was consumed as a feature hotkey (block from target apps). */
-    bool handleHoldKeyEvent(int vkCode, bool keyDown);
+    bool handleKeyboardHookEvent(int vkCode, bool keyDown);
     bool handleMouseButtonEvent(int vkCode, bool buttonDown);
 #endif
 
@@ -51,6 +59,12 @@ private:
         bool keyDown = false;
     };
 
+    struct ToggleBindingEntry {
+        std::string featureId;
+        HotkeyBinding binding;
+        bool armed = true;
+    };
+
     struct MouseBindingEntry {
         std::string featureId;
         HotkeyBinding binding;
@@ -59,24 +73,29 @@ private:
     };
 
     void handleHotkey(int hotkeyId);
+    void emitHotkeyTriggered(const std::string& featureId);
+    void emitHotkeyHoldStarted(const std::string& featureId);
+    void emitHotkeyHoldEnded(const std::string& featureId);
 #ifdef _WIN32
-    void installHoldHook();
-    void uninstallHoldHook();
+    void installKeyboardHook();
+    void uninstallKeyboardHook();
     void installMouseHook();
     void uninstallMouseHook();
+    bool registerHotKeyFallback(const std::string& featureId, const HotkeyBinding& binding);
 #endif
 
     class NativeFilter;
     std::unique_ptr<NativeFilter> m_filter;
     std::unordered_map<int, std::string> m_idToFeatureId;
     std::vector<HoldBindingEntry> m_holdBindings;
+    std::vector<ToggleBindingEntry> m_toggleBindings;
     std::vector<MouseBindingEntry> m_mouseBindings;
     int m_nextId = 1;
 #ifdef _WIN32
     void* m_hotkeyHostHwnd = nullptr;
-    void* m_holdKeyboardHook = nullptr;
+    void* m_keyboardHook = nullptr;
     void* m_mouseHook = nullptr;
-    bool m_holdHookInstalled = false;
+    bool m_keyboardHookInstalled = false;
     bool m_mouseHookInstalled = false;
 #endif
 };

@@ -30,6 +30,7 @@ constexpr UINT kMsgDismissOverlay = WM_APP + 0x4d54;
 struct OverlayMatch {
     QRect clientRect;
     double confidence = 0.0;
+    int64_t matchDurationMs = -1;
 };
 
 struct OverlayState {
@@ -114,7 +115,8 @@ std::vector<OverlayMatch> buildOverlayMatches(SearchArea searchArea,
                                               const CaptureRegion& customRegion,
                                               const PercentRegion& percentRegion,
                                               const std::vector<MatchResult>& matches,
-                                              const QRect& targetPhysical) {
+                                              const QRect& targetPhysical,
+                                              int64_t matchDurationMs) {
     std::vector<OverlayMatch> items;
     const QRect targetClient(0, 0, targetPhysical.width(), targetPhysical.height());
 
@@ -129,7 +131,7 @@ std::vector<OverlayMatch> buildOverlayMatches(SearchArea searchArea,
                              match.matchedSize.height);
             clientRect = clientRect.intersected(targetClient);
             if (clientRect.width() >= 2 && clientRect.height() >= 2) {
-                items.push_back({clientRect, match.confidence});
+                items.push_back({clientRect, match.confidence, matchDurationMs});
             }
         }
         return items;
@@ -151,15 +153,19 @@ std::vector<OverlayMatch> buildOverlayMatches(SearchArea searchArea,
         QRect clientRect =
             matchPhysical.translated(-targetPhysical.x(), -targetPhysical.y()).intersected(targetClient);
         if (clientRect.width() >= 2 && clientRect.height() >= 2) {
-            items.push_back({clientRect, match.confidence});
+            items.push_back({clientRect, match.confidence, matchDurationMs});
         }
     }
     return items;
 }
 
 void drawConfidenceLabel(HDC hdc, const OverlayMatch& match, int clientHeight) {
-    wchar_t label[32]{};
-    swprintf_s(label, L"%.2f", match.confidence);
+    wchar_t label[48]{};
+    if (match.matchDurationMs >= 0) {
+        swprintf_s(label, L"%.2f · %lld ms", match.confidence, match.matchDurationMs);
+    } else {
+        swprintf_s(label, L"%.2f", match.confidence);
+    }
     const int labelLen = static_cast<int>(wcslen(label));
 
     HFONT font = CreateFontW(-22,
@@ -387,7 +393,8 @@ bool MatchTestOverlay::show(const std::vector<MatchResult>& matches,
                             QWidget* hostWidget,
                             VisibilityHandler onVisibilityChanged,
                             const std::vector<std::pair<CaptureRegion, std::vector<MatchResult>>>*
-                                matchesPerCustomRegion) {
+                                matchesPerCustomRegion,
+                            int64_t matchDurationMs) {
 #ifdef _WIN32
     dismissAll();
 
@@ -412,12 +419,12 @@ bool MatchTestOverlay::show(const std::vector<MatchResult>& matches,
     if (matchesPerCustomRegion && !matchesPerCustomRegion->empty()) {
         for (const auto& batch : *matchesPerCustomRegion) {
             const std::vector<OverlayMatch> regionItems = buildOverlayMatches(
-                SearchArea::CustomRegion, batch.first, percentRegion, batch.second, targetPhysical);
+                SearchArea::CustomRegion, batch.first, percentRegion, batch.second, targetPhysical, matchDurationMs);
             overlayMatches.insert(overlayMatches.end(), regionItems.begin(), regionItems.end());
         }
     } else {
         overlayMatches =
-            buildOverlayMatches(searchArea, customRegion, percentRegion, matches, targetPhysical);
+            buildOverlayMatches(searchArea, customRegion, percentRegion, matches, targetPhysical, matchDurationMs);
     }
 
     g_state = std::make_unique<OverlayState>();
@@ -445,6 +452,7 @@ bool MatchTestOverlay::show(const std::vector<MatchResult>& matches,
     (void)hostWidget;
     (void)onVisibilityChanged;
     (void)matchesPerCustomRegion;
+    (void)matchDurationMs;
     return false;
 #endif
 }

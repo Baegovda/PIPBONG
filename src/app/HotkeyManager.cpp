@@ -22,16 +22,27 @@ constexpr wchar_t kHotkeyHostClassName[] = L"PIPBONGHotkeyHost";
 HotkeyManager* g_hotkeyManager = nullptr;
 
 LRESULT CALLBACK hotkeyHostWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_HOTKEY && g_hotkeyManager) {
+        g_hotkeyManager->dispatchWin32Hotkey(static_cast<int>(wParam));
+        return 0;
+    }
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
 HWND createHotkeyHostWindow() {
     HINSTANCE instance = GetModuleHandleW(nullptr);
-    WNDCLASSW wc{};
-    wc.lpfnWndProc = hotkeyHostWndProc;
-    wc.hInstance = instance;
-    wc.lpszClassName = kHotkeyHostClassName;
-    RegisterClassW(&wc);
+    static bool classRegistered = false;
+    if (!classRegistered) {
+        WNDCLASSEXW wc{};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = hotkeyHostWndProc;
+        wc.hInstance = instance;
+        wc.lpszClassName = kHotkeyHostClassName;
+        if (RegisterClassExW(&wc) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+            return nullptr;
+        }
+        classRegistered = true;
+    }
 
     return CreateWindowExW(0,
                            kHotkeyHostClassName,
@@ -81,7 +92,7 @@ int virtualKeyFromMouseMessage(WPARAM wParam, const MSLLHOOKSTRUCT* info) {
     }
 }
 
-LRESULT CALLBACK holdKeyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK keyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
     if (code != HC_ACTION || !g_hotkeyManager) {
         return CallNextHookEx(nullptr, code, wParam, lParam);
     }
@@ -96,7 +107,7 @@ LRESULT CALLBACK holdKeyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
     if (info->flags & LLKHF_INJECTED) {
         return CallNextHookEx(nullptr, code, wParam, lParam);
     }
-    if (g_hotkeyManager->handleHoldKeyEvent(static_cast<int>(info->vkCode), keyDown)) {
+    if (g_hotkeyManager->handleKeyboardHookEvent(static_cast<int>(info->vkCode), keyDown)) {
         return 1;
     }
     return CallNextHookEx(nullptr, code, wParam, lParam);
@@ -187,7 +198,7 @@ HotkeyManager::~HotkeyManager() {
 
 void HotkeyManager::unregisterAll() {
 #ifdef _WIN32
-    uninstallHoldHook();
+    uninstallKeyboardHook();
     uninstallMouseHook();
     const HWND host = static_cast<HWND>(m_hotkeyHostHwnd);
     for (const auto& entry : m_idToFeatureId) {
@@ -196,6 +207,7 @@ void HotkeyManager::unregisterAll() {
 #endif
     m_idToFeatureId.clear();
     m_holdBindings.clear();
+    m_toggleBindings.clear();
     m_mouseBindings.clear();
     m_nextId = 1;
 }
@@ -234,19 +246,41 @@ std::vector<HotkeyManager::RegistrationFailure> HotkeyManager::syncFromProject(c
             continue;
         }
 
-        const int id = m_nextId++;
-        if (RegisterHotKey(host, id, binding.winModifiers(), static_cast<UINT>(binding.virtualKey))) {
-            m_idToFeatureId[id] = feature->id();
-        } else {
-            failures.push_back({feature->id(), feature->name()});
-        }
+        ToggleBindingEntry entry;
+        entry.featureId = feature->id();
+        entry.binding = binding;
+        m_toggleBindings.push_back(entry);
     }
 
-    if (!m_holdBindings.empty()) {
-        installHoldHook();
+    if (!m_holdBindings.empty() || !m_toggleBindings.empty()) {
+        installKeyboardHook();
     }
     if (!m_mouseBindings.empty()) {
         installMouseHook();
+    }
+
+    if (!m_keyboardHookInstalled) {
+        for (const ToggleBindingEntry& entry : m_toggleBindings) {
+            if (!registerHotKeyFallback(entry.featureId, entry.binding)) {
+                const Feature* feature = project.featureById(entry.featureId);
+                failures.push_back({entry.featureId,
+                                    feature ? feature->name() : entry.featureId,
+                                    GetLastError()});
+            }
+        }
+        for (const HoldBindingEntry& entry : m_holdBindings) {
+            const Feature* feature = project.featureById(entry.featureId);
+            failures.push_back(
+                {entry.featureId, feature ? feature->name() : entry.featureId, ERROR_ACCESS_DENIED});
+        }
+    }
+
+    if (!m_mouseHookInstalled && !m_mouseBindings.empty()) {
+        for (const MouseBindingEntry& entry : m_mouseBindings) {
+            const Feature* feature = project.featureById(entry.featureId);
+            failures.push_back(
+                {entry.featureId, feature ? feature->name() : entry.featureId, ERROR_ACCESS_DENIED});
+        }
     }
 #else
     (void)project;
@@ -254,6 +288,22 @@ std::vector<HotkeyManager::RegistrationFailure> HotkeyManager::syncFromProject(c
 
     return failures;
 }
+
+#ifdef _WIN32
+bool HotkeyManager::registerHotKeyFallback(const std::string& featureId, const HotkeyBinding& binding) {
+    const HWND host = static_cast<HWND>(m_hotkeyHostHwnd);
+    if (!host || binding.isEmpty()) {
+        return false;
+    }
+
+    const int id = m_nextId++;
+    if (RegisterHotKey(host, id, binding.winModifiers(), static_cast<UINT>(binding.virtualKey))) {
+        m_idToFeatureId[id] = featureId;
+        return true;
+    }
+    return false;
+}
+#endif
 
 bool HotkeyManager::isHoldBindingDown(const std::string& featureId) const {
     for (const auto& entry : m_holdBindings) {
@@ -287,6 +337,42 @@ const Feature* HotkeyManager::findDuplicateHotkey(const Project& project,
     return nullptr;
 }
 
+void HotkeyManager::emitHotkeyTriggered(const std::string& featureId) {
+    const HWND previousForeground = GetForegroundWindow();
+    const QString qFeatureId = QString::fromStdString(featureId);
+    QMetaObject::invokeMethod(
+        this,
+        [this, qFeatureId, previousForeground]() {
+            restoreForegroundWindow(previousForeground);
+            emit hotkeyTriggered(qFeatureId);
+        },
+        Qt::QueuedConnection);
+}
+
+void HotkeyManager::emitHotkeyHoldStarted(const std::string& featureId) {
+    const HWND previousForeground = GetForegroundWindow();
+    const QString qFeatureId = QString::fromStdString(featureId);
+    QMetaObject::invokeMethod(
+        this,
+        [this, qFeatureId, previousForeground]() {
+            restoreForegroundWindow(previousForeground);
+            emit hotkeyHoldStarted(qFeatureId);
+        },
+        Qt::QueuedConnection);
+}
+
+void HotkeyManager::emitHotkeyHoldEnded(const std::string& featureId) {
+    const QString qFeatureId = QString::fromStdString(featureId);
+    QMetaObject::invokeMethod(
+        this,
+        [this, qFeatureId]() { emit hotkeyHoldEnded(qFeatureId); },
+        Qt::QueuedConnection);
+}
+
+void HotkeyManager::dispatchWin32Hotkey(int hotkeyId) {
+    handleHotkey(hotkeyId);
+}
+
 void HotkeyManager::handleHotkey(int hotkeyId) {
     if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
         return;
@@ -298,38 +384,35 @@ void HotkeyManager::handleHotkey(int hotkeyId) {
     }
 
 #ifdef _WIN32
-    const HWND previousForeground = GetForegroundWindow();
-    const QString featureId = QString::fromStdString(it->second);
-
-    QMetaObject::invokeMethod(
-        this,
-        [this, featureId, previousForeground]() {
-            restoreForegroundWindow(previousForeground);
-            emit hotkeyTriggered(featureId);
-        },
-        Qt::QueuedConnection);
+    emitHotkeyTriggered(it->second);
 #else
     emit hotkeyTriggered(QString::fromStdString(it->second));
 #endif
 }
 
 #ifdef _WIN32
-void HotkeyManager::installHoldHook() {
-    if (m_holdHookInstalled) {
+void HotkeyManager::installKeyboardHook() {
+    if (m_keyboardHookInstalled) {
         return;
     }
-    m_holdKeyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, holdKeyboardHookProc, GetModuleHandleW(nullptr), 0);
-    m_holdHookInstalled = m_holdKeyboardHook != nullptr;
+    for (int attempt = 0; attempt < 2 && !m_keyboardHookInstalled; ++attempt) {
+        m_keyboardHook =
+            SetWindowsHookExW(WH_KEYBOARD_LL, keyboardHookProc, GetModuleHandleW(nullptr), 0);
+        m_keyboardHookInstalled = m_keyboardHook != nullptr;
+    }
 }
 
-void HotkeyManager::uninstallHoldHook() {
-    if (m_holdKeyboardHook) {
-        UnhookWindowsHookEx(static_cast<HHOOK>(m_holdKeyboardHook));
-        m_holdKeyboardHook = nullptr;
+void HotkeyManager::uninstallKeyboardHook() {
+    if (m_keyboardHook) {
+        UnhookWindowsHookEx(static_cast<HHOOK>(m_keyboardHook));
+        m_keyboardHook = nullptr;
     }
-    m_holdHookInstalled = false;
+    m_keyboardHookInstalled = false;
     for (HoldBindingEntry& entry : m_holdBindings) {
         entry.keyDown = false;
+    }
+    for (ToggleBindingEntry& entry : m_toggleBindings) {
+        entry.armed = true;
     }
 }
 
@@ -337,8 +420,10 @@ void HotkeyManager::installMouseHook() {
     if (m_mouseHookInstalled) {
         return;
     }
-    m_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, mouseHookProc, GetModuleHandleW(nullptr), 0);
-    m_mouseHookInstalled = m_mouseHook != nullptr;
+    for (int attempt = 0; attempt < 2 && !m_mouseHookInstalled; ++attempt) {
+        m_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, mouseHookProc, GetModuleHandleW(nullptr), 0);
+        m_mouseHookInstalled = m_mouseHook != nullptr;
+    }
 }
 
 void HotkeyManager::uninstallMouseHook() {
@@ -352,12 +437,13 @@ void HotkeyManager::uninstallMouseHook() {
     }
 }
 
-bool HotkeyManager::handleHoldKeyEvent(int vkCode, bool keyDown) {
+bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
     if (HotkeyBinding::isMouseVirtualKey(vkCode)) {
         return false;
     }
 
     bool swallow = false;
+
     for (HoldBindingEntry& entry : m_holdBindings) {
         if (!entry.binding.matchesVirtualKey(vkCode)) {
             continue;
@@ -373,29 +459,39 @@ bool HotkeyManager::handleHoldKeyEvent(int vkCode, bool keyDown) {
                 continue;
             }
             entry.keyDown = true;
-            const QString featureId = QString::fromStdString(entry.featureId);
-            const HWND previousForeground = GetForegroundWindow();
-            QMetaObject::invokeMethod(
-                this,
-                [this, featureId, previousForeground]() {
-                    restoreForegroundWindow(previousForeground);
-                    emit hotkeyHoldStarted(featureId);
-                },
-                Qt::QueuedConnection);
+            emitHotkeyHoldStarted(entry.featureId);
             swallow = true;
         } else {
             if (!entry.keyDown) {
                 continue;
             }
             entry.keyDown = false;
-            const QString featureId = QString::fromStdString(entry.featureId);
-            QMetaObject::invokeMethod(
-                this,
-                [this, featureId]() { emit hotkeyHoldEnded(featureId); },
-                Qt::QueuedConnection);
+            emitHotkeyHoldEnded(entry.featureId);
             swallow = true;
         }
     }
+
+    for (ToggleBindingEntry& entry : m_toggleBindings) {
+        if (!entry.binding.matchesVirtualKey(vkCode)) {
+            continue;
+        }
+        if (keyDown) {
+            if (!entry.armed) {
+                continue;
+            }
+            if (!entry.binding.modifiersMatch()) {
+                continue;
+            }
+            if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
+                continue;
+            }
+            entry.armed = false;
+            emitHotkeyTriggered(entry.featureId);
+        } else {
+            entry.armed = true;
+        }
+    }
+
     return swallow;
 }
 
@@ -420,26 +516,14 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
                     continue;
                 }
                 entry.buttonDown = true;
-                const QString featureId = QString::fromStdString(entry.featureId);
-                const HWND previousForeground = GetForegroundWindow();
-                QMetaObject::invokeMethod(
-                    this,
-                    [this, featureId, previousForeground]() {
-                        restoreForegroundWindow(previousForeground);
-                        emit hotkeyHoldStarted(featureId);
-                    },
-                    Qt::QueuedConnection);
+                emitHotkeyHoldStarted(entry.featureId);
                 swallow = true;
             } else {
                 if (!entry.buttonDown) {
                     continue;
                 }
                 entry.buttonDown = false;
-                const QString featureId = QString::fromStdString(entry.featureId);
-                QMetaObject::invokeMethod(
-                    this,
-                    [this, featureId]() { emit hotkeyHoldEnded(featureId); },
-                    Qt::QueuedConnection);
+                emitHotkeyHoldEnded(entry.featureId);
                 swallow = true;
             }
             continue;
@@ -453,15 +537,7 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
                 continue;
             }
             entry.buttonDown = true;
-            const QString featureId = QString::fromStdString(entry.featureId);
-            const HWND previousForeground = GetForegroundWindow();
-            QMetaObject::invokeMethod(
-                this,
-                [this, featureId, previousForeground]() {
-                    restoreForegroundWindow(previousForeground);
-                    emit hotkeyTriggered(featureId);
-                },
-                Qt::QueuedConnection);
+            emitHotkeyTriggered(entry.featureId);
             swallow = true;
         } else if (entry.buttonDown) {
             entry.buttonDown = false;

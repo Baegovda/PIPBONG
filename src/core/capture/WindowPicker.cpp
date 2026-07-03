@@ -1,5 +1,7 @@
 #include "core/capture/WindowPicker.h"
 
+#include "ui/WindowPickerHoverOverlay.h"
+
 #include <QApplication>
 #include <QPointer>
 #include <QTimer>
@@ -41,6 +43,19 @@ HWND topLevelWindowAtPoint(POINT pt) {
     return GetAncestor(hwnd, GA_ROOT);
 }
 
+bool isPickableWindow(HWND hwnd) {
+    return hwnd && IsWindow(hwnd) && IsWindowVisible(hwnd) && !IsIconic(hwnd) && !isOwnProcessWindow(hwnd);
+}
+
+void updateHoverAtPoint(POINT pt) {
+    HWND hwnd = topLevelWindowAtPoint(pt);
+    if (isPickableWindow(hwnd)) {
+        WindowPickerHoverOverlay::updateHover(hwnd);
+    } else {
+        WindowPickerHoverOverlay::dismissAll();
+    }
+}
+
 std::wstring windowTitleFromHandle(HWND hwnd) {
     if (!hwnd) {
         return {};
@@ -78,6 +93,7 @@ void finishPick(WindowPicker::Result result) {
     WindowPicker::Completion callback = std::move(g_state->callback);
     teardownHooks(*g_state);
     g_state.reset();
+    WindowPickerHoverOverlay::dismissAll();
 
     QTimer::singleShot(0, qApp, [callback = std::move(callback), result = std::move(result)]() mutable {
         if (callback) {
@@ -92,20 +108,28 @@ LRESULT CALLBACK mouseHookProc(int code, WPARAM wParam, LPARAM lParam) {
     }
 
     const auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
-    if (wParam == WM_MOUSEMOVE && g_state->crossCursor) {
-        SetCursor(g_state->crossCursor);
+    if (wParam == WM_MOUSEMOVE) {
+        if (g_state->crossCursor) {
+            SetCursor(g_state->crossCursor);
+        }
+        updateHoverAtPoint(info->pt);
         return CallNextHookEx(g_state->mouseHook, code, wParam, lParam);
     }
 
     if (wParam == WM_LBUTTONDOWN) {
         WindowPicker::Result result;
         HWND hwnd = topLevelWindowAtPoint(info->pt);
-        if (hwnd && IsWindowVisible(hwnd) && !isOwnProcessWindow(hwnd)) {
+        if (isPickableWindow(hwnd)) {
             result.accepted = true;
             result.hwnd = hwnd;
             result.title = windowTitleFromHandle(hwnd);
         }
         finishPick(result);
+        return 1;
+    }
+
+    if (wParam == WM_RBUTTONDOWN) {
+        finishPick({});
         return 1;
     }
 
@@ -134,6 +158,7 @@ LRESULT CALLBACK keyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
 void WindowPicker::startPick(QWidget* hostWidget, Completion callback) {
 #ifdef _WIN32
     cancelPick();
+    WindowPickerHoverOverlay::dismissAll();
 
     auto state = std::make_unique<PickState>();
     state->callback = std::move(callback);

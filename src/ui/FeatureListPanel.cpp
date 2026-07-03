@@ -1086,6 +1086,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
                              feature->infiniteExitAfterConsecutiveMisses(),
                              feature->userInputInterruptMode(),
                              feature->pointerVisualFeedback(),
+                             feature->restoreMousePositionOnEnd(),
                              feature->roiCorrection(),
                              feature->editFirstTemplateRoiOnStart(),
                              m_project,
@@ -1101,6 +1102,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setInfiniteExitAfterConsecutiveMisses(dialog.infiniteExitAfterConsecutiveMisses());
     feature->setUserInputInterruptMode(dialog.userInputInterruptMode());
     feature->setPointerVisualFeedback(dialog.pointerVisualFeedback());
+    feature->setRestoreMousePositionOnEnd(dialog.restoreMousePositionOnEnd());
     feature->setRoiCorrection(dialog.roiCorrection());
     feature->setEditFirstTemplateRoiOnStart(dialog.editFirstTemplateRoiOnStart());
     refresh();

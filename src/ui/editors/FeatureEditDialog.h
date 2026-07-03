@@ -26,6 +26,7 @@ public:
                       int infiniteExitAfterConsecutiveMisses,
                       UserInputInterruptMode userInputInterruptMode,
                       bool pointerVisualFeedback,
+                      bool restoreMousePositionOnEnd,
                       bool roiCorrection,
                       bool editFirstTemplateRoiOnStart,
                       Project* project,
@@ -39,6 +40,7 @@ public:
     int infiniteExitAfterConsecutiveMisses() const;
     UserInputInterruptMode userInputInterruptMode() const;
     bool pointerVisualFeedback() const;
+    bool restoreMousePositionOnEnd() const;
     bool roiCorrection() const;
     bool editFirstTemplateRoiOnStart() const;
 
@@ -74,6 +76,7 @@ private:
     DragAdjustSpinBox* m_infiniteExitSpin = nullptr;
     QComboBox* m_userInputInterruptCombo = nullptr;
     QCheckBox* m_pointerVisualFeedbackCheck = nullptr;
+    QCheckBox* m_restoreMousePositionOnEndCheck = nullptr;
     QCheckBox* m_roiCorrectionCheck = nullptr;
     QCheckBox* m_editFirstTemplateRoiOnStartCheck = nullptr;
 };

@@ -130,7 +130,18 @@ bool HotkeyBinding::modifiersMatch() const {
         return true;
     }
 
-    return ctrlDown == ctrl && altDown == alt && shiftDown == shift;
+    // Keyboard hotkeys: required modifiers must be held; extra modifiers do not block
+    // (e.g. Shift still down on a laptop, or AltGr adding Ctrl+Alt).
+    if (ctrl && !ctrlDown) {
+        return false;
+    }
+    if (alt && !altDown) {
+        return false;
+    }
+    if (shift && !shiftDown) {
+        return false;
+    }
+    return true;
 }
 
 unsigned int HotkeyBinding::winModifiers() const {

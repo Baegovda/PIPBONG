@@ -38,6 +38,9 @@ public:
     bool pointerVisualFeedback() const { return m_pointerVisualFeedback; }
     void setPointerVisualFeedback(bool enabled) { m_pointerVisualFeedback = enabled; }
 
+    bool restoreMousePositionOnEnd() const { return m_restoreMousePositionOnEnd; }
+    void setRestoreMousePositionOnEnd(bool enabled) { m_restoreMousePositionOnEnd = enabled; }
+
     bool roiCorrection() const { return m_roiCorrection; }
     void setRoiCorrection(bool enabled) { m_roiCorrection = enabled; }
 
@@ -67,6 +70,7 @@ private:
     int m_infiniteExitAfterConsecutiveMisses = 0;
     UserInputInterruptMode m_userInputInterruptMode = UserInputInterruptMode::Stop;
     bool m_pointerVisualFeedback = true;
+    bool m_restoreMousePositionOnEnd = false;
     bool m_roiCorrection = false;
     bool m_editFirstTemplateRoiOnStart = false;
     HotkeyBinding m_hotkey;

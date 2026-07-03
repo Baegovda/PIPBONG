@@ -1025,7 +1025,8 @@ void ImageFindEditor::onMatchTest() {
                                                 },
                                                 testResult.matchesPerCustomRegion.empty()
                                                     ? nullptr
-                                                    : &testResult.matchesPerCustomRegion);
+                                                    : &testResult.matchesPerCustomRegion,
+                                                testResult.matchDurationMs);
     updateMatchTestButton(visible);
 }
 

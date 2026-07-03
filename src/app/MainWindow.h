@@ -67,6 +67,7 @@ private slots:
     void onCheckForUpdates();
     void onUpdateButtonClicked();
     void onUpdateCheckFinished(bool success, bool updateAvailable, const QString& errorMessage);
+    void onReadyToRestartForUpdate();
     void runSilentUpdateCheck();
     void refreshUpdateButtonState();
     void onProgramSettings();

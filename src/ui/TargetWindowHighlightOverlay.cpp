@@ -25,11 +25,19 @@ constexpr wchar_t kOverlayClassName[] = L"PipbongTargetWindowHighlightOverlay";
 constexpr UINT_PTR kTimerId = 1;
 constexpr UINT kTimerMs = 33;
 constexpr ULONGLONG kFlashDurationMs = 2400;
+constexpr ULONGLONG kSelectionWaveDurationMs = 1350;
 constexpr int kBorderThickness = 5;
+
+enum class HighlightMode {
+    BorderPulse,
+    SelectionWave,
+};
 
 struct OverlayState {
     HWND hwnd = nullptr;
+    HWND targetHwnd = nullptr;
     ULONGLONG startMs = 0;
+    HighlightMode mode = HighlightMode::BorderPulse;
 };
 
 std::unique_ptr<OverlayState> g_state;
@@ -102,12 +110,61 @@ void drawBorderFrame(uint32_t* pixels,
     }
 }
 
+void drawCircleFill(uint32_t* pixels,
+                    int width,
+                    int height,
+                    float radius,
+                    float edgeWidth,
+                    uint8_t fillAlpha,
+                    uint8_t edgeAlpha,
+                    uint8_t r,
+                    uint8_t g,
+                    uint8_t b) {
+    const float cx = (static_cast<float>(width) - 1.0f) * 0.5f;
+    const float cy = (static_cast<float>(height) - 1.0f) * 0.5f;
+    const int top = std::max(0, static_cast<int>(std::floor(cy - radius - edgeWidth)));
+    const int bottom = std::min(height - 1, static_cast<int>(std::ceil(cy + radius + edgeWidth)));
+
+    const float outerRadius = radius + edgeWidth;
+    const float outerSq = outerRadius * outerRadius;
+    const float innerEdgeStart = std::max(0.0f, radius - edgeWidth);
+    const float innerEdgeSq = innerEdgeStart * innerEdgeStart;
+    const float radiusSq = radius * radius;
+
+    for (int y = top; y <= bottom; ++y) {
+        const float dy = static_cast<float>(y) - cy;
+        const float maxDxSq = outerSq - dy * dy;
+        if (maxDxSq < 0.0f) {
+            continue;
+        }
+        const int left = std::max(0, static_cast<int>(std::floor(cx - std::sqrt(maxDxSq))));
+        const int right = std::min(width - 1, static_cast<int>(std::ceil(cx + std::sqrt(maxDxSq))));
+        for (int x = left; x <= right; ++x) {
+            const float dx = static_cast<float>(x) - cx;
+            const float distSq = dx * dx + dy * dy;
+            uint8_t alpha = 0;
+            if (distSq <= radiusSq) {
+                alpha = fillAlpha;
+            }
+            if (distSq >= innerEdgeSq && distSq <= outerSq) {
+                alpha = std::max(alpha, edgeAlpha);
+            }
+            if (alpha > 0) {
+                setPixelArgb(pixels, width, height, x, y, alpha, r, g, b);
+            }
+        }
+    }
+}
+
 bool targetPhysicalBounds(QRect& boundsOut) {
-    const ScreenCapture::ScreenRect target = ScreenCapture::getTargetWindowScreenRect();
-    if (!target.valid || target.width <= 0 || target.height <= 0) {
+    if (!g_state || !g_state->targetHwnd || !IsWindow(g_state->targetHwnd)) {
         return false;
     }
-    boundsOut = QRect(target.x, target.y, target.width, target.height);
+    const ScreenCapture::WindowBounds bounds = ScreenCapture::physicalRectForWindow(g_state->targetHwnd);
+    if (!bounds.valid || bounds.width <= 0 || bounds.height <= 0) {
+        return false;
+    }
+    boundsOut = QRect(bounds.x, bounds.y, bounds.width, bounds.height);
     return true;
 }
 
@@ -146,8 +203,28 @@ void renderOverlayFrame(const QRect& physicalBounds, float pulse) {
     std::fill(pixels, pixels + pixelCount, 0u);
 
     const float clampedPulse = std::clamp(pulse, 0.0f, 1.0f);
-    const uint8_t alpha = static_cast<uint8_t>(std::clamp(80.0f + clampedPulse * 175.0f, 0.0f, 255.0f));
-    drawBorderFrame(pixels, width, height, kBorderThickness, alpha, 96, 165, 250);
+    if (g_state->mode == HighlightMode::SelectionWave) {
+        const float maxRadius =
+            std::sqrt(static_cast<float>(width * width + height * height)) * 0.5f;
+        const float radius = maxRadius * clampedPulse;
+        const float lateFade = clampedPulse > 0.72f ? (1.0f - clampedPulse) / 0.28f : 1.0f;
+        const float fade = std::clamp(lateFade, 0.0f, 1.0f);
+        const uint8_t fillAlpha = static_cast<uint8_t>(std::clamp(92.0f * fade, 0.0f, 255.0f));
+        const uint8_t edgeAlpha = static_cast<uint8_t>(std::clamp(210.0f * fade, 0.0f, 255.0f));
+        const float edgeWidth = std::max(18.0f, std::min(width, height) * 0.035f);
+        drawCircleFill(pixels, width, height, radius, edgeWidth, fillAlpha, edgeAlpha, 56, 189, 248);
+        drawBorderFrame(pixels,
+                        width,
+                        height,
+                        kBorderThickness,
+                        static_cast<uint8_t>(std::clamp(130.0f * fade, 0.0f, 255.0f)),
+                        56,
+                        189,
+                        248);
+    } else {
+        const uint8_t alpha = static_cast<uint8_t>(std::clamp(80.0f + clampedPulse * 175.0f, 0.0f, 255.0f));
+        drawBorderFrame(pixels, width, height, kBorderThickness, alpha, 96, 165, 250);
+    }
 
     POINT ptDst{physicalBounds.x(), physicalBounds.y()};
     SIZE size{width, height};
@@ -176,12 +253,22 @@ float pulseStrength(ULONGLONG elapsedMs) {
     return wave * fadeOut;
 }
 
+float selectionWaveProgress(ULONGLONG elapsedMs) {
+    const float t = std::clamp(static_cast<float>(elapsedMs) / static_cast<float>(kSelectionWaveDurationMs),
+                               0.0f,
+                               1.0f);
+    const float inv = 1.0f - t;
+    return 1.0f - inv * inv * inv;
+}
+
 LRESULT CALLBACK overlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
     case WM_TIMER:
         if (wParam == kTimerId && g_state) {
             const ULONGLONG elapsed = nowMs() - g_state->startMs;
-            if (elapsed >= kFlashDurationMs) {
+            const ULONGLONG duration =
+                g_state->mode == HighlightMode::SelectionWave ? kSelectionWaveDurationMs : kFlashDurationMs;
+            if (elapsed >= duration) {
                 TargetWindowHighlightOverlay::dismissAll();
                 return 0;
             }
@@ -199,7 +286,10 @@ LRESULT CALLBACK overlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
                          bounds.width(),
                          bounds.height(),
                          SWP_NOACTIVATE | SWP_SHOWWINDOW);
-            renderOverlayFrame(bounds, pulseStrength(elapsed));
+            const float progress = g_state->mode == HighlightMode::SelectionWave
+                                       ? selectionWaveProgress(elapsed)
+                                       : pulseStrength(elapsed);
+            renderOverlayFrame(bounds, progress);
             return 0;
         }
         break;
@@ -225,13 +315,15 @@ bool ensureOverlayClassRegistered() {
     return atom != 0;
 }
 
-bool createOverlayWindow(const QRect& physicalBounds) {
+bool createOverlayWindow(HWND targetHwnd, const QRect& physicalBounds, HighlightMode mode) {
     if (!ensureOverlayClassRegistered()) {
         return false;
     }
 
     g_state = std::make_unique<OverlayState>();
+    g_state->targetHwnd = targetHwnd;
     g_state->startMs = nowMs();
+    g_state->mode = mode;
 
     g_state->hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT
                                           | WS_EX_NOACTIVATE,
@@ -260,8 +352,35 @@ bool createOverlayWindow(const QRect& physicalBounds) {
                  physicalBounds.height(),
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
     SetTimer(g_state->hwnd, kTimerId, kTimerMs, nullptr);
-    renderOverlayFrame(physicalBounds, 1.0f);
+    renderOverlayFrame(physicalBounds, mode == HighlightMode::SelectionWave ? 0.0f : 1.0f);
     return true;
+}
+
+bool showHighlight(HWND targetHwnd, HighlightMode mode, QWidget* hostWidget, bool showMissingTargetMessage) {
+    destroyOverlayWindow();
+
+    if (!targetHwnd || !IsWindow(targetHwnd)) {
+        if (showMissingTargetMessage) {
+            QMessageBox::warning(messageBoxParent(hostWidget),
+                                 QObject::tr("창 표시"),
+                                 QObject::tr("대상 창을 찾을 수 없습니다.\n"
+                                             "먼저 '창 지정'으로 대상 창을 선택하세요."));
+        }
+        return false;
+    }
+
+    const ScreenCapture::WindowBounds bounds = ScreenCapture::physicalRectForWindow(targetHwnd);
+    if (!bounds.valid || bounds.width <= 0 || bounds.height <= 0) {
+        if (showMissingTargetMessage) {
+            QMessageBox::warning(messageBoxParent(hostWidget),
+                                 QObject::tr("창 표시"),
+                                 QObject::tr("대상 창 영역을 확인할 수 없습니다."));
+        }
+        return false;
+    }
+
+    const QRect physicalBounds(bounds.x, bounds.y, bounds.width, bounds.height);
+    return createOverlayWindow(targetHwnd, physicalBounds, mode);
 }
 
 #endif // _WIN32
@@ -270,26 +389,39 @@ bool createOverlayWindow(const QRect& physicalBounds) {
 
 bool TargetWindowHighlightOverlay::flash(QWidget* hostWidget) {
 #ifdef _WIN32
-    dismissAll();
-
-    if (!ScreenCapture::findTargetWindow()) {
-        QMessageBox::warning(messageBoxParent(hostWidget),
-                             QObject::tr("창 표시"),
-                             QObject::tr("대상 창을 찾을 수 없습니다.\n"
-                                         "먼저 '창 지정'으로 대상 창을 선택하세요."));
-        return false;
-    }
-
-    QRect physicalBounds;
-    if (!targetPhysicalBounds(physicalBounds)) {
-        QMessageBox::warning(messageBoxParent(hostWidget),
-                             QObject::tr("창 표시"),
-                             QObject::tr("대상 창 영역을 확인할 수 없습니다."));
-        return false;
-    }
-
-    return createOverlayWindow(physicalBounds);
+    const HWND targetHwnd = ScreenCapture::findTargetWindow();
+    return showHighlight(targetHwnd, HighlightMode::BorderPulse, hostWidget, true);
 #else
+    (void)hostWidget;
+    return false;
+#endif
+}
+
+bool TargetWindowHighlightOverlay::flashSelectionWave(QWidget* hostWidget) {
+#ifdef _WIN32
+    const HWND targetHwnd = ScreenCapture::findTargetWindow();
+    return showHighlight(targetHwnd, HighlightMode::SelectionWave, hostWidget, true);
+#else
+    (void)hostWidget;
+    return false;
+#endif
+}
+
+bool TargetWindowHighlightOverlay::flashForHwnd(void* hwnd, QWidget* hostWidget) {
+#ifdef _WIN32
+    return showHighlight(static_cast<HWND>(hwnd), HighlightMode::BorderPulse, hostWidget, false);
+#else
+    (void)hwnd;
+    (void)hostWidget;
+    return false;
+#endif
+}
+
+bool TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(void* hwnd, QWidget* hostWidget) {
+#ifdef _WIN32
+    return showHighlight(static_cast<HWND>(hwnd), HighlightMode::SelectionWave, hostWidget, false);
+#else
+    (void)hwnd;
     (void)hostWidget;
     return false;
 #endif

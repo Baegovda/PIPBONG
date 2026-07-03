@@ -43,6 +43,9 @@ nlohmann::json featureToJson(const Feature& feature) {
     if (!feature.pointerVisualFeedback()) {
         json["pointerVisualFeedback"] = false;
     }
+    if (feature.restoreMousePositionOnEnd()) {
+        json["restoreMousePositionOnEnd"] = true;
+    }
     if (feature.roiCorrection()) {
         json["roiCorrection"] = true;
     }
@@ -67,6 +70,7 @@ void featureFromJson(const nlohmann::json& json, Feature& feature) {
     feature.setUserInputInterruptMode(
         userInputInterruptModeFromString(json.value("userInputInterrupt", "Stop")));
     feature.setPointerVisualFeedback(json.value("pointerVisualFeedback", true));
+    feature.setRestoreMousePositionOnEnd(json.value("restoreMousePositionOnEnd", false));
     feature.setRoiCorrection(json.value("roiCorrection", false));
     feature.setEditFirstTemplateRoiOnStart(json.value("editFirstTemplateRoiOnStart", false));
     if (json.contains("hotkey")) {

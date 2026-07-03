@@ -1,10 +1,10 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.47` (from `project(PIPBONG VERSION 0.7.47)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.61` (from `project(PIPBONG VERSION 0.7.61)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
-This is the **only project document** — AI handover, user quick start, development governance, version history, and implementation patterns. Append changelog entries to [§11](#11-changelog-and-version-history) under `[Unreleased]`. Do not create any other doc files.
+This is the **only development document** — AI handover, user quick start, development governance, version history, and implementation patterns. Append changelog entries to [§11](#11-changelog-and-version-history) under `[Unreleased]`. Do not create other doc files. The sole exception is **`README.md`** at the repo root: a user-facing GitHub landing page (feature highlights, install, quick start) that links back here for all development detail — keep it high-level and do not duplicate handover/procedure content into it.
 
 ---
 
@@ -427,6 +427,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `infiniteExitAfterConsecutiveMisses` | `0` (omitted) | When `> 0` with `RepeatInfinite` or `Hold`, stop after this many consecutive loop iterations where template matching fails |
 | `userInputInterrupt` | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run. Legacy `"None"` loads as `"Stop"`. Excludes mouse movement, injected input, and the feature's own hotkey |
 | `pointerVisualFeedback` | `true` (omitted) | When `false`, disables target-window click/match pulse overlay for this feature during runs |
+| `restoreMousePositionOnEnd` | `false` (omitted) | When `true`, moves the mouse cursor back to its screen position when the workflow session started |
 | `roiCorrection` | `false` (omitted) | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
 | `editFirstTemplateRoiOnStart` | `false` (omitted) | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run |
 
@@ -824,6 +825,95 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.61] - 2026-07-03
+
+### Fixed
+
+- **창 지정** pick mode title-bar hint ("대상 창을 클릭하세요…") now clears when pick completes or is cancelled instead of reappearing after the transient status expires (`MainWindow`).
+
+## [0.7.60] - 2026-07-03
+
+### Fixed
+
+- **창 목록** picker now shows a pulsing border on the selected window while browsing the list, and plays the selection wave animation on the chosen HWND after confirm (no longer depends on title-based window lookup during overlay ticks; `TargetWindowHighlightOverlay`, `MainWindow`).
+
+## [0.7.59] - 2026-07-03
+
+### Changed
+
+- Feature global hotkeys: keyboard bindings now use a low-level hook (same path as **누를 동안** / hold) instead of relying only on `RegisterHotKey`/`WM_HOTKEY`; `RegisterHotKey` + host `WM_HOTKEY` handler remain as fallback when hook install fails (`HotkeyManager`, `MainWindow`).
+- Keyboard/mouse hotkey modifier matching allows extra held modifiers (e.g. accidental Shift on laptops) when they are not part of the binding (`HotkeyBinding::modifiersMatch`).
+
+### Fixed
+
+- Hotkey host window handles `WM_HOTKEY` directly in its Win32 proc so Qt message-filter gaps on some systems no longer drop registered hotkeys (`HotkeyManager`).
+
+## [0.7.58] - 2026-07-03
+
+### Changed
+
+- Title bar icon easter egg: exit animation bounces smaller and flies back into the title bar icon instead of fading out; max size increased to ~94% of screen short edge; anchor tracks the badge widget (`TitleBarIconEasterEgg`, `CustomTitleBar`).
+
+## [0.7.57] - 2026-07-03
+
+### Changed
+
+- Custom title bar left app icon enlarged from 22×22 to 30×30 px to better fill the title bar height (`CustomTitleBar`).
+
+## [0.7.56] - 2026-07-03
+
+### Fixed
+
+- Title bar **항상 위** checkbox no longer clips its bottom border: slightly taller title bar (42 px), balanced bottom margin, and explicit indicator sizing (`CustomTitleBar`).
+
+## [0.7.55] - 2026-07-03
+
+### Added
+
+- Feature **기능 편집** option **마우스 위치 복귀**: when enabled, restores the cursor to its screen position at workflow start when the feature run session ends (`Feature`, `FeatureEditDialog`, `JsonSerializer`, `FeatureRunSession`, `MainWindow`).
+
+## [0.7.54] - 2026-07-03
+
+### Added
+
+- ImageFind **매칭 테스트** overlay hit labels now show capture + matching duration in ms beside the confidence score (e.g. `0.92 · 48 ms`) (`ImageFindBlock::testMatchTemplates`, `MatchTestOverlay`, `ImageFindEditor`).
+
+## [0.7.53] - 2026-07-03
+
+### Added
+
+- **창 지정** pick mode now cancels on right-click as well as Esc, and successful target selection plays a center-out wave fill animation across the target window (`WindowPicker`, `TargetWindowHighlightOverlay`, `MainWindow`).
+
+## [0.7.52] - 2026-07-03
+
+### Added
+
+- **창 목록** picker now shows each visible window with its process icon and flashes the selected target window border after confirmation (`MainWindow`, `TargetWindowHighlightOverlay`).
+
+## [0.7.51] - 2026-07-03
+
+### Added
+
+- Title bar app icon easter egg: clicking the left PIPBONG icon pops a giant bouncing app icon over the current screen, then fades it out (`CustomTitleBar`, `TitleBarIconEasterEgg`).
+
+## [0.7.50] - 2026-07-03
+
+### Added
+
+- `README.md` GitHub landing page (Korean): logo, badges, feature highlights, install and quick-start, collapsible build section, links to `AGENTS.md`. AGENTS.md documents README as the only user-facing doc exception to the single-document policy.
+
+## [0.7.49] - 2026-07-03
+
+### Added
+
+- **창 지정** pick mode: hovering a top-level window shows a pulsing sky-blue border on that window; overlay follows the cursor target and dismisses on click, Esc, or cancel (`WindowPickerHoverOverlay`, `WindowPicker`).
+
+## [0.7.48] - 2026-07-03
+
+### Fixed
+
+- In-app update now reliably restarts PIPBONG after install: updater skips overwriting its own running executable, retries launch with admin elevation when **항상 관리자 권한으로 실행** is enabled, and the main app forces a full quit (not tray hide) before the updater runs (`PIPBONGUpdater`, `UpdateChecker`, `MainWindow`).
 
 ## [0.7.47] - 2026-07-03
 
@@ -2445,4 +2535,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-03. Current application version: 0.7.47.*
+*Last consolidated: 2026-07-03. Current application version: 0.7.61.*

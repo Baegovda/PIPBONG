@@ -10,6 +10,8 @@
 
 struct ImageFindMatchTestResult {
     bool captureOk = false;
+    /// Capture + template matching work time in milliseconds (single test attempt).
+    int64_t matchDurationMs = -1;
     std::string errorMessage;
     cv::Mat haystack;
     cv::Mat needle;

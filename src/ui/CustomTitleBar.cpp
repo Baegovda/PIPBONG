@@ -1,5 +1,7 @@
 #include "ui/CustomTitleBar.h"
 
+#include "ui/TitleBarIconEasterEgg.h"
+
 #include <QEvent>
 #include <QFont>
 #include <QHBoxLayout>
@@ -17,6 +19,8 @@
 
 namespace {
 
+constexpr int kTitleBarAppBadgeSize = 30;
+
 QPushButton* makeTitleBarButton(const QString& text, const char* objectName, QWidget* parent) {
     auto* button = new QPushButton(text, parent);
     button->setObjectName(QString::fromLatin1(objectName));
@@ -31,7 +35,7 @@ QPushButton* makeTitleBarButton(const QString& text, const char* objectName, QWi
 CustomTitleBar::CustomTitleBar(QMainWindow* window)
     : m_window(window) {
     setObjectName(QStringLiteral("customTitleBar"));
-    setFixedHeight(40);
+    setFixedHeight(42);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setAttribute(Qt::WA_StyledBackground, true);
 
@@ -45,17 +49,19 @@ CustomTitleBar::CustomTitleBar(QMainWindow* window)
 
 void CustomTitleBar::setupUi() {
     auto* layout = new QHBoxLayout(this);
-    layout->setContentsMargins(8, 5, 0, 3);
+    layout->setContentsMargins(8, 5, 0, 5);
     layout->setSpacing(6);
 
     m_appBadge = new QLabel(this);
     m_appBadge->setObjectName(QStringLiteral("titleBarAppBadge"));
     m_appBadge->setAlignment(Qt::AlignCenter);
-    m_appBadge->setFixedSize(22, 22);
+    m_appBadge->setFixedSize(kTitleBarAppBadgeSize, kTitleBarAppBadgeSize);
     m_appBadge->setScaledContents(true);
+    m_appBadge->setCursor(Qt::PointingHandCursor);
+    m_appBadge->setToolTip(tr("PIPBONG"));
     const QIcon appIcon = QApplication::windowIcon();
     if (!appIcon.isNull()) {
-        m_appBadge->setPixmap(appIcon.pixmap(22, 22));
+        m_appBadge->setPixmap(appIcon.pixmap(kTitleBarAppBadgeSize, kTitleBarAppBadgeSize));
     } else {
         m_appBadge->setText(QStringLiteral("PIP"));
     }
@@ -81,6 +87,7 @@ void CustomTitleBar::setupUi() {
     dragLayout->addWidget(m_titleLabel, 1);
 
     m_dragRegion->installEventFilter(this);
+    m_appBadge->installEventFilter(this);
 
     m_minimizeButton = makeTitleBarButton(QStringLiteral("\u2212"), "titleBarMinimizeButton", this);
     m_maximizeButton = makeTitleBarButton(QStringLiteral("\u25a1"), "titleBarMaximizeButton", this);
@@ -137,8 +144,12 @@ void CustomTitleBar::setupUi() {
         "}"
         "QCheckBox#titleBarAlwaysOnTopCheck {"
         "  spacing: 4px;"
-        "  padding: 0 8px;"
+        "  padding: 0 8px 1px 8px;"
         "  color: palette(window-text);"
+        "}"
+        "QCheckBox#titleBarAlwaysOnTopCheck::indicator {"
+        "  width: 14px;"
+        "  height: 14px;"
         "}"
         "QPushButton#titleBarMinimizeButton,"
         "QPushButton#titleBarMaximizeButton,"
@@ -277,6 +288,14 @@ bool CustomTitleBar::eventFilter(QObject* watched, QEvent* event) {
     if (watched == m_dragRegion && event->type() == QEvent::Resize) {
         updateTitleElide();
         return false;
+    }
+
+    if (watched == m_appBadge && event->type() == QEvent::MouseButtonRelease) {
+        auto* mouseEvent = static_cast<QMouseEvent*>(event);
+        if (mouseEvent->button() == Qt::LeftButton) {
+            TitleBarIconEasterEgg::play(QApplication::windowIcon(), m_appBadge);
+            return true;
+        }
     }
 
     if (watched == m_dragRegion && m_window) {

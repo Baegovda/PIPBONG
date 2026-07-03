@@ -8,6 +8,8 @@
 #include <functional>
 #include <vector>
 
+#include <cstdint>
+
 /// Win32 semi-transparent overlay on the target window showing ImageFind match-test hits.
 class MatchTestOverlay {
 public:
@@ -22,7 +24,8 @@ public:
                      QWidget* hostWidget = nullptr,
                      VisibilityHandler onVisibilityChanged = {},
                      const std::vector<std::pair<CaptureRegion, std::vector<MatchResult>>>*
-                         matchesPerCustomRegion = nullptr);
+                         matchesPerCustomRegion = nullptr,
+                     int64_t matchDurationMs = -1);
     static bool hide();
     static void dismissAll();
 };

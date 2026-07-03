@@ -28,6 +28,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      int infiniteExitAfterConsecutiveMisses,
                                      UserInputInterruptMode userInputInterruptMode,
                                      bool pointerVisualFeedback,
+                                     bool restoreMousePositionOnEnd,
                                      bool roiCorrection,
                                      bool editFirstTemplateRoiOnStart,
                                      Project* project,
@@ -65,6 +66,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     }
 
     m_pointerVisualFeedbackCheck->setChecked(pointerVisualFeedback);
+    m_restoreMousePositionOnEndCheck->setChecked(restoreMousePositionOnEnd);
     m_roiCorrectionCheck->setChecked(roiCorrection);
     m_editFirstTemplateRoiOnStartCheck->setChecked(editFirstTemplateRoiOnStart);
 
@@ -139,6 +141,11 @@ void FeatureEditDialog::setupUi() {
     m_pointerVisualFeedbackCheck->setToolTip(
         tr("실행 중 대상 창에 클릭·매칭 위치를 펄스로 표시합니다."));
     form->addRow(QString(), m_pointerVisualFeedbackCheck);
+
+    m_restoreMousePositionOnEndCheck = new QCheckBox(tr("마우스 위치 복귀"), this);
+    m_restoreMousePositionOnEndCheck->setToolTip(
+        tr("기능 실행이 끝나면 워크플로가 시작될 때의 마우스 커서 위치로 되돌립니다."));
+    form->addRow(QString(), m_restoreMousePositionOnEndCheck);
 
     m_roiCorrectionCheck = new QCheckBox(tr("전체 ROI 보정"), this);
     m_roiCorrectionCheck->setToolTip(
@@ -290,7 +297,7 @@ bool FeatureEditDialog::isInteractiveWidget(const QWidget* widget) const {
         if (widget == m_nameEdit || widget == m_modeCombo || widget == m_repeatSpin
             || widget == m_infiniteExitCheck || widget == m_infiniteExitSpin
             || widget == m_userInputInterruptCombo || widget == m_pointerVisualFeedbackCheck
-            || widget == m_roiCorrectionCheck || widget == m_editFirstTemplateRoiOnStartCheck) {
+            || widget == m_restoreMousePositionOnEndCheck || widget == m_roiCorrectionCheck || widget == m_editFirstTemplateRoiOnStartCheck) {
             return true;
         }
         if (qobject_cast<const QAbstractButton*>(widget)) {
@@ -334,6 +341,10 @@ UserInputInterruptMode FeatureEditDialog::userInputInterruptMode() const {
 
 bool FeatureEditDialog::pointerVisualFeedback() const {
     return m_pointerVisualFeedbackCheck->isChecked();
+}
+
+bool FeatureEditDialog::restoreMousePositionOnEnd() const {
+    return m_restoreMousePositionOnEndCheck->isChecked();
 }
 
 bool FeatureEditDialog::roiCorrection() const {

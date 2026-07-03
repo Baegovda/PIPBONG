@@ -298,5 +298,4 @@ void UpdateChecker::onDownloadFinished() {
     }
 
     emit readyToRestartForUpdate();
-    QCoreApplication::quit();
 }

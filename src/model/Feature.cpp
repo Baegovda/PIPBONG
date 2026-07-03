@@ -27,6 +27,7 @@ std::unique_ptr<Feature> Feature::clone() const {
     copy->m_infiniteExitAfterConsecutiveMisses = m_infiniteExitAfterConsecutiveMisses;
     copy->m_userInputInterruptMode = m_userInputInterruptMode;
     copy->m_pointerVisualFeedback = m_pointerVisualFeedback;
+    copy->m_restoreMousePositionOnEnd = m_restoreMousePositionOnEnd;
     copy->m_roiCorrection = m_roiCorrection;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_hotkey = m_hotkey;
@@ -44,6 +45,7 @@ std::unique_ptr<Feature> Feature::duplicateAsNewInstance() const {
     copy->m_infiniteExitAfterConsecutiveMisses = m_infiniteExitAfterConsecutiveMisses;
     copy->m_userInputInterruptMode = m_userInputInterruptMode;
     copy->m_pointerVisualFeedback = m_pointerVisualFeedback;
+    copy->m_restoreMousePositionOnEnd = m_restoreMousePositionOnEnd;
     copy->m_roiCorrection = m_roiCorrection;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_hotkey = {};

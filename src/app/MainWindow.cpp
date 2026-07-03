@@ -11,6 +11,8 @@
 #include "core/capture/ScreenCapture.h"
 #include "core/capture/CursorPositionPicker.h"
 #include "core/capture/WindowPicker.h"
+#include "core/input/InputSimulator.h"
+#include "ui/WindowPickerHoverOverlay.h"
 #include "core/RunWarmup.h"
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/Workflow.h"
@@ -43,9 +45,11 @@
 #include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFileIconProvider>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QIcon>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenuBar>
@@ -99,7 +103,41 @@ struct WindowListEntry {
     HWND hwnd = nullptr;
     std::wstring title;
     QString displayText;
+    QIcon icon;
 };
+
+QIcon iconForProcessPath(const std::wstring& processPath) {
+    static QFileIconProvider iconProvider;
+    if (!processPath.empty()) {
+        const QIcon icon = iconProvider.icon(QFileInfo(QString::fromStdWString(processPath)));
+        if (!icon.isNull()) {
+            return icon;
+        }
+    }
+    return iconProvider.icon(QFileIconProvider::File);
+}
+
+void captureRunStartCursorPosition(FeatureRunSession& session) {
+    session.hasRunStartCursorPosition = false;
+    if (!session.restoreMousePositionOnEnd) {
+        return;
+    }
+    int screenX = 0;
+    int screenY = 0;
+    if (!InputSimulator::getCursorScreenPosition(screenX, screenY)) {
+        return;
+    }
+    session.runStartCursorScreenX = screenX;
+    session.runStartCursorScreenY = screenY;
+    session.hasRunStartCursorPosition = true;
+}
+
+void restoreRunStartCursorPosition(const FeatureRunSession& session) {
+    if (!session.hasRunStartCursorPosition) {
+        return;
+    }
+    InputSimulator::moveMouse(session.runStartCursorScreenX, session.runStartCursorScreenY);
+}
 
 QVector<WindowListEntry> collectWindowListEntries() {
     QVector<WindowListEntry> entries;
@@ -121,9 +159,10 @@ QVector<WindowListEntry> collectWindowListEntries() {
 
             ScreenCapture::TargetWindowInfo info;
             QString processName = QStringLiteral("Unknown");
+            std::wstring processPath;
             if (ScreenCapture::queryWindowInfo(hwnd, info) && !info.processPath.empty()) {
-                const QString processPath = QString::fromStdWString(info.processPath);
-                const QFileInfo processInfo(processPath);
+                processPath = info.processPath;
+                const QFileInfo processInfo(QString::fromStdWString(processPath));
                 processName = processInfo.fileName();
             }
 
@@ -131,6 +170,7 @@ QVector<WindowListEntry> collectWindowListEntries() {
             WindowListEntry entry;
             entry.hwnd = hwnd;
             entry.title = title;
+            entry.icon = iconForProcessPath(processPath);
             const QString titleText = QString::fromStdWString(title);
             const qulonglong hwndValue = reinterpret_cast<qulonglong>(hwnd);
             entry.displayText = QStringLiteral("[%1] %2 - %3")
@@ -233,7 +273,7 @@ void MainWindow::setupUi() {
 
     m_targetWindowDetailPanel = new TargetWindowDetailPanel(targetGroup);
     m_pickWindowButton = new QPushButton(tr("창 지정"), targetGroup);
-    m_pickWindowButton->setToolTip(tr("클릭한 뒤 대상 창을 눌러 지정합니다. Esc로 취소."));
+    m_pickWindowButton->setToolTip(tr("클릭한 뒤 대상 창을 눌러 지정합니다. 우클릭 또는 Esc로 취소."));
     m_pickWindowListButton = new QPushButton(tr("창 목록"), targetGroup);
     m_pickWindowListButton->setToolTip(tr("현재 표시 중인 창 목록에서 대상 창을 선택합니다."));
     m_showTargetWindowButton = new QPushButton(tr("창 표시"), targetGroup);
@@ -484,7 +524,7 @@ void MainWindow::requestApplicationQuit() {
 void MainWindow::setupUpdateChecker() {
     m_updateChecker = new UpdateChecker(this);
     connect(m_updateChecker, &UpdateChecker::checkFinished, this, &MainWindow::onUpdateCheckFinished);
-    connect(m_updateChecker, &UpdateChecker::readyToRestartForUpdate, this, &MainWindow::prepareForShutdown);
+    connect(m_updateChecker, &UpdateChecker::readyToRestartForUpdate, this, &MainWindow::onReadyToRestartForUpdate);
 
     m_updateCheckTimer = new QTimer(this);
     m_updateCheckTimer->setInterval(5 * 60 * 1000);
@@ -768,6 +808,12 @@ void MainWindow::clearStatusMessage() {
     refreshTitleBarStatus();
 }
 
+void MainWindow::onReadyToRestartForUpdate() {
+    m_forceQuit = true;
+    prepareForShutdown();
+    QCoreApplication::quit();
+}
+
 void MainWindow::prepareForShutdown() {
     m_hotkeyManager->unregisterAll();
     UserInputInterruptMonitor::instance().unregisterAll();
@@ -783,6 +829,7 @@ void MainWindow::prepareForShutdown() {
         m_calculatorDialog->close();
     }
     WindowPicker::cancelPick();
+    WindowPickerHoverOverlay::dismissAll();
     CursorPositionPicker::cancelPick();
     m_autoSaveTimer->stop();
     saveSelectedFeaturePreference();
@@ -1111,6 +1158,7 @@ void MainWindow::stopAllSessions() {
             entry.second.holdRunActive = false;
             entry.second.engine->stopAndWait();
         }
+        restoreRunStartCursorPosition(entry.second);
     }
     m_runSessions.clear();
     updateRunUiState();
@@ -1173,6 +1221,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     if (session.runningMode == FeatureRunMode::Hold) {
         ++session.holdRepeatGeneration;
     }
+    session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
 
     const std::string featureId = session.featureId;
     connectSessionEngine(session);
@@ -1297,6 +1346,7 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
 
     session.pointerVisualFeedback = feature->pointerVisualFeedback();
     session.sessionContext->setPointerVisualFeedback(feature->pointerVisualFeedback());
+    session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
 
     const bool infiniteStyle = session.runningMode == FeatureRunMode::RepeatInfinite
                              || session.runningMode == FeatureRunMode::Hold;
@@ -1383,6 +1433,7 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         session.totalLoopElapsedMs = 0;
         session.completedLoopCount = 0;
         session.lastLoopAverageMs = 0;
+        captureRunStartCursorPosition(session);
         if (isDisplayedRunningFeature(&session)) {
             syncLoopTimingToWorkflowEditor(&session);
             m_workflowEditor->clearBlockMatchResults();
@@ -1509,6 +1560,10 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
         session->sessionContext->endRunKeyboardSession();
     }
 
+    if (session) {
+        restoreRunStartCursorPosition(*session);
+    }
+
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
     m_runSessions.erase(featureId);
     if (!hasAnyRunningSession()) {
@@ -1588,8 +1643,36 @@ void MainWindow::syncHotkeys() {
     }
 
     const auto failures = m_hotkeyManager->syncFromProject(*m_project);
+#ifdef _WIN32
+    if (!m_hotkeyManager->isKeyboardHookActive()
+        && (!failures.empty() || m_project->features().size() > 0)) {
+        bool hasKeyboardBinding = false;
+        for (const auto& feature : m_project->features()) {
+            if (!feature->hotkey().isEmpty() && !feature->hotkey().isMouseButton()) {
+                hasKeyboardBinding = true;
+                break;
+            }
+        }
+        if (hasKeyboardBinding) {
+            appendLog(tr("키보드 단축키 후크를 설치하지 못했습니다. RegisterHotKey 백업을 시도합니다. "
+                         "계속 동작하지 않으면 PIPBONG을 관리자 권한으로 실행하거나 보안 프로그램 예외를 확인하세요."));
+        }
+    }
+    if (!m_hotkeyManager->isMouseHookActive()) {
+        bool hasMouseBinding = false;
+        for (const auto& feature : m_project->features()) {
+            if (!feature->hotkey().isEmpty() && feature->hotkey().isMouseButton()) {
+                hasMouseBinding = true;
+                break;
+            }
+        }
+        if (hasMouseBinding) {
+            appendLog(tr("마우스 단축키 후크를 설치하지 못했습니다. 마우스 단축키가 동작하지 않을 수 있습니다."));
+        }
+    }
+#endif
     for (const auto& failure : failures) {
-        appendLog(tr("단축키 등록 실패 (%1): 시스템에서 이미 사용 중일 수 있습니다.")
+        appendLog(tr("단축키 등록 실패 (%1): 시스템에서 이미 사용 중이거나 권한이 부족할 수 있습니다.")
                       .arg(QString::fromStdString(failure.featureName)));
     }
 }
@@ -1606,8 +1689,9 @@ void MainWindow::onStopWorkflow() {
 
 void MainWindow::onPickTargetWindow() {
 #ifdef _WIN32
-    setPersistentStatus(tr("대상 창을 클릭하세요. Esc로 취소"));
+    setPersistentStatus(tr("대상 창을 클릭하세요. 우클릭 또는 Esc로 취소"));
     WindowPicker::startPick(this, [this](const WindowPicker::Result& result) {
+        setPersistentStatus(QString());
         if (!result.accepted || !result.hwnd) {
             showTransientStatus(tr("창 지정이 취소되었습니다."), 3000);
             return;
@@ -1621,6 +1705,7 @@ void MainWindow::onPickTargetWindow() {
         appendLog(tr("창 지정: %1").arg(title.isEmpty() ? tr("(제목 없음)") : title));
         showTransientStatus(tr("대상 창을 지정했습니다."), 3000);
         updateTargetWindowDetails();
+        TargetWindowHighlightOverlay::flashSelectionWave(this);
         scheduleRunWarmup();
     });
 #else
@@ -1646,6 +1731,7 @@ void MainWindow::onPickTargetWindowFromList() {
 
     auto* listWidget = new QListWidget(&dialog);
     listWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+    listWidget->setIconSize(QSize(24, 24));
     layout->addWidget(listWidget, 1);
 
     auto* refreshButton = new QPushButton(tr("새로고침"), &dialog);
@@ -1674,6 +1760,7 @@ void MainWindow::onPickTargetWindowFromList() {
         for (int i = 0; i < entries.size(); ++i) {
             const auto& entry = entries[i];
             auto* item = new QListWidgetItem(entry.displayText, listWidget);
+            item->setIcon(entry.icon);
             item->setData(Qt::UserRole, QVariant::fromValue(reinterpret_cast<qulonglong>(entry.hwnd)));
             item->setData(Qt::UserRole + 1, QString::fromStdWString(entry.title));
             if (currentTarget && currentTarget == entry.hwnd) {
@@ -1690,13 +1777,27 @@ void MainWindow::onPickTargetWindowFromList() {
 
     connect(refreshButton, &QPushButton::clicked, &dialog, populateList);
     connect(listWidget, &QListWidget::itemDoubleClicked, &dialog, [&dialog](QListWidgetItem*) { dialog.accept(); });
-    connect(listWidget, &QListWidget::itemSelectionChanged, &dialog, [listWidget, okButton]() {
+    connect(listWidget, &QListWidget::currentItemChanged, &dialog, [listWidget, okButton](QListWidgetItem* current) {
         if (okButton) {
-            okButton->setEnabled(listWidget->currentItem() != nullptr);
+            okButton->setEnabled(current != nullptr);
+        }
+        if (!current) {
+            WindowPickerHoverOverlay::dismissAll();
+            return;
+        }
+        const HWND hwnd = reinterpret_cast<HWND>(current->data(Qt::UserRole).toULongLong());
+        if (hwnd && IsWindow(hwnd)) {
+            WindowPickerHoverOverlay::updateHover(hwnd);
+        } else {
+            WindowPickerHoverOverlay::dismissAll();
         }
     });
     connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    struct ListPickerHoverGuard {
+        ~ListPickerHoverGuard() { WindowPickerHoverOverlay::dismissAll(); }
+    } hoverGuard;
 
     populateList();
     if (listWidget->count() == 0) {
@@ -1721,13 +1822,17 @@ void MainWindow::onPickTargetWindowFromList() {
     }
 
     const QString title = currentItem->data(Qt::UserRole + 1).toString();
+    const HWND selectedHwnd = hwnd;
     ScreenCapture::setTargetWindowTitle(title.toStdWString());
-    ScreenCapture::setTargetWindow(hwnd);
+    ScreenCapture::setTargetWindow(selectedHwnd);
     m_project->setTargetWindowTitle(title.toStdString());
     scheduleAutoSave();
     appendLog(tr("창 지정: %1").arg(title.isEmpty() ? tr("(제목 없음)") : title));
     showTransientStatus(tr("대상 창을 목록에서 지정했습니다."), 3000);
     updateTargetWindowDetails();
+    QTimer::singleShot(0, this, [this, selectedHwnd]() {
+        TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd, this);
+    });
     scheduleRunWarmup();
 #else
     QMessageBox::information(this, tr("창 목록"), tr("창 목록은 Windows에서만 지원됩니다."));
