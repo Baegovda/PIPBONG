@@ -991,7 +991,8 @@ void WorkflowEditorPanel::addBlockOfType(BlockType type) {
         dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()) + 1,
                                         static_cast<int>(m_feature->workflow().blocks().size()));
         dialog.setRoiCorrectionUiPolicy(m_feature->roiCorrection(), m_feature->roiCorrectionSessionEligible());
-        dialog.setClickFeatureRunOptions(m_feature->lockMouseToScreenCenterDuringRun());
+        dialog.setClickFeatureRunOptions(m_feature->lockMouseToScreenCenterDuringRun(),
+                                         m_feature->lockMouseToCurrentPositionDuringRun());
     }
     if (dialog.exec() != QDialog::Accepted) {
         return;
@@ -1001,6 +1002,8 @@ void WorkflowEditorPanel::addBlockOfType(BlockType type) {
     auto newBlock = dialog.takeBlock();
     if (m_feature && newBlock && newBlock->type() == BlockType::Click) {
         m_feature->setLockMouseToScreenCenterDuringRun(dialog.lockMouseToScreenCenterDuringRun());
+        m_feature->setLockMouseToCurrentPositionDuringRun(
+            dialog.lockMouseToCurrentPositionDuringRun());
     }
     m_feature->workflow().addBlock(std::move(newBlock));
     refresh();
@@ -1514,7 +1517,8 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
     BlockEditorDialog dialog(block, m_projectDirectory, this);
     dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()), row);
     dialog.setRoiCorrectionUiPolicy(m_feature->roiCorrection(), m_feature->roiCorrectionSessionEligible());
-    dialog.setClickFeatureRunOptions(m_feature->lockMouseToScreenCenterDuringRun());
+    dialog.setClickFeatureRunOptions(m_feature->lockMouseToScreenCenterDuringRun(),
+                                     m_feature->lockMouseToCurrentPositionDuringRun());
     if (dialog.exec() != QDialog::Accepted) {
         return false;
     }
@@ -1523,6 +1527,8 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
     auto updatedBlock = dialog.takeBlock();
     if (updatedBlock && updatedBlock->type() == BlockType::Click) {
         m_feature->setLockMouseToScreenCenterDuringRun(dialog.lockMouseToScreenCenterDuringRun());
+        m_feature->setLockMouseToCurrentPositionDuringRun(
+            dialog.lockMouseToCurrentPositionDuringRun());
     }
     m_feature->workflow().replaceBlock(row, std::move(updatedBlock));
     refresh();

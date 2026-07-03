@@ -141,6 +141,42 @@ void restoreRunStartCursorPosition(const FeatureRunSession& session) {
     InputSimulator::moveMouse(session.runStartCursorScreenX, session.runStartCursorScreenY);
 }
 
+void captureFeatureMouseLockPosition(FeatureRunSession& session) {
+    session.hasMouseLockPosition = false;
+    if (!session.lockMouseToCurrentPositionDuringRun) {
+        return;
+    }
+
+    int screenX = 0;
+    int screenY = 0;
+    if (!InputSimulator::getCursorScreenPosition(screenX, screenY)) {
+        return;
+    }
+    session.mouseLockScreenX = screenX;
+    session.mouseLockScreenY = screenY;
+    session.hasMouseLockPosition = true;
+}
+
+bool hasFeatureMouseLock(const FeatureRunSession& session) {
+    return session.lockMouseToCurrentPositionDuringRun || session.lockMouseToScreenCenterDuringRun;
+}
+
+void engageFeatureMouseLock(FeatureRunSession& session) {
+    if (session.lockMouseToCurrentPositionDuringRun) {
+        if (!session.hasMouseLockPosition) {
+            captureFeatureMouseLockPosition(session);
+        }
+        if (session.hasMouseLockPosition) {
+            MouseCenterLock::engageAt(session.mouseLockScreenX, session.mouseLockScreenY);
+        }
+        return;
+    }
+
+    if (session.lockMouseToScreenCenterDuringRun) {
+        MouseCenterLock::engage();
+    }
+}
+
 QVector<WindowListEntry> collectWindowListEntries() {
     QVector<WindowListEntry> entries;
     EnumWindows(
@@ -842,8 +878,16 @@ void MainWindow::clearStatusMessage() {
 
 void MainWindow::onReadyToRestartForUpdate() {
     m_forceQuit = true;
+    if (m_updateCheckTimer) {
+        m_updateCheckTimer->stop();
+    }
+    if (m_trayIcon) {
+        m_trayIcon->hide();
+    }
+    hide();
     prepareForShutdown();
-    QCoreApplication::quit();
+    close();
+    QTimer::singleShot(0, qApp, []() { QApplication::exit(0); });
 }
 
 void MainWindow::prepareForShutdown() {
@@ -1197,6 +1241,9 @@ void MainWindow::stopAllSessions() {
     UserInputInterruptMonitor::instance().unregisterAll();
     MouseCenterLock::releaseAll();
     for (auto& entry : m_runSessions) {
+        if (entry.second.sessionContext) {
+            entry.second.sessionContext->endRunInputSession();
+        }
         if (entry.second.engine) {
             entry.second.userStopRequested = true;
             entry.second.repeatSession = false;
@@ -1281,6 +1328,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     }
     session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
     session.lockMouseToScreenCenterDuringRun = feature->lockMouseToScreenCenterDuringRun();
+    session.lockMouseToCurrentPositionDuringRun = feature->lockMouseToCurrentPositionDuringRun();
 
     const std::string featureId = session.featureId;
     connectSessionEngine(session);
@@ -1415,6 +1463,7 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
     session.sessionContext->setPointerVisualFeedback(feature->pointerVisualFeedback());
     session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
     session.lockMouseToScreenCenterDuringRun = feature->lockMouseToScreenCenterDuringRun();
+    session.lockMouseToCurrentPositionDuringRun = feature->lockMouseToCurrentPositionDuringRun();
 
     const bool infiniteStyle = session.runningMode == FeatureRunMode::RepeatInfinite
                              || session.runningMode == FeatureRunMode::Hold
@@ -1503,9 +1552,8 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         session.completedLoopCount = 0;
         session.lastLoopAverageMs = 0;
         captureRunStartCursorPosition(session);
-        if (session.lockMouseToScreenCenterDuringRun) {
-            MouseCenterLock::engage();
-        }
+        captureFeatureMouseLockPosition(session);
+        engageFeatureMouseLock(session);
         if (isDisplayedRunningFeature(&session)) {
             syncLoopTimingToWorkflowEditor(&session);
             m_workflowEditor->clearBlockMatchResults();
@@ -1630,9 +1678,8 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
         session.completedLoopCount = 0;
         session.lastLoopAverageMs = 0;
         captureRunStartCursorPosition(session);
-        if (session.lockMouseToScreenCenterDuringRun) {
-            MouseCenterLock::engage();
-        }
+        captureFeatureMouseLockPosition(session);
+        engageFeatureMouseLock(session);
         if (isDisplayedRunningFeature(&session)) {
             syncLoopTimingToWorkflowEditor(&session);
             m_workflowEditor->clearBlockMatchResults();
@@ -1707,7 +1754,7 @@ void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* fea
 void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession) {
     triggerSession.triggerPreemptedSessions.clear();
     triggerSession.triggerPreemptSavedCursor = false;
-    triggerSession.triggerReleasedOwnMouseCenterLockForPreempt = false;
+    triggerSession.triggerReleasedOwnMouseLockForPreempt = false;
 
     for (auto& entry : m_runSessions) {
         if (entry.first == triggerSession.featureId) {
@@ -1727,12 +1774,12 @@ void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession)
             snap.pausedByTrigger = true;
         }
 
-        if (other.lockMouseToScreenCenterDuringRun) {
+        if (hasFeatureMouseLock(other)) {
             MouseCenterLock::release();
-            snap.releasedMouseCenterLock = true;
+            snap.releasedMouseLock = true;
         }
 
-        if (snap.pausedByTrigger || snap.releasedMouseCenterLock) {
+        if (snap.pausedByTrigger || snap.releasedMouseLock) {
             triggerSession.triggerPreemptedSessions.push_back(std::move(snap));
             appendSessionLog(other, tr("트리거 발동 — 일시정지"));
         }
@@ -1750,9 +1797,9 @@ void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession)
         triggerSession.triggerPreemptSavedCursor = true;
     }
 
-    if (triggerSession.lockMouseToScreenCenterDuringRun) {
+    if (hasFeatureMouseLock(triggerSession)) {
         MouseCenterLock::release();
-        triggerSession.triggerReleasedOwnMouseCenterLockForPreempt = true;
+        triggerSession.triggerReleasedOwnMouseLockForPreempt = true;
     }
 
     appendSessionLog(triggerSession,
@@ -1763,7 +1810,7 @@ void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession)
 void MainWindow::resumePreemptedSessionsForTrigger(FeatureRunSession& triggerSession) {
     if (triggerSession.triggerPreemptedSessions.empty()
         && !triggerSession.triggerPreemptSavedCursor
-        && !triggerSession.triggerReleasedOwnMouseCenterLockForPreempt) {
+        && !triggerSession.triggerReleasedOwnMouseLockForPreempt) {
         return;
     }
 
@@ -1773,9 +1820,9 @@ void MainWindow::resumePreemptedSessionsForTrigger(FeatureRunSession& triggerSes
         triggerSession.triggerPreemptSavedCursor = false;
     }
 
-    if (triggerSession.triggerReleasedOwnMouseCenterLockForPreempt) {
-        MouseCenterLock::engage();
-        triggerSession.triggerReleasedOwnMouseCenterLockForPreempt = false;
+    if (triggerSession.triggerReleasedOwnMouseLockForPreempt) {
+        engageFeatureMouseLock(triggerSession);
+        triggerSession.triggerReleasedOwnMouseLockForPreempt = false;
     }
 
     for (const TriggerPreemptedSession& snap : triggerSession.triggerPreemptedSessions) {
@@ -1784,8 +1831,8 @@ void MainWindow::resumePreemptedSessionsForTrigger(FeatureRunSession& triggerSes
             continue;
         }
 
-        if (snap.releasedMouseCenterLock) {
-            MouseCenterLock::engage();
+        if (snap.releasedMouseLock) {
+            engageFeatureMouseLock(*other);
         }
         if (snap.pausedByTrigger) {
             other->sessionContext->setPaused(false);
@@ -1877,7 +1924,7 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
     }
 
     if (session && session->sessionContext) {
-        session->sessionContext->endRunKeyboardSession();
+        session->sessionContext->endRunInputSession();
     }
 
     if (session && session->runningMode == FeatureRunMode::Trigger) {
@@ -1886,7 +1933,7 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
 
     if (session) {
         ++session->triggerCooldownGeneration;
-        if (session->lockMouseToScreenCenterDuringRun) {
+        if (hasFeatureMouseLock(*session)) {
             MouseCenterLock::release();
         }
         restoreRunStartCursorPosition(*session);

@@ -45,6 +45,7 @@ private:
     QWidget* m_parentWidget = nullptr;
     class QNetworkAccessManager* m_network = nullptr;
     class QNetworkReply* m_activeReply = nullptr;
+    class QProgressDialog* m_downloadProgressDialog = nullptr;
     QString m_pendingDownloadPath;
     ReleaseInfo m_pendingRelease;
     ReleaseInfo m_availableRelease;

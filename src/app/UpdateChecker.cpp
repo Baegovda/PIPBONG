@@ -15,6 +15,7 @@
 #include <QProcess>
 #include <QProgressDialog>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QUrl>
 
 #ifdef _WIN32
@@ -220,22 +221,29 @@ void UpdateChecker::downloadAndInstall(const ReleaseInfo& release) {
         m_activeReply = nullptr;
     }
 
-    auto* progress = new QProgressDialog(tr("업데이트 다운로드 중…"), tr("취소"), 0, 100, m_parentWidget);
-    progress->setWindowModality(Qt::WindowModal);
-    progress->setMinimumDuration(0);
-    progress->setValue(0);
-    progress->setAttribute(Qt::WA_DeleteOnClose);
+    if (m_downloadProgressDialog) {
+        m_downloadProgressDialog->close();
+        m_downloadProgressDialog = nullptr;
+    }
+
+    m_downloadProgressDialog = new QProgressDialog(tr("업데이트 다운로드 중…"), tr("취소"), 0, 100, m_parentWidget);
+    m_downloadProgressDialog->setWindowModality(Qt::WindowModal);
+    m_downloadProgressDialog->setMinimumDuration(0);
+    m_downloadProgressDialog->setValue(0);
+    m_downloadProgressDialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(m_downloadProgressDialog, &QObject::destroyed, this, [this]() { m_downloadProgressDialog = nullptr; });
 
     QNetworkReply* reply = m_network->get(makeGitHubRequest(QUrl(release.downloadUrl)));
     m_activeReply = reply;
 
-    connect(reply, &QNetworkReply::downloadProgress, this, [progress](qint64 received, qint64 total) {
-        if (total > 0) {
-            progress->setMaximum(static_cast<int>(total));
-            progress->setValue(static_cast<int>(received));
+    connect(reply, &QNetworkReply::downloadProgress, this, [this](qint64 received, qint64 total) {
+        if (!m_downloadProgressDialog || total <= 0) {
+            return;
         }
+        m_downloadProgressDialog->setMaximum(static_cast<int>(total));
+        m_downloadProgressDialog->setValue(static_cast<int>(received));
     });
-    connect(progress, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
+    connect(m_downloadProgressDialog, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
     connect(reply, &QNetworkReply::finished, this, &UpdateChecker::onDownloadFinished);
 }
 
@@ -297,5 +305,11 @@ void UpdateChecker::onDownloadFinished() {
         return;
     }
 
-    emit readyToRestartForUpdate();
+    if (m_downloadProgressDialog) {
+        m_downloadProgressDialog->close();
+        m_downloadProgressDialog = nullptr;
+    }
+
+    // Defer shutdown so the download dialog and network reply handlers finish cleanly.
+    QTimer::singleShot(0, this, [this]() { emit readyToRestartForUpdate(); });
 }

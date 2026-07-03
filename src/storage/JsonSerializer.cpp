@@ -50,6 +50,9 @@ nlohmann::json featureToJson(const Feature& feature) {
     if (feature.lockMouseToScreenCenterDuringRun()) {
         json["lockMouseToScreenCenterDuringRun"] = true;
     }
+    if (feature.lockMouseToCurrentPositionDuringRun()) {
+        json["lockMouseToCurrentPositionDuringRun"] = true;
+    }
     if (feature.roiCorrection()) {
         json["roiCorrection"] = true;
     }
@@ -79,6 +82,8 @@ void featureFromJson(const nlohmann::json& json, Feature& feature) {
     feature.setPointerVisualFeedback(json.value("pointerVisualFeedback", true));
     feature.setRestoreMousePositionOnEnd(json.value("restoreMousePositionOnEnd", false));
     feature.setLockMouseToScreenCenterDuringRun(json.value("lockMouseToScreenCenterDuringRun", false));
+    feature.setLockMouseToCurrentPositionDuringRun(
+        json.value("lockMouseToCurrentPositionDuringRun", false));
     feature.setRoiCorrection(json.value("roiCorrection", false));
     feature.setEditFirstTemplateRoiOnStart(json.value("editFirstTemplateRoiOnStart", false));
     feature.setTriggerCooldownMs(

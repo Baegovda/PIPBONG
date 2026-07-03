@@ -132,5 +132,6 @@ public:
     static void setActiveExecutionContext(ExecutionContext* context);
     static void restoreTrackedKeyboard(std::unordered_set<int>& heldKeys,
                                        const SessionModifierSnapshot& sessionStart);
+    static void restoreTrackedMouseButtons(std::unordered_set<int>& heldButtons);
 #endif
 };

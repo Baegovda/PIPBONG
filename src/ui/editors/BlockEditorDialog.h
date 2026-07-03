@@ -30,8 +30,10 @@ public:
 
     void setWorkflowEditorContext(int blockCount, int editingBlockIndex);
     void setRoiCorrectionUiPolicy(bool featureGlobalEnabled, bool sessionEligible);
-    void setClickFeatureRunOptions(bool lockMouseToScreenCenterDuringRun);
+    void setClickFeatureRunOptions(bool lockMouseToScreenCenterDuringRun,
+                                   bool lockMouseToCurrentPositionDuringRun);
     bool lockMouseToScreenCenterDuringRun() const;
+    bool lockMouseToCurrentPositionDuringRun() const;
     std::unique_ptr<Block> takeBlock();
 
 private:

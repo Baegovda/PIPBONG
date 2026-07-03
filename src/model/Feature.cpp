@@ -39,6 +39,7 @@ std::unique_ptr<Feature> Feature::clone() const {
     copy->m_pointerVisualFeedback = m_pointerVisualFeedback;
     copy->m_restoreMousePositionOnEnd = m_restoreMousePositionOnEnd;
     copy->m_lockMouseToScreenCenterDuringRun = m_lockMouseToScreenCenterDuringRun;
+    copy->m_lockMouseToCurrentPositionDuringRun = m_lockMouseToCurrentPositionDuringRun;
     copy->m_roiCorrection = m_roiCorrection;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_triggerCooldownMs = m_triggerCooldownMs;
@@ -59,6 +60,7 @@ std::unique_ptr<Feature> Feature::duplicateAsNewInstance() const {
     copy->m_pointerVisualFeedback = m_pointerVisualFeedback;
     copy->m_restoreMousePositionOnEnd = m_restoreMousePositionOnEnd;
     copy->m_lockMouseToScreenCenterDuringRun = m_lockMouseToScreenCenterDuringRun;
+    copy->m_lockMouseToCurrentPositionDuringRun = m_lockMouseToCurrentPositionDuringRun;
     copy->m_roiCorrection = m_roiCorrection;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_triggerCooldownMs = m_triggerCooldownMs;

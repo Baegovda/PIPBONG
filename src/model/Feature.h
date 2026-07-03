@@ -48,6 +48,9 @@ public:
     bool lockMouseToScreenCenterDuringRun() const { return m_lockMouseToScreenCenterDuringRun; }
     void setLockMouseToScreenCenterDuringRun(bool enabled) { m_lockMouseToScreenCenterDuringRun = enabled; }
 
+    bool lockMouseToCurrentPositionDuringRun() const { return m_lockMouseToCurrentPositionDuringRun; }
+    void setLockMouseToCurrentPositionDuringRun(bool enabled) { m_lockMouseToCurrentPositionDuringRun = enabled; }
+
     bool roiCorrection() const { return m_roiCorrection; }
     void setRoiCorrection(bool enabled) { m_roiCorrection = enabled; }
 
@@ -82,6 +85,7 @@ private:
     bool m_pointerVisualFeedback = true;
     bool m_restoreMousePositionOnEnd = false;
     bool m_lockMouseToScreenCenterDuringRun = false;
+    bool m_lockMouseToCurrentPositionDuringRun = false;
     bool m_roiCorrection = false;
     bool m_editFirstTemplateRoiOnStart = false;
     int m_triggerCooldownMs = kDefaultTriggerCooldownMs;

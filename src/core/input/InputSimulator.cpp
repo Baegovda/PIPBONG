@@ -33,6 +33,17 @@ void trackSyntheticKey(int virtualKey, bool down) {
         g_activeExecutionContext->noteSyntheticKeyUp(virtualKey);
     }
 }
+
+void trackSyntheticMouse(MouseButton button, bool down) {
+    if (!g_activeExecutionContext || isWheelScrollButton(button)) {
+        return;
+    }
+    if (down) {
+        g_activeExecutionContext->noteSyntheticMouseDown(button);
+    } else {
+        g_activeExecutionContext->noteSyntheticMouseUp(button);
+    }
+}
 #endif
 
 #ifdef _WIN32
@@ -132,18 +143,24 @@ bool isStandardClickButton(MouseButton button) {
            || button == MouseButton::Middle;
 }
 
-void sendStandardButtonDown(MouseButton button) {
+void sendStandardButtonDown(MouseButton button, bool track = true) {
     INPUT input{};
     input.type = INPUT_MOUSE;
     input.mi.dwFlags = mouseDownFlag(button);
     sendInputs(&input, 1);
+    if (track) {
+        trackSyntheticMouse(button, true);
+    }
 }
 
-void sendStandardButtonUp(MouseButton button) {
+void sendStandardButtonUp(MouseButton button, bool track = true) {
     INPUT input{};
     input.type = INPUT_MOUSE;
     input.mi.dwFlags = mouseUpFlag(button);
     sendInputs(&input, 1);
+    if (track) {
+        trackSyntheticMouse(button, false);
+    }
 }
 
 void sendStandardButtonTap(MouseButton button) {
@@ -159,22 +176,30 @@ void sendStandardButtonTapAtCursor(MouseButton button) {
     inputs[1].type = INPUT_MOUSE;
     inputs[1].mi.dwFlags = mouseUpFlag(button);
     sendInputs(inputs, 2);
+    trackSyntheticMouse(button, true);
+    trackSyntheticMouse(button, false);
 }
 
-void sendXButtonDown(MouseButton button) {
+void sendXButtonDown(MouseButton button, bool track = true) {
     INPUT input{};
     input.type = INPUT_MOUSE;
     input.mi.dwFlags = MOUSEEVENTF_XDOWN;
     input.mi.mouseData = xButtonData(button);
     sendInputs(&input, 1);
+    if (track) {
+        trackSyntheticMouse(button, true);
+    }
 }
 
-void sendXButtonUp(MouseButton button) {
+void sendXButtonUp(MouseButton button, bool track = true) {
     INPUT input{};
     input.type = INPUT_MOUSE;
     input.mi.dwFlags = MOUSEEVENTF_XUP;
     input.mi.mouseData = xButtonData(button);
     sendInputs(&input, 1);
+    if (track) {
+        trackSyntheticMouse(button, false);
+    }
 }
 
 void sendXButtonTap(MouseButton button) {
@@ -193,6 +218,8 @@ void sendXButtonTapAtCursor(MouseButton button) {
     inputs[1].mi.dwFlags = MOUSEEVENTF_XUP;
     inputs[1].mi.mouseData = data;
     sendInputs(inputs, 2);
+    trackSyntheticMouse(button, true);
+    trackSyntheticMouse(button, false);
 }
 
 void performStandardButtonActionAtCursor(MouseButton button, ClickAction action, int count) {
@@ -307,6 +334,7 @@ void sendXButton(MouseButton button, ClickAction action, int count) {
         input.mi.dwFlags = MOUSEEVENTF_XDOWN;
         input.mi.mouseData = data;
         sendInputs(&input, 1);
+        trackSyntheticMouse(button, true);
         break;
     }
     case ClickAction::Up: {
@@ -315,6 +343,7 @@ void sendXButton(MouseButton button, ClickAction action, int count) {
         input.mi.dwFlags = MOUSEEVENTF_XUP;
         input.mi.mouseData = data;
         sendInputs(&input, 1);
+        trackSyntheticMouse(button, false);
         break;
     }
     case ClickAction::Tap:
@@ -509,6 +538,7 @@ void InputSimulator::mouseButton(MouseButton button, ClickAction action, int cou
         input.type = INPUT_MOUSE;
         input.mi.dwFlags = mouseDownFlag(button);
         sendInputs(&input, 1);
+        trackSyntheticMouse(button, true);
         break;
     }
     case ClickAction::Up: {
@@ -516,6 +546,7 @@ void InputSimulator::mouseButton(MouseButton button, ClickAction action, int cou
         input.type = INPUT_MOUSE;
         input.mi.dwFlags = mouseUpFlag(button);
         sendInputs(&input, 1);
+        trackSyntheticMouse(button, false);
         break;
     }
     case ClickAction::Tap:
@@ -873,6 +904,23 @@ void InputSimulator::restoreTrackedKeyboard(std::unordered_set<int>& heldKeys,
         input.ki.dwFlags = KEYEVENTF_KEYUP;
         sendInputs(&input, 1);
         heldKeys.erase(virtualKey);
+    }
+}
+
+void InputSimulator::restoreTrackedMouseButtons(std::unordered_set<int>& heldButtons) {
+    const auto buttonsToRelease = heldButtons;
+    for (int rawButton : buttonsToRelease) {
+        const auto button = static_cast<MouseButton>(rawButton);
+        if (isWheelScrollButton(button)) {
+            heldButtons.erase(rawButton);
+            continue;
+        }
+        if (button == MouseButton::Back || button == MouseButton::Forward) {
+            sendXButtonUp(button, false);
+        } else {
+            sendStandardButtonUp(button, false);
+        }
+        heldButtons.erase(rawButton);
     }
 }
 #endif

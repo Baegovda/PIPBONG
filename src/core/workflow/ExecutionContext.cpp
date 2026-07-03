@@ -85,6 +85,10 @@ void ExecutionContext::resetStop() {
 }
 
 void ExecutionContext::setPaused(bool paused) {
+    const bool wasPaused = m_paused.load();
+    if (!wasPaused && paused) {
+        restoreRunHeldInput();
+    }
     m_paused.store(paused);
 }
 
@@ -93,6 +97,9 @@ bool ExecutionContext::isPaused() const {
 }
 
 void ExecutionContext::togglePaused() {
+    if (!m_paused.load()) {
+        restoreRunHeldInput();
+    }
     m_paused.store(!m_paused.load());
 }
 
@@ -461,16 +468,34 @@ void ExecutionContext::noteSyntheticKeyUp(int virtualKey) {
     m_pipbongHeldVirtualKeys.erase(virtualKey);
 }
 
-void ExecutionContext::restoreRunKeyboard() {
+void ExecutionContext::noteSyntheticMouseDown(MouseButton button) {
+    m_pipbongHeldMouseButtons.insert(static_cast<int>(button));
+}
+
+void ExecutionContext::noteSyntheticMouseUp(MouseButton button) {
+    m_pipbongHeldMouseButtons.erase(static_cast<int>(button));
+}
+
+void ExecutionContext::restoreRunHeldInput() {
     if (!m_runKeyboardSessionActive) {
         return;
     }
     InputSimulator::restoreTrackedKeyboard(m_pipbongHeldVirtualKeys, m_runKeyboardSessionStart);
+    InputSimulator::restoreTrackedMouseButtons(m_pipbongHeldMouseButtons);
+}
+
+void ExecutionContext::restoreRunKeyboard() {
+    restoreRunHeldInput();
+}
+
+void ExecutionContext::endRunInputSession() {
+    restoreRunHeldInput();
+    m_runKeyboardSessionActive = false;
+    m_pipbongHeldVirtualKeys.clear();
+    m_pipbongHeldMouseButtons.clear();
 }
 
 void ExecutionContext::endRunKeyboardSession() {
-    restoreRunKeyboard();
-    m_runKeyboardSessionActive = false;
-    m_pipbongHeldVirtualKeys.clear();
+    endRunInputSession();
 }
 #endif

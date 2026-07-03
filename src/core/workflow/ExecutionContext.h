@@ -144,7 +144,11 @@ public:
     void beginRunKeyboardSessionIfNeeded();
     void noteSyntheticKeyDown(int virtualKey);
     void noteSyntheticKeyUp(int virtualKey);
+    void noteSyntheticMouseDown(MouseButton button);
+    void noteSyntheticMouseUp(MouseButton button);
+    void restoreRunHeldInput();
     void restoreRunKeyboard();
+    void endRunInputSession();
     void endRunKeyboardSession();
 #endif
 
@@ -193,5 +197,6 @@ private:
     bool m_runKeyboardSessionActive = false;
     SessionModifierSnapshot m_runKeyboardSessionStart;
     std::unordered_set<int> m_pipbongHeldVirtualKeys;
+    std::unordered_set<int> m_pipbongHeldMouseButtons;
 #endif
 };

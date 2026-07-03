@@ -10,14 +10,44 @@
 
 namespace {
 
-bool waitForProcess(DWORD pid, DWORD timeoutMs) {
-    HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
-    if (!process) {
-        return true;
+bool isCurrentProcessElevated() {
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        return false;
     }
-    const DWORD result = WaitForSingleObject(process, timeoutMs);
-    CloseHandle(process);
-    return result == WAIT_OBJECT_0;
+
+    TOKEN_ELEVATION elevation{};
+    DWORD size = 0;
+    const BOOL ok = GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size);
+    CloseHandle(token);
+    return ok && elevation.TokenIsElevated;
+}
+
+bool waitForProcess(DWORD pid, DWORD timeoutMs) {
+    const DWORD startTick = GetTickCount();
+    for (;;) {
+        HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (process) {
+            const DWORD elapsed = GetTickCount() - startTick;
+            const DWORD remaining = elapsed >= timeoutMs ? 0 : timeoutMs - elapsed;
+            const DWORD result = WaitForSingleObject(process, remaining);
+            CloseHandle(process);
+            return result == WAIT_OBJECT_0;
+        }
+
+        const DWORD error = GetLastError();
+        if (error == ERROR_INVALID_PARAMETER) {
+            return true;
+        }
+        if (error != ERROR_ACCESS_DENIED) {
+            return true;
+        }
+
+        if (GetTickCount() - startTick >= timeoutMs) {
+            return false;
+        }
+        Sleep(100);
+    }
 }
 
 bool replaceExecutable(const std::filesystem::path& newFile, const std::filesystem::path& targetFile) {
@@ -96,8 +126,9 @@ bool launchExecutable(const std::filesystem::path& targetFile) {
         return value.find(L"RUNASADMIN") != std::wstring::npos;
     };
 
-    const wchar_t* verb = requiresRunAsAdmin(targetPath) ? L"runas" : L"open";
-    for (int attempt = 0; attempt < 8; ++attempt) {
+    const bool needsElevation = requiresRunAsAdmin(targetPath) && !isCurrentProcessElevated();
+    const wchar_t* verb = needsElevation ? L"runas" : L"open";
+    for (int attempt = 0; attempt < 12; ++attempt) {
         if (attempt > 0) {
             Sleep(400);
         }
@@ -247,7 +278,11 @@ int wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     LocalFree(argv);
 
-    waitForProcess(pid, 120000);
+    if (!waitForProcess(pid, 120000)) {
+        return 4;
+    }
+
+    Sleep(500);
 
     bool installed = false;
     if (mode == L"--install") {

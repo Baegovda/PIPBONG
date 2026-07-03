@@ -155,7 +155,7 @@ protected:
             overallSuccess = runResult.success;
             finalMessage = QString::fromStdString(runResult.message);
 
-            context->restoreRunKeyboard();
+            context->restoreRunHeldInput();
             InputSimulator::setActiveExecutionContext(nullptr);
 
             bool emitFinished = false;

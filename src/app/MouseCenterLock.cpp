@@ -12,6 +12,7 @@ namespace {
 #ifdef _WIN32
 int g_refCount = 0;
 HHOOK g_mouseHook = nullptr;
+POINT g_lockPoint{};
 
 POINT virtualScreenCenter() {
     POINT center{};
@@ -22,9 +23,17 @@ POINT virtualScreenCenter() {
 
 void applyCenterClip() {
     const POINT center = virtualScreenCenter();
-    RECT clipRect{center.x, center.y, center.x + 1, center.y + 1};
+    g_lockPoint = center;
+    RECT clipRect{g_lockPoint.x, g_lockPoint.y, g_lockPoint.x + 1, g_lockPoint.y + 1};
     ClipCursor(&clipRect);
-    SetCursorPos(center.x, center.y);
+    SetCursorPos(g_lockPoint.x, g_lockPoint.y);
+}
+
+void applyPointClip(const POINT& point) {
+    g_lockPoint = point;
+    RECT clipRect{g_lockPoint.x, g_lockPoint.y, g_lockPoint.x + 1, g_lockPoint.y + 1};
+    ClipCursor(&clipRect);
+    SetCursorPos(g_lockPoint.x, g_lockPoint.y);
 }
 
 void installMouseHook();
@@ -38,8 +47,7 @@ LRESULT CALLBACK mouseHookProc(int code, WPARAM wParam, LPARAM lParam) {
     if (wParam == WM_MOUSEMOVE) {
         const auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
         if (info && !(info->flags & LLMHF_INJECTED)) {
-            const POINT center = virtualScreenCenter();
-            SetCursorPos(center.x, center.y);
+            SetCursorPos(g_lockPoint.x, g_lockPoint.y);
             return 1;
         }
     }
@@ -76,6 +84,34 @@ void MouseCenterLock::engage() {
     }
 #else
     (void)0;
+#endif
+}
+
+void MouseCenterLock::engageAt(int screenX, int screenY) {
+#ifdef _WIN32
+    POINT point{screenX, screenY};
+    if (g_refCount++ == 0) {
+        applyPointClip(point);
+        installMouseHook();
+    } else {
+        applyPointClip(point);
+    }
+#else
+    (void)screenX;
+    (void)screenY;
+#endif
+}
+
+bool MouseCenterLock::engageAtCurrentPosition() {
+#ifdef _WIN32
+    POINT point{};
+    if (!GetCursorPos(&point)) {
+        return false;
+    }
+    engageAt(point.x, point.y);
+    return true;
+#else
+    return false;
 #endif
 }
 

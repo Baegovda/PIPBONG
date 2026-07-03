@@ -308,14 +308,22 @@ void ClickEditor::apply() {
     }
 }
 
-void ClickEditor::setFeatureRunOptions(bool lockMouseToScreenCenterDuringRun) {
+void ClickEditor::setFeatureRunOptions(bool lockMouseToScreenCenterDuringRun,
+                                       bool lockMouseToCurrentPositionDuringRun) {
     if (m_lockMouseToScreenCenterCheck) {
         m_lockMouseToScreenCenterCheck->setChecked(lockMouseToScreenCenterDuringRun);
+    }
+    if (m_lockMouseToCurrentPositionCheck) {
+        m_lockMouseToCurrentPositionCheck->setChecked(lockMouseToCurrentPositionDuringRun);
     }
 }
 
 bool ClickEditor::lockMouseToScreenCenterDuringRun() const {
     return m_lockMouseToScreenCenterCheck && m_lockMouseToScreenCenterCheck->isChecked();
+}
+
+bool ClickEditor::lockMouseToCurrentPositionDuringRun() const {
+    return m_lockMouseToCurrentPositionCheck && m_lockMouseToCurrentPositionCheck->isChecked();
 }
 
 bool ClickEditor::isMoveOnlySelected() const {
@@ -696,7 +704,25 @@ void ClickEditor::setupUi() {
         tr("이 기능이 실행되는 동안 실제 마우스 커서를 가상 화면 중앙에 고정합니다. "
            "워크플로가 보내는 클릭 이동은 그대로 동작합니다."));
     featureRunLayout->addWidget(m_lockMouseToScreenCenterCheck);
-    connect(m_lockMouseToScreenCenterCheck, &QCheckBox::toggled, this, [this]() { emit layoutChanged(); });
+
+    m_lockMouseToCurrentPositionCheck =
+        new QCheckBox(tr("기능이 켜져 있는 동안 마우스 위치 잠금"), m_featureRunGroup);
+    m_lockMouseToCurrentPositionCheck->setToolTip(
+        tr("기능 시작 시점의 실제 마우스 위치에 커서를 고정합니다. "
+           "워크플로가 보내는 클릭 이동은 그대로 동작하지만, 사용자가 마우스를 움직일 수 없게 합니다."));
+    featureRunLayout->addWidget(m_lockMouseToCurrentPositionCheck);
+    connect(m_lockMouseToCurrentPositionCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        if (checked && m_lockMouseToScreenCenterCheck) {
+            m_lockMouseToScreenCenterCheck->setChecked(false);
+        }
+        emit layoutChanged();
+    });
+    connect(m_lockMouseToScreenCenterCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        if (checked && m_lockMouseToCurrentPositionCheck) {
+            m_lockMouseToCurrentPositionCheck->setChecked(false);
+        }
+        emit layoutChanged();
+    });
 
     layout->addWidget(m_featureRunGroup);
 

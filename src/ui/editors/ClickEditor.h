@@ -27,8 +27,10 @@ public:
     void reload();
     void apply();
 
-    void setFeatureRunOptions(bool lockMouseToScreenCenterDuringRun);
+    void setFeatureRunOptions(bool lockMouseToScreenCenterDuringRun,
+                              bool lockMouseToCurrentPositionDuringRun);
     bool lockMouseToScreenCenterDuringRun() const;
+    bool lockMouseToCurrentPositionDuringRun() const;
 
 signals:
     void layoutChanged();
@@ -101,4 +103,5 @@ private:
 
     QGroupBox* m_featureRunGroup = nullptr;
     QCheckBox* m_lockMouseToScreenCenterCheck = nullptr;
+    QCheckBox* m_lockMouseToCurrentPositionCheck = nullptr;
 };

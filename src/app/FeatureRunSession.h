@@ -19,7 +19,7 @@ enum class TriggerSessionPhase {
 struct TriggerPreemptedSession {
     std::string featureId;
     bool pausedByTrigger = false;
-    bool releasedMouseCenterLock = false;
+    bool releasedMouseLock = false;
 };
 
 struct FeatureRunSession {
@@ -40,6 +40,10 @@ struct FeatureRunSession {
     bool pointerVisualFeedback = true;
     bool restoreMousePositionOnEnd = false;
     bool lockMouseToScreenCenterDuringRun = false;
+    bool lockMouseToCurrentPositionDuringRun = false;
+    bool hasMouseLockPosition = false;
+    int mouseLockScreenX = 0;
+    int mouseLockScreenY = 0;
     bool hasRunStartCursorPosition = false;
     int runStartCursorScreenX = 0;
     int runStartCursorScreenY = 0;
@@ -59,5 +63,5 @@ struct FeatureRunSession {
     bool triggerPreemptSavedCursor = false;
     int triggerPreemptCursorScreenX = 0;
     int triggerPreemptCursorScreenY = 0;
-    bool triggerReleasedOwnMouseCenterLockForPreempt = false;
+    bool triggerReleasedOwnMouseLockForPreempt = false;
 };

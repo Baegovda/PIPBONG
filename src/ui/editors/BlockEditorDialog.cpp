@@ -70,14 +70,20 @@ void BlockEditorDialog::setRoiCorrectionUiPolicy(bool featureGlobalEnabled, bool
     }
 }
 
-void BlockEditorDialog::setClickFeatureRunOptions(bool lockMouseToScreenCenterDuringRun) {
+void BlockEditorDialog::setClickFeatureRunOptions(bool lockMouseToScreenCenterDuringRun,
+                                                  bool lockMouseToCurrentPositionDuringRun) {
     if (m_clickEditor) {
-        m_clickEditor->setFeatureRunOptions(lockMouseToScreenCenterDuringRun);
+        m_clickEditor->setFeatureRunOptions(lockMouseToScreenCenterDuringRun,
+                                            lockMouseToCurrentPositionDuringRun);
     }
 }
 
 bool BlockEditorDialog::lockMouseToScreenCenterDuringRun() const {
     return m_clickEditor ? m_clickEditor->lockMouseToScreenCenterDuringRun() : false;
+}
+
+bool BlockEditorDialog::lockMouseToCurrentPositionDuringRun() const {
+    return m_clickEditor ? m_clickEditor->lockMouseToCurrentPositionDuringRun() : false;
 }
 
 void BlockEditorDialog::setupUi() {

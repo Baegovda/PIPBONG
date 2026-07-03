@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.68` (from `project(PIPBONG VERSION 0.7.68)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.71` (from `project(PIPBONG VERSION 0.7.71)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -430,6 +430,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `pointerVisualFeedback` | `true` (omitted) | When `false`, disables target-window click/match pulse overlay for this feature during runs |
 | `restoreMousePositionOnEnd` | `false` (omitted) | When `true`, moves the mouse cursor back to its screen position when the workflow session started |
 | `lockMouseToScreenCenterDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to the virtual-screen center for the feature run session (configured in mouse block editor) |
+| `lockMouseToCurrentPositionDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to its feature-start screen position for the run session (configured in mouse block editor; mutually exclusive with center lock in UI) |
 | `roiCorrection` | `false` (omitted) | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
 | `editFirstTemplateRoiOnStart` | `false` (omitted) | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run |
 
@@ -828,6 +829,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.71] - 2026-07-03
+
+### Fixed
+
+- In-app update restart: close the download progress dialog before shutdown, defer quit until the event loop is idle, hide the tray icon and main window, then `QApplication::exit(0)` so `PIPBONGUpdater` can replace files and relaunch (`UpdateChecker`, `MainWindow`).
+- `PIPBONGUpdater`: wait until the main process actually exits (retry `OpenProcess` instead of assuming exit on failure), add a short post-exit delay before copying files, skip redundant `runas` when already elevated, and retry launch a few more times (`src/updater/main.cpp`).
+
+## [0.7.70] - 2026-07-03
+
+### Added
+
+- Mouse block feature-run option **기능이 켜져 있는 동안 마우스 위치 잠금**: clips the physical cursor to the feature-start cursor position during the run session, with trigger preemption release/resume support and JSON `lockMouseToCurrentPositionDuringRun` (`MouseCenterLock`, `Feature`, `ClickEditor`, `MainWindow`, `JsonSerializer`).
+
+## [0.7.69] - 2026-07-03
+
+### Fixed
+
+- Feature stop, pause, loop end, and shutdown now release PIPBONG-held mouse buttons (Click/KeyPress **누름**) in addition to tracked keyboard keys (`InputSimulator`, `ExecutionContext`, `MainWindow`, `WorkflowEngine`).
 
 ## [0.7.68] - 2026-07-03
 
@@ -2580,4 +2600,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-03. Current application version: 0.7.68.*
+*Last consolidated: 2026-07-03. Current application version: 0.7.71.*
