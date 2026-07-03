@@ -12,6 +12,7 @@ constexpr const char* kLaunchAtWindowsStartupKey = "program/launchAtWindowsStart
 constexpr const char* kCloseToTrayKey = "program/closeToTray";
 constexpr const char* kRunAsAdministratorKey = "program/runAsAdministrator";
 constexpr const char* kAutoInstallUpdatesKey = "program/autoInstallUpdates";
+constexpr const char* kUpdateCheckIntervalMinutesKey = "program/updateCheckIntervalMinutes";
 
 } // namespace
 
@@ -65,6 +66,27 @@ bool ProgramSettings::autoInstallUpdates() {
 void ProgramSettings::setAutoInstallUpdates(bool enabled) {
     QSettings settings;
     settings.setValue(kAutoInstallUpdatesKey, enabled);
+}
+
+int ProgramSettings::updateCheckIntervalMinutes() {
+    QSettings settings;
+    int minutes = settings.value(kUpdateCheckIntervalMinutesKey, kDefaultUpdateCheckIntervalMinutes).toInt();
+    if (minutes < kMinUpdateCheckIntervalMinutes) {
+        minutes = kMinUpdateCheckIntervalMinutes;
+    } else if (minutes > kMaxUpdateCheckIntervalMinutes) {
+        minutes = kMaxUpdateCheckIntervalMinutes;
+    }
+    return minutes;
+}
+
+void ProgramSettings::setUpdateCheckIntervalMinutes(int minutes) {
+    if (minutes < kMinUpdateCheckIntervalMinutes) {
+        minutes = kMinUpdateCheckIntervalMinutes;
+    } else if (minutes > kMaxUpdateCheckIntervalMinutes) {
+        minutes = kMaxUpdateCheckIntervalMinutes;
+    }
+    QSettings settings;
+    settings.setValue(kUpdateCheckIntervalMinutesKey, minutes);
 }
 
 void ProgramSettings::syncWindowsStartupRegistration() {

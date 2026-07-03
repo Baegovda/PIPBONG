@@ -107,6 +107,7 @@ private slots:
 
 private:
     void setupUpdateChecker();
+    void applyUpdateCheckInterval();
     void setupUi();
     void setupMenus();
     void setupUiState();

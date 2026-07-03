@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.71` (from `project(PIPBONG VERSION 0.7.71)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.7.73` (from `project(PIPBONG VERSION 0.7.73)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -337,7 +337,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Templates | `{projectDirectory}/templates/*.png` |
 | Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
 | Debounce | 800 ms after edits; also on window close |
-| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); `program/launchAtWindowsStartup` (default `false`, Windows Run key via `WindowsLaunchAtStartup`); `program/closeToTray` (default `false`, hide to notification area on window close); `program/autoInstallUpdates` (default `false`, silently detected updates install automatically, deferred until workflow sessions stop); `program/runAsAdministrator` (default `false`, Windows `RUNASADMIN` compatibility flag via `WindowsRunAsAdmin`); `program/pointerFeedback/click/*` for click pointer animation; bottom **설정** button opens program settings dialog |
+| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); `program/launchAtWindowsStartup` (default `false`, Windows Run key via `WindowsLaunchAtStartup`); `program/closeToTray` (default `false`, hide to notification area on window close); `program/autoInstallUpdates` (default `false`, silently detected updates install automatically, deferred until workflow sessions stop); `program/updateCheckIntervalMinutes` (default `5`, background update-check interval in minutes, `0` disables periodic checks); `program/runAsAdministrator` (default `false`, Windows `RUNASADMIN` compatibility flag via `WindowsRunAsAdmin`); `program/pointerFeedback/click/*` for click pointer animation; bottom **설정** button opens program settings dialog |
 | Calculator sheet | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry` |
 
 ### 5.8 poe.ninja economy calculator
@@ -829,6 +829,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.7.73] - 2026-07-03
+
+### Changed
+
+- Main window bottom **업데이트** button stays enabled on **vX - 최신 버전입니다**; click re-runs an interactive GitHub update check (`MainWindow::onUpdateButtonClicked`, `refreshUpdateButtonState`).
+
+## [0.7.72] - 2026-07-03
+
+### Added
+
+- Program settings **주기적으로 업데이트 확인** toggle and **확인 간격** (분) control: background GitHub update-check frequency is now configurable (1–1440 minutes) or fully disabled; persisted as `program/updateCheckIntervalMinutes` and applied live when settings change (`ProgramSettings`, `ProgramSettingsDialog`, `MainWindow::applyUpdateCheckInterval`).
 
 ## [0.7.71] - 2026-07-03
 
@@ -2600,4 +2612,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-03. Current application version: 0.7.71.*
+*Last consolidated: 2026-07-03. Current application version: 0.7.73.*

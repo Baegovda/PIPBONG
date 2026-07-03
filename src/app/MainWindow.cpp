@@ -565,8 +565,20 @@ void MainWindow::setupUpdateChecker() {
     connect(m_updateChecker, &UpdateChecker::readyToRestartForUpdate, this, &MainWindow::onReadyToRestartForUpdate);
 
     m_updateCheckTimer = new QTimer(this);
-    m_updateCheckTimer->setInterval(5 * 60 * 1000);
     connect(m_updateCheckTimer, &QTimer::timeout, this, &MainWindow::runSilentUpdateCheck);
+    applyUpdateCheckInterval();
+}
+
+void MainWindow::applyUpdateCheckInterval() {
+    if (!m_updateCheckTimer) {
+        return;
+    }
+    const int minutes = ProgramSettings::updateCheckIntervalMinutes();
+    if (minutes <= 0) {
+        m_updateCheckTimer->stop();
+        return;
+    }
+    m_updateCheckTimer->setInterval(minutes * 60 * 1000);
     m_updateCheckTimer->start();
 }
 
@@ -585,8 +597,8 @@ void MainWindow::refreshUpdateButtonState() {
 
     const QString currentVersion = QCoreApplication::applicationVersion();
     m_updateButton->setText(tr("v%1 - 최신 버전입니다").arg(currentVersion));
-    m_updateButton->setEnabled(false);
-    m_updateButton->setToolTip(tr("GitHub 릴리즈와 비교해 현재 최신 버전입니다."));
+    m_updateButton->setEnabled(true);
+    m_updateButton->setToolTip(tr("클릭하면 GitHub 릴리즈에서 업데이트를 다시 확인합니다."));
 }
 
 void MainWindow::runSilentUpdateCheck() {
@@ -617,22 +629,28 @@ void MainWindow::onUpdateButtonClicked() {
         return;
     }
 
-    if (!m_updateChecker || !m_updateChecker->hasPendingUpdate()) {
+    if (!m_updateChecker) {
         return;
     }
 
-    const UpdateChecker::ReleaseInfo release = m_updateChecker->pendingUpdate();
-    const auto reply =
-        QMessageBox::question(this,
-                              tr("업데이트"),
-                              tr("v%1(으)로 업데이트하시겠습니까?\n현재 버전: v%2")
-                                  .arg(release.version.toString())
-                                  .arg(QCoreApplication::applicationVersion()),
-                              QMessageBox::Yes | QMessageBox::No,
-                              QMessageBox::Yes);
-    if (reply == QMessageBox::Yes) {
-        m_updateChecker->installPendingUpdate();
+    if (m_updateChecker->hasPendingUpdate()) {
+        const UpdateChecker::ReleaseInfo release = m_updateChecker->pendingUpdate();
+        const auto reply =
+            QMessageBox::question(this,
+                                  tr("업데이트"),
+                                  tr("v%1(으)로 업데이트하시겠습니까?\n현재 버전: v%2")
+                                      .arg(release.version.toString())
+                                      .arg(QCoreApplication::applicationVersion()),
+                                  QMessageBox::Yes | QMessageBox::No,
+                                  QMessageBox::Yes);
+        if (reply == QMessageBox::Yes) {
+            m_updateChecker->installPendingUpdate();
+        }
+        return;
     }
+
+    m_lastUpdateCheckWasSilent = false;
+    m_updateChecker->checkForUpdates(UpdateChecker::CheckUiMode::Interactive);
 }
 
 void MainWindow::onCheckForUpdates() {
@@ -675,6 +693,7 @@ void MainWindow::onProgramSettings() {
         return;
     }
     applyCloseToTrayPolicy();
+    applyUpdateCheckInterval();
     if (ProgramSettings::autoInstallUpdates() && m_updateChecker && m_updateChecker->hasPendingUpdate()) {
         m_autoUpdateDeferred = true;
         maybeStartAutomaticUpdate();

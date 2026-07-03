@@ -5,6 +5,7 @@
 #include "app/WindowsRunAsAdmin.h"
 #include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/UiStrings.h"
+#include "ui/widgets/DragAdjustSpinBox.h"
 #include "ui/widgets/HintLabel.h"
 
 #include <QCheckBox>
@@ -58,6 +59,43 @@ void ProgramSettingsDialog::setupUi() {
            "워크플로 실행 중이면 실행이 끝난 뒤 자동 업데이트합니다."));
     layout->addWidget(m_autoInstallUpdatesCheck);
 
+    const int savedIntervalMinutes = ProgramSettings::updateCheckIntervalMinutes();
+
+    m_updateCheckEnabledCheck =
+        new QCheckBox(tr("주기적으로 업데이트 확인"), this);
+    m_updateCheckEnabledCheck->setChecked(savedIntervalMinutes > 0);
+    m_updateCheckEnabledCheck->setToolTip(
+        tr("백그라운드에서 GitHub 릴리즈를 주기적으로 확인합니다. 끄면 자동 확인을 하지 않습니다."));
+    layout->addWidget(m_updateCheckEnabledCheck);
+
+    auto* intervalRow = new QHBoxLayout();
+    intervalRow->addSpacing(20);
+    intervalRow->addWidget(new QLabel(tr("확인 간격"), this));
+    m_updateCheckIntervalSpin = new DragAdjustSpinBox(this);
+    m_updateCheckIntervalSpin->setRange(
+        ProgramSettings::kMinUpdateCheckIntervalMinutes < 1 ? 1 : ProgramSettings::kMinUpdateCheckIntervalMinutes,
+        ProgramSettings::kMaxUpdateCheckIntervalMinutes);
+    m_updateCheckIntervalSpin->setSingleStep(1);
+    m_updateCheckIntervalSpin->setValue(
+        savedIntervalMinutes > 0 ? savedIntervalMinutes
+                                 : ProgramSettings::kDefaultUpdateCheckIntervalMinutes);
+    m_updateCheckIntervalSpin->setToolTip(tr("업데이트를 확인하는 간격(분)입니다. (1~1440분)"));
+    intervalRow->addWidget(m_updateCheckIntervalSpin);
+    m_updateCheckIntervalLabel = new QLabel(tr("분마다"), this);
+    intervalRow->addWidget(m_updateCheckIntervalLabel);
+    intervalRow->addStretch();
+    layout->addLayout(intervalRow);
+
+    auto updateIntervalEnabledState = [this]() {
+        const bool enabled = m_updateCheckEnabledCheck->isChecked();
+        m_updateCheckIntervalSpin->setEnabled(enabled);
+        m_updateCheckIntervalLabel->setEnabled(enabled);
+    };
+    connect(m_updateCheckEnabledCheck, &QCheckBox::toggled, this, [updateIntervalEnabledState](bool) {
+        updateIntervalEnabledState();
+    });
+    updateIntervalEnabledState();
+
     m_runAsAdministratorCheck =
         new QCheckBox(tr("항상 관리자 권한으로 실행"), this);
     m_runAsAdministratorCheck->setChecked(ProgramSettings::runAsAdministrator());
@@ -103,6 +141,8 @@ void ProgramSettingsDialog::setupUi() {
         ProgramSettings::setLaunchAtWindowsStartup(m_launchAtWindowsStartupCheck->isChecked());
         ProgramSettings::setCloseToTray(m_closeToTrayCheck->isChecked());
         ProgramSettings::setAutoInstallUpdates(m_autoInstallUpdatesCheck->isChecked());
+        ProgramSettings::setUpdateCheckIntervalMinutes(
+            m_updateCheckEnabledCheck->isChecked() ? m_updateCheckIntervalSpin->value() : 0);
         ProgramSettings::setRunAsAdministrator(m_runAsAdministratorCheck->isChecked());
         accept();
     });
