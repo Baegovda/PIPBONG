@@ -352,8 +352,8 @@ void MainWindow::setupUi() {
 
     auto* targetGroup = new QGroupBox(tr("대상 창"), bottomPanel);
     auto* targetLayout = new QVBoxLayout(targetGroup);
-    targetLayout->setContentsMargins(8, 8, 8, 8);
-    targetLayout->setSpacing(8);
+    targetLayout->setContentsMargins(6, 6, 6, 6);
+    targetLayout->setSpacing(6);
 
     m_targetWindowDetailPanel = new TargetWindowDetailPanel(targetGroup);
     m_pickWindowButton = new QPushButton(tr("창 지정"), targetGroup);
@@ -386,19 +386,19 @@ void MainWindow::setupUi() {
         "}"));
 
     const QString actionButtonStyle = QStringLiteral(
-        "padding: 8px 12px; min-height: 34px; text-align: left;");
+        "padding: 6px 10px; min-height: 28px; text-align: left; font-size: 12px;");
     m_pickWindowButton->setStyleSheet(actionButtonStyle);
     m_pickWindowListButton->setStyleSheet(actionButtonStyle);
     m_showTargetWindowButton->setStyleSheet(actionButtonStyle);
 
     auto* topActionRow = new QHBoxLayout();
-    topActionRow->setSpacing(6);
+    topActionRow->setSpacing(4);
     topActionRow->addWidget(m_pickWindowButton, 1);
     topActionRow->addWidget(m_pickWindowListButton, 1);
     topActionRow->addWidget(m_showTargetWindowButton, 1);
 
     auto* secondaryActionRow = new QHBoxLayout();
-    secondaryActionRow->setContentsMargins(2, 0, 2, 0);
+    secondaryActionRow->setContentsMargins(0, 0, 0, 0);
     secondaryActionRow->addWidget(m_pinTargetWindowCenterCheck, 0, Qt::AlignLeft);
     secondaryActionRow->addStretch();
 

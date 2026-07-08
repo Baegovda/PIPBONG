@@ -5,6 +5,7 @@
 #include <QString>
 
 class QEvent;
+class QToolButton;
 class QLabel;
 
 struct TargetWindowDetailData {
@@ -47,6 +48,8 @@ private:
     QLabel* m_primaryLine = nullptr;
     QLabel* m_secondaryLine = nullptr;
     QLabel* m_tertiaryLine = nullptr;
+    QToolButton* m_moreButton = nullptr;
     TargetWindowDetailData m_lastDetailData;
     bool m_updatingTheme = false;
+    bool m_expandedDetails = false;
 };

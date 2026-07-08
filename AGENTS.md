@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.30` (from `project(PIPBONG VERSION 0.8.30)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.31` (from `project(PIPBONG VERSION 0.8.31)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -863,6 +863,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.31] - 2026-07-08
+
+### Changed
+
+- 대상 창 패널(프로세스/클래스/모니터 정보) 기본 표시를 더 컴팩트하게 줄이기 위해 3번째(모니터) 줄을 기본 접힘 처리하고, 글자/여백/버튼 높이를 축소했습니다 (`TargetWindowDetailPanel`, `MainWindow`).
 
 ## [0.8.30] - 2026-07-08
 
