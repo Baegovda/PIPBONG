@@ -3,6 +3,7 @@
 #include "core/capture/DxgiScreenCapture.h"
 
 #include <opencv2/imgproc.hpp>
+#include <QSettings>
 
 #ifdef _WIN32
 #include <dwmapi.h>
@@ -156,6 +157,27 @@ cv::Mat bitBltPhysicalRectGdi(int screenX, int screenY, int width, int height) {
     return bgr;
 }
 
+enum class ImageFindCaptureModeSetting {
+    Hybrid = 0,
+    ClientOnly = 1,
+};
+
+ImageFindCaptureModeSetting currentImageFindCaptureMode() {
+    QSettings settings;
+    const int stored = settings.value(
+        QStringLiteral("program/imageFindCaptureMode"),
+        static_cast<int>(ImageFindCaptureModeSetting::Hybrid)).toInt();
+    if (stored == static_cast<int>(ImageFindCaptureModeSetting::ClientOnly)) {
+        return ImageFindCaptureModeSetting::ClientOnly;
+    }
+    return ImageFindCaptureModeSetting::Hybrid;
+}
+
+bool runWithoutTargetWindowEnabled() {
+    QSettings settings;
+    return settings.value(QStringLiteral("program/runWithoutTargetWindow"), false).toBool();
+}
+
 } // namespace
 #endif
 
@@ -221,6 +243,20 @@ void ScreenCapture::setTargetWindow(HWND hwnd) {
 
 HWND ScreenCapture::targetWindow() {
     return s_targetWindow;
+}
+
+bool ScreenCapture::hasResolvableTargetWindow() {
+    if (s_targetWindow && IsWindow(s_targetWindow)) {
+        return true;
+    }
+    if (s_targetTitle.empty()) {
+        return false;
+    }
+    return findTargetWindow() != nullptr;
+}
+
+bool ScreenCapture::allowsRunWithoutTargetWindow() {
+    return runWithoutTargetWindowEnabled();
 }
 
 void ScreenCapture::activateTargetWindow() {
@@ -409,6 +445,9 @@ cv::Mat ScreenCapture::captureSearchAreaForImageFind(SearchArea area,
             hwnd = findTargetWindow();
         }
         if (!hwnd) {
+            if (runWithoutTargetWindowEnabled()) {
+                return captureSearchAreaForImageFind(SearchArea::FullScreen, custom, percent);
+            }
             return {};
         }
 
@@ -416,16 +455,23 @@ cv::Mat ScreenCapture::captureSearchAreaForImageFind(SearchArea area,
             return !mat.empty() && !isMostlyBlack(mat);
         };
 
-        // Screen BitBlt matches templates captured via capturePhysicalRect (match test path).
-        // PrintWindow client buffers often differ and break template matching during workflow runs.
-        cv::Mat mat = captureWithScreenBitBlt(hwnd);
-        if (acceptableCapture(mat)) {
-            return mat;
-        }
+        if (currentImageFindCaptureMode() == ImageFindCaptureModeSetting::ClientOnly) {
+            cv::Mat mat = captureWindow(hwnd);
+            if (acceptableCapture(mat)) {
+                return mat;
+            }
+        } else {
+            // Screen BitBlt matches templates captured via capturePhysicalRect (match test path).
+            // PrintWindow client buffers often differ and break template matching during workflow runs.
+            cv::Mat mat = captureWithScreenBitBlt(hwnd);
+            if (acceptableCapture(mat)) {
+                return mat;
+            }
 
-        mat = captureWithFullScreenCrop(hwnd);
-        if (acceptableCapture(mat)) {
-            return mat;
+            mat = captureWithFullScreenCrop(hwnd);
+            if (acceptableCapture(mat)) {
+                return mat;
+            }
         }
 
         return captureWindow(hwnd);

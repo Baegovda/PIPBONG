@@ -28,7 +28,7 @@ struct HotkeyBinding {
 
 #ifdef _WIN32
     bool isMouseButton() const;
-    bool modifiersMatch() const;
+    bool modifiersMatch(bool allowExtraModifiers = false) const;
     unsigned int winModifiers() const;
     bool isPressed() const;
     bool matchesVirtualKey(int vkCode) const;

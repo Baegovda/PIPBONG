@@ -1,14 +1,17 @@
 #include "ui/editors/KeyPressEditor.h"
 
+#include "core/input/HotkeyBinding.h"
 #include "ui/UiStrings.h"
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QEvent>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
-#include <QKeySequenceEdit>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -175,13 +178,8 @@ void KeyPressEditor::reload() {
         return;
     }
     m_modifiersOnlyCheck->setChecked(!m_block->useMainKey);
-#ifdef _WIN32
-    if (m_block->useMainKey) {
-        m_keyEdit->setKeySequence(QKeySequence(static_cast<int>(virtualKeyToQtKey(m_block->virtualKey))));
-    } else {
-        m_keyEdit->clear();
-    }
-#endif
+    m_editedVirtualKey = m_block->useMainKey ? m_block->virtualKey : 0;
+    updateKeyDisplay();
     m_actionCombo->setCurrentIndex(m_actionCombo->findData(static_cast<int>(m_block->action)));
     populateModifierActionCombo(m_ctrlActionCombo, m_block->modifierActions.ctrl);
     populateModifierActionCombo(m_altActionCombo, m_block->modifierActions.alt);
@@ -200,14 +198,11 @@ bool KeyPressEditor::apply() {
     m_block->modifierActions.shift = modifierActionFromCombo(m_shiftActionCombo);
 
     if (m_block->useMainKey) {
-#ifdef _WIN32
-        const QKeySequence sequence = m_keyEdit->keySequence();
-        if (sequence.isEmpty()) {
+        if (m_editedVirtualKey == 0) {
             QMessageBox::warning(this, tr("키보드"), tr("키를 입력하거나 '수정키만'을 선택하세요."));
             return false;
         }
-        m_block->virtualKey = qtKeyToVirtualKey(sequence[0].key());
-#endif
+        m_block->virtualKey = m_editedVirtualKey;
         m_block->action = static_cast<KeyAction>(m_actionCombo->currentData().toInt());
     } else if (!m_block->modifierActions.hasAny()) {
         QMessageBox::warning(this, tr("키보드"), tr("수정키만 사용할 때는 Ctrl, Alt, Shift 중 하나 이상의 동작을 지정하세요."));
@@ -222,9 +217,56 @@ void KeyPressEditor::updateMainKeyRowEnabled() {
     if (m_mainKeyRow) {
         m_mainKeyRow->setEnabled(!modifiersOnly);
     }
-    if (modifiersOnly && m_keyEdit) {
-        m_keyEdit->clear();
+    if (modifiersOnly && m_keyDisplay) {
+        m_editedVirtualKey = 0;
+        m_listeningForKey = false;
+        updateKeyDisplay();
     }
+}
+
+void KeyPressEditor::updateKeyDisplay() {
+    if (!m_keyDisplay) {
+        return;
+    }
+    if (m_listeningForKey) {
+        m_keyDisplay->setText(tr("키를 누르세요..."));
+        return;
+    }
+    if (m_editedVirtualKey == 0) {
+        m_keyDisplay->clear();
+        m_keyDisplay->setPlaceholderText(tr("클릭 후 키 입력"));
+        return;
+    }
+    m_keyDisplay->setText(HotkeyBinding::keyDisplayName(m_editedVirtualKey));
+}
+
+bool KeyPressEditor::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == m_keyDisplay) {
+        if (event->type() == QEvent::MouseButtonPress) {
+            m_listeningForKey = true;
+            updateKeyDisplay();
+            m_keyDisplay->setFocus(Qt::MouseFocusReason);
+            return true;
+        }
+        if (m_listeningForKey && event->type() == QEvent::KeyPress) {
+            auto* keyEvent = static_cast<QKeyEvent*>(event);
+            if (keyEvent->key() == Qt::Key_Escape) {
+                m_listeningForKey = false;
+                updateKeyDisplay();
+                return true;
+            }
+#ifdef _WIN32
+            const int vk = qtKeyToVirtualKey(keyEvent->key());
+            if (vk != 0) {
+                m_editedVirtualKey = vk;
+            }
+#endif
+            m_listeningForKey = false;
+            updateKeyDisplay();
+            return true;
+        }
+    }
+    return QDialog::eventFilter(watched, event);
 }
 
 void KeyPressEditor::populateModifierActionCombo(QComboBox* combo, ModifierKeyAction current) {
@@ -256,12 +298,11 @@ void KeyPressEditor::setupUi() {
     m_modifiersOnlyCheck->setToolTip(tr("체크하면 Space 등 일반 키 없이 Ctrl/Alt/Shift 동작만 실행합니다."));
     m_modifiersOnlyCheck->setChecked(!m_block->useMainKey);
 
-    m_keyEdit = new QKeySequenceEdit(this);
-#ifdef _WIN32
-    if (m_block->useMainKey) {
-        m_keyEdit->setKeySequence(QKeySequence(static_cast<int>(virtualKeyToQtKey(m_block->virtualKey))));
-    }
-#endif
+    m_keyDisplay = new QLineEdit(this);
+    m_keyDisplay->setReadOnly(true);
+    m_keyDisplay->setPlaceholderText(tr("클릭 후 키 입력"));
+    m_keyDisplay->setCursor(Qt::PointingHandCursor);
+    m_keyDisplay->installEventFilter(this);
     m_clearKeyButton = new QPushButton(tr("지우기"), this);
     m_clearKeyButton->setToolTip(tr("입력된 키를 지웁니다."));
 
@@ -282,7 +323,7 @@ void KeyPressEditor::setupUi() {
     auto* keyActionLayout = new QHBoxLayout(m_mainKeyRow);
     keyActionLayout->setContentsMargins(0, 0, 0, 0);
     keyActionLayout->setSpacing(8);
-    keyActionLayout->addWidget(m_keyEdit, 1);
+    keyActionLayout->addWidget(m_keyDisplay, 1);
     keyActionLayout->addWidget(m_clearKeyButton);
     keyActionLayout->addWidget(new QLabel(tr("동작"), m_mainKeyRow));
     keyActionLayout->addWidget(m_actionCombo);
@@ -305,15 +346,16 @@ void KeyPressEditor::setupUi() {
 
     connect(m_modifiersOnlyCheck, &QCheckBox::toggled, this, [this](bool) { updateMainKeyRowEnabled(); });
     connect(m_clearKeyButton, &QPushButton::clicked, this, [this]() {
-        if (m_keyEdit) {
-            m_keyEdit->clear();
-        }
+        m_editedVirtualKey = 0;
+        m_listeningForKey = false;
+        updateKeyDisplay();
         if (m_modifiersOnlyCheck) {
             m_modifiersOnlyCheck->setChecked(true);
         }
     });
 
     updateMainKeyRowEnabled();
+    updateKeyDisplay();
 
     layout->addLayout(form);
 

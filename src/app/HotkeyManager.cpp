@@ -224,6 +224,9 @@ std::vector<HotkeyManager::RegistrationFailure> HotkeyManager::syncFromProject(c
     }
 
     for (const auto& feature : project.features()) {
+        if (!feature->enabled()) {
+            continue;
+        }
         const HotkeyBinding& binding = feature->hotkey();
         if (binding.isEmpty()) {
             continue;
@@ -233,6 +236,7 @@ std::vector<HotkeyManager::RegistrationFailure> HotkeyManager::syncFromProject(c
             MouseBindingEntry entry;
             entry.featureId = feature->id();
             entry.binding = binding;
+            entry.allowExtraModifiers = feature->hotkeyAllowExtraModifiers();
             entry.holdMode = feature->runMode() == FeatureRunMode::Hold;
             m_mouseBindings.push_back(entry);
             continue;
@@ -242,6 +246,7 @@ std::vector<HotkeyManager::RegistrationFailure> HotkeyManager::syncFromProject(c
             HoldBindingEntry entry;
             entry.featureId = feature->id();
             entry.binding = binding;
+            entry.allowExtraModifiers = feature->hotkeyAllowExtraModifiers();
             m_holdBindings.push_back(entry);
             continue;
         }
@@ -249,6 +254,7 @@ std::vector<HotkeyManager::RegistrationFailure> HotkeyManager::syncFromProject(c
         ToggleBindingEntry entry;
         entry.featureId = feature->id();
         entry.binding = binding;
+        entry.allowExtraModifiers = feature->hotkeyAllowExtraModifiers();
         m_toggleBindings.push_back(entry);
     }
 
@@ -316,6 +322,39 @@ bool HotkeyManager::isHoldBindingDown(const std::string& featureId) const {
             return entry.buttonDown;
         }
     }
+    return false;
+}
+
+bool HotkeyManager::matchesAnyRegisteredFeatureHotkey(int vkCode) const {
+#ifdef _WIN32
+    const auto matchesBinding = [vkCode](const HotkeyBinding& binding, bool allowExtraModifiers) {
+        if (!binding.matchesVirtualKey(vkCode)) {
+            return false;
+        }
+        if (HotkeyBinding::isMouseVirtualKey(vkCode)) {
+            return binding.modifiersMatch(allowExtraModifiers);
+        }
+        return binding.modifiersMatch(allowExtraModifiers);
+    };
+
+    for (const HoldBindingEntry& entry : m_holdBindings) {
+        if (matchesBinding(entry.binding, entry.allowExtraModifiers)) {
+            return true;
+        }
+    }
+    for (const ToggleBindingEntry& entry : m_toggleBindings) {
+        if (matchesBinding(entry.binding, entry.allowExtraModifiers)) {
+            return true;
+        }
+    }
+    for (const MouseBindingEntry& entry : m_mouseBindings) {
+        if (matchesBinding(entry.binding, entry.allowExtraModifiers)) {
+            return true;
+        }
+    }
+#else
+    (void)vkCode;
+#endif
     return false;
 }
 
@@ -448,7 +487,7 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
         if (!entry.binding.matchesVirtualKey(vkCode)) {
             continue;
         }
-        if (!entry.binding.modifiersMatch() && keyDown) {
+        if (!entry.binding.modifiersMatch(entry.allowExtraModifiers) && keyDown) {
             continue;
         }
         if (keyDown) {
@@ -465,6 +504,10 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
             if (!entry.keyDown) {
                 continue;
             }
+            // Ignore ghost key-up from keyboard rollover while the key is still held.
+            if ((GetAsyncKeyState(vkCode) & 0x8000) != 0) {
+                continue;
+            }
             entry.keyDown = false;
             emitHotkeyHoldEnded(entry.featureId);
             swallow = true;
@@ -479,7 +522,7 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
             if (!entry.armed) {
                 continue;
             }
-            if (!entry.binding.modifiersMatch()) {
+            if (!entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
                 continue;
             }
             if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
@@ -501,7 +544,7 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
         if (!entry.binding.matchesVirtualKey(vkCode)) {
             continue;
         }
-        if (!entry.binding.modifiersMatch()) {
+        if (!entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
             if (buttonDown) {
                 continue;
             }
@@ -520,6 +563,9 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
                 swallow = true;
             } else {
                 if (!entry.buttonDown) {
+                    continue;
+                }
+                if ((GetAsyncKeyState(vkCode) & 0x8000) != 0) {
                     continue;
                 }
                 entry.buttonDown = false;

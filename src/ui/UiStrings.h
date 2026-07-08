@@ -22,6 +22,8 @@ inline QString blockTypeDisplayName(BlockType type) {
         return QStringLiteral("키보드");
     case BlockType::Wait:
         return QStringLiteral("딜레이");
+    case BlockType::Text:
+        return QStringLiteral("텍스트");
     }
     return QStringLiteral("알 수 없음");
 }

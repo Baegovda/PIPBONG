@@ -50,6 +50,7 @@ std::unique_ptr<Feature> Feature::clone() const {
     copy->m_roiCorrectionExpandPercent = m_roiCorrectionExpandPercent;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_triggerCooldownMs = m_triggerCooldownMs;
+    copy->m_hotkeyAllowExtraModifiers = m_hotkeyAllowExtraModifiers;
     copy->m_hotkey = m_hotkey;
     copy->m_workflow.assignFrom(m_workflow);
     return copy;
@@ -72,6 +73,7 @@ std::unique_ptr<Feature> Feature::duplicateAsNewInstance() const {
     copy->m_roiCorrectionExpandPercent = m_roiCorrectionExpandPercent;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_triggerCooldownMs = m_triggerCooldownMs;
+    copy->m_hotkeyAllowExtraModifiers = m_hotkeyAllowExtraModifiers;
     copy->m_hotkey = {};
     copy->m_workflow.assignFrom(m_workflow);
     return copy;

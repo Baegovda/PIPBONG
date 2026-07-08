@@ -6,6 +6,7 @@
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "core/workflow/blocks/KeyPressBlock.h"
 #include "core/workflow/blocks/WaitBlock.h"
+#include "core/workflow/blocks/TextBlock.h"
 
 #include "app/FeatureHotkeyGate.h"
 
@@ -22,6 +23,7 @@ class ClickEditor;
 class ImageFindEditor;
 class KeyPressEditor;
 class WaitEditor;
+class TextEditor;
 
 class BlockEditorDialog : public QDialog {
     Q_OBJECT
@@ -65,9 +67,11 @@ protected:
     ClickEditor* m_clickEditor = nullptr;
     KeyPressEditor* m_keyPressEditor = nullptr;
     WaitEditor* m_waitEditor = nullptr;
+    TextEditor* m_textEditor = nullptr;
 
     std::unique_ptr<Block> m_imageFindFormBlock;
     std::unique_ptr<Block> m_clickFormBlock;
     std::unique_ptr<Block> m_keyPressFormBlock;
     std::unique_ptr<Block> m_waitFormBlock;
+    std::unique_ptr<Block> m_textFormBlock;
 };

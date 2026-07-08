@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.7.79` (from `project(PIPBONG VERSION 0.7.78)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.30` (from `project(PIPBONG VERSION 0.8.30)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -333,13 +333,14 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.5 Workflow engine
 
-- **Block types (UI):** `ImageFind`, `Click`, `KeyPress`, `Wait`. Workflow **구간 반복** uses `workflow.loopRegions` (not a block type).
+- **Block types (UI):** `ImageFind`, `Click`, `KeyPress`, `Wait`, `Text`. Workflow **구간 반복** uses `workflow.loopRegions` (not a block type).
 - **`WorkflowEngine`**: Runs workflow on **`QThread` worker**; emits `started`, `blockStarted`, `blockFinished` (with ImageFind match confidence + preview pixmap), `logMessage`, `finished`.
 - **`ExecutionContext`**: Stop flag, last match point/confidence/preview, logging callback.
 - **ImageFind execution:** Poll loop until match, timeout, or stop; sets last match for subsequent `Click` blocks (`LastMatch` target).
 
 ### 5.6 UI
 
+- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked target-window title per profile; **foreground-window auto-switch** (250 ms poll) activates the profile whose linked title best matches the focused top-level window (longest substring wins), falls back to the default profile when unmatched; PIPBONG foreground keeps the current profile (`MainWindow::syncProfileToForegroundWindow`, `ProfileManager::profileIdForForegroundTitle`).
 - **Feature list:** Create/delete/rename features; hotkey binding (button, double-click, context menu).
 - **Workflow editor:** Block list with drag-and-drop reorder; per-type **블록 추가** buttons (템플릿 매칭, 마우스, 키보드, 딜레이); template thumbnails (48×48); block editors in `BlockEditorDialog`.
 - **ImageFind editor:** ROI preview, match test, screen capture overlay, `CaptureConfirmDialog`.
@@ -349,11 +350,13 @@ Sbm1.0/                        # repo root (local workspace)
 
 | Item | Location |
 |------|----------|
-| Auto-save file | `%LOCALAPPDATA%/PIPBONG/PIPBONG/project.json` via `QStandardPaths::AppDataLocation` |
-| Templates | `{projectDirectory}/templates/*.png` |
+| Active profile manifest | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/manifest.json` (`activeProfileId`, `defaultProfileId`, unlimited profile list) |
+| Profile project file | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/project.json` via `ProfileManager` |
+| Profile settings file | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`) |
+| Templates | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/templates/*.png` |
 | Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
 | Debounce | 800 ms after edits; also on window close |
-| Program settings | `QSettings` — e.g. `program/autoSelectRunningFeature` (default `true`); `program/launchAtWindowsStartup` (default `false`, Windows Run key via `WindowsLaunchAtStartup`); `program/closeToTray` (default `false`, hide to notification area on window close); `program/autoInstallUpdates` (default `false`, silently detected updates install automatically, deferred until workflow sessions stop); `program/updateCheckIntervalMinutes` (default `5`, background update-check interval in minutes, `0` disables periodic checks); `program/runAsAdministrator` (default `false`, Windows `RUNASADMIN` compatibility flag via `WindowsRunAsAdmin`); `program/pointerFeedback/click/*` for click pointer animation; bottom **설정** button opens program settings dialog |
+| Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog |
 | Calculator sheet | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry` |
 
 ### 5.8 poe.ninja economy calculator
@@ -450,6 +453,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `roiCorrection` | `false` (omitted) | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
 | `roiCorrectionExpandPercent` | `110` (omitted) | Template-relative corrected search ROI size on loop 2+ when feature `roiCorrection` is on (see ImageFind `roiCorrectionExpandPercent`) |
 | `editFirstTemplateRoiOnStart` | `false` (omitted) | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run |
+| `hotkeyAllowExtraModifiers` | `false` (omitted) | When `true`, feature hotkey fires even if extra Ctrl/Alt/Shift not in the binding are held (e.g. **F4** binding still runs on **Shift+F4**); default is strict exact modifier match |
 
 `hotkey` is optional. `virtualKey` is Win32 VK code.
 
@@ -509,6 +513,12 @@ Sbm1.0/                        # repo root (local workspace)
 | `ms` | `500` | Fixed delay (0–600000 ms, 5 ms step) |
 | `randomRange` | `false` | Use min/max instead |
 | `minMs`, `maxMs` | `0` | Random range bounds (5 ms step) |
+
+#### `Text`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `text` | `""` (omitted) | UTF-8 string typed into the foreground target via `SendInput` (`InputSimulator::sendText`); `\n` / `\r\n` emit Enter, `\t` emits Tab. Legacy JSON `"type": "Comment"` loads as `Text` |
 
 #### Workflow loop regions (feature `workflow` document)
 
@@ -702,6 +712,7 @@ User holds **Shift** (run/walk in games) while a feature runs — often **click-
 2. **Injected input**: Ignore events with `LLKHF_INJECTED` (keyboard) or `LLMHF_INJECTED` (mouse) so PIPBONG's own `SendInput` does not re-enter hotkey handling.
 3. **Hold mode bindings**: Swallow both DOWN and UP for the bound key or mouse button so the target app never sees the feature hotkey as a click/keypress when starting or stopping the loop.
 4. **Foreground**: Before emitting hold/trigger signals, restore previous foreground with the same `restoreForegroundWindow` helper (no `AttachThreadInput`).
+5. **Modifier match**: Default strict — `HotkeyBinding::modifiersMatch(false)` requires Ctrl/Alt/Shift to match the binding exactly (e.g. plain **F4** does not fire on **Alt+F4**). Per-feature `hotkeyAllowExtraModifiers` opts in to loose match: required modifiers must be down; extra held modifiers are ignored (`Feature`, `FeatureEditDialog`, `HotkeyManager`).
 
 #### Explicit removals (do not reintroduce)
 
@@ -845,12 +856,244 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ## [Unreleased]
 
 ### Added
+ 
 
 ### Changed
 
 ### Fixed
 
 ### Removed
+
+## [0.8.30] - 2026-07-08
+
+### Added
+
+- Global feature library: save a feature from any profile into `featureLibrary/` (including referenced ImageFind template PNGs) and import it into other profiles via a picker dialog (`FeatureLibraryManager`, `FeatureLibraryDialog`, `FeatureListPanel`, `MainWindow`).
+
+## [0.8.29] - 2026-07-08
+
+### Changed
+
+- Main window target-window panel layout refreshed for clarity: action buttons are grouped into a cleaner top command row, the center-pin option is separated into a secondary row, and the target info card now uses a stronger grouped surface (`MainWindow`).
+- `TargetWindowDetailPanel` now presents the active window in a more readable card layout with a prominent title, state badge, and wrapped metadata lines for process, HWND, bounds, client size, and monitor details (`TargetWindowDetailPanel`).
+
+## [0.8.28] - 2026-07-08
+
+### Changed
+
+- Profile auto-switch no longer re-reads each profile `project.json` on every 250 ms foreground poll, and profile target-window bindings are cached in memory after load/update (`ProfileManager`).
+- Active-profile switching no longer rebuilds the entire profile list on every switch; the current row is updated in place instead, and profile-list icon resolution enumerates desktop windows only once per full list refresh (`MainWindow`).
+
+## [0.8.27] - 2026-07-08
+
+### Added
+
+- Profile auto-switch: polls the foreground top-level window every 250 ms and switches to the profile whose linked target-window title best matches (longest substring wins); unmatched windows fall back to the default profile; PIPBONG foreground keeps the current profile (`ProfileManager::profileIdForForegroundTitle`, `MainWindow::syncProfileToForegroundWindow`).
+
+## [0.8.26] - 2026-07-08
+
+### Changed
+
+- Default profile always runs without a designated target window: `targetWindowTitle` is cleared and `runWithoutTargetWindow` is enforced on startup, when setting default, and when creating the initial profile; profile edit hides the linked-program section for the default profile (`ProfileManager`, `ProfileEditDialog`, `MainWindow`).
+
+## [0.8.25] - 2026-07-08
+
+### Changed
+
+- Profile row drag is now more direct: pressing a profile row immediately makes it the active drag candidate, so users can grab-and-drag in one motion without first pre-selecting the row (`ProfileListWidget`, `MainWindow`).
+
+## [0.8.24] - 2026-07-08
+
+### Changed
+
+- Setting a profile as **default** now forces global/no-window behavior for that profile: clears `targetWindowTitle` and turns on profile-scoped `runWithoutTargetWindow`, so the default profile runs across windows without requiring target-window designation (`MainWindow`, `ProfileManager`, `ProgramSettings`).
+
+## [0.8.23] - 2026-07-08
+
+### Added
+
+- Profile list supports drag-and-drop reordering; dropped order is persisted to `profiles/manifest.json` so profile order remains stable across restarts (`MainWindow`, `ProfileManager`).
+
+## [0.8.22] - 2026-07-08
+
+### Changed
+
+- Double-clicking a profile row now opens the same profile edit dialog as the **편집** button for faster profile metadata edits (`MainWindow`, profile list signal wiring).
+
+## [0.8.21] - 2026-07-08
+
+### Added
+
+- Profile edit dialog: rename a profile, set its linked target program title, and choose exactly one user-selected default profile that opens on startup (`ProfileEditDialog`, `ProfileManager`, `MainWindow`).
+
+### Changed
+
+- Profile list now labels the default profile as **(기본)** and includes default-profile status in the item tooltip (`MainWindow`).
+
+## [0.8.20] - 2026-07-08
+
+### Changed
+
+- Feature hotkey execution is suppressed while PIPBONG itself is foreground-focused; additionally, opening **프로그램 설정** now holds a `FeatureHotkeyGateScope` so hotkeys cannot start features while settings are being edited (`MainWindow`, `FeatureHotkeyGate`).
+
+## [0.8.19] - 2026-07-08
+
+### Changed
+
+- Profile panel border cleanup: removed the `QGroupBox` outer frame around the profile list area and kept the list background transparent/borderless so no white outline remains (`MainWindow`, `profileListGroup`, `profileListView` style).
+
+## [0.8.18] - 2026-07-08
+
+### Changed
+
+- Profile panel button label updated from **이름** to **편집** for clearer intent when renaming profile metadata (`MainWindow`).
+
+## [0.8.17] - 2026-07-08
+
+### Changed
+
+- Profile list visual chrome: removed the default white list frame/border and kept a clean borderless profile list surface in the profile panel (`MainWindow`, `profileListView` style).
+
+## [0.8.16] - 2026-07-08
+
+### Changed
+
+- Profile panel can be resized narrower: profile action buttons are stacked vertically with width-ignored sizing, and the profile column minimum width/initial splitter width were reduced so users can shrink the profile pane further (`MainWindow`).
+
+## [0.8.15] - 2026-07-08
+
+### Added
+
+- Profile system: left-side profile list next to the feature list; only the active profile's features and hotkeys run, with unlimited profiles stored under `profiles/{profileId}/project.json` and live target-program icons when the target window is present (`ProfileManager`, `MainWindow`).
+- Profile-scoped execution options saved in `profile-settings.json`: auto-select running feature, target-window center pin, ImageFind capture mode, and run-without-target-window (`ProgramSettings::ProfileSettings`, `ProfileManager`, `ProgramSettingsDialog`).
+
+### Changed
+
+- Legacy single auto-save project migrates into the default profile on first profile-system startup; active profile switches stop running sessions, save current project/settings, load the selected profile, and resync hotkeys (`ProfileManager`, `MainWindow`).
+
+## [0.8.14] - 2026-07-08
+
+### Added
+
+- Per-feature **사용** toggle in the feature list (checkbox column): disables hotkeys, run button, and execution for that feature; persisted as feature JSON `enabled` (`FeatureListPanel`, `FeatureEditDialog`, `MainWindow`, `HotkeyManager`).
+
+### Changed
+
+- Disabling a feature while it is running stops the active session immediately (`FeatureListPanel::featureEnabledChanged`, `MainWindow::onFeatureEnabledChanged`).
+
+## [0.8.13] - 2026-07-08
+
+### Changed
+
+- Program settings dialog: checkbox option descriptions shown as inline `HintLabel` text below each option instead of hover tooltips (`ProgramSettingsDialog`).
+
+## [0.8.12] - 2026-07-08
+
+### Added
+
+- Program settings **창을 지정하지 않은 상태에서도 동작**: when enabled, feature runs proceed without **창 지정**; ImageFind **대상 창** search area falls back to full screen when no target HWND is available (`program/runWithoutTargetWindow`, `ProgramSettings`, `ProgramSettingsDialog`, `ScreenCapture`, `MainWindow`, `ImageFindBlock`).
+
+### Changed
+
+- Feature run start now requires a resolvable target window unless **창을 지정하지 않은 상태에서도 동작** is enabled (`MainWindow::startFeatureRun`, `ScreenCapture::hasResolvableTargetWindow`).
+
+## [0.8.11] - 2026-07-08
+
+### Fixed
+
+- Concurrent hold hotkeys (e.g. **Q** + **W**): `UserInputInterruptMonitor` now treats **any registered project feature hotkey** as non-interrupting input (not only already-running sessions), so pressing the second hold key no longer stops the first feature before its session starts (`UserInputInterruptMonitor`, `HotkeyManager::matchesAnyRegisteredFeatureHotkey`, `MainWindow`).
+- Hold hotkey release ignores spurious key-up events while `GetAsyncKeyState` still reports the key down (keyboard rollover when pressing adjacent hold keys together), so the first hold feature no longer receives `hotkeyHoldEnded` when a second hold key is pressed (`HotkeyManager`).
+
+## [0.8.10] - 2026-07-08
+
+### Fixed
+
+- Holding two feature hotkeys at once (e.g. **Q** and **W** both in **누를 동안** mode) no longer stops the first feature when the second key is pressed: `UserInputInterruptMonitor::notifyPhysicalInput` now ignores physical input that matches the hotkey of **any** currently running feature, not only the owning session, so concurrent hold features keep running independently (`UserInputInterruptMonitor`).
+
+## [0.8.9] - 2026-07-08
+
+### Changed
+
+- Multiple features can run concurrently: each feature keeps its own `FeatureRunSession` / `WorkflowEngine` worker; hold hotkeys for different features start and stop independently without blocking one another (`MainWindow`, `HotkeyManager` integration unchanged).
+- Mouse-center / position lock is reconciled across all active sessions when any session ends or trigger preemption pauses others, so one feature stopping no longer clears another feature's clip (`MainWindow::reconcileMouseLocksFromRunningSessions`).
+
+### Fixed
+
+- Stale or winding-down run sessions no longer block starting the same feature again or a second hold hotkey while loop iterations are between runs (`MainWindow::isFeatureSessionActive`, `startFeatureRun`, `onHotkeyHoldStarted`).
+
+## [0.8.8] - 2026-07-08
+
+### Changed
+
+- Program settings **템플릿 매칭 캡처** group: beginner-friendly combo labels (**기본 — 화면 그대로** / **창 안만 — 커서·표시 제외**) and live `HintLabel` description per selection (`ProgramSettingsDialog`).
+
+## [0.8.7] - 2026-07-07
+
+### Added
+
+- Program settings option **템플릿 매칭 캡처 방식**: choose between **기본(화면 우선, 호환성 높음)** and **클라이언트 창만 캡처(순수 캡처 우선)**; persisted in `program/imageFindCaptureMode` (`ProgramSettings`, `ProgramSettingsDialog`).
+
+### Changed
+
+- `ScreenCapture::captureSearchAreaForImageFind(TargetWindow)` now respects `program/imageFindCaptureMode`: default `Hybrid` keeps current screen BitBlt-first behavior, while `ClientOnly` prioritizes target client-window capture (`ScreenCapture`).
+
+## [0.8.6] - 2026-07-06
+
+### Added
+
+- Title bar **도움말** menu with **PIPBONG 도움말** (quick-start sections) and **PIPBONG 정보** About dialog (`AppHelpDialog`, `MainWindow`).
+
+## [0.8.5] - 2026-07-05
+
+### Added
+
+- **대상 창** panel **화면 중앙 고정** checkbox: keeps the designated target window centered on its current monitor (200 ms sync, DWM bounds, `program/pinTargetWindowToScreenCenter`, `TargetWindowCenterPin`, `MainWindow`).
+
+## [0.8.4] - 2026-07-05
+
+### Added
+
+- Feature **기능 편집** option **다른 조합키와 함께 눌러도 실행**: per-feature opt-in loose hotkey modifier match (`hotkeyAllowExtraModifiers` JSON, `Feature`, `FeatureEditDialog`, `HotkeyBinding::modifiersMatch`, `HotkeyManager`, `JsonSerializer`).
+
+## [0.8.3] - 2026-07-05
+
+### Fixed
+
+- **기능 편집** hotkey capture (`입력 대기 중...`) no longer triggers other features bound to the same key: `FeatureHotkeyGateScope` is held for the capture session (`FeatureEditDialog`, `HotkeyCaptureDialog`, `FeatureHotkeyGate`).
+
+## [0.8.2] - 2026-07-04
+
+### Changed
+
+- **텍스트** block now types the configured string into the target app at run time (`InputSimulator::sendText`, Enter/Tab for newlines and tabs) instead of acting as a workflow memo/log-only note; editor copy updated (`TextBlock`, `TextEditor`).
+
+## [0.8.1] - 2026-07-04
+
+### Changed
+
+- User-facing key labels use **Enter** instead of Qt's **Return** (feature hotkeys, keyboard block editor/summary, workflow key icons); text block hint mentions **Enter** for line breaks (`HotkeyBinding`, `KeyPressEditor`, `TextEditor`, `HotkeyBindingIcon`, `WorkflowEditorPanel`).
+
+## [0.8.0] - 2026-07-04
+
+### Added
+
+- Workflow **텍스트** block (`Text` JSON): multi-line text editor; at run time types the configured UTF-8 string into the target app; legacy `"Comment"` blocks load as `Text` (`TextBlock`, `TextEditor`, `BlockFactory`, `BlockEditorDialog`, `WorkflowEditorPanel`).
+
+## [0.7.81] - 2026-07-04
+
+### Changed
+
+- **기능 추가** opens **기능 편집** with an empty name field (placeholder **기능 이름** only) and keyboard focus so typing starts immediately; cancel removes the unsaved new feature (`FeatureListPanel`, `FeatureEditDialog`).
+
+## [0.7.80] - 2026-07-04
+
+### Fixed
+
+- Feature hotkeys no longer fire when extra Ctrl/Alt/Shift modifiers are held: `HotkeyBinding::modifiersMatch` requires an exact modifier match (e.g. **F4** alone does not trigger on **Alt+F4**) (`HotkeyBinding`, `HotkeyManager`).
+
+### Changed
+
+- Reverted v0.7.59 loose hotkey modifier policy — keyboard and mouse feature bindings now require Ctrl/Alt/Shift to match the binding exactly at runtime.
 
 ## [0.7.79] - 2026-07-04
 
@@ -2672,4 +2915,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-04. Current application version: 0.7.79.*
+*Last consolidated: 2026-07-05. Current application version: 0.8.5.*

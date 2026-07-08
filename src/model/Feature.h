@@ -72,6 +72,9 @@ public:
     const HotkeyBinding& hotkey() const { return m_hotkey; }
     void setHotkey(const HotkeyBinding& hotkey) { m_hotkey = hotkey; }
 
+    bool hotkeyAllowExtraModifiers() const { return m_hotkeyAllowExtraModifiers; }
+    void setHotkeyAllowExtraModifiers(bool allow) { m_hotkeyAllowExtraModifiers = allow; }
+
     std::unique_ptr<Feature> clone() const;
     std::unique_ptr<Feature> duplicateAsNewInstance() const;
 
@@ -93,6 +96,7 @@ private:
     int m_roiCorrectionExpandPercent = 110;
     bool m_editFirstTemplateRoiOnStart = false;
     int m_triggerCooldownMs = kDefaultTriggerCooldownMs;
+    bool m_hotkeyAllowExtraModifiers = false;
     HotkeyBinding m_hotkey;
     Workflow m_workflow;
 };

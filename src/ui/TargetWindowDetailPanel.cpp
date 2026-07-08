@@ -55,23 +55,48 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
 
     m_detailsPage = new QWidget(stackHost);
     auto* detailsLayout = new QVBoxLayout(m_detailsPage);
-    detailsLayout->setContentsMargins(10, 7, 10, 7);
-    detailsLayout->setSpacing(4);
+    detailsLayout->setContentsMargins(12, 10, 12, 10);
+    detailsLayout->setSpacing(5);
+
+    auto* titleRow = new QHBoxLayout();
+    titleRow->setContentsMargins(0, 0, 0, 0);
+    titleRow->setSpacing(8);
+
+    m_titleLabel = new QLabel(m_detailsPage);
+    m_titleLabel->setObjectName(QStringLiteral("targetWindowDetailTitle"));
+    m_titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_titleLabel->setWordWrap(false);
+
+    m_statusLabel = new QLabel(m_detailsPage);
+    m_statusLabel->setObjectName(QStringLiteral("targetWindowDetailStatus"));
+    m_statusLabel->setAlignment(Qt::AlignCenter);
+    m_statusLabel->setMinimumWidth(82);
+
+    titleRow->addWidget(m_titleLabel, 1);
+    titleRow->addWidget(m_statusLabel, 0);
 
     m_primaryLine = new QLabel(m_detailsPage);
     m_primaryLine->setObjectName(QStringLiteral("targetWindowDetailPrimary"));
     m_primaryLine->setTextFormat(Qt::RichText);
     m_primaryLine->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_primaryLine->setWordWrap(false);
+    m_primaryLine->setWordWrap(true);
 
     m_secondaryLine = new QLabel(m_detailsPage);
     m_secondaryLine->setObjectName(QStringLiteral("targetWindowDetailSecondary"));
     m_secondaryLine->setTextFormat(Qt::RichText);
     m_secondaryLine->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_secondaryLine->setWordWrap(false);
+    m_secondaryLine->setWordWrap(true);
 
+    m_tertiaryLine = new QLabel(m_detailsPage);
+    m_tertiaryLine->setObjectName(QStringLiteral("targetWindowDetailTertiary"));
+    m_tertiaryLine->setTextFormat(Qt::RichText);
+    m_tertiaryLine->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_tertiaryLine->setWordWrap(true);
+
+    detailsLayout->addLayout(titleRow);
     detailsLayout->addWidget(m_primaryLine);
     detailsLayout->addWidget(m_secondaryLine);
+    detailsLayout->addWidget(m_tertiaryLine);
 
     stackedLayout->addWidget(m_messagePage);
     stackedLayout->addWidget(m_detailsPage);
@@ -79,9 +104,14 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
 
     setStyleSheet(QStringLiteral(
         "QFrame#targetWindowDetailPanel {"
-        "  background-color: palette(window);"
+        "  background-color: palette(base);"
         "  border: 1px solid palette(mid);"
-        "  border-radius: 8px;"
+        "  border-radius: 10px;"
+        "}"
+        "QLabel#targetWindowDetailStatus {"
+        "  padding: 3px 10px;"
+        "  border-radius: 999px;"
+        "  font-weight: 600;"
         "}"));
     // Static stylesheet only — never call setStyleSheet from changeEvent (see AGENTS.md §8.4).
 
@@ -136,27 +166,35 @@ void TargetWindowDetailPanel::refreshDetailText() {
     const QColor muted = secondaryHintTextColor(pal);
     const QColor stateColor = stateColorFor(m_lastDetailData);
     const QString sep = QStringLiteral(" &nbsp;&middot;&nbsp; ");
+    const QString title = m_lastDetailData.title.isEmpty() ? tr("이름 없는 창") : m_lastDetailData.title;
 
-    const QString stateLine = QStringLiteral("<span style=\"color:%1;\">%2</span>")
-                                  .arg(stateColor.name(), htmlEscape(m_lastDetailData.stateText));
+    m_titleLabel->setText(title);
+    m_statusLabel->setText(m_lastDetailData.stateText);
 
-    const QString primary = captionSpan(QStringLiteral("HWND"), muted) + QLatin1Char(' ')
-                            + valueSpan(m_lastDetailData.hwnd, text) + sep + stateLine + sep
-                            + captionSpan(tr("프로세스"), muted) + QLatin1Char(' ')
-                            + valueSpan(m_lastDetailData.processName, text) + sep
-                            + captionSpan(tr("제목"), muted) + QLatin1Char(' ')
-                            + valueSpan(m_lastDetailData.title, text);
+    const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
+    m_statusLabel->setStyleSheet(QStringLiteral(
+        "padding: 3px 10px; border-radius: 999px; font-weight: 600; background-color: %1; color: %2;")
+                                     .arg(stateColor.name(), badgeText.name()));
+
+    const QString primary =
+        captionSpan(tr("프로세스"), muted) + QLatin1Char(' ')
+        + valueSpan(m_lastDetailData.processName, text) + sep + captionSpan(tr("클래스"), muted)
+        + QLatin1Char(' ') + valueSpan(m_lastDetailData.className, text) + sep
+        + captionSpan(QStringLiteral("HWND"), muted) + QLatin1Char(' ')
+        + valueSpan(m_lastDetailData.hwnd, text);
 
     const QString secondary =
-        captionSpan(tr("클래스"), muted) + QLatin1Char(' ')
-        + valueSpan(m_lastDetailData.className, text) + sep + captionSpan(QStringLiteral("DWM"), muted)
-        + QLatin1Char(' ') + valueSpan(m_lastDetailData.frameBounds, text) + sep
-        + captionSpan(tr("클라"), muted) + QLatin1Char(' ')
-        + valueSpan(m_lastDetailData.clientSize, text) + sep + captionSpan(tr("모니터"), muted)
-        + QLatin1Char(' ') + valueSpan(m_lastDetailData.monitor, text);
+        captionSpan(tr("창 영역"), muted) + QLatin1Char(' ')
+        + valueSpan(m_lastDetailData.frameBounds, text) + sep + captionSpan(tr("클라이언트"), muted)
+        + QLatin1Char(' ') + valueSpan(m_lastDetailData.clientSize, text);
+
+    const QString tertiary =
+        captionSpan(tr("모니터"), muted) + QLatin1Char(' ')
+        + valueSpan(m_lastDetailData.monitor, text);
 
     m_primaryLine->setText(primary);
     m_secondaryLine->setText(secondary);
+    m_tertiaryLine->setText(tertiary);
 }
 
 void TargetWindowDetailPanel::updateThemeColors() {
@@ -170,8 +208,10 @@ void TargetWindowDetailPanel::updateThemeColors() {
     const QColor muted = secondaryHintTextColor(pal);
 
     setLabelTextColor(m_messageLabel, muted, 12, false);
+    setLabelTextColor(m_titleLabel, text, 13, true);
     setLabelTextColor(m_primaryLine, text, 11, false);
     setLabelTextColor(m_secondaryLine, text, 11, false);
+    setLabelTextColor(m_tertiaryLine, text, 11, false);
 
     if (m_detailsPage->isVisible() && !m_lastDetailData.hwnd.isEmpty()) {
         refreshDetailText();

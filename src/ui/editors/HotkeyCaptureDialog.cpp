@@ -1,5 +1,6 @@
 #include "ui/editors/HotkeyCaptureDialog.h"
 
+#include "app/FeatureHotkeyGate.h"
 #include "ui/UiStrings.h"
 #include "ui/UiThemeColors.h"
 
@@ -77,6 +78,7 @@ void HotkeyCaptureDialog::updateCaptureUi() {
 }
 
 void HotkeyCaptureDialog::startCapture() {
+    m_hotkeyCaptureGate = std::make_unique<FeatureHotkeyGateScope>();
     m_listeningForHotkey = true;
     updateCaptureUi();
     setFocus();
@@ -84,6 +86,7 @@ void HotkeyCaptureDialog::startCapture() {
 
 void HotkeyCaptureDialog::stopCapture() {
     m_listeningForHotkey = false;
+    m_hotkeyCaptureGate.reset();
     updateCaptureUi();
 }
 
@@ -123,6 +126,11 @@ bool HotkeyCaptureDialog::isInteractiveWidget(const QWidget* widget) const {
         widget = widget->parentWidget();
     }
     return false;
+}
+
+void HotkeyCaptureDialog::reject() {
+    stopCapture();
+    QDialog::reject();
 }
 
 void HotkeyCaptureDialog::keyPressEvent(QKeyEvent* event) {

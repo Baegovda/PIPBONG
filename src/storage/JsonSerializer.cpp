@@ -16,7 +16,7 @@
 
 namespace {
 
-nlohmann::json featureToJson(const Feature& feature) {
+nlohmann::json featureToJsonImpl(const Feature& feature) {
     nlohmann::json blocks = nlohmann::json::array();
     for (const auto& block : feature.workflow().blocks()) {
         blocks.push_back(block->toJson());
@@ -69,10 +69,13 @@ nlohmann::json featureToJson(const Feature& feature) {
     if (!feature.hotkey().isEmpty()) {
         json["hotkey"] = feature.hotkey().toJson();
     }
+    if (feature.hotkeyAllowExtraModifiers()) {
+        json["hotkeyAllowExtraModifiers"] = true;
+    }
     return json;
 }
 
-void featureFromJson(const nlohmann::json& json, Feature& feature) {
+void featureFromJsonImpl(const nlohmann::json& json, Feature& feature) {
     if (json.contains("id")) {
         feature.setId(json.value("id", feature.id()));
     }
@@ -99,6 +102,7 @@ void featureFromJson(const nlohmann::json& json, Feature& feature) {
     } else {
         feature.setHotkey({});
     }
+    feature.setHotkeyAllowExtraModifiers(json.value("hotkeyAllowExtraModifiers", false));
     feature.workflow().clear();
     if (json.contains("workflow")) {
         JsonSerializer::workflowFromJson(json["workflow"], feature.workflow());
@@ -107,12 +111,20 @@ void featureFromJson(const nlohmann::json& json, Feature& feature) {
 
 } // namespace
 
+nlohmann::json JsonSerializer::featureToJson(const Feature& feature) {
+    return featureToJsonImpl(feature);
+}
+
+void JsonSerializer::featureFromJson(const nlohmann::json& json, Feature& feature) {
+    featureFromJsonImpl(json, feature);
+}
+
 bool JsonSerializer::saveToFile(const Project& project,
                                const QString& filePath,
                                const QString& projectDirectory) {
     nlohmann::json features = nlohmann::json::array();
     for (const auto& feature : project.features()) {
-        features.push_back(featureToJson(*feature));
+        features.push_back(featureToJsonImpl(*feature));
     }
 
     nlohmann::json root{
@@ -163,7 +175,7 @@ std::unique_ptr<Project> JsonSerializer::loadFromFile(const QString& filePath,
     if (root.contains("features") && root["features"].is_array()) {
         for (const auto& featureJson : root["features"]) {
             auto feature = std::make_unique<Feature>();
-            featureFromJson(featureJson, *feature);
+            featureFromJsonImpl(featureJson, *feature);
             project->features().push_back(std::move(feature));
         }
     }

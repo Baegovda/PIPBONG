@@ -42,8 +42,11 @@ private:
     QWidget* m_messagePage = nullptr;
     QLabel* m_messageLabel = nullptr;
     QWidget* m_detailsPage = nullptr;
+    QLabel* m_titleLabel = nullptr;
+    QLabel* m_statusLabel = nullptr;
     QLabel* m_primaryLine = nullptr;
     QLabel* m_secondaryLine = nullptr;
+    QLabel* m_tertiaryLine = nullptr;
     TargetWindowDetailData m_lastDetailData;
     bool m_updatingTheme = false;
 };

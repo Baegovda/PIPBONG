@@ -54,6 +54,7 @@ User holds **Shift** (or Ctrl/Alt) in a game while a feature runs (often click-o
 2. **Injected events**: Skip when `LLKHF_INJECTED` or `LLMHF_INJECTED` set.
 3. **Hold bindings**: Swallow DOWN and UP for the bound key/button so the target app does not receive the feature hotkey as input.
 4. **Foreground restore** before emit: same `restoreForegroundWindow` without `AttachThreadInput`.
+5. **Modifier match**: `HotkeyBinding::modifiersMatch` requires Ctrl/Alt/Shift to match the binding exactly — extra held modifiers must not trigger the feature.
 
 ## Anti-patterns (do not reintroduce)
 

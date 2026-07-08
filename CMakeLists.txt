@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.7.79 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.30 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -23,10 +23,13 @@ set(PIPBONG_SOURCES
     src/app/FeatureHotkeyGate.cpp
     src/app/UserInputInterruptMonitor.cpp
     src/app/MouseCenterLock.cpp
+    src/app/TargetWindowCenterPin.cpp
     src/app/ProgramSettings.cpp
+    src/app/ProfileManager.cpp
     src/app/WindowsLaunchAtStartup.cpp
     src/app/WindowsRunAsAdmin.cpp
     src/app/PointerFeedbackSettings.cpp
+    src/app/FeatureLibraryManager.cpp
     src/app/UpdateChecker.cpp
     src/model/Feature.cpp
     src/model/FeatureRunMode.cpp
@@ -51,6 +54,7 @@ set(PIPBONG_SOURCES
     src/core/workflow/blocks/ClickBlock.cpp
     src/core/workflow/blocks/KeyPressBlock.cpp
     src/core/workflow/blocks/WaitBlock.cpp
+    src/core/workflow/blocks/TextBlock.cpp
     src/core/poeninja/PoeNinjaClient.cpp
     src/core/poeninja/CurrencyNameKo.cpp
     src/core/poeninja/EconomyNameKo.cpp
@@ -65,12 +69,16 @@ set(PIPBONG_SOURCES
     src/ui/calculator/CalculatorDialog.cpp
     src/storage/JsonSerializer.cpp
     src/ui/FeatureListPanel.cpp
+    src/ui/FeatureLibraryDialog.cpp
     src/ui/FeatureListWidget.cpp
+    src/ui/ProfileListWidget.cpp
     src/ui/HotkeyBindingIcon.cpp
     src/ui/TargetWindowDetailPanel.cpp
     src/ui/CustomTitleBar.cpp
     src/ui/TitleBarIconEasterEgg.cpp
     src/ui/UiStateManager.cpp
+    src/ui/AppHelpDialog.cpp
+    src/ui/ProfileEditDialog.cpp
     src/ui/ProgramSettingsDialog.cpp
     src/ui/ClickPointerFeedbackSettingsDialog.cpp
     src/ui/ClickPointerFeedbackRenderer.cpp
@@ -95,6 +103,7 @@ set(PIPBONG_SOURCES
     src/ui/editors/KeyPressEditor.cpp
     src/ui/editors/HotkeyCaptureDialog.cpp
     src/ui/editors/WaitEditor.cpp
+    src/ui/editors/TextEditor.cpp
     src/ui/editors/WorkflowLoopRegionsDialog.cpp
     src/ui/editors/ScreenRegionOverlay.cpp
     src/ui/editors/RoiPreviewOverlay.cpp

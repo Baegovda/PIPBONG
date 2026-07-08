@@ -1,5 +1,6 @@
 #include "ui/editors/FeatureEditDialog.h"
 
+#include "app/FeatureHotkeyGate.h"
 #include "app/HotkeyManager.h"
 #include "model/Project.h"
 #include "model/Feature.h"
@@ -19,13 +20,16 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QShowEvent>
 #include "ui/widgets/DragAdjustSpinBox.h"
 #include <QVBoxLayout>
 
 #include "core/workflow/blocks/ImageFindBlock.h"
 
 FeatureEditDialog::FeatureEditDialog(const QString& name,
+                                     bool enabled,
                                      const HotkeyBinding& hotkey,
+                                     bool hotkeyAllowExtraModifiers,
                                      FeatureRunMode runMode,
                                      int repeatCount,
                                      int infiniteExitAfterConsecutiveMisses,
@@ -48,6 +52,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     setupUi();
 
     m_nameEdit->setText(name);
+    m_enabledCheck->setChecked(enabled);
     m_repeatSpin->setValue(repeatCount);
 
     const FeatureRunMode displayMode = runMode;
@@ -76,14 +81,27 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     m_roiCorrectionExpandSpin->setValue(snapRoiCorrectionExpandPercent(roiCorrectionExpandPercent));
     m_editFirstTemplateRoiOnStartCheck->setChecked(editFirstTemplateRoiOnStart);
     m_triggerCooldownSpin->setValue(snapTriggerCooldownMs(triggerCooldownMs));
+    m_hotkeyAllowExtraModifiersCheck->setChecked(hotkeyAllowExtraModifiers);
 
     updateModeDependentUi();
+    updateHotkeyOptionUi();
+}
+
+void FeatureEditDialog::showEvent(QShowEvent* event) {
+    QDialog::showEvent(event);
+    if (m_nameEdit && m_nameEdit->text().isEmpty()) {
+        m_nameEdit->setFocus(Qt::OtherFocusReason);
+    }
 }
 
 void FeatureEditDialog::setupUi() {
     auto* layout = new QVBoxLayout(this);
 
     auto* form = new QFormLayout();
+    m_enabledCheck = new QCheckBox(tr("기능 사용"), this);
+    m_enabledCheck->setToolTip(tr("끄면 단축키·실행 버튼으로 이 기능을 시작할 수 없습니다."));
+    form->addRow(QString(), m_enabledCheck);
+
     m_nameEdit = new QLineEdit(this);
     m_nameEdit->setPlaceholderText(tr("기능 이름"));
     form->addRow(tr("이름"), m_nameEdit);
@@ -105,6 +123,13 @@ void FeatureEditDialog::setupUi() {
 
     hotkeyLayout->addWidget(m_hotkeyLabel);
     hotkeyLayout->addLayout(hotkeyButtons);
+
+    m_hotkeyAllowExtraModifiersCheck =
+        new QCheckBox(tr("다른 조합키와 함께 눌러도 실행"), this);
+    m_hotkeyAllowExtraModifiersCheck->setToolTip(
+        tr("단축키에 없는 Ctrl, Alt, Shift가 함께 눌려 있어도 이 기능이 실행됩니다."));
+    hotkeyLayout->addWidget(m_hotkeyAllowExtraModifiersCheck);
+
     form->addRow(tr("단축키"), hotkeyRow);
 
     m_modeCombo = new QComboBox(this);
@@ -219,8 +244,12 @@ void FeatureEditDialog::setupUi() {
     connect(clearButton, &QPushButton::clicked, this, [this]() {
         stopHotkeyCapture();
         m_hotkey = HotkeyBinding{};
+        if (m_hotkeyAllowExtraModifiersCheck) {
+            m_hotkeyAllowExtraModifiersCheck->setChecked(false);
+        }
         updateHotkeyDisplay();
         updateCaptureUi();
+        updateHotkeyOptionUi();
     });
     connect(m_modeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this](int) { updateModeDependentUi(); });
@@ -254,6 +283,7 @@ void FeatureEditDialog::updateCaptureUi() {
 }
 
 void FeatureEditDialog::startHotkeyCapture() {
+    m_hotkeyCaptureGate = std::make_unique<FeatureHotkeyGateScope>();
     m_listeningForHotkey = true;
     updateCaptureUi();
     setFocus();
@@ -261,7 +291,19 @@ void FeatureEditDialog::startHotkeyCapture() {
 
 void FeatureEditDialog::stopHotkeyCapture() {
     m_listeningForHotkey = false;
+    m_hotkeyCaptureGate.reset();
     updateCaptureUi();
+}
+
+void FeatureEditDialog::updateHotkeyOptionUi() {
+    if (!m_hotkeyAllowExtraModifiersCheck) {
+        return;
+    }
+    const bool hasHotkey = !m_hotkey.isEmpty();
+    m_hotkeyAllowExtraModifiersCheck->setEnabled(hasHotkey);
+    if (!hasHotkey) {
+        m_hotkeyAllowExtraModifiersCheck->setChecked(false);
+    }
 }
 
 void FeatureEditDialog::updateModeDependentUi() {
@@ -317,6 +359,7 @@ void FeatureEditDialog::applyCapturedBinding(int virtualKey, Qt::KeyboardModifie
         m_hotkey.shift = modifiers.testFlag(Qt::ShiftModifier);
     }
     stopHotkeyCapture();
+    updateHotkeyOptionUi();
 }
 
 bool FeatureEditDialog::eventFilter(QObject* watched, QEvent* event) {
@@ -358,7 +401,9 @@ bool FeatureEditDialog::isInteractiveWidget(const QWidget* widget) const {
             || widget == m_infiniteExitCheck || widget == m_infiniteExitSpin
             || widget == m_triggerCooldownSpin
             || widget == m_userInputInterruptCombo || widget == m_pointerVisualFeedbackCheck
-            || widget == m_restoreMousePositionOnEndCheck || widget == m_roiCorrectionCheck || widget == m_editFirstTemplateRoiOnStartCheck) {
+            || widget == m_restoreMousePositionOnEndCheck || widget == m_roiCorrectionCheck
+            || widget == m_editFirstTemplateRoiOnStartCheck
+            || widget == m_hotkeyAllowExtraModifiersCheck) {
             return true;
         }
         if (qobject_cast<const QAbstractButton*>(widget)) {
@@ -373,8 +418,16 @@ QString FeatureEditDialog::featureName() const {
     return m_nameEdit->text().trimmed();
 }
 
+bool FeatureEditDialog::featureEnabled() const {
+    return m_enabledCheck && m_enabledCheck->isChecked();
+}
+
 HotkeyBinding FeatureEditDialog::hotkey() const {
     return m_hotkey;
+}
+
+bool FeatureEditDialog::hotkeyAllowExtraModifiers() const {
+    return m_hotkeyAllowExtraModifiersCheck && m_hotkeyAllowExtraModifiersCheck->isChecked();
 }
 
 FeatureRunMode FeatureEditDialog::runMode() const {
@@ -423,6 +476,11 @@ bool FeatureEditDialog::editFirstTemplateRoiOnStart() const {
 
 int FeatureEditDialog::triggerCooldownMs() const {
     return snapTriggerCooldownMs(m_triggerCooldownSpin->value());
+}
+
+void FeatureEditDialog::reject() {
+    stopHotkeyCapture();
+    QDialog::reject();
 }
 
 void FeatureEditDialog::keyPressEvent(QKeyEvent* event) {

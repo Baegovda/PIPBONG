@@ -1,11 +1,13 @@
 #pragma once
 
+#include "app/FeatureHotkeyGate.h"
 #include "core/input/HotkeyBinding.h"
 #include "model/FeatureRunMode.h"
 #include "model/UserInputInterruptMode.h"
 
 #include <QDialog>
 #include <QEvent>
+#include <memory>
 #include <string>
 
 class Project;
@@ -14,6 +16,7 @@ class QComboBox;
 class QLineEdit;
 class QLabel;
 class QPushButton;
+class QShowEvent;
 class QWidget;
 class DragAdjustSpinBox;
 
@@ -21,7 +24,9 @@ class FeatureEditDialog : public QDialog {
     Q_OBJECT
 public:
     FeatureEditDialog(const QString& name,
+                      bool enabled,
                       const HotkeyBinding& hotkey,
+                      bool hotkeyAllowExtraModifiers,
                       FeatureRunMode runMode,
                       int repeatCount,
                       int infiniteExitAfterConsecutiveMisses,
@@ -37,7 +42,9 @@ public:
                       QWidget* parent = nullptr);
 
     QString featureName() const;
+    bool featureEnabled() const;
     HotkeyBinding hotkey() const;
+    bool hotkeyAllowExtraModifiers() const;
     FeatureRunMode runMode() const;
     int repeatCount() const;
     int infiniteExitAfterConsecutiveMisses() const;
@@ -50,14 +57,17 @@ public:
     int triggerCooldownMs() const;
 
 protected:
+    void showEvent(QShowEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void reject() override;
 
 private:
     void setupUi();
     void updateHotkeyDisplay();
     void updateCaptureUi();
+    void updateHotkeyOptionUi();
     void updateModeDependentUi();
     void startHotkeyCapture();
     void stopHotkeyCapture();
@@ -70,9 +80,12 @@ private:
     std::string m_featureId;
     HotkeyBinding m_hotkey;
     bool m_listeningForHotkey = false;
+    std::unique_ptr<FeatureHotkeyGateScope> m_hotkeyCaptureGate;
 
     QLineEdit* m_nameEdit = nullptr;
+    QCheckBox* m_enabledCheck = nullptr;
     QLabel* m_hotkeyLabel = nullptr;
+    QCheckBox* m_hotkeyAllowExtraModifiersCheck = nullptr;
     QComboBox* m_modeCombo = nullptr;
     QLabel* m_repeatCountLabel = nullptr;
     DragAdjustSpinBox* m_repeatSpin = nullptr;

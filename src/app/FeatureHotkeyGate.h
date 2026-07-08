@@ -1,6 +1,7 @@
 #pragma once
 
-// Suppresses feature global hotkeys while modal UI (e.g. block editor) is open.
+// Suppresses feature global hotkeys while modal UI (e.g. block editor) is open
+// or while a feature hotkey binding capture session is active.
 class FeatureHotkeyGate {
 public:
     static bool isFeatureHotkeysBlocked();

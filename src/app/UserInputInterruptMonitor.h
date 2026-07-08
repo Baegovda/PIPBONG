@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <functional>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -18,6 +19,7 @@ public:
     static UserInputInterruptMonitor& instance();
 
     void setHandler(InterruptHandler handler);
+    void setHotkeyExemptionCheck(std::function<bool(int virtualKey)> check);
 
     void registerSession(const std::string& featureId,
                          UserInputInterruptMode mode,
@@ -42,5 +44,6 @@ private:
 
     mutable std::mutex m_mutex;
     InterruptHandler m_handler;
+    std::function<bool(int virtualKey)> m_hotkeyExemptionCheck;
     std::unordered_map<std::string, SessionEntry> m_sessions;
 };

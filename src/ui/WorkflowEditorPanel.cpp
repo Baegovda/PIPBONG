@@ -178,7 +178,7 @@ QString compactKeyLabel(int virtualKey) {
     case VK_SPACE:
         return QStringLiteral("Sp");
     case VK_RETURN:
-        return QStringLiteral("↵");
+        return QStringLiteral("Enter");
     case VK_ESCAPE:
         return QStringLiteral("Esc");
     case VK_TAB:
@@ -218,8 +218,9 @@ QString compactKeyLabel(int virtualKey) {
         return QStringLiteral("F%1").arg(virtualKey - VK_F1 + 1);
     default: {
         const int qtKey = HotkeyBinding::virtualKeyToQtKey(virtualKey);
-        const QString native = QKeySequence(qtKey).toString(QKeySequence::NativeText);
-        if (!native.isEmpty() && native.size() <= 4) {
+        QString native = QKeySequence(qtKey).toString(QKeySequence::NativeText);
+        native.replace(QStringLiteral("Return"), QStringLiteral("Enter"));
+        if (!native.isEmpty() && native.size() <= 6) {
             return native;
         }
         return QStringLiteral("K");
@@ -352,6 +353,29 @@ QPixmap mouseMovePreviewIcon() {
     return pixmap;
 }
 
+QPixmap textBlockPreviewIcon() {
+    QPixmap pixmap(kThumbnailSize, kThumbnailSize);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    const QRectF doc(7.0, 5.0, 18.0, 22.0);
+    const QColor accent(74, 144, 217);
+    painter.setPen(QPen(QColor(120, 120, 120), 1.0));
+    painter.setBrush(QColor(248, 248, 248));
+    painter.drawRoundedRect(doc, 2.0, 2.0);
+
+    painter.setPen(QPen(accent, 1.6, Qt::SolidLine, Qt::RoundCap));
+    for (int i = 0; i < 4; ++i) {
+        const qreal y = 10.0 + i * 4.0;
+        const qreal width = (i == 3) ? 8.0 : 12.0;
+        painter.drawLine(QPointF(10.0, y), QPointF(10.0 + width, y));
+    }
+
+    return pixmap;
+}
+
 QPixmap loadBlockThumbnail(const Block& block, const QString& projectDirectory) {
     if (block.type() == BlockType::Click) {
         const auto* clickBlock = dynamic_cast<const ClickBlock*>(&block);
@@ -374,6 +398,10 @@ QPixmap loadBlockThumbnail(const Block& block, const QString& projectDirectory) 
 
     if (block.type() == BlockType::Wait) {
         return waitBlockPreviewIcon();
+    }
+
+    if (block.type() == BlockType::Text) {
+        return textBlockPreviewIcon();
     }
 
     if (block.type() != BlockType::ImageFind) {
@@ -461,7 +489,8 @@ void WorkflowEditorPanel::setupUi() {
     const BlockType addTypes[] = {BlockType::ImageFind,
                                   BlockType::Click,
                                   BlockType::KeyPress,
-                                  BlockType::Wait};
+                                  BlockType::Wait,
+                                  BlockType::Text};
     for (const BlockType type : addTypes) {
         auto* button = new QPushButton(blockTypeDisplayName(type), addGroup);
         button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);

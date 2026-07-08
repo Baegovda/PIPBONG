@@ -5,10 +5,12 @@
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "core/workflow/blocks/KeyPressBlock.h"
 #include "core/workflow/blocks/WaitBlock.h"
+#include "core/workflow/blocks/TextBlock.h"
 #include "ui/editors/ClickEditor.h"
 #include "ui/editors/ImageFindEditor.h"
 #include "ui/editors/KeyPressEditor.h"
 #include "ui/editors/WaitEditor.h"
+#include "ui/editors/TextEditor.h"
 #include "ui/editors/MatchTestOverlay.h"
 #include "ui/editors/RoiPreviewOverlay.h"
 #include "ui/editors/ScreenRegionOverlay.h"
@@ -39,6 +41,8 @@ int stackIndexFor(BlockType type) {
         return 2;
     case BlockType::Wait:
         return 3;
+    case BlockType::Text:
+        return 4;
     }
     return 0;
 }
@@ -108,6 +112,7 @@ void BlockEditorDialog::setupUi() {
     m_clickFormBlock = BlockFactory::create(BlockType::Click);
     m_keyPressFormBlock = BlockFactory::create(BlockType::KeyPress);
     m_waitFormBlock = BlockFactory::create(BlockType::Wait);
+    m_textFormBlock = BlockFactory::create(BlockType::Text);
 
     m_imageFindEditor = new ImageFindEditor(
         static_cast<ImageFindBlock*>(m_imageFindFormBlock.get()), m_projectDirectory, this, true);
@@ -115,11 +120,13 @@ void BlockEditorDialog::setupUi() {
     m_keyPressEditor =
         new KeyPressEditor(static_cast<KeyPressBlock*>(m_keyPressFormBlock.get()), this, true);
     m_waitEditor = new WaitEditor(static_cast<WaitBlock*>(m_waitFormBlock.get()), this, true);
+    m_textEditor = new TextEditor(static_cast<TextBlock*>(m_textFormBlock.get()), this, true);
 
     m_stack->addWidget(m_imageFindEditor);
     m_stack->addWidget(m_clickEditor);
     m_stack->addWidget(m_keyPressEditor);
     m_stack->addWidget(m_waitEditor);
+    m_stack->addWidget(m_textEditor);
     m_stack->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     layout->addWidget(m_stack, 0);
 
@@ -143,6 +150,9 @@ void BlockEditorDialog::setupUi() {
         case BlockType::Wait:
             m_waitEditor->apply();
             break;
+        case BlockType::Text:
+            m_textEditor->apply();
+            break;
         }
         dismissCaptureOverlays();
         accept();
@@ -151,6 +161,7 @@ void BlockEditorDialog::setupUi() {
 
     connect(m_clickEditor, &ClickEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
     connect(m_waitEditor, &WaitEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
+    connect(m_textEditor, &TextEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
     connect(m_stack, &QStackedWidget::currentChanged, this, [this](int) {
         if (m_imageFindEditor) {
             m_imageFindEditor->refreshTemplateCaptureHotkeyHook();
@@ -168,7 +179,8 @@ void BlockEditorDialog::setupTypeButtons(QHBoxLayout* row) {
     const BlockType types[] = {BlockType::ImageFind,
                                BlockType::Click,
                                BlockType::KeyPress,
-                               BlockType::Wait};
+                               BlockType::Wait,
+                               BlockType::Text};
 
     for (const BlockType type : types) {
         auto* button = new QPushButton(blockTypeDisplayName(type), this);
@@ -206,6 +218,9 @@ void BlockEditorDialog::reloadEditorForType(BlockType type) {
     case BlockType::Wait:
         m_waitEditor->setBlock(static_cast<WaitBlock*>(m_block.get()));
         break;
+    case BlockType::Text:
+        m_textEditor->setBlock(static_cast<TextBlock*>(m_block.get()));
+        break;
     }
 }
 
@@ -223,6 +238,9 @@ void BlockEditorDialog::onTypeSelected(BlockType newType) {
     syncTypeButtonSelection(newType);
     reloadEditorForType(newType);
     m_stack->setCurrentIndex(stackIndexFor(newType));
+    if (newType == BlockType::Text && m_textEditor) {
+        m_textEditor->focusTextInput();
+    }
     fitToCurrentPage();
 }
 
@@ -249,6 +267,9 @@ void BlockEditorDialog::fitToCurrentPage() {
 void BlockEditorDialog::showEvent(QShowEvent* event) {
     QDialog::showEvent(event);
     fitToCurrentPage();
+    if (m_block->type() == BlockType::Text && m_textEditor) {
+        m_textEditor->focusTextInput();
+    }
     if (m_imageFindEditor) {
         m_imageFindEditor->refreshTemplateCaptureHotkeyHook();
     }

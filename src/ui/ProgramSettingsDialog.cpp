@@ -9,6 +9,7 @@
 #include "ui/widgets/HintLabel.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -20,7 +21,7 @@ ProgramSettingsDialog::ProgramSettingsDialog(QWidget* parent)
     : QDialog(parent) {
     setWindowTitle(tr("프로그램 설정"));
     setModal(true);
-    resize(460, 340);
+    resize(500, 620);
     setupUi();
 }
 
@@ -28,45 +29,55 @@ void ProgramSettingsDialog::setupUi() {
     auto* layout = new QVBoxLayout(this);
 
     auto* hint = new HintLabel(
-        tr("PIPBONG 전체에 적용되는 설정입니다. 프로젝트 파일에는 저장되지 않습니다."), this);
+        tr("일부 실행 옵션은 현재 프로필에 저장되고, 시작·트레이·관리자·업데이트 옵션은 전체 프로그램에 적용됩니다."),
+        this);
     layout->addWidget(hint);
 
-    m_autoSelectRunningFeatureCheck =
-        new QCheckBox(tr("기능 실행 시 해당 기능을 자동으로 선택"), this);
-    m_autoSelectRunningFeatureCheck->setChecked(ProgramSettings::autoSelectRunningFeature());
-    m_autoSelectRunningFeatureCheck->setToolTip(
-        tr("단축키나 실행 메뉴로 기능이 시작되면 워크플로우 패널에 그 기능을 표시합니다."));
-    layout->addWidget(m_autoSelectRunningFeatureCheck);
+    const auto addCheckWithHint = [this, layout](QCheckBox*& check,
+                                                 const QString& label,
+                                                 const QString& hintText,
+                                                 bool checked) {
+        check = new QCheckBox(label, this);
+        check->setChecked(checked);
+        layout->addWidget(check);
 
-    m_launchAtWindowsStartupCheck =
-        new QCheckBox(tr("Windows 시작 시 PIPBONG 자동 실행"), this);
-    m_launchAtWindowsStartupCheck->setChecked(ProgramSettings::launchAtWindowsStartup());
-    m_launchAtWindowsStartupCheck->setToolTip(
-        tr("Windows에 로그인하면 PIPBONG이 자동으로 실행됩니다."));
-    layout->addWidget(m_launchAtWindowsStartupCheck);
+        auto* optionHint = new HintLabel(hintText, this);
+        optionHint->setWordWrap(true);
+        layout->addWidget(optionHint);
+    };
 
-    m_closeToTrayCheck = new QCheckBox(tr("닫기 시 트레이로 최소화 (백그라운드 실행)"), this);
-    m_closeToTrayCheck->setChecked(ProgramSettings::closeToTray());
-    m_closeToTrayCheck->setToolTip(
-        tr("창 닫기(X)를 누르면 종료하지 않고 알림 영역에서 계속 실행합니다. 단축키와 워크플로가 유지됩니다."));
-    layout->addWidget(m_closeToTrayCheck);
+    addCheckWithHint(
+        m_autoSelectRunningFeatureCheck,
+        tr("기능 실행 시 해당 기능을 자동으로 선택"),
+        tr("단축키나 실행 메뉴로 기능이 시작되면 워크플로우 패널에 그 기능을 표시합니다."),
+        ProgramSettings::autoSelectRunningFeature());
 
-    m_autoInstallUpdatesCheck =
-        new QCheckBox(tr("새 버전 감지 시 자동 업데이트"), this);
-    m_autoInstallUpdatesCheck->setChecked(ProgramSettings::autoInstallUpdates());
-    m_autoInstallUpdatesCheck->setToolTip(
+    addCheckWithHint(
+        m_launchAtWindowsStartupCheck,
+        tr("Windows 시작 시 PIPBONG 자동 실행"),
+        tr("Windows에 로그인하면 PIPBONG이 자동으로 실행됩니다."),
+        ProgramSettings::launchAtWindowsStartup());
+
+    addCheckWithHint(
+        m_closeToTrayCheck,
+        tr("닫기 시 트레이로 최소화 (백그라운드 실행)"),
+        tr("창 닫기(X)를 누르면 종료하지 않고 알림 영역에서 계속 실행합니다. 단축키와 워크플로가 유지됩니다."),
+        ProgramSettings::closeToTray());
+
+    addCheckWithHint(
+        m_autoInstallUpdatesCheck,
+        tr("새 버전 감지 시 자동 업데이트"),
         tr("프로그램 실행 중 새 버전이 감지되면 자동으로 다운로드하고 설치합니다. "
-           "워크플로 실행 중이면 실행이 끝난 뒤 자동 업데이트합니다."));
-    layout->addWidget(m_autoInstallUpdatesCheck);
+           "워크플로 실행 중이면 실행이 끝난 뒤 자동 업데이트합니다."),
+        ProgramSettings::autoInstallUpdates());
 
     const int savedIntervalMinutes = ProgramSettings::updateCheckIntervalMinutes();
 
-    m_updateCheckEnabledCheck =
-        new QCheckBox(tr("주기적으로 업데이트 확인"), this);
-    m_updateCheckEnabledCheck->setChecked(savedIntervalMinutes > 0);
-    m_updateCheckEnabledCheck->setToolTip(
-        tr("백그라운드에서 GitHub 릴리즈를 주기적으로 확인합니다. 끄면 자동 확인을 하지 않습니다."));
-    layout->addWidget(m_updateCheckEnabledCheck);
+    addCheckWithHint(
+        m_updateCheckEnabledCheck,
+        tr("주기적으로 업데이트 확인"),
+        tr("백그라운드에서 GitHub 릴리즈를 주기적으로 확인합니다. 끄면 자동 확인을 하지 않습니다."),
+        savedIntervalMinutes > 0);
 
     auto* intervalRow = new QHBoxLayout();
     intervalRow->addSpacing(20);
@@ -79,30 +90,73 @@ void ProgramSettingsDialog::setupUi() {
     m_updateCheckIntervalSpin->setValue(
         savedIntervalMinutes > 0 ? savedIntervalMinutes
                                  : ProgramSettings::kDefaultUpdateCheckIntervalMinutes);
-    m_updateCheckIntervalSpin->setToolTip(tr("업데이트를 확인하는 간격(분)입니다. (1~1440분)"));
     intervalRow->addWidget(m_updateCheckIntervalSpin);
     m_updateCheckIntervalLabel = new QLabel(tr("분마다"), this);
     intervalRow->addWidget(m_updateCheckIntervalLabel);
     intervalRow->addStretch();
     layout->addLayout(intervalRow);
 
-    auto updateIntervalEnabledState = [this]() {
+    auto* intervalHint =
+        new HintLabel(tr("업데이트를 확인하는 간격(분)입니다. (1~1440분)"), this);
+    intervalHint->setWordWrap(true);
+    layout->addWidget(intervalHint);
+
+    auto updateIntervalEnabledState = [this, intervalHint]() {
         const bool enabled = m_updateCheckEnabledCheck->isChecked();
         m_updateCheckIntervalSpin->setEnabled(enabled);
         m_updateCheckIntervalLabel->setEnabled(enabled);
+        intervalHint->setEnabled(enabled);
     };
     connect(m_updateCheckEnabledCheck, &QCheckBox::toggled, this, [updateIntervalEnabledState](bool) {
         updateIntervalEnabledState();
     });
     updateIntervalEnabledState();
 
-    m_runAsAdministratorCheck =
-        new QCheckBox(tr("항상 관리자 권한으로 실행"), this);
-    m_runAsAdministratorCheck->setChecked(ProgramSettings::runAsAdministrator());
-    m_runAsAdministratorCheck->setToolTip(
+    addCheckWithHint(
+        m_runAsAdministratorCheck,
+        tr("항상 관리자 권한으로 실행"),
         tr("대상 프로그램이 관리자 권한으로 실행될 때 입력·화면 캡처가 동작합니다. "
-           "실행할 때마다 Windows UAC 확인이 표시될 수 있습니다."));
-    layout->addWidget(m_runAsAdministratorCheck);
+           "실행할 때마다 Windows UAC 확인이 표시될 수 있습니다."),
+        ProgramSettings::runAsAdministrator());
+
+    addCheckWithHint(
+        m_runWithoutTargetWindowCheck,
+        tr("창을 지정하지 않은 상태에서도 동작"),
+        tr("대상 창을 지정하지 않아도 키보드·딜레이·텍스트 블록을 실행할 수 있습니다. "
+           "템플릿 매칭의 대상 창 탐색은 전체 화면으로 대체됩니다. "
+           "끄면 기능 실행 전에 '창 지정'이 필요합니다."),
+        ProgramSettings::runWithoutTargetWindow());
+
+    auto* captureGroup = new QGroupBox(tr("템플릿 매칭 캡처"), this);
+    auto* captureLayout = new QVBoxLayout(captureGroup);
+
+    auto* captureModeRow = new QHBoxLayout();
+    captureModeRow->addWidget(new QLabel(tr("캡처 방식"), captureGroup));
+    m_imageFindCaptureModeCombo = new QComboBox(captureGroup);
+    m_imageFindCaptureModeCombo->addItem(
+        tr("기본 — 화면 그대로"),
+        static_cast<int>(ProgramSettings::ImageFindCaptureMode::Hybrid));
+    m_imageFindCaptureModeCombo->addItem(
+        tr("창 안만 — 커서·표시 제외"),
+        static_cast<int>(ProgramSettings::ImageFindCaptureMode::ClientOnly));
+    const int modeIndex = m_imageFindCaptureModeCombo->findData(
+        static_cast<int>(ProgramSettings::imageFindCaptureMode()));
+    if (modeIndex >= 0) {
+        m_imageFindCaptureModeCombo->setCurrentIndex(modeIndex);
+    }
+    captureModeRow->addWidget(m_imageFindCaptureModeCombo, 1);
+    captureLayout->addLayout(captureModeRow);
+
+    m_imageFindCaptureModeHint = new HintLabel(QString(), captureGroup);
+    m_imageFindCaptureModeHint->setWordWrap(true);
+    captureLayout->addWidget(m_imageFindCaptureModeHint);
+    connect(m_imageFindCaptureModeCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this,
+            [this](int) { updateImageFindCaptureModeHint(); });
+    updateImageFindCaptureModeHint();
+
+    layout->addWidget(captureGroup);
 
     if (WindowsRunAsAdmin::isProcessElevated()) {
         auto* elevatedHint =
@@ -144,10 +198,33 @@ void ProgramSettingsDialog::setupUi() {
         ProgramSettings::setUpdateCheckIntervalMinutes(
             m_updateCheckEnabledCheck->isChecked() ? m_updateCheckIntervalSpin->value() : 0);
         ProgramSettings::setRunAsAdministrator(m_runAsAdministratorCheck->isChecked());
+        ProgramSettings::setRunWithoutTargetWindow(m_runWithoutTargetWindowCheck->isChecked());
+        ProgramSettings::setImageFindCaptureMode(
+            static_cast<ProgramSettings::ImageFindCaptureMode>(
+                m_imageFindCaptureModeCombo->currentData().toInt()));
         accept();
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
+}
+
+void ProgramSettingsDialog::updateImageFindCaptureModeHint() {
+    if (!m_imageFindCaptureModeCombo || !m_imageFindCaptureModeHint) {
+        return;
+    }
+
+    const auto mode = static_cast<ProgramSettings::ImageFindCaptureMode>(
+        m_imageFindCaptureModeCombo->currentData().toInt());
+    if (mode == ProgramSettings::ImageFindCaptureMode::ClientOnly) {
+        m_imageFindCaptureModeHint->setText(
+            tr("대상 프로그램 창 안의 그림만 가져옵니다. "
+               "마우스 커서나 클릭·매칭 표시가 템플릿 찾기를 방해할 때 이쪽을 쓰세요. "
+               "일부 게임·프로그램에서는 검은 화면이 나올 수 있습니다."));
+    } else {
+        m_imageFindCaptureModeHint->setText(
+            tr("지금까지 쓰던 방식입니다. 화면에 보이는 대로 캡처해서 "
+               "대부분의 프로그램에서 잘 맞습니다. 처음이거나 잘 모르겠으면 이걸 쓰세요."));
+    }
 }
 
 void ProgramSettingsDialog::updateClickFeedbackSummary() {

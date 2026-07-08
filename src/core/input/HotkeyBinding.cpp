@@ -9,6 +9,10 @@
 
 namespace {
 
+QString normalizeKeyDisplayName(QString name) {
+    return name.replace(QStringLiteral("Return"), QStringLiteral("Enter"));
+}
+
 QString mouseButtonDisplayName(int vk) {
     switch (vk) {
     case VK_LBUTTON:
@@ -61,8 +65,12 @@ QString HotkeyBinding::keyDisplayName(int virtualKey) {
     if (isMouseVirtualKey(virtualKey)) {
         return mouseButtonDisplayName(virtualKey);
     }
+    if (virtualKey == VK_RETURN) {
+        return QStringLiteral("Enter");
+    }
     const int qtKey = virtualKeyToQtKey(virtualKey);
-    const QString keyName = QKeySequence(qtKey).toString(QKeySequence::NativeText);
+    const QString keyName =
+        normalizeKeyDisplayName(QKeySequence(qtKey).toString(QKeySequence::NativeText));
     if (!keyName.isEmpty()) {
         return keyName;
     }
@@ -110,14 +118,12 @@ bool HotkeyBinding::isMouseButton() const {
     return isMouseVirtualKey(virtualKey);
 }
 
-bool HotkeyBinding::modifiersMatch() const {
+bool HotkeyBinding::modifiersMatch(bool allowExtraModifiers) const {
     const bool ctrlDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
     const bool altDown = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
     const bool shiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 
-    if (isMouseVirtualKey(virtualKey)) {
-        // Mouse hotkeys: required modifiers must be held; extra keys (e.g. Ctrl held
-        // accidentally) do not block a plain mouse-button binding.
+    if (allowExtraModifiers) {
         if (ctrl && !ctrlDown) {
             return false;
         }
@@ -130,18 +136,7 @@ bool HotkeyBinding::modifiersMatch() const {
         return true;
     }
 
-    // Keyboard hotkeys: required modifiers must be held; extra modifiers do not block
-    // (e.g. Shift still down on a laptop, or AltGr adding Ctrl+Alt).
-    if (ctrl && !ctrlDown) {
-        return false;
-    }
-    if (alt && !altDown) {
-        return false;
-    }
-    if (shift && !shiftDown) {
-        return false;
-    }
-    return true;
+    return ctrl == ctrlDown && alt == altDown && shift == shiftDown;
 }
 
 unsigned int HotkeyBinding::winModifiers() const {

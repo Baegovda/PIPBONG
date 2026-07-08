@@ -3,10 +3,11 @@
 #include "core/workflow/blocks/KeyPressBlock.h"
 
 #include <QDialog>
+#include <QEvent>
 
 class QCheckBox;
 class QComboBox;
-class QKeySequenceEdit;
+class QLineEdit;
 class QPushButton;
 class QWidget;
 
@@ -19,16 +20,22 @@ public:
     void reload();
     bool apply();
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private:
     void setupUi();
     void populateModifierActionCombo(QComboBox* combo, ModifierKeyAction current);
     ModifierKeyAction modifierActionFromCombo(const QComboBox* combo) const;
     void updateMainKeyRowEnabled();
+    void updateKeyDisplay();
 
     KeyPressBlock* m_block = nullptr;
     bool m_embedded = false;
+    bool m_listeningForKey = false;
+    int m_editedVirtualKey = 0;
     QCheckBox* m_modifiersOnlyCheck = nullptr;
-    QKeySequenceEdit* m_keyEdit = nullptr;
+    QLineEdit* m_keyDisplay = nullptr;
     QPushButton* m_clearKeyButton = nullptr;
     QComboBox* m_actionCombo = nullptr;
     QWidget* m_mainKeyRow = nullptr;

@@ -48,7 +48,9 @@ constexpr int kMinRowHeight = 20;
 constexpr int kMaxRowHeight = 48;
 constexpr int kResizeHandlePixels = 5;
 constexpr int kRunButtonColumnWidth = 24;
+constexpr int kEnableColumnWidth = 26;
 struct FeatureListColumnRects {
+    QRect enable;
     QRect run;
     QRect name;
     QRect mode;
@@ -63,7 +65,8 @@ FeatureListColumnEdges featureListColumnEdges(const QRect& itemRect, const Featu
     FeatureListColumnEdges edges;
     const QRect content = itemRect.adjusted(kColumnMargin, 0, -kColumnMargin, 0);
 
-    const int runLeft = content.left();
+    const int enableLeft = content.left();
+    const int runLeft = enableLeft + kEnableColumnWidth + kColumnGap;
     const int nameLeft = runLeft + kRunButtonColumnWidth + kColumnGap;
     const int hotkeyLeft = content.right() - layout.hotkeyColumnWidth + 1;
     const int modeLeft = hotkeyLeft - kColumnGap - layout.modeColumnWidth;
@@ -71,6 +74,7 @@ FeatureListColumnEdges featureListColumnEdges(const QRect& itemRect, const Featu
 
     edges.hotkeyDividerX = hotkeyLeft;
     edges.modeDividerX = modeLeft;
+    edges.cols.enable = QRect(enableLeft, content.top(), kEnableColumnWidth, content.height());
     edges.cols.run = QRect(runLeft, content.top(), kRunButtonColumnWidth, content.height());
     edges.cols.hotkey = QRect(hotkeyLeft, content.top(), layout.hotkeyColumnWidth, content.height());
     edges.cols.mode = QRect(modeLeft, content.top(), layout.modeColumnWidth, content.height());
@@ -168,6 +172,49 @@ void drawCellText(QPainter* painter,
     painter->setPen(color);
     const QFontMetrics metrics(font);
     painter->drawText(rect, Qt::AlignHCenter | Qt::AlignVCenter, elideCellText(metrics, text, rect.width()));
+}
+
+QRect featureEnableToggleHitRect(const QRect& enableColumnRect) {
+    const int size = qMin(enableColumnRect.width(), enableColumnRect.height()) - 4;
+    return QRect(enableColumnRect.left() + (enableColumnRect.width() - size) / 2,
+                 enableColumnRect.top() + (enableColumnRect.height() - size) / 2,
+                 size,
+                 size);
+}
+
+void paintFeatureEnableToggle(QPainter* painter,
+                              const QRect& enableColumnRect,
+                              bool enabled,
+                              const QPalette& palette) {
+    const QRect box = featureEnableToggleHitRect(enableColumnRect);
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+
+    const QColor border = enabled ? palette.color(QPalette::Highlight) : palette.color(QPalette::Mid);
+    QColor fill = enabled ? palette.color(QPalette::Highlight) : palette.color(QPalette::Button);
+    if (!enabled) {
+        fill = palette.color(QPalette::Midlight);
+    }
+    fill.setAlpha(enabled ? 220 : 150);
+
+    painter->setPen(QPen(border, 1.2));
+    painter->setBrush(fill);
+    painter->drawRoundedRect(box, 4, 4);
+
+    if (enabled) {
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(Qt::white);
+        QPainterPath check;
+        const qreal x = box.left() + box.width() * 0.22;
+        const qreal y = box.center().y();
+        check.moveTo(x, y);
+        check.lineTo(box.left() + box.width() * 0.42, box.bottom() - box.height() * 0.28);
+        check.lineTo(box.right() - box.width() * 0.2, box.top() + box.height() * 0.28);
+        QPen checkPen(Qt::white, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        painter->setPen(checkPen);
+        painter->drawPath(check);
+    }
+    painter->restore();
 }
 
 QRect featureRunButtonHitRect(const QRect& runColumnRect) {
@@ -423,6 +470,7 @@ protected:
         painter.setFont(headerFont);
         painter.setPen(featureListHeaderTextColor(pal));
         const Qt::Alignment headerAlign = Qt::AlignHCenter | Qt::AlignVCenter;
+        painter.drawText(cols.enable, headerAlign, tr("사용"));
         painter.drawText(cols.name, headerAlign, tr("기능"));
         painter.drawText(cols.mode, headerAlign, tr("방식"));
         painter.drawText(cols.hotkey, headerAlign, tr("키"));
@@ -572,12 +620,13 @@ public:
         const HotkeyBinding hotkeyBinding = hotkeyBindingFromIndex(index);
         const bool hasHotkey = !hotkeyBinding.isEmpty();
         const bool isRunning = m_panel->isFeatureRunning(featureId);
+        const Feature* feature =
+            m_panel->projectFeatureById(featureId);
+        const bool featureEnabled = feature ? feature->enabled() : true;
         const FeatureListWidget* listWidget = qobject_cast<const FeatureListWidget*>(opt.widget);
         const bool isDragSource = listWidget && listWidget->dragSourceRow() == index.row();
         const bool selected = opt.state & QStyle::State_Selected;
-        const QColor textColor = opt.palette.color(selected ? QPalette::HighlightedText : QPalette::Text);
         const QColor mutedColor = featureListMutedTextColor(opt.palette);
-        const QColor modeColor = mutedColor;
 
         painter->save();
         painter->setClipRect(opt.rect);
@@ -587,15 +636,21 @@ public:
             painter->fillRect(opt.rect, opt.palette.color(QPalette::Midlight));
         } else {
             paintFeatureListRowChrome(painter, opt.rect, selected, isRunning, opt.palette);
+            if (!featureEnabled) {
+                QColor disabledOverlay = opt.palette.color(QPalette::Mid);
+                disabledOverlay.setAlpha(48);
+                painter->fillRect(opt.rect, disabledOverlay);
+            }
         }
 
-        const Feature* feature =
-            m_panel->projectFeatureById(featureId);
+        paintFeatureEnableToggle(painter, cols.enable, featureEnabled, opt.palette);
+
         const bool isRunningFeature = isRunning;
         const bool holdMode =
             feature && feature->runMode() == FeatureRunMode::Hold;
         const bool hasBlocks = feature && !feature->workflow().blocks().empty();
-        const bool runEnabled = isRunningFeature || (hasBlocks && !holdMode);
+        const bool runEnabled =
+            featureEnabled && (isRunningFeature || (hasBlocks && !holdMode));
         paintFeatureRunButton(painter,
                               cols.run,
                               isRunningFeature,
@@ -606,26 +661,27 @@ public:
                          cols.name,
                          opt,
                          featureName,
-                         isRunning && !featureName.isEmpty() && !isDragSource,
+                         featureEnabled && isRunning && !featureName.isEmpty() && !isDragSource,
                          m_panel->animationPhase());
 
         QFont secondaryFont = opt.font;
         secondaryFont.setPointSize(qMax(secondaryFont.pointSize() - 1, 8));
         const QColor dragMuted = featureListMutedTextColor(opt.palette);
+        const QColor modeColor = featureEnabled ? mutedColor : dragMuted;
         drawCellText(painter,
                      cols.mode,
                      modeText,
                      secondaryFont,
                      isDragSource ? dragMuted : modeColor);
         if (hasHotkey) {
-            const qreal iconOpacity = isDragSource ? 0.55 : 1.0;
+            const qreal iconOpacity = isDragSource ? 0.55 : (featureEnabled ? 1.0 : 0.45);
             drawHotkeyBindingInRect(painter, cols.hotkey, hotkeyBinding, iconOpacity);
         } else {
             drawCellText(painter,
                          cols.hotkey,
                          QStringLiteral("\u2014"),
                          secondaryFont,
-                         isDragSource ? dragMuted : mutedColor);
+                         isDragSource ? dragMuted : modeColor);
         }
         painter->restore();
     }
@@ -837,6 +893,19 @@ const Feature* FeatureListPanel::projectFeatureById(const QString& featureId) co
     return m_project->featureById(featureId.toStdString());
 }
 
+bool FeatureListPanel::enableToggleHitTest(int row, const QPoint& viewportPos) const {
+    if (!m_list || row < 0 || row >= m_list->count()) {
+        return false;
+    }
+    QListWidgetItem* item = m_list->item(row);
+    if (!item) {
+        return false;
+    }
+    const QRect itemRect = m_list->visualItemRect(item);
+    const FeatureListColumnRects cols = featureListColumnRects(itemRect, m_columnLayout);
+    return featureEnableToggleHitRect(cols.enable).contains(viewportPos);
+}
+
 bool FeatureListPanel::runButtonHitTest(int row, const QPoint& viewportPos) const {
     if (!m_list || row < 0 || row >= m_list->count()) {
         return false;
@@ -848,6 +917,27 @@ bool FeatureListPanel::runButtonHitTest(int row, const QPoint& viewportPos) cons
     const QRect itemRect = m_list->visualItemRect(item);
     const FeatureListColumnRects cols = featureListColumnRects(itemRect, m_columnLayout);
     return featureRunButtonHitRect(cols.run).contains(viewportPos);
+}
+
+void FeatureListPanel::toggleFeatureEnabled(int row) {
+    if (!m_list || !m_project || row < 0 || row >= m_list->count()) {
+        return;
+    }
+    Feature* feature = m_project->featureAt(row);
+    if (!feature) {
+        return;
+    }
+    feature->setEnabled(!feature->enabled());
+    if (QListWidgetItem* item = m_list->item(row)) {
+        configureListItem(item, *feature);
+    }
+    if (m_list->viewport()) {
+        m_list->viewport()->update();
+    }
+    const QString featureId = QString::fromStdString(feature->id());
+    emit featureEnabledChanged(featureId, feature->enabled());
+    emit hotkeysChanged();
+    emit projectModified();
 }
 
 void FeatureListPanel::requestFeatureRun(int row) {
@@ -866,6 +956,9 @@ void FeatureListPanel::requestFeatureRun(int row) {
     const bool running = isFeatureRunning(featureId);
     const bool holdMode = feature->runMode() == FeatureRunMode::Hold;
     const bool hasBlocks = !feature->workflow().blocks().empty();
+    if (!feature->enabled()) {
+        return;
+    }
     if (!running && (holdMode || !hasBlocks)) {
         return;
     }
@@ -879,6 +972,10 @@ bool FeatureListPanel::eventFilter(QObject* watched, QEvent* event) {
             QListWidgetItem* item = m_list->itemAt(mouseEvent->pos());
             if (item) {
                 const int row = m_list->row(item);
+                if (enableToggleHitTest(row, mouseEvent->pos())) {
+                    toggleFeatureEnabled(row);
+                    return true;
+                }
                 if (runButtonHitTest(row, mouseEvent->pos())) {
                     requestFeatureRun(row);
                     return true;
@@ -948,6 +1045,7 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
     } else {
         tooltip += QStringLiteral("\n") + tr("단축키 없음");
     }
+    tooltip += QStringLiteral("\n") + tr("사용: %1").arg(feature.enabled() ? tr("켜짐") : tr("꺼짐"));
     item->setToolTip(tooltip);
 }
 void FeatureListPanel::refresh() {
@@ -1016,11 +1114,16 @@ void FeatureListPanel::onAddFeature() {
     if (!m_project) {
         return;
     }
-    m_project->addFeature(tr("새 기능").toStdString());
+    m_project->addFeature(std::string{});
     refresh();
     const int index = static_cast<int>(m_project->features().size()) - 1;
     m_list->setCurrentRow(index);
-    editFeatureAt(index);
+    if (!editFeatureAt(index)) {
+        m_project->removeFeature(index);
+        refresh();
+        emit selectionChanged();
+        emit projectModified();
+    }
 }
 void FeatureListPanel::onCopyFeature() {
     if (!m_project) {
@@ -1086,9 +1189,13 @@ bool FeatureListPanel::editFeatureAt(int index) {
         return false;
     }
     const HotkeyBinding previousHotkey = feature->hotkey();
+    const bool previousHotkeyAllowExtraModifiers = feature->hotkeyAllowExtraModifiers();
+    const bool previousEnabled = feature->enabled();
     const FeatureRunMode previousMode = feature->runMode();
     FeatureEditDialog dialog(QString::fromStdString(feature->name()),
+                             feature->enabled(),
                              feature->hotkey(),
+                             feature->hotkeyAllowExtraModifiers(),
                              feature->runMode(),
                              feature->repeatCount(),
                              feature->infiniteExitAfterConsecutiveMisses(),
@@ -1106,7 +1213,9 @@ bool FeatureListPanel::editFeatureAt(int index) {
         return false;
     }
     feature->setName(dialog.featureName().toStdString());
+    feature->setEnabled(dialog.featureEnabled());
     feature->setHotkey(dialog.hotkey());
+    feature->setHotkeyAllowExtraModifiers(dialog.hotkeyAllowExtraModifiers());
     feature->setRunMode(dialog.runMode());
     feature->setRepeatCount(dialog.repeatCount());
     feature->setInfiniteExitAfterConsecutiveMisses(dialog.infiniteExitAfterConsecutiveMisses());
@@ -1120,8 +1229,13 @@ bool FeatureListPanel::editFeatureAt(int index) {
     refresh();
     m_list->setCurrentRow(index);
     emit projectModified();
-    if (previousHotkey != feature->hotkey() || previousMode != feature->runMode()) {
+    if (previousHotkey != feature->hotkey() || previousMode != feature->runMode()
+        || previousHotkeyAllowExtraModifiers != feature->hotkeyAllowExtraModifiers()
+        || previousEnabled != feature->enabled()) {
         emit hotkeysChanged();
+    }
+    if (previousEnabled != feature->enabled()) {
+        emit featureEnabledChanged(QString::fromStdString(feature->id()), feature->enabled());
     }
     return true;
 }
@@ -1139,9 +1253,22 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
         m_project ? m_project->featureById(featureId.toStdString()) : nullptr;
     QMenu menu(this);
     const bool running = feature && isFeatureRunning(featureId);
-    const bool canRun = feature && !running
+    const bool canRun = feature && feature->enabled() && !running
                         && feature->runMode() != FeatureRunMode::Hold
                         && !feature->workflow().blocks().empty();
+    const bool canSaveToLibrary =
+        feature && m_editControlsEnabled && !running && !feature->workflow().blocks().empty();
+    if (feature) {
+        if (feature->enabled()) {
+            menu.addAction(tr("사용 안 함"), this, [this, row = m_list->row(item)]() {
+                toggleFeatureEnabled(row);
+            });
+        } else {
+            menu.addAction(tr("사용"), this, [this, row = m_list->row(item)]() {
+                toggleFeatureEnabled(row);
+            });
+        }
+    }
     if (running) {
         menu.addAction(tr("중지"), this, [this, featureId]() {
             emit featureRunRequested(featureId);
@@ -1151,6 +1278,14 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
             emit featureRunRequested(featureId);
         });
     }
+    menu.addAction(tr("라이브러리에 저장"), this, [this, featureId]() {
+        emit saveFeatureToLibraryRequested(featureId);
+    })
+        ->setEnabled(canSaveToLibrary);
+    menu.addAction(tr("라이브러리에서 가져오기"), this, [this]() {
+        emit importFeatureFromLibraryRequested();
+    })
+        ->setEnabled(m_editControlsEnabled);
     menu.addAction(tr("편집"), this, &FeatureListPanel::onEditFeature);
     menu.addAction(tr("복사"), this, &FeatureListPanel::onCopyFeature);
     menu.addAction(tr("붙여넣기"), this, &FeatureListPanel::onPasteFeature)

@@ -42,6 +42,10 @@ public:
     static HWND findTargetWindow();
     static void setTargetWindow(HWND hwnd);
     static HWND targetWindow();
+    /// True when a picked HWND or a resolvable title-based target window exists.
+    static bool hasResolvableTargetWindow();
+    /// Program setting: allow workflow runs when no target window is designated.
+    static bool allowsRunWithoutTargetWindow();
     /// Brings the resolved target window to the foreground for reliable capture during workflow runs.
     static void activateTargetWindow();
     static void warmupCapture();

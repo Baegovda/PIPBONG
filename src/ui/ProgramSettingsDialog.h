@@ -3,6 +3,7 @@
 #include <QDialog>
 
 class QCheckBox;
+class QComboBox;
 class QLabel;
 class QPushButton;
 class DragAdjustSpinBox;
@@ -15,6 +16,7 @@ public:
 private:
     void setupUi();
     void updateClickFeedbackSummary();
+    void updateImageFindCaptureModeHint();
     void onOpenClickFeedbackSettings();
 
     QCheckBox* m_autoSelectRunningFeatureCheck = nullptr;
@@ -25,6 +27,9 @@ private:
     QCheckBox* m_updateCheckEnabledCheck = nullptr;
     DragAdjustSpinBox* m_updateCheckIntervalSpin = nullptr;
     QLabel* m_updateCheckIntervalLabel = nullptr;
+    QComboBox* m_imageFindCaptureModeCombo = nullptr;
+    QLabel* m_imageFindCaptureModeHint = nullptr;
+    QCheckBox* m_runWithoutTargetWindowCheck = nullptr;
     QLabel* m_clickFeedbackSummary = nullptr;
     QPushButton* m_clickFeedbackButton = nullptr;
 };

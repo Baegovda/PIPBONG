@@ -1,9 +1,11 @@
 #pragma once
 
+#include "app/FeatureHotkeyGate.h"
 #include "core/input/HotkeyBinding.h"
 
 #include <QDialog>
 #include <QEvent>
+#include <memory>
 
 class QLabel;
 class QPushButton;
@@ -20,6 +22,7 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void reject() override;
 
 private:
     void setupUi();
@@ -34,5 +37,6 @@ private:
     HotkeyBinding m_binding;
     bool m_cleared = false;
     bool m_listeningForHotkey = false;
+    std::unique_ptr<FeatureHotkeyGateScope> m_hotkeyCaptureGate;
     QLabel* m_bindingLabel = nullptr;
 };

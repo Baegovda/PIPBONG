@@ -35,6 +35,7 @@ public:
                                               const HotkeyBinding& binding);
 
     bool isHoldBindingDown(const std::string& featureId) const;
+    bool matchesAnyRegisteredFeatureHotkey(int vkCode) const;
 #ifdef _WIN32
     bool isKeyboardHookActive() const { return m_keyboardHookInstalled; }
     bool isMouseHookActive() const { return m_mouseHookInstalled; }
@@ -56,18 +57,21 @@ private:
     struct HoldBindingEntry {
         std::string featureId;
         HotkeyBinding binding;
+        bool allowExtraModifiers = false;
         bool keyDown = false;
     };
 
     struct ToggleBindingEntry {
         std::string featureId;
         HotkeyBinding binding;
+        bool allowExtraModifiers = false;
         bool armed = true;
     };
 
     struct MouseBindingEntry {
         std::string featureId;
         HotkeyBinding binding;
+        bool allowExtraModifiers = false;
         bool holdMode = false;
         bool buttonDown = false;
     };

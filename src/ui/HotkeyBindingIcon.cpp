@@ -134,7 +134,7 @@ QString compactKeyLabel(int virtualKey) {
     case VK_SPACE:
         return QStringLiteral("Sp");
     case VK_RETURN:
-        return QStringLiteral("↵");
+        return QStringLiteral("Enter");
     case VK_ESCAPE:
         return QStringLiteral("Esc");
     case VK_TAB:
@@ -174,8 +174,9 @@ QString compactKeyLabel(int virtualKey) {
         return QStringLiteral("F%1").arg(virtualKey - VK_F1 + 1);
     default: {
         const int qtKey = HotkeyBinding::virtualKeyToQtKey(virtualKey);
-        const QString native = QKeySequence(qtKey).toString(QKeySequence::NativeText);
-        if (!native.isEmpty() && native.size() <= 4) {
+        QString native = QKeySequence(qtKey).toString(QKeySequence::NativeText);
+        native.replace(QStringLiteral("Return"), QStringLiteral("Enter"));
+        if (!native.isEmpty() && native.size() <= 6) {
             return native;
         }
         return QStringLiteral("K");

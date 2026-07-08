@@ -13,6 +13,9 @@ constexpr const char* kCloseToTrayKey = "program/closeToTray";
 constexpr const char* kRunAsAdministratorKey = "program/runAsAdministrator";
 constexpr const char* kAutoInstallUpdatesKey = "program/autoInstallUpdates";
 constexpr const char* kUpdateCheckIntervalMinutesKey = "program/updateCheckIntervalMinutes";
+constexpr const char* kPinTargetWindowToScreenCenterKey = "program/pinTargetWindowToScreenCenter";
+constexpr const char* kImageFindCaptureModeKey = "program/imageFindCaptureMode";
+constexpr const char* kRunWithoutTargetWindowKey = "program/runWithoutTargetWindow";
 
 } // namespace
 
@@ -87,6 +90,58 @@ void ProgramSettings::setUpdateCheckIntervalMinutes(int minutes) {
     }
     QSettings settings;
     settings.setValue(kUpdateCheckIntervalMinutesKey, minutes);
+}
+
+bool ProgramSettings::pinTargetWindowToScreenCenter() {
+    QSettings settings;
+    return settings.value(kPinTargetWindowToScreenCenterKey, false).toBool();
+}
+
+void ProgramSettings::setPinTargetWindowToScreenCenter(bool enabled) {
+    QSettings settings;
+    settings.setValue(kPinTargetWindowToScreenCenterKey, enabled);
+}
+
+ProgramSettings::ImageFindCaptureMode ProgramSettings::imageFindCaptureMode() {
+    QSettings settings;
+    const int stored = settings.value(
+        kImageFindCaptureModeKey,
+        static_cast<int>(ImageFindCaptureMode::Hybrid)).toInt();
+    if (stored == static_cast<int>(ImageFindCaptureMode::ClientOnly)) {
+        return ImageFindCaptureMode::ClientOnly;
+    }
+    return ImageFindCaptureMode::Hybrid;
+}
+
+void ProgramSettings::setImageFindCaptureMode(ImageFindCaptureMode mode) {
+    QSettings settings;
+    settings.setValue(kImageFindCaptureModeKey, static_cast<int>(mode));
+}
+
+bool ProgramSettings::runWithoutTargetWindow() {
+    QSettings settings;
+    return settings.value(kRunWithoutTargetWindowKey, false).toBool();
+}
+
+void ProgramSettings::setRunWithoutTargetWindow(bool enabled) {
+    QSettings settings;
+    settings.setValue(kRunWithoutTargetWindowKey, enabled);
+}
+
+ProgramSettings::ProfileSettings ProgramSettings::profileSettings() {
+    ProfileSettings snapshot;
+    snapshot.autoSelectRunningFeature = autoSelectRunningFeature();
+    snapshot.pinTargetWindowToScreenCenter = pinTargetWindowToScreenCenter();
+    snapshot.imageFindCaptureMode = imageFindCaptureMode();
+    snapshot.runWithoutTargetWindow = runWithoutTargetWindow();
+    return snapshot;
+}
+
+void ProgramSettings::applyProfileSettings(const ProfileSettings& settings) {
+    setAutoSelectRunningFeature(settings.autoSelectRunningFeature);
+    setPinTargetWindowToScreenCenter(settings.pinTargetWindowToScreenCenter);
+    setImageFindCaptureMode(settings.imageFindCaptureMode);
+    setRunWithoutTargetWindow(settings.runWithoutTargetWindow);
 }
 
 void ProgramSettings::syncWindowsStartupRegistration() {

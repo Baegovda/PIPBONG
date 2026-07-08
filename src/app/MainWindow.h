@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/FeatureRunSession.h"
+#include "app/ProfileManager.h"
 #include "core/workflow/ExecutionContext.h"
 #include "model/UserInputInterruptMode.h"
 #include "ui/BlockListWidget.h"
@@ -17,6 +18,7 @@
 class Feature;
 
 class QPixmap;
+class QIcon;
 
 class FeatureListPanel;
 class WorkflowEditorPanel;
@@ -24,6 +26,7 @@ class WorkflowEngine;
 class Project;
 class HotkeyManager;
 class Feature;
+class FeatureLibraryManager;
 class UiStateManager;
 class QCheckBox;
 class QCloseEvent;
@@ -36,6 +39,8 @@ class QMenuBar;
 class QSplitter;
 class QSystemTrayIcon;
 class QMenu;
+class QListWidget;
+class ProfileListWidget;
 class TargetWindowDetailPanel;
 class CustomTitleBar;
 class CalculatorDialog;
@@ -62,6 +67,9 @@ private slots:
     void onFeatureSelectionChanged();
     void onProjectModified();
     void onFeatureRunRequested(const QString& featureId);
+    void onFeatureEnabledChanged(const QString& featureId, bool enabled);
+    void onSaveFeatureToLibraryRequested(const QString& featureId);
+    void onImportFeatureFromLibraryRequested();
     void onStopWorkflow();
     void onExitRequested();
     void onCheckForUpdates();
@@ -77,6 +85,12 @@ private slots:
     void onPickTargetWindow();
     void onPickTargetWindowFromList();
     void onShowTargetWindow();
+    void onPinTargetWindowCenterToggled(bool checked);
+    void onProfileSelectionChanged();
+    void onAddProfile();
+    void onRenameProfile();
+    void onDeleteProfile();
+    void syncTargetWindowCenterPin();
     void onEngineLog(const QString& message);
     void onEngineStarted();
     void onEngineFinished(bool success, const QString& message);
@@ -110,6 +124,8 @@ private:
     void setupUpdateChecker();
     void applyUpdateCheckInterval();
     void engageFeatureMouseLock(FeatureRunSession& session);
+    void reconcileMouseLocksFromRunningSessions();
+    bool isFeatureSessionActive(const FeatureRunSession& session) const;
     void captureFeatureMouseLockPosition(FeatureRunSession& session);
     static bool hasFeatureMouseLock(const FeatureRunSession& session);
     void scheduleMouseLockPositionSync();
@@ -132,6 +148,12 @@ private:
     void appendLog(const QString& message);
     bool maybeSave();
     void loadProjectFromFile(const QString& path);
+    void loadActiveProfile();
+    void refreshProfileList();
+    void syncProfileListSelection();
+    bool switchToProfile(const QString& profileId, bool automatic = false);
+    void saveActiveProfileSettings();
+    void syncProfileToForegroundWindow();
     void updateWindowTitle();
     void syncWindowTitleDisplay();
     void refreshWorkflowEditor();
@@ -180,6 +202,7 @@ private:
     void onEngineSessionPrepared(std::shared_ptr<Workflow> workflow, std::shared_ptr<ExecutionContext> context);
     void applyAlwaysOnTop(bool enabled);
     void restoreAlwaysOnTopPreference();
+    void applyTargetWindowCenterPin(bool enabled);
     QString alwaysOnTopPreferenceKey() const;
     void showTransientStatus(const QString& message, int timeoutMs = 3000);
     void setPersistentStatus(const QString& message);
@@ -190,12 +213,19 @@ private:
 
     void onUserInputInterrupt(const std::string& featureId);
     void syncUserInputInterruptForSession(FeatureRunSession& session, Feature* feature);
+    bool shouldSuppressFeatureHotkeyExecution() const;
 
     std::unique_ptr<Project> m_project;
+    std::unique_ptr<ProfileManager> m_profileManager;
     QString m_projectFilePath;
     QString m_baseWindowTitle;
 
     FeatureListPanel* m_featureList = nullptr;
+    QWidget* m_profilePanel = nullptr;
+    ProfileListWidget* m_profileList = nullptr;
+    QPushButton* m_addProfileButton = nullptr;
+    QPushButton* m_renameProfileButton = nullptr;
+    QPushButton* m_deleteProfileButton = nullptr;
     WorkflowEditorPanel* m_workflowEditor = nullptr;
     QSplitter* m_mainHorizontalSplitter = nullptr;
     QSplitter* m_mainVerticalSplitter = nullptr;
@@ -204,6 +234,7 @@ private:
     QPushButton* m_pickWindowButton = nullptr;
     QPushButton* m_pickWindowListButton = nullptr;
     QPushButton* m_showTargetWindowButton = nullptr;
+    QCheckBox* m_pinTargetWindowCenterCheck = nullptr;
     QCheckBox* m_alwaysOnTopCheck = nullptr;
     QPushButton* m_exitButton = nullptr;
     QPushButton* m_updateButton = nullptr;
@@ -214,10 +245,13 @@ private:
 
     HotkeyManager* m_hotkeyManager = nullptr;
     UiStateManager* m_uiState = nullptr;
+    std::unique_ptr<FeatureLibraryManager> m_featureLibraryManager;
     QTimer* m_autoSaveTimer = nullptr;
     QTimer* m_statusClearTimer = nullptr;
     QTimer* m_updateCheckTimer = nullptr;
     QTimer* m_mouseLockSyncTimer = nullptr;
+    QTimer* m_targetWindowCenterPinTimer = nullptr;
+    QTimer* m_profileAutoSwitchTimer = nullptr;
     UpdateChecker* m_updateChecker = nullptr;
     bool m_initialUpdateCheckDone = false;
     bool m_lastUpdateCheckWasSilent = false;
@@ -232,4 +266,7 @@ private:
     bool m_forceQuit = false;
     bool m_trayMinimizeNotified = false;
     bool m_modified = false;
+    bool m_refreshingProfileList = false;
+    QString m_pendingProfileSwitchId;
+    int m_pendingProfileSwitchPolls = 0;
 };

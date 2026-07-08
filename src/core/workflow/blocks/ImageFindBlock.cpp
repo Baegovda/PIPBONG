@@ -29,7 +29,6 @@ int snapRoiCorrectionExpandPercent(int percent) {
 }
 
 namespace {
-
 bool sleepUnlessStopped(ExecutionContext& ctx, int delayMs) {
     return ctx.interruptibleSleepMs(delayMs);
 }
@@ -1148,7 +1147,8 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
         pollRegions.empty() ? CaptureRegion{} : pollRegions.front();
 
 #ifdef _WIN32
-    if (resolvedSearchArea == SearchArea::TargetWindow && !ScreenCapture::findTargetWindow()) {
+    if (resolvedSearchArea == SearchArea::TargetWindow && !ScreenCapture::findTargetWindow()
+        && !ScreenCapture::allowsRunWithoutTargetWindow()) {
         result.errorMessage = "대상 창을 찾을 수 없습니다. 먼저 '창 지정'을 사용하세요.";
         return result;
     }
@@ -1243,7 +1243,8 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
         physicalCustomPollRegions(resolvedSearchArea, resolvedWindowPercent);
 
 #ifdef _WIN32
-    if (resolvedSearchArea == SearchArea::TargetWindow && !ScreenCapture::findTargetWindow()) {
+    if (resolvedSearchArea == SearchArea::TargetWindow && !ScreenCapture::findTargetWindow()
+        && !ScreenCapture::allowsRunWithoutTargetWindow()) {
         result.errorMessage = "대상 창을 찾을 수 없습니다. 먼저 '창 지정'을 사용하세요.";
         return result;
     }

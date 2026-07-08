@@ -150,6 +150,11 @@ void UserInputInterruptMonitor::setHandler(InterruptHandler handler) {
     m_handler = std::move(handler);
 }
 
+void UserInputInterruptMonitor::setHotkeyExemptionCheck(std::function<bool(int virtualKey)> check) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_hotkeyExemptionCheck = std::move(check);
+}
+
 void UserInputInterruptMonitor::registerSession(const std::string& featureId,
                                                 UserInputInterruptMode mode,
                                                 const HotkeyBinding& featureHotkey,
@@ -219,15 +224,19 @@ void UserInputInterruptMonitor::notifyPhysicalInput(int virtualKey) {
 
     std::vector<std::string> targets;
     InterruptHandler handler;
+    std::function<bool(int)> hotkeyExemptionCheck;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         handler = m_handler;
+        hotkeyExemptionCheck = m_hotkeyExemptionCheck;
+
+        if (hotkeyExemptionCheck && hotkeyExemptionCheck(virtualKey)) {
+            return;
+        }
+
         const auto now = std::chrono::steady_clock::now();
         for (auto& [featureId, entry] : m_sessions) {
             if (!entry.context) {
-                continue;
-            }
-            if (matchesFeatureHotkey(entry.featureHotkey, virtualKey)) {
                 continue;
             }
             if (now - entry.lastInterruptAt < kInterruptCooldown) {

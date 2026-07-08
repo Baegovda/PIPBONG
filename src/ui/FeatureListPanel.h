@@ -90,6 +90,13 @@ signals:
 
     void featureRunRequested(const QString& featureId);
 
+    void featureEnabledChanged(const QString& featureId, bool enabled);
+
+    /// Save the selected feature into the global feature library.
+    void saveFeatureToLibraryRequested(const QString& featureId);
+    /// Open the library picker and import a feature into the current profile.
+    void importFeatureFromLibraryRequested();
+
 
 
 protected:
@@ -132,7 +139,11 @@ private:
 
     void updateReorderEnabled();
 
+    bool enableToggleHitTest(int row, const QPoint& viewportPos) const;
+
     bool runButtonHitTest(int row, const QPoint& viewportPos) const;
+
+    void toggleFeatureEnabled(int row);
 
     void requestFeatureRun(int row);
 
