@@ -770,7 +770,7 @@ void FeatureListPanel::setupUi() {
     connect(m_addButton, &QPushButton::clicked, this, &FeatureListPanel::onAddFeature);
     connect(m_removeButton, &QPushButton::clicked, this, &FeatureListPanel::onRemoveFeature);
     connect(m_editButton, &QPushButton::clicked, this, &FeatureListPanel::onEditFeature);
-    connect(m_list, &QListWidget::currentRowChanged, this, &FeatureListPanel::onSelectionChanged);
+    connect(m_list, &QListWidget::itemSelectionChanged, this, &FeatureListPanel::onSelectionChanged);
     connect(m_list, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem*) {
         onEditFeature();
     });
@@ -891,6 +891,24 @@ const Feature* FeatureListPanel::projectFeatureById(const QString& featureId) co
         return nullptr;
     }
     return m_project->featureById(featureId.toStdString());
+}
+
+QList<int> FeatureListPanel::selectedRows() const {
+    QList<int> rows;
+    if (!m_list) {
+        return rows;
+    }
+    const QList<QListWidgetItem*> items = m_list->selectedItems();
+    rows.reserve(items.size());
+    for (QListWidgetItem* item : items) {
+        if (!item) {
+            continue;
+        }
+        rows.push_back(m_list->row(item));
+    }
+    std::sort(rows.begin(), rows.end());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    return rows;
 }
 
 bool FeatureListPanel::enableToggleHitTest(int row, const QPoint& viewportPos) const {
@@ -1160,19 +1178,29 @@ void FeatureListPanel::onRemoveFeature() {
     if (!m_project || !m_editControlsEnabled) {
         return;
     }
-    const int index = selectedIndex();
-    if (index < 0) {
+    const QList<int> rows = selectedRows();
+    if (rows.isEmpty()) {
         return;
     }
-    QMessageBox box(QMessageBox::Question, tr("기능 삭제"), tr("선택한 기능을 삭제할까요?"),
+    const bool multiple = rows.size() > 1;
+    QMessageBox box(QMessageBox::Question,
+                    tr("기능 삭제"),
+                    multiple ? tr("선택한 기능 %1개를 삭제할까요?").arg(rows.size())
+                             : tr("선택한 기능을 삭제할까요?"),
                     QMessageBox::Yes | QMessageBox::No, this);
     box.button(QMessageBox::Yes)->setText(tr("예"));
     box.button(QMessageBox::No)->setText(tr("아니오"));
     if (static_cast<QMessageBox::StandardButton>(box.exec()) != QMessageBox::Yes) {
         return;
     }
-    m_project->removeFeature(index);
+    const int restoreRow = qMax(0, rows.front() - 1);
+    for (auto it = rows.crbegin(); it != rows.crend(); ++it) {
+        m_project->removeFeature(*it);
+    }
     refresh();
+    if (m_list && m_list->count() > 0) {
+        m_list->setCurrentRow(qMin(restoreRow, m_list->count() - 1));
+    }
     emit selectionChanged();
     emit projectModified();
     emit hotkeysChanged();
@@ -1247,6 +1275,9 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
     QListWidgetItem* item = m_list->itemAt(pos);
     if (!item) {
         return;
+    }
+    if (!item->isSelected()) {
+        m_list->setCurrentItem(item, QItemSelectionModel::ClearAndSelect);
     }
     const QString featureId = item->data(kFeatureIdRole).toString();
     Feature* feature =

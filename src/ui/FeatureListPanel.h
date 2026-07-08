@@ -132,6 +132,7 @@ private:
     void setupUi();
 
     void configureListItem(QListWidgetItem* item, const Feature& feature);
+    QList<int> selectedRows() const;
 
     bool editFeatureAt(int index);
 

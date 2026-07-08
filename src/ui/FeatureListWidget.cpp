@@ -69,12 +69,12 @@ private:
 
 FeatureListWidget::FeatureListWidget(QWidget* parent)
     : QListWidget(parent) {
-    setSelectionMode(QAbstractItemView::SingleSelection);
+    setSelectionMode(QAbstractItemView::ExtendedSelection);
     setEditTriggers(QAbstractItemView::NoEditTriggers);
     setDefaultDropAction(Qt::MoveAction);
     setDragDropOverwriteMode(false);
     setDropIndicatorShown(false);
-    setToolTip(tr("드래그하여 기능 순서 변경 · Ctrl+C/V 복사/붙여넣기 · Delete 삭제"));
+    setToolTip(tr("Ctrl/Shift+클릭 다중 선택 · 드래그하여 기능 순서 변경 · Ctrl+C/V 복사/붙여넣기 · Delete 삭제"));
     setReorderEnabled(true);
 
     m_dropIndicator = new DropInsertionIndicator(viewport());
@@ -96,6 +96,10 @@ void FeatureListWidget::setReorderEnabled(bool enabled) {
 }
 
 void FeatureListWidget::startDrag(Qt::DropActions supportedActions) {
+    if (selectedItems().size() != 1) {
+        m_dragSourceRow = -1;
+        return;
+    }
     m_dragSourceRow = currentRow();
     m_pendingReorderFrom = -1;
     m_pendingReorderTo = -1;
