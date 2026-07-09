@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.61` (from `project(PIPBONG VERSION 0.8.61)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.62` (from `project(PIPBONG VERSION 0.8.62)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -891,6 +891,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.62] - 2026-07-09
+
+### Added
+
+- New feature **기능 편집** dialog pre-fills from the last confirmed feature settings (hotkey, run mode, user-input interrupt, ROI/trigger options, etc.); values persist in `QSettings` `ui/state/featureEdit/lastSettings_v1` and apply only when adding a feature with an empty name (`FeatureEditPrefs`, `FeatureListPanel`).
 
 ## [0.8.61] - 2026-07-09
 

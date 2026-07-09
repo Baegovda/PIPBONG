@@ -9,6 +9,7 @@
 #include "model/Project.h"
 #include "core/input/HotkeyBinding.h"
 #include "ui/editors/FeatureEditDialog.h"
+#include "ui/editors/FeatureEditPrefs.h"
 #include "ui/UiThemeColors.h"
 #include <QApplication>
 #include <QCursor>
@@ -1701,6 +1702,10 @@ bool FeatureListPanel::editFeatureAt(int index) {
     if (!feature) {
         return false;
     }
+    const bool isNewFeature = feature->name().empty();
+    if (isNewFeature) {
+        applyLastFeatureEditSettings(*feature);
+    }
     const HotkeyBinding previousHotkey = feature->hotkey();
     const bool previousHotkeyAllowExtraModifiers = feature->hotkeyAllowExtraModifiers();
     const bool previousEnabled = feature->enabled();
@@ -1740,6 +1745,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setRoiCorrectionExpandPercent(dialog.roiCorrectionExpandPercent());
     feature->setEditFirstTemplateRoiOnStart(dialog.editFirstTemplateRoiOnStart());
     feature->setTriggerCooldownMs(dialog.triggerCooldownMs());
+    saveLastFeatureEditSettings(*feature);
     refresh();
     m_list->setCurrentRow(index);
     emit projectModified();
