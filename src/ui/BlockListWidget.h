@@ -300,6 +300,9 @@ private:
     qreal m_flashIntensity = 0.0;
 
     QWidget* m_dropIndicator = nullptr;
+    QWidget* m_dragSlotPlaceholder = nullptr;
+
+    void playDropSettleAtTableRow(int row);
 
     QVector<bool> m_rowMatchHasScore;
 

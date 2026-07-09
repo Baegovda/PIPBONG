@@ -56,4 +56,7 @@ private:
     int m_pendingReorderTo = -1;
     int m_dropInsertionIndex = -1;
     QWidget* m_dropIndicator = nullptr;
+    QWidget* m_dragSlotPlaceholder = nullptr;
+
+    void playDropSettleAtRow(int row);
 };

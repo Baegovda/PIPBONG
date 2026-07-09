@@ -1,5 +1,8 @@
 #include "ui/widgets/ReorderableListWidget.h"
 
+#include "ui/widgets/ListDragVisuals.h"
+
+#include <QCursor>
 #include <QDrag>
 #include <QDragEnterEvent>
 #include <QDragLeaveEvent>
@@ -144,6 +147,11 @@ void ReorderableListWidget::startDrag(Qt::DropActions supportedActions) {
 
     updateDragSourceVisuals();
 
+    const QPoint cursorGlobal = QCursor::pos();
+    if (QListWidgetItem* listItem = item(m_dragSourceRow)) {
+        ListDragVisuals::showDragSlotPlaceholder(viewport(), visualItemRect(listItem), &m_dragSlotPlaceholder);
+    }
+
     std::unique_ptr<QMimeData> ownedMime(buildDragMimeData(m_dragSourceRow));
     QMimeData* mimeData = ownedMime.release();
     if (!mimeData) {
@@ -153,7 +161,12 @@ void ReorderableListWidget::startDrag(Qt::DropActions supportedActions) {
 
     auto* drag = new QDrag(this);
     drag->setMimeData(mimeData);
+    const ListDragVisuals::LiftedPixmap lifted =
+        ListDragVisuals::makeLiftedListRowDrag(this, m_dragSourceRow, cursorGlobal);
+    ListDragVisuals::applyToDrag(drag, lifted);
     drag->exec(supportedActions | Qt::CopyAction, Qt::MoveAction);
+
+    ListDragVisuals::hideDragSlotPlaceholder(&m_dragSlotPlaceholder);
 
     clearDropIndicator();
     m_externalDropHover = false;
@@ -163,8 +176,10 @@ void ReorderableListWidget::startDrag(Qt::DropActions supportedActions) {
 
     const bool internalReorder = m_pendingReorderFrom >= 0 && m_pendingReorderTo >= 0
                                  && m_pendingReorderFrom != m_pendingReorderTo;
+    const int settleRow = m_pendingReorderTo;
     if (internalReorder) {
         emit rowsReordered(m_pendingReorderFrom, m_pendingReorderTo);
+        playDropSettleAtRow(settleRow);
     }
 
     m_dragSourceRow = -1;
@@ -307,6 +322,10 @@ void ReorderableListWidget::dropEvent(QDropEvent* event) {
         clearDropIndicator();
         m_externalDropHover = false;
         emit externalItemDropped(event->mimeData(), insertIndex);
+        if (insertIndex >= 0 && count() > 0) {
+            const int settleRow = qBound(0, insertIndex, count() - 1);
+            playDropSettleAtRow(settleRow);
+        }
         event->setDropAction(preferredExternalDropAction(event->mimeData()));
         event->accept();
         return;
@@ -332,4 +351,17 @@ void ReorderableListWidget::dropEvent(QDropEvent* event) {
     }
     event->setDropAction(Qt::IgnoreAction);
     event->accept();
+}
+
+void ReorderableListWidget::playDropSettleAtRow(int row) {
+    if (!viewport() || row < 0 || row >= count()) {
+        return;
+    }
+    QListWidgetItem* listItem = item(row);
+    if (!listItem) {
+        return;
+    }
+    const QRect targetRect = visualItemRect(listItem);
+    const QPixmap rowPixmap = ListDragVisuals::captureListRowPixmap(this, row);
+    ListDragVisuals::playDropSettle(viewport(), rowPixmap, targetRect);
 }

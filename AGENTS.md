@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.41` (from `project(PIPBONG VERSION 0.8.41)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.42` (from `project(PIPBONG VERSION 0.8.42)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -637,7 +637,9 @@ If POE runs **as administrator**, a non-elevated PIPBONG process may not receive
 
 Subclasses: `FeatureListWidget`, `FeatureLibraryListWidget`, `ProfileListWidget` (default profile row 0: no drag, min insertion index 1). Cross-panel MIME: `FeatureDragMime`. Disable via `setReorderEnabled(false)` / `setTransferEnabled(false)` while workflows run.
 
-Key files: `src/ui/widgets/ReorderableListWidget.*`, `src/ui/FeatureDragMime.*`.
+**Drag visuals:** `ListDragVisuals` — lifted pixmap on `QDrag`, dashed source slot, snap-in settle on internal reorder and library import drop. Workflow `BlockListWidget` uses the same helpers.
+
+Key files: `src/ui/widgets/ReorderableListWidget.*`, `src/ui/widgets/ListDragVisuals.*`, `src/ui/FeatureDragMime.*`.
 
 ### 8.3 Code conventions
 
@@ -876,6 +878,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.42] - 2026-07-09
+
+### Added
+
+- Shared drag-reorder visuals (`ListDragVisuals`): lifted row pixmap follows the cursor during drag, dashed empty slot at the source row, OutBack snap-in settle animation on drop (`ReorderableListWidget`, `BlockListWidget`, `FeatureListPanel`).
+
+### Changed
+
+- Feature list, library drawer, profile list, and workflow block list all use the same pick-up / carry / drop feedback via `ListDragVisuals` (block list uses custom `QDrag` instead of default `QTableWidget::startDrag`).
 
 ## [0.8.41] - 2026-07-09
 

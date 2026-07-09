@@ -4,8 +4,12 @@
 #include "core/workflow/LoopExitCondition.h"
 #include "ui/UiStrings.h"
 #include "ui/widgets/DragAdjustSpinMouse.h"
+#include "ui/widgets/ListDragVisuals.h"
 
 #include <QApplication>
+#include <QCursor>
+#include <QDrag>
+#include <QMimeData>
 #include <QStyle>
 #include <QDragLeaveEvent>
 #include <QDragMoveEvent>
@@ -2199,8 +2203,27 @@ void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
     updateDragSourceVisuals();
 
     const int sourceRow = m_dragSourceRow;
-    QTableWidget::startDrag(supportedActions);
+    const QPoint cursorGlobal = QCursor::pos();
+    const QRect rowRect = visualRect(model()->index(sourceRow, 0));
+    const QRect slotRect(0, rowRect.top(), viewport()->width(), rowRect.height());
+    ListDragVisuals::showDragSlotPlaceholder(viewport(), slotRect, &m_dragSlotPlaceholder);
 
+    QModelIndexList indexes = selectedIndexes();
+    if (indexes.isEmpty()) {
+        for (int column = 0; column < columnCount(); ++column) {
+            indexes << model()->index(sourceRow, column);
+        }
+    }
+
+    auto* mimeData = model()->mimeData(indexes);
+    auto* drag = new QDrag(this);
+    drag->setMimeData(mimeData);
+    const ListDragVisuals::LiftedPixmap lifted =
+        ListDragVisuals::makeLiftedTableRowDrag(this, sourceRow, cursorGlobal);
+    ListDragVisuals::applyToDrag(drag, lifted);
+    drag->exec(supportedActions, Qt::MoveAction);
+
+    ListDragVisuals::hideDragSlotPlaceholder(&m_dragSlotPlaceholder);
     clearDropIndicator();
     applyActiveRowVisuals();
 
@@ -2211,10 +2234,14 @@ void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
     m_pendingReorderFrom = -1;
     m_pendingReorderTo = -1;
 
-    // Always emit after QTableWidget::startDrag returns. Qt InternalMove may call
-    // clearOrRemove() even when our custom dropEvent did not move rows; refresh
-    // heals the table. moveBlock runs only when fromBlock != toBlock.
     emit blockRowsReordered(fromBlock, toBlock);
+
+    if (fromBlock != toBlock) {
+        const int settleTableRow = tableRowForBlockRow(toBlock);
+        if (settleTableRow >= 0) {
+            playDropSettleAtTableRow(settleTableRow);
+        }
+    }
 }
 
 void BlockListWidget::dragEnterEvent(QDragEnterEvent* event) {
@@ -2360,4 +2387,14 @@ void BlockListWidget::dropEvent(QDropEvent* event) {
     // IgnoreAction prevents QAbstractItemView::startDrag from clearOrRemove().
     event->setDropAction(Qt::IgnoreAction);
     event->accept();
+}
+
+void BlockListWidget::playDropSettleAtTableRow(int row) {
+    if (!viewport() || row < 0 || row >= rowCount()) {
+        return;
+    }
+    const QRect rowRect = visualRect(model()->index(row, 0));
+    const QRect targetRect(0, rowRect.top(), viewport()->width(), rowRect.height());
+    const QPixmap rowPixmap = ListDragVisuals::captureTableRowPixmap(this, row);
+    ListDragVisuals::playDropSettle(viewport(), rowPixmap, targetRect);
 }

@@ -637,14 +637,25 @@ public:
         painter->setRenderHint(QPainter::TextAntialiasing, true);
 
         if (isDragSource) {
-            painter->fillRect(opt.rect, opt.palette.color(QPalette::Midlight));
-        } else {
-            paintFeatureListRowChrome(painter, opt.rect, selected, isRunning, opt.palette);
-            if (!featureEnabled) {
-                QColor disabledOverlay = opt.palette.color(QPalette::Mid);
-                disabledOverlay.setAlpha(48);
-                painter->fillRect(opt.rect, disabledOverlay);
-            }
+            QColor fill = opt.palette.color(QPalette::Base);
+            fill.setAlpha(72);
+            painter->fillRect(opt.rect, fill);
+            QColor border = opt.palette.color(QPalette::Mid);
+            border.setAlpha(150);
+            QPen pen(border, 1.5, Qt::DashLine);
+            pen.setDashPattern({4, 3});
+            painter->setPen(pen);
+            painter->setBrush(Qt::NoBrush);
+            painter->drawRoundedRect(opt.rect.adjusted(2, 1, -2, -1), 5, 5);
+            painter->restore();
+            return;
+        }
+
+        paintFeatureListRowChrome(painter, opt.rect, selected, isRunning, opt.palette);
+        if (!featureEnabled) {
+            QColor disabledOverlay = opt.palette.color(QPalette::Mid);
+            disabledOverlay.setAlpha(48);
+            painter->fillRect(opt.rect, disabledOverlay);
         }
 
         paintFeatureEnableToggle(painter, cols.enable, featureEnabled, opt.palette);
