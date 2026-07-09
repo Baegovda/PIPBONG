@@ -21,7 +21,7 @@ See also: `.cursor/rules/no-full-rebuild.mdc` (hard bans on `cmake --preset` whe
 
 **Command (mandatory for AI):** `.\scripts\build-release.ps1` from repo root.
 
-**IDE / F5 (mandatory):** Ctrl+Shift+B and F5 use tracked `.vscode/` + CMake Tools off — see `.cursor/rules/ide-build-workflow.mdc` and `no-full-rebuild.mdc`.
+**IDE / F5 (mandatory):** Ctrl+Shift+B builds; F5 runs **Build and Run** task only (no CodeLLDB) — see `.cursor/rules/f5-build-and-run.mdc`, `ide-build-workflow.mdc`, `no-full-rebuild.mdc`.
 
 **Recovery if build hangs on vcpkg lock:** `.\scripts\recover-ide-build.ps1`
 

@@ -1,18 +1,21 @@
 ---
-description: Mandatory Cursor/VS Code IDE build workflow — scripts/build-release.ps1, .vscode tasks/launch, CMake Tools off
+description: Mandatory Cursor/VS Code IDE build workflow — scripts/build-release.ps1, .vscode tasks, CMake Tools off, F5 without debugger
 alwaysApply: true
 ---
 
 # IDE Build Workflow (Mandatory — Do Not Regress)
 
-**Status:** Verified working on Windows (2026-06). Strengthened 2026-07 after CMake Tools + vcpkg lock caused 10–30 min waits. Daily dev and F5 **must** use `scripts/build-release.ps1` via tracked `.vscode/` config — **not** CMake Tools configure/build/launch.
+**Status:** Verified working on Windows (2026-06). Strengthened 2026-07 after CMake Tools + vcpkg lock caused 10–30 min waits. F5 path verified 2026-07-10 (v0.8.82): **Build and Run task only — never CodeLLDB**.
+
+Daily build/run **must** use tracked `.vscode/` + scripts — **not** CMake Tools configure/build/launch, **not** debugger attach on F5.
 
 ## Canonical dev path
 
 | Action | How |
 |--------|-----|
 | **Build** | **Ctrl+Shift+B**, repo-root `빌드.bat`, or `.\scripts\build-release.ps1` |
-| **Run (F5)** | Task **`Build and Run PIPBONG (Release)`** → `scripts/build-and-run.ps1` (no debugger) |
+| **Run (F5)** | Task **`Build and Run PIPBONG (Release)`** → `scripts/build-and-run.ps1` (`Start-Process`, **no debugger**) |
+| **F5 success** | Terminal prints **`Started PIPBONG.exe`** right after build |
 | **Output** | `build/Release/PIPBONG.exe` (cwd `build/Release/`) |
 | **First configure** | `build-release.ps1` runs `cmake --preset default` **only** when `build/CMakeCache.txt` is missing |
 | **Qt DLLs** | `.\scripts\deploy-qt.ps1` once when runtime DLLs missing — not every incremental link |
@@ -20,14 +23,14 @@ alwaysApply: true
 
 ## Required git-tracked files
 
-These four files **must** stay in the repo (`.gitignore` whitelists them). **Do not** delete, replace with CMake Tools defaults, or leave `.vscode/` fully gitignored.
+These files **must** stay in the repo (`.gitignore` whitelists them). **Do not** delete, replace with CMake Tools defaults, or leave `.vscode/` fully gitignored.
 
 | File | Role |
 |------|------|
-| `.vscode/tasks.json` | Default build task **`Build Release`** → `scripts/build-release.ps1` |
-| `.vscode/launch.json` | Empty configurations — F5 must not attach CodeLLDB |
-| `.vscode/settings.json` | **CMake Tools fully off** — see required keys below |
-| `.vscode/extensions.json` | `unwantedRecommendations`: `ms-vscode.cmake-tools`, C# Dev Kit, `twxs.cmake` |
+| `.vscode/tasks.json` | **`Build Release`** (default build); **`Build and Run PIPBONG (Release)`** (default **test** = F5) |
+| `.vscode/launch.json` | **`configurations: []`** — empty; F5 must not attach CodeLLDB |
+| `.vscode/settings.json` | CMake Tools fully off + `pipbong.f5BuildAndRun: true` + `debug.openDebug: neverOpen` |
+| `.vscode/extensions.json` | Recommendations / unwanted list — do not make CodeLLDB the F5 driver |
 
 ## `.vscode/settings.json` (required keys)
 
@@ -46,17 +49,24 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
     "cmake.ctest.enabled": false,
     "cmake.showConfigureWithDebuggerNotification": false,
     "cmake.options.statusBarVisibility": "hidden",
-    "files.exclude": { "**/build-clangd": true }
+    "files.exclude": { "**/build-clangd": true },
+    "debug.openDebug": "neverOpen",
+    "debug.internalConsoleOptions": "neverOpen",
+    "pipbong.f5BuildAndRun": true
 }
 ```
 
-## `tasks.json` / `launch.json` invariants
+## F5 / tasks / launch invariants
+
+See also always-applied **`.cursor/rules/f5-build-and-run.mdc`**.
 
 - Default build task: **`Build Release`** → `scripts/build-release.ps1`.
-- Daily F5: **unconditional** keybinding → `workbench.action.tasks.test` (**Build and Run**). Do **not** gate F5 on `workspaceFolder =~` (often fails in Cursor → F5 still opens CodeLLDB).
-- `launch.json` must keep **empty** `configurations` so F5 cannot attach a debugger by accident.
+- Default test task: **`Build and Run PIPBONG (Release)`** → `scripts/build-and-run.ps1`.
+- Daily F5: **unconditional** user keybinding → `workbench.action.tasks.test`. **Never** gate primary F5 on `workspaceFolder =~ /Sbm1\.0/i` (fails in Cursor → CodeLLDB hang).
+- `launch.json` must stay **empty** `configurations`.
+- Apply/repair keybindings: `.\scripts\fix-pipbong-cursor-f5.ps1` then **Reload Window**.
 - **Never** use launch `type: "cmake"` or `preLaunchTask: "CMake: build …"`.
-- **Never** use placeholder `program` paths (`<your program>`) or make debugger the only F5 path for daily work.
+- **Never** restore CodeLLDB / `lldb` launch as the daily F5 path.
 
 ## Anti-patterns (known failures — do not reintroduce)
 
@@ -66,27 +76,28 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 | **`vcpkg-running.lock` waiting…** in output | Parallel CMake Tools configure + `cmake --build`; stale lock |
 | **"A CMake task is already running"** / build exit **-1** | Parallel CMake Tools tasks; status-bar **[Build]** / **[Configure]** clicked while another runs |
 | **549+ Problems** / bogus IntelliSense | Separate **`build-clangd/`** tree — keep excluded; use **`build/`** only |
-| F5 fails / wrong exe | `launch.json` placeholder or Debug path without deploy |
-| Build OK then long blank wait before window | F5 used CodeLLDB/`Debug: Start Debugging` instead of **Build and Run** task — run `fix-pipbong-cursor-f5.ps1` |
+| Build OK → blank terminal / CodeLLDB / “Debug PIPBONG” tab → slow window | F5 = **Debug: Start Debugging**; or F5 `when` clause failed — run `fix-pipbong-cursor-f5.ps1` + Reload Window |
+| `dist` exe fast but F5 slow | Same — debugger attach, not app startup |
 | Slow every link | Re-enabling per-link `windeployqt` — dev preset uses `PIPBONG_SKIP_WINDEPLOY=ON` |
 | AI runs `cmake --preset` every task | Full reconfigure + vcpkg manifest pass — use incremental `build-release.ps1` only |
 
-## Recovery procedure (when IDE build breaks)
+## Recovery procedure (when IDE build / F5 breaks)
 
-1. `.\scripts\recover-ide-build.ps1` (kills stuck cmake/vcpkg/msbuild, clears stale lock, restores `.vscode/` from git).
+1. `.\scripts\recover-ide-build.ps1` (kills stuck cmake/vcpkg/msbuild, clears stale lock, restores `.vscode/` from git, runs `fix-pipbong-cursor-f5.ps1`).
 2. **Developer: Reload Window** in Cursor.
-3. Confirm **`cmake.enabled`: `false`** and full CMake-off keys in `.vscode/settings.json`.
+3. Confirm **`cmake.enabled`: `false`**, `pipbong.f5BuildAndRun: true`, empty `launch.json` configurations.
 4. **Do not** click CMake status-bar **[Configure]** — run `.\scripts\build-release.ps1` or Ctrl+Shift+B.
-5. Verify: incremental build ~3–15 s; F5 starts exe quickly via **Build and Run** (terminal shows `Started PIPBONG.exe`); no long blank wait after build.
+5. Verify: incremental build ~3–15 s; F5 prints **`Started PIPBONG.exe`** with no blank wait.
 6. If DLL missing at runtime: `.\scripts\deploy-qt.ps1` once.
 
-Manual equivalent: `git checkout -- .vscode/` + kill cmake/vcpkg + reload window.
+Manual equivalent: `git checkout -- .vscode/` + `.\scripts\fix-pipbong-cursor-f5.ps1` + kill cmake/vcpkg + reload window.
 
 ## AI / agent rules
 
 - **Do not** “fix” IDE issues by re-enabling CMake Tools configure-on-open or adding `CMake: *` launch configs.
+- **Do not** “fix” F5 by adding CodeLLDB / `Debug PIPBONG` back into `launch.json`.
 - **Do not** remove `.vscode` from git tracking or overwrite `tasks.json` with CMake-generated build tasks.
 - **Do not** run `cmake --preset default` when `build/CMakeCache.txt` exists — see `.cursor/rules/no-full-rebuild.mdc`.
-- When user reports CMake Tools popups, vcpkg lock, or 10–30 min builds: run recovery script first.
+- When user reports CMake Tools popups, vcpkg lock, 10–30 min builds, or blank F5 terminal: run recovery / `fix-pipbong-cursor-f5.ps1` first.
 
-Full handover: [AGENTS.md](../../AGENTS.md) — **§3.1**, **§3.2**, **§8.8**, `.cursor/rules/no-full-rebuild.mdc`.
+Full handover: [AGENTS.md](../../AGENTS.md) — **§3.1**, **§3.2**, **§8.8**, `.cursor/rules/f5-build-and-run.mdc`, `.cursor/rules/no-full-rebuild.mdc`.

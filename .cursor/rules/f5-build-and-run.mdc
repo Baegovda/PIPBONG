@@ -1,0 +1,52 @@
+---
+description: F5 must run Build and Run task without CodeLLDB — verified 2026-07
+alwaysApply: true
+---
+
+# F5 Daily Run (Mandatory — Do Not Regress)
+
+**Status:** Verified working on Windows (2026-07-10, v0.8.82). Dist/`build/Release` exe is fast; a blank terminal after Build Release means F5 attached **CodeLLDB**, not a slow app.
+
+## Canonical F5 path (only this)
+
+| Step | What happens |
+|------|----------------|
+| 1 | F5 → `workbench.action.tasks.test` |
+| 2 | Default test task **`Build and Run PIPBONG (Release)`** |
+| 3 | `scripts/build-and-run.ps1` → `build-release.ps1` then `Start-Process` `build/Release/PIPBONG.exe` |
+| 4 | Terminal prints **`Started PIPBONG.exe`** and the window appears immediately |
+
+**Success check:** after build, terminal shows `Started PIPBONG.exe` — **not** a blank pane, **not** `codelldb-launch.exe`, **not** a “Debug PIPBONG” terminal tab.
+
+## Required invariants
+
+| Item | Rule |
+|------|------|
+| Cursor user `keybindings.json` | F5 **unconditionally** unbound from `workbench.action.debug.start` / `selectandstart` / `debug.run`; F5 bound to `workbench.action.tasks.test` (**no** `when` clause on the primary F5 binding) |
+| `.vscode/tasks.json` | **`Build and Run PIPBONG (Release)`** has `"group": { "kind": "test", "isDefault": true }` |
+| `.vscode/launch.json` | `"configurations": []` — **empty**. Do not add `lldb` / CodeLLDB / `cppvsdbg` daily-run configs |
+| `.vscode/settings.json` | `"pipbong.f5BuildAndRun": true`, `"debug.openDebug": "neverOpen"` |
+| Script | `scripts/fix-pipbong-cursor-f5.ps1` writes the keybindings; `recover-ide-build.ps1` runs it |
+
+## Hard bans (known failures)
+
+| Do not | Why |
+|--------|-----|
+| Gate F5 with `when: workspaceFolder =~ /Sbm1\.0/i` (or similar) | Often **fails to match** in Cursor → unbind ignored → F5 still starts CodeLLDB → blank terminal hang |
+| Put **`Debug PIPBONG`** / `type: "lldb"` in `launch.json` for daily F5 | F5 / Run and Debug play attaches debugger (multi-second symbol load) |
+| Use F5 = **Debug: Start Debugging** as the daily path | Same hang; `dist` exe looks “fast” by comparison |
+| “Fix” by restoring CodeLLDB launch as the F5 default | Regresses v0.8.82 |
+
+## When F5 regresses
+
+1. `.\scripts\fix-pipbong-cursor-f5.ps1`
+2. **Developer: Reload Window** (required — keybindings apply after reload)
+3. Press F5 → must see `Started PIPBONG.exe`
+
+## AI / agent rules
+
+- Never re-add debugger launch configs to make F5 “standard VS Code debugging.”
+- Never document optional CodeLLDB as the daily F5 path.
+- If the user reports blank terminal after build while `dist` is fast: this rule — not app startup performance.
+
+Full handover: [AGENTS.md](../../AGENTS.md) §3.1 (F5 sections), `.cursor/rules/ide-build-workflow.mdc`.

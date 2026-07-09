@@ -27,6 +27,7 @@ alwaysApply: true
 - **Single master document:** [AGENTS.md](../../AGENTS.md) — handover, changelog, build, JSON format, governance, patterns
 - Changelog + version bump + backup/release: `.cursor/rules/changelog-versioning.mdc`
 - Incremental / release build: `.cursor/rules/build-policy.mdc`
-- IDE build workflow (Ctrl+Shift+B, F5, `.vscode/`, CMake Tools off): `.cursor/rules/ide-build-workflow.mdc`
+- IDE build workflow (Ctrl+Shift+B, F5 Build and Run, empty launch.json, CMake Tools off): `.cursor/rules/ide-build-workflow.mdc`
+- **F5 without CodeLLDB (mandatory):** `.cursor/rules/f5-build-and-run.mdc`
 - **No full rebuild / vcpkg lock prevention:** `.cursor/rules/no-full-rebuild.mdc`
 - Screen capture overlay (Win32 — do not regress): `.cursor/rules/screen-capture-overlay.mdc`
