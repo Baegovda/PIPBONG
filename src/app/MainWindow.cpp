@@ -2654,6 +2654,9 @@ void MainWindow::onStopWorkflow() {
 }
 
 void MainWindow::onPickTargetWindow() {
+    if (isActiveDefaultProfile()) {
+        return;
+    }
 #ifdef _WIN32
     setPersistentStatus(tr("대상 창을 클릭하세요. 우클릭 또는 Esc로 취소"));
     WindowPicker::startPick(this, [this](const WindowPicker::Result& result) {
@@ -2682,6 +2685,9 @@ void MainWindow::onPickTargetWindow() {
 }
 
 void MainWindow::onPickTargetWindowFromList() {
+    if (isActiveDefaultProfile()) {
+        return;
+    }
 #ifdef _WIN32
     QDialog dialog(this);
     dialog.setWindowTitle(tr("창 목록"));
@@ -2810,6 +2816,9 @@ void MainWindow::onPickTargetWindowFromList() {
 }
 
 void MainWindow::onShowTargetWindow() {
+    if (isActiveDefaultProfile()) {
+        return;
+    }
 #ifdef _WIN32
     if (TargetWindowHighlightOverlay::flash(this)) {
         showTransientStatus(tr("대상 창을 표시했습니다."), 2500);
@@ -2820,6 +2829,9 @@ void MainWindow::onShowTargetWindow() {
 }
 
 void MainWindow::onPinTargetWindowCenterToggled(bool checked) {
+    if (isActiveDefaultProfile()) {
+        return;
+    }
     applyTargetWindowCenterPin(checked);
     saveActiveProfileSettings();
 }
@@ -3113,6 +3125,7 @@ void MainWindow::loadActiveProfile() {
     if (QFileInfo::exists(projectPath)) {
         loadProjectFromFile(projectPath);
         Application::instance()->setProjectDirectory(m_profileManager->activeProjectDirectory());
+        updateTargetWindowControlsForActiveProfile();
         return;
     }
 
@@ -3128,6 +3141,7 @@ void MainWindow::loadActiveProfile() {
     updateWindowTitle();
     syncHotkeys();
     updateTargetWindowDetails();
+    updateTargetWindowControlsForActiveProfile();
     autoSaveProject();
 }
 
@@ -3159,7 +3173,7 @@ void MainWindow::refreshProfileList() {
     for (int i = 0; i < static_cast<int>(profiles.size()); ++i) {
         const ProfileManager::Profile& profile = profiles[static_cast<size_t>(i)];
         const QString displayName =
-            profile.id == defaultId ? tr("%1 (기본)").arg(profile.name) : profile.name;
+            profile.id == defaultId ? tr("%1 (전역 기본)").arg(profile.name) : profile.name;
 #ifdef _WIN32
         auto* item = new QListWidgetItem(resolveProfileIcon(profile), displayName, m_profileList);
 #else
@@ -3171,7 +3185,7 @@ void MainWindow::refreshProfileList() {
                                           ? tr("대상 창 없음")
                                           : tr("대상 창: %1").arg(targetTitle);
         item->setToolTip(profile.id == defaultId
-                             ? tr("기본 프로필\n%1").arg(targetTooltip)
+                             ? tr("전역 기본 프로필\n대상 창 미지정 · 연결된 프로그램이 없을 때 자동 선택")
                              : targetTooltip);
         if (profile.id == activeId) {
             activeRow = i;
@@ -3183,6 +3197,7 @@ void MainWindow::refreshProfileList() {
     if (m_deleteProfileButton) {
         m_deleteProfileButton->setEnabled(profiles.size() > 1);
     }
+    updateTargetWindowControlsForActiveProfile();
     m_refreshingProfileList = false;
 }
 
@@ -3311,6 +3326,7 @@ void MainWindow::loadProjectFromFile(const QString& path) {
     updateWindowTitle();
     syncHotkeys();
     updateTargetWindowDetails();
+    updateTargetWindowControlsForActiveProfile();
 
     QSettings settings;
     settings.setValue(QStringLiteral("project/lastFile"), m_projectFilePath);
@@ -3341,8 +3357,52 @@ void MainWindow::syncTargetWindowTitleToCapture() {
     ScreenCapture::setTargetWindowTitle(currentTargetWindowTitleW());
 }
 
+bool MainWindow::isActiveDefaultProfile() const {
+    return m_profileManager
+           && m_profileManager->activeProfileId() == m_profileManager->defaultProfileId();
+}
+
+void MainWindow::updateTargetWindowControlsForActiveProfile() {
+    const bool lockedDefault = isActiveDefaultProfile();
+    const QString lockedTooltip = tr("전역 기본 프로필은 대상 창을 지정할 수 없습니다.");
+
+    if (m_pickWindowButton) {
+        m_pickWindowButton->setEnabled(!lockedDefault);
+        m_pickWindowButton->setToolTip(lockedDefault
+                                           ? lockedTooltip
+                                           : tr("클릭한 뒤 대상 창을 눌러 지정합니다. 우클릭 또는 Esc로 취소."));
+    }
+    if (m_pickWindowListButton) {
+        m_pickWindowListButton->setEnabled(!lockedDefault);
+        m_pickWindowListButton->setToolTip(lockedDefault
+                                               ? lockedTooltip
+                                               : tr("현재 표시 중인 창 목록에서 대상 창을 선택합니다."));
+    }
+    if (m_showTargetWindowButton) {
+        m_showTargetWindowButton->setEnabled(!lockedDefault);
+        m_showTargetWindowButton->setToolTip(lockedDefault
+                                                 ? lockedTooltip
+                                                 : tr("지정된 대상 창 테두리를 잠시 깜빡여 표시합니다."));
+    }
+    if (m_pinTargetWindowCenterCheck) {
+#ifdef _WIN32
+        m_pinTargetWindowCenterCheck->setEnabled(!lockedDefault);
+        m_pinTargetWindowCenterCheck->setToolTip(
+            lockedDefault ? lockedTooltip
+                          : tr("지정된 대상 창이 현재 모니터 중앙에 유지되도록 위치를 자동으로 맞춥니다."));
+#else
+        m_pinTargetWindowCenterCheck->setEnabled(false);
+#endif
+    }
+}
+
 void MainWindow::updateTargetWindowDetails() {
     if (!m_targetWindowDetailPanel) {
+        return;
+    }
+
+    if (isActiveDefaultProfile()) {
+        m_targetWindowDetailPanel->showGlobalDefaultProfile();
         return;
     }
 

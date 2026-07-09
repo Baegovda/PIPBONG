@@ -30,12 +30,14 @@ public:
 
     void showMessage(const QString& message);
     void showDetails(const TargetWindowDetailData& data);
+    void showGlobalDefaultProfile();
 
 protected:
     void changeEvent(QEvent* event) override;
 
 private:
     void refreshDetailText();
+    void refreshGlobalDefaultProfileText();
     void updateThemeColors();
     void setLabelTextColor(QLabel* label, const QColor& color, int fontSizePx, bool bold) const;
     QColor stateColorFor(const TargetWindowDetailData& data) const;
@@ -52,4 +54,5 @@ private:
     TargetWindowDetailData m_lastDetailData;
     bool m_updatingTheme = false;
     bool m_expandedDetails = false;
+    bool m_globalDefaultProfileMode = false;
 };

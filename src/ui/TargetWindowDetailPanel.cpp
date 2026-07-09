@@ -256,7 +256,9 @@ void TargetWindowDetailPanel::updateThemeColors() {
         m_moreButton->setFont(f);
     }
 
-    if (m_detailsPage->isVisible() && !m_lastDetailData.hwnd.isEmpty()) {
+    if (m_detailsPage->isVisible() && m_globalDefaultProfileMode) {
+        refreshGlobalDefaultProfileText();
+    } else if (m_detailsPage->isVisible() && !m_lastDetailData.hwnd.isEmpty()) {
         refreshDetailText();
     }
 
@@ -276,6 +278,7 @@ void TargetWindowDetailPanel::changeEvent(QEvent* event) {
 }
 
 void TargetWindowDetailPanel::showMessage(const QString& message) {
+    m_globalDefaultProfileMode = false;
     m_messageLabel->setText(message);
     setToolTip({});
     if (auto* stackHost = m_messagePage->parentWidget()) {
@@ -287,6 +290,7 @@ void TargetWindowDetailPanel::showMessage(const QString& message) {
 }
 
 void TargetWindowDetailPanel::showDetails(const TargetWindowDetailData& data) {
+    m_globalDefaultProfileMode = false;
     m_lastDetailData = data;
 
     if (auto* stackHost = m_messagePage->parentWidget()) {
@@ -296,6 +300,9 @@ void TargetWindowDetailPanel::showDetails(const TargetWindowDetailData& data) {
     }
 
     refreshDetailText();
+    if (m_moreButton) {
+        m_moreButton->setVisible(true);
+    }
     updateThemeColors();
 
     QString panelTooltip = tr("프로세스 경로: %1").arg(data.processPath.isEmpty() ? tr("알 수 없음") : data.processPath);
@@ -304,4 +311,52 @@ void TargetWindowDetailPanel::showDetails(const TargetWindowDetailData& data) {
         panelTooltip += QStringLiteral("\n") + tr("모니터 DPI는 대상 창이 위치한 디스플레이 기준입니다.");
     }
     setToolTip(panelTooltip);
+}
+
+void TargetWindowDetailPanel::showGlobalDefaultProfile() {
+    m_globalDefaultProfileMode = true;
+    m_lastDetailData = {};
+
+    if (auto* stackHost = m_messagePage->parentWidget()) {
+        if (auto* stackedLayout = qobject_cast<QStackedLayout*>(stackHost->layout())) {
+            stackedLayout->setCurrentWidget(m_detailsPage);
+        }
+    }
+
+    if (m_moreButton) {
+        m_moreButton->setVisible(false);
+        m_moreButton->setChecked(false);
+    }
+    if (m_tertiaryLine) {
+        m_tertiaryLine->setVisible(false);
+    }
+
+    refreshGlobalDefaultProfileText();
+    updateThemeColors();
+
+    setToolTip(tr("전역 기본 프로필은 대상 창을 지정하지 않습니다.\n"
+                  "연결된 프로그램이 없을 때 자동으로 선택되며, 대상 창 설정은 변경할 수 없습니다."));
+}
+
+void TargetWindowDetailPanel::refreshGlobalDefaultProfileText() {
+    const QPalette pal = palette();
+    const QColor text = pal.color(QPalette::WindowText);
+    const QColor muted = secondaryHintTextColor(pal);
+    const QColor stateColor = text.lightness() < 128 ? QColor(0x64, 0xb5, 0xf6) : QColor(0x1e, 0x88, 0xe5);
+
+    m_titleLabel->setText(tr("전역 기본 프로필"));
+    m_statusLabel->setText(tr("● 시스템 고정"));
+
+    const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
+    m_statusLabel->setStyleSheet(QStringLiteral(
+        "padding: 3px 10px; border-radius: 999px; font-weight: 600; background-color: %1; color: %2;")
+                                     .arg(stateColor.name(), badgeText.name()));
+
+    m_primaryLine->setText(
+        captionSpan(tr("대상 창"), muted) + QLatin1Char(' ')
+        + valueSpan(tr("미지정"), text) + QStringLiteral(" &nbsp;&middot;&nbsp; ")
+        + captionSpan(tr("실행 범위"), muted) + QLatin1Char(' ')
+        + valueSpan(tr("전역"), text));
+
+    m_secondaryLine->setText(valueSpan(tr("모든 프로그램에서 동작하며, 대상 창 설정은 변경할 수 없습니다."), muted));
 }

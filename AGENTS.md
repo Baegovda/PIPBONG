@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.32` (from `project(PIPBONG VERSION 0.8.32)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.33` (from `project(PIPBONG VERSION 0.8.33)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -856,15 +856,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ## [Unreleased]
 
 ### Added
- 
 
 ### Changed
 
 ### Fixed
 
-- 기능 목록이 Windows 리스트처럼 `Ctrl+클릭`/`Shift+클릭` 다중 선택을 지원하도록 `ExtendedSelection`으로 바뀌었고, 다중 선택 상태에서 `Delete`는 선택된 여러 기능을 한 번에 삭제합니다. 다중 선택일 때는 드래그 재정렬을 막아 기존 단일행 재정렬 UX와 충돌하지 않도록 했습니다 (`FeatureListWidget`, `FeatureListPanel`).
-
 ### Removed
+
+## [0.8.33] - 2026-07-09
+
+### Changed
+
+- Global default profile: target-window panel shows a **전역 기본 프로필** info card with **시스템 고정** badge instead of an empty pick prompt; **창 지정** / **창 목록** / **창 표시** / **화면 중앙 고정** are disabled with an explanatory tooltip; profile list suffix updated to **(전역 기본)** (`TargetWindowDetailPanel`, `MainWindow`).
 
 ## [0.8.32] - 2026-07-08
 

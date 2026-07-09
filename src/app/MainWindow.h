@@ -193,6 +193,8 @@ private:
                                   int index,
                                   BlockListWidget::ExecutionHighlight highlight);
     void updateTargetWindowDetails();
+    void updateTargetWindowControlsForActiveProfile();
+    bool isActiveDefaultProfile() const;
     std::wstring currentTargetWindowTitleW() const;
     void syncTargetWindowTitleToCapture();
     void saveSelectedFeaturePreference();
