@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.50` (from `project(PIPBONG VERSION 0.8.50)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.51` (from `project(PIPBONG VERSION 0.8.51)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -891,6 +891,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.51] - 2026-07-09
+
+### Fixed
+
+- Profile switching stutter: quiet save/load (no auto-save toast or project-load log), skip duplicate hotkey sync and full profile-list rebuild on switch failure, one-shot capture BitBlt warmup, and deferred center-pin sync after the new target HWND is ready (`MainWindow`, `RunWarmup`).
 
 ## [0.8.50] - 2026-07-09
 

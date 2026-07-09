@@ -157,9 +157,9 @@ private:
     void stopFeatureRun(const std::string& featureId);
     void stopAllSessions();
     void appendLog(const QString& message, LogLineKind kind = LogLineKind::Info);
-    bool maybeSave();
-    void loadProjectFromFile(const QString& path);
-    void loadActiveProfile();
+    bool maybeSave(bool quiet = false);
+    void loadProjectFromFile(const QString& path, bool quiet = false);
+    void loadActiveProfile(bool quiet = false);
     void refreshProfileList();
     void refreshFeatureLibraryPanel();
     bool importLibraryEntry(const QString& entryId);
@@ -189,7 +189,7 @@ private:
     void syncWindowTitleDisplay();
     void refreshWorkflowEditor();
     void scheduleAutoSave();
-    void autoSaveProject();
+    void autoSaveProject(bool quiet = false);
     bool ensureProjectFilePath();
     void prepareForShutdown();
     void setupTrayIcon();

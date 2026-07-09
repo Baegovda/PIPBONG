@@ -260,7 +260,7 @@ MainWindow::MainWindow(QWidget* parent)
     , m_hotkeyManager(new HotkeyManager(this)) {
     m_autoSaveTimer = new QTimer(this);
     m_autoSaveTimer->setSingleShot(true);
-    connect(m_autoSaveTimer, &QTimer::timeout, this, &MainWindow::autoSaveProject);
+    connect(m_autoSaveTimer, &QTimer::timeout, this, [this]() { autoSaveProject(); });
 
     m_statusClearTimer = new QTimer(this);
     m_statusClearTimer->setSingleShot(true);
@@ -1563,7 +1563,7 @@ bool MainWindow::ensureProjectFilePath() {
     return !m_projectFilePath.isEmpty();
 }
 
-void MainWindow::autoSaveProject() {
+void MainWindow::autoSaveProject(bool quiet) {
     if (!ensureProjectFilePath()) {
         return;
     }
@@ -1571,7 +1571,9 @@ void MainWindow::autoSaveProject() {
     if (JsonSerializer::saveToFile(*m_project, m_projectFilePath, Application::instance()->projectDirectory())) {
         m_modified = false;
         updateWindowTitle();
-        showTransientStatus(tr("자동 저장됨"), 2000);
+        if (!quiet) {
+            showTransientStatus(tr("자동 저장됨"), 2000);
+        }
     }
 }
 
@@ -3556,8 +3558,16 @@ void MainWindow::applyTargetWindowCenterPin(bool enabled) {
         return;
     }
     if (enabled) {
-        syncTargetWindowCenterPin();
-        m_targetWindowCenterPinTimer->start();
+        const bool alreadyRunning = m_targetWindowCenterPinTimer->isActive();
+        if (!alreadyRunning) {
+            m_targetWindowCenterPinTimer->start();
+        }
+        // Defer so profile load can resolve the new target HWND first; avoids a sync on the old window.
+        QTimer::singleShot(0, this, [this]() {
+            if (ProgramSettings::pinTargetWindowToScreenCenter()) {
+                syncTargetWindowCenterPin();
+            }
+        });
         return;
     }
     m_targetWindowCenterPinTimer->stop();
@@ -3805,13 +3815,13 @@ void MainWindow::appendLog(const QString& message, LogLineKind kind) {
     }
 }
 
-bool MainWindow::maybeSave() {
+bool MainWindow::maybeSave(bool quiet) {
     if (!m_modified) {
         return true;
     }
 
     m_autoSaveTimer->stop();
-    autoSaveProject();
+    autoSaveProject(quiet);
     return true;
 }
 
@@ -3823,7 +3833,7 @@ void MainWindow::saveActiveProfileSettings() {
                                    ProgramSettings::profileSettings());
 }
 
-void MainWindow::loadActiveProfile() {
+void MainWindow::loadActiveProfile(bool quiet) {
     if (!m_profileManager) {
         return;
     }
@@ -3844,7 +3854,7 @@ void MainWindow::loadActiveProfile() {
     const QString projectPath = m_profileManager->activeProjectPath();
     Application::instance()->setProjectDirectory(m_profileManager->activeProjectDirectory());
     if (QFileInfo::exists(projectPath)) {
-        loadProjectFromFile(projectPath);
+        loadProjectFromFile(projectPath, quiet);
         Application::instance()->setProjectDirectory(m_profileManager->activeProjectDirectory());
         updateTargetWindowControlsForActiveProfile();
         return;
@@ -3866,7 +3876,7 @@ void MainWindow::loadActiveProfile() {
     syncHotkeys();
     updateTargetWindowDetails();
     updateTargetWindowControlsForActiveProfile();
-    autoSaveProject();
+    autoSaveProject(quiet);
 }
 
 void MainWindow::refreshProfileList() {
@@ -3972,28 +3982,32 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         || profileId == m_profileManager->activeProfileId()) {
         return false;
     }
-    if (!maybeSave()) {
-        refreshProfileList();
+    // Quiet flush: avoid "자동 저장됨" / load-log flicker on every profile switch.
+    if (!maybeSave(true)) {
+        syncProfileListSelection();
         return false;
     }
     saveActiveProfileSettings();
     stopAllSessions();
     if (!m_profileManager->setActiveProfile(profileId)) {
-        refreshProfileList();
+        syncProfileListSelection();
         return false;
     }
-    loadActiveProfile();
+    loadActiveProfile(true);
     syncProfileListSelection();
-    syncHotkeys();
+    // loadActiveProfile / loadProjectFromFile already call syncHotkeys once.
     scheduleRunWarmup();
     m_pendingProfileSwitchId.clear();
     m_pendingProfileSwitchPolls = 0;
-    showTransientStatus(automatic ? tr("프로필 자동 전환: %1")
-                                  : tr("프로필 전환: %1")
-                            .arg(m_profileManager->activeProfile()
-                                     ? m_profileManager->activeProfile()->name
-                                     : QString()),
-                        2500);
+    if (!automatic) {
+        const ProfileManager::Profile* profile = m_profileManager->activeProfile();
+        const QString name = profile
+                                 ? (m_profileManager->isDefaultProfile(profile->id)
+                                        ? tr("기본")
+                                        : profile->name)
+                                 : QString();
+        showTransientStatus(tr("프로필 전환: %1").arg(name), 1200);
+    }
     return true;
 }
 
@@ -4046,7 +4060,7 @@ void MainWindow::syncProfileToForegroundWindow() {
 #endif
 }
 
-void MainWindow::loadProjectFromFile(const QString& path) {
+void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
     QString projectDirectory;
     auto loaded = JsonSerializer::loadFromFile(path, &projectDirectory);
     if (!loaded) {
@@ -4089,7 +4103,9 @@ void MainWindow::loadProjectFromFile(const QString& path) {
 
     QSettings settings;
     settings.setValue(QStringLiteral("project/lastFile"), m_projectFilePath);
-    appendLog(tr("프로젝트 파일을 불러왔습니다: %1").arg(path), LogLineKind::Success);
+    if (!quiet) {
+        appendLog(tr("프로젝트 파일을 불러왔습니다: %1").arg(path), LogLineKind::Success);
+    }
 }
 
 void MainWindow::updateWindowTitle() {
@@ -4324,11 +4340,15 @@ void MainWindow::onUserInputInterrupt(const std::string& featureId) {
 }
 
 void MainWindow::scheduleRunWarmup() {
+    // Defer past the current event so profile-switch UI (list/hotkeys) paints first.
+    // Capture BitBlt warmup is one-shot inside RunWarmup; template prefetch stays light.
     QTimer::singleShot(0, this, [this]() {
         if (!m_project) {
             return;
         }
-        RunWarmup::prefetch(m_project.get(),
-                            Application::instance()->projectDirectory().toStdString());
+        const Project* project = m_project.get();
+        const std::string projectDirectory =
+            Application::instance()->projectDirectory().toStdString();
+        RunWarmup::prefetch(project, projectDirectory);
     });
 }

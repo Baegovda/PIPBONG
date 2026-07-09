@@ -12,8 +12,13 @@
 
 void RunWarmup::prefetch(const Project* project, const std::string& projectDirectory) {
 #ifdef _WIN32
+    // One-shot OpenCV / capture probe — repeating BitBlt on every profile switch stutters the UI.
+    static bool s_captureWarmed = false;
     ImageMatcher::warmup();
-    ScreenCapture::warmupCapture();
+    if (!s_captureWarmed) {
+        ScreenCapture::warmupCapture();
+        s_captureWarmed = true;
+    }
 #endif
 
     if (!project || projectDirectory.empty()) {
