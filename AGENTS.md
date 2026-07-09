@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.64` (from `project(PIPBONG VERSION 0.8.64)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.65` (from `project(PIPBONG VERSION 0.8.65)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -894,6 +894,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.65] - 2026-07-09
+
+### Fixed
+
+- Hold mode (**누를 동안**) sometimes kept looping after the hotkey was released: deferred physical key-up recheck when async state lags, `isHoldBindingDown` / `reconcileHoldBindingDown` verify Win32 key state (not hook flag alone), cancel pending loop-gap timers on every hold-end signal, and bump `holdRepeatGeneration` on user-input stop (`HotkeyManager`, `HotkeyBinding`, `MainWindow`).
 
 ## [0.8.64] - 2026-07-09
 

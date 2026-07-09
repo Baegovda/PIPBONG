@@ -2993,6 +2993,9 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
                                          Feature* feature,
                                          bool success,
                                          const QString& message) {
+    if (session.runningMode == FeatureRunMode::Hold && m_hotkeyManager) {
+        m_hotkeyManager->reconcileHoldBindingDown(session.featureId);
+    }
     if (!shouldContinueRunSession(session, feature)) {
         finishRunSession(session.featureId, success, message);
         return;
@@ -3356,12 +3359,18 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
 }
 
 void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
-    FeatureRunSession* session = sessionFor(featureId.toStdString());
-    if (!session || !session->holdRunActive) {
+    const std::string id = featureId.toStdString();
+    FeatureRunSession* session = sessionFor(id);
+    if (!session || session->runningMode != FeatureRunMode::Hold) {
         return;
     }
 
     ++session->holdRepeatGeneration;
+
+    if (!session->holdRunActive) {
+        return;
+    }
+
     session->holdRunActive = false;
     session->repeatSession = false;
 
@@ -3372,7 +3381,7 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     }
 
     session->userStopRequested = false;
-    finishRunSession(featureId.toStdString(), true, QString());
+    finishRunSession(id, true, QString());
 }
 
 bool MainWindow::shouldSuppressFeatureHotkeyExecution() const {
@@ -4429,6 +4438,7 @@ void MainWindow::onUserInputInterrupt(const std::string& featureId) {
         session->userStopRequested = true;
         session->repeatSession = false;
         session->holdRunActive = false;
+        ++session->holdRepeatGeneration;
         session->sessionContext->requestStop();
         if (session->engine) {
             session->engine->stop();

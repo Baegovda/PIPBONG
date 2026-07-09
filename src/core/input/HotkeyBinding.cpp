@@ -153,15 +153,18 @@ unsigned int HotkeyBinding::winModifiers() const {
     return mods;
 }
 
-bool HotkeyBinding::isPressed() const {
+bool HotkeyBinding::isPhysicallyDown(bool allowExtraModifiers) const {
     if (isEmpty()) {
         return false;
     }
-    const bool keyDown = (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
-    if (!keyDown) {
+    if ((GetAsyncKeyState(virtualKey) & 0x8000) == 0) {
         return false;
     }
-    return modifiersMatch();
+    return modifiersMatch(allowExtraModifiers);
+}
+
+bool HotkeyBinding::isPressed() const {
+    return isPhysicallyDown(false);
 }
 
 bool HotkeyBinding::matchesVirtualKey(int vkCode) const {
