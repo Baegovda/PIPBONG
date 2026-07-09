@@ -76,8 +76,8 @@ private slots:
     void onFeatureEnabledChanged(const QString& featureId, bool enabled);
     void onSaveFeatureToLibraryRequested(const QString& featureId);
     void onImportFeatureFromLibraryRequested();
-    void onImportLibraryEntryRequested(const QString& entryId);
-    void onDeleteLibraryEntryRequested(const QString& entryId);
+    void onImportLibraryEntriesRequested(const QStringList& entryIds);
+    void onDeleteLibraryEntriesRequested(const QStringList& entryIds);
     void onLibraryEntrySelected(const QString& entryId);
     void onStopWorkflow();
     void onExitRequested();
@@ -161,9 +161,12 @@ private:
     void refreshProfileList();
     void refreshFeatureLibraryPanel();
     bool importLibraryEntry(const QString& entryId);
+    bool importLibraryEntries(const QStringList& entryIds);
     bool importLibraryEntryToProfile(const QString& entryId,
                                      const QString& profileId,
-                                     int insertIndex);
+                                     int insertIndex,
+                                     bool refreshListUi = true,
+                                     QString* insertedFeatureId = nullptr);
     bool saveFeatureToLibraryFromDrag(const QString& featureId, const QString& profileId);
     bool moveFeatureBetweenProfiles(const QString& featureId,
                                     const QString& sourceProfileId,

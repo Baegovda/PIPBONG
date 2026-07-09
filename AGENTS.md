@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.43` (from `project(PIPBONG VERSION 0.8.43)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.44` (from `project(PIPBONG VERSION 0.8.44)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -878,6 +878,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.44] - 2026-07-09
+
+### Added
+
+- Library drawer supports `Ctrl+클릭` / `Shift+클릭` multi-selection and `Delete` to remove multiple entries; context menu import/delete actions apply to all selected rows (`FeatureLibraryListWidget`, `FeatureListPanel`, `MainWindow::importLibraryEntries`, `onDeleteLibraryEntriesRequested`).
+
+### Changed
+
+- Library list refresh preserves multi-selection across panel updates (`FeatureListPanel::setLibraryEntries`).
 
 ## [0.8.43] - 2026-07-09
 

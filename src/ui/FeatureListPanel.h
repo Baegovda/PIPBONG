@@ -113,9 +113,9 @@ signals:
     /// Open the library picker and import a feature into the current profile.
     void importFeatureFromLibraryRequested();
     /// Import a specific library entry (double-click / context menu on the drawer).
-    void importLibraryEntryRequested(const QString& entryId);
-    /// Delete a library entry from the drawer context menu.
-    void deleteLibraryEntryRequested(const QString& entryId);
+    void importLibraryEntriesRequested(const QStringList& entryIds);
+    /// Delete library entries from the drawer context menu or Delete key.
+    void deleteLibraryEntriesRequested(const QStringList& entryIds);
     /// Feature or library entry dropped onto the feature list.
     void featureDropped(const QMimeData* mime, int insertIndex);
     /// Active-profile feature dropped onto the library drawer.
@@ -181,6 +181,8 @@ private:
     void setLibraryDrawerExpanded(bool expanded, bool persist);
     void updateLibraryToggleText();
     void onLibraryContextMenu(const QPoint& pos);
+    void onRemoveLibraryEntries();
+    QStringList selectedLibraryEntryIds() const;
     int libraryDrawerContentHeight() const;
     void animateLibraryDrawerTo(bool expanded);
     void applyLibraryDrawerHeight(int height, bool expanded);

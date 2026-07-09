@@ -621,13 +621,13 @@ void MainWindow::connectSignals() {
             this,
             &MainWindow::onImportFeatureFromLibraryRequested);
     connect(m_featureList,
-            &FeatureListPanel::importLibraryEntryRequested,
+            &FeatureListPanel::importLibraryEntriesRequested,
             this,
-            &MainWindow::onImportLibraryEntryRequested);
+            &MainWindow::onImportLibraryEntriesRequested);
     connect(m_featureList,
-            &FeatureListPanel::deleteLibraryEntryRequested,
+            &FeatureListPanel::deleteLibraryEntriesRequested,
             this,
-            &MainWindow::onDeleteLibraryEntryRequested);
+            &MainWindow::onDeleteLibraryEntriesRequested);
     connect(m_featureList,
             &FeatureListPanel::featureRunRequested,
             this,
@@ -1918,8 +1918,8 @@ void MainWindow::onImportFeatureFromLibraryRequested() {
     importLibraryEntry(entryId);
 }
 
-void MainWindow::onImportLibraryEntryRequested(const QString& entryId) {
-    importLibraryEntry(entryId);
+void MainWindow::onImportLibraryEntriesRequested(const QStringList& entryIds) {
+    importLibraryEntries(entryIds);
 }
 
 void MainWindow::onLibraryEntrySelected(const QString& entryId) {
@@ -1943,34 +1943,54 @@ void MainWindow::onLibraryEntrySelected(const QString& entryId) {
     refreshWorkflowEditor();
 }
 
-void MainWindow::onDeleteLibraryEntryRequested(const QString& entryId) {
-    if (!m_featureLibraryManager || entryId.isEmpty()) {
+void MainWindow::onDeleteLibraryEntriesRequested(const QStringList& entryIds) {
+    if (!m_featureLibraryManager || entryIds.isEmpty()) {
         return;
     }
-    QString entryName = entryId;
-    for (const auto& e : m_featureLibraryManager->listEntries()) {
-        if (e.id == entryId) {
-            entryName = e.name;
-            break;
+
+    const bool multiple = entryIds.size() > 1;
+    const QString singleEntryName =
+        multiple ? QString()
+                 : libraryEntryDisplayName(m_featureLibraryManager.get(), entryIds.front());
+    QMessageBox box(QMessageBox::Question,
+                    tr("라이브러리에서 삭제"),
+                    multiple ? tr("선택한 라이브러리 항목 %1개를 삭제하시겠습니까?\n"
+                                  "이미 가져온 기능에는 영향이 없습니다.")
+                                   .arg(entryIds.size())
+                             : tr("'%1' 항목을 라이브러리에서 삭제하시겠습니까?\n"
+                                  "이미 가져온 기능에는 영향이 없습니다.")
+                                   .arg(singleEntryName),
+                    QMessageBox::Yes | QMessageBox::No,
+                    this);
+    box.setDefaultButton(QMessageBox::No);
+    if (static_cast<QMessageBox::StandardButton>(box.exec()) != QMessageBox::Yes) {
+        return;
+    }
+
+    int removed = 0;
+    bool previewCleared = false;
+    for (const QString& entryId : entryIds) {
+        if (entryId.isEmpty()) {
+            continue;
         }
-    }
-    const auto reply = QMessageBox::question(this,
-                                             tr("라이브러리에서 삭제"),
-                                             tr("'%1' 항목을 라이브러리에서 삭제하시겠습니까?\n"
-                                                "이미 가져온 기능에는 영향이 없습니다.")
-                                                 .arg(entryName),
-                                             QMessageBox::Yes | QMessageBox::No,
-                                             QMessageBox::No);
-    if (reply != QMessageBox::Yes) {
-        return;
-    }
-    if (m_featureLibraryManager->removeEntry(entryId)) {
+        if (!m_featureLibraryManager->removeEntry(entryId)) {
+            continue;
+        }
+        ++removed;
         if (m_libraryPreviewEntryId == entryId) {
             m_libraryPreviewEntryId.clear();
             m_libraryPreviewFeature.reset();
-            refreshWorkflowEditor();
+            previewCleared = true;
         }
-        showTransientStatus(tr("라이브러리에서 삭제됨: %1").arg(entryName), 2500);
+    }
+
+    if (previewCleared) {
+        refreshWorkflowEditor();
+    }
+    if (removed > 0) {
+        showTransientStatus(multiple ? tr("라이브러리에서 %1개 항목 삭제됨").arg(removed)
+                                     : tr("라이브러리에서 삭제됨: %1").arg(singleEntryName),
+                          2500);
     }
     refreshFeatureLibraryPanel();
 }
@@ -2022,7 +2042,9 @@ bool MainWindow::removeFeatureFromProfile(const QString& profileId, const QStrin
 
 bool MainWindow::importLibraryEntryToProfile(const QString& entryId,
                                              const QString& profileId,
-                                             int insertIndex) {
+                                             int insertIndex,
+                                             bool refreshListUi,
+                                             QString* insertedFeatureId) {
     if (!m_featureLibraryManager || !m_profileManager || entryId.isEmpty() || profileId.isEmpty()) {
         return false;
     }
@@ -2042,10 +2064,12 @@ bool MainWindow::importLibraryEntryToProfile(const QString& entryId,
         const int count = static_cast<int>(m_project->features().size());
         const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
         m_project->insertFeature(idx, std::move(res.feature));
-        m_featureList->refresh();
-        m_featureList->selectFeatureById(newFeatureId);
-        syncHotkeys();
-        scheduleAutoSave();
+        if (refreshListUi) {
+            m_featureList->refresh();
+            m_featureList->selectFeatureById(newFeatureId);
+            syncHotkeys();
+            scheduleAutoSave();
+        }
     } else {
         const QString path = m_profileManager->projectPath(profileId);
         QString projectDir = targetProjectDir;
@@ -2059,6 +2083,10 @@ bool MainWindow::importLibraryEntryToProfile(const QString& entryId,
         if (!JsonSerializer::saveToFile(*project, path, projectDir)) {
             return false;
         }
+    }
+
+    if (insertedFeatureId) {
+        *insertedFeatureId = newFeatureId;
     }
 
     if (!res.missingTemplatePaths.empty()) {
@@ -2310,23 +2338,56 @@ void MainWindow::onFeatureDroppedOnProfile(const QString& targetProfileId, const
 }
 
 bool MainWindow::importLibraryEntry(const QString& entryId) {
+    return importLibraryEntries(QStringList{entryId});
+}
+
+bool MainWindow::importLibraryEntries(const QStringList& entryIds) {
     if (!m_project || !m_featureLibraryManager || !m_featureList || !m_profileManager
-        || entryId.isEmpty()) {
+        || entryIds.isEmpty()) {
         return false;
     }
 
-    const int insertIndex = m_featureList->selectedIndex() >= 0
-                                ? m_featureList->selectedIndex() + 1
-                                : static_cast<int>(m_project->features().size());
-    const QString entryName = libraryEntryDisplayName(m_featureLibraryManager.get(), entryId);
-    if (!importLibraryEntryToProfile(entryId, m_profileManager->activeProfileId(), insertIndex)) {
+    int insertIndex = m_featureList->selectedIndex() >= 0
+                          ? m_featureList->selectedIndex() + 1
+                          : static_cast<int>(m_project->features().size());
+    const QString profileId = m_profileManager->activeProfileId();
+    QString lastFeatureId;
+    int imported = 0;
+    for (const QString& entryId : entryIds) {
+        if (entryId.isEmpty()) {
+            continue;
+        }
+        QString insertedFeatureId;
+        if (!importLibraryEntryToProfile(entryId, profileId, insertIndex, false, &insertedFeatureId)) {
+            continue;
+        }
+        lastFeatureId = insertedFeatureId;
+        ++insertIndex;
+        ++imported;
+    }
+
+    if (imported == 0) {
         QMessageBox::critical(this,
                               tr("라이브러리 가져오기 실패"),
                               tr("라이브러리 항목을 불러오지 못했습니다."));
         return false;
     }
 
-    showTransientStatus(tr("라이브러리에서 가져옴: %1").arg(entryName), 2500);
+    m_featureList->refresh();
+    if (!lastFeatureId.isEmpty()) {
+        m_featureList->selectFeatureById(lastFeatureId);
+    }
+    syncHotkeys();
+    scheduleAutoSave();
+
+    if (imported == 1) {
+        showTransientStatus(tr("라이브러리에서 가져옴: %1")
+                                .arg(libraryEntryDisplayName(m_featureLibraryManager.get(),
+                                                             entryIds.front())),
+                            2500);
+    } else {
+        showTransientStatus(tr("라이브러리에서 %1개 항목을 가져왔습니다.").arg(imported), 2500);
+    }
     return true;
 }
 

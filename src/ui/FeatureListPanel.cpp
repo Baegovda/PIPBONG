@@ -809,7 +809,6 @@ void FeatureListPanel::setupUi() {
     m_libraryList->setFrameShape(QFrame::NoFrame);
     m_libraryList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_libraryList->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_libraryList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_libraryList->setContextMenuPolicy(Qt::CustomContextMenu);
     m_libraryList->setUniformItemSizes(true);
     m_libraryList->setStyleSheet(QStringLiteral(
@@ -829,7 +828,8 @@ void FeatureListPanel::setupUi() {
     });
     connect(m_libraryList, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
         if (item && m_editControlsEnabled) {
-            emit importLibraryEntryRequested(item->data(Qt::UserRole).toString());
+            emit importLibraryEntriesRequested(
+                QStringList{item->data(Qt::UserRole).toString()});
         }
     });
     connect(m_libraryList,
@@ -848,6 +848,10 @@ void FeatureListPanel::setupUi() {
             &QListWidget::customContextMenuRequested,
             this,
             &FeatureListPanel::onLibraryContextMenu);
+    connect(m_libraryList,
+            &FeatureLibraryListWidget::deleteRequested,
+            this,
+            &FeatureListPanel::onRemoveLibraryEntries);
 
     groupLayout->addLayout(buttonRow);
     groupLayout->addWidget(tableFrame, 3);
@@ -1018,10 +1022,26 @@ void FeatureListPanel::setLibraryEntries(const std::vector<LibraryEntryUi>& entr
     if (!m_libraryList) {
         return;
     }
-    const QString selectedId = m_libraryList->currentItem()
-                                   ? m_libraryList->currentItem()->data(Qt::UserRole).toString()
-                                   : QString();
+    QStringList selectedIds;
+    for (QListWidgetItem* item : m_libraryList->selectedItems()) {
+        if (!item) {
+            continue;
+        }
+        const QString id = item->data(Qt::UserRole).toString();
+        if (!id.isEmpty()) {
+            selectedIds.push_back(id);
+        }
+    }
+    const QString currentId = m_libraryList->currentItem()
+                                  ? m_libraryList->currentItem()->data(Qt::UserRole).toString()
+                                  : QString();
+    if (!currentId.isEmpty() && !selectedIds.contains(currentId)) {
+        selectedIds.push_back(currentId);
+    }
+
     m_libraryList->clear();
+    QListWidgetItem* firstSelectedItem = nullptr;
+    QListWidgetItem* currentItem = nullptr;
     for (const LibraryEntryUi& entry : entries) {
         const QString label = entry.templateCount > 0
                                   ? tr("%1  ·  템플릿 %2").arg(entry.name).arg(entry.templateCount)
@@ -1029,13 +1049,70 @@ void FeatureListPanel::setLibraryEntries(const std::vector<LibraryEntryUi>& entr
         auto* item = new QListWidgetItem(label, m_libraryList);
         item->setData(Qt::UserRole, entry.id);
         item->setToolTip(tr("%1\n더블클릭: 현재 프로필로 가져오기").arg(entry.name));
-        if (entry.id == selectedId) {
-            m_libraryList->setCurrentItem(item);
+        if (selectedIds.contains(entry.id)) {
+            item->setSelected(true);
+            if (!firstSelectedItem) {
+                firstSelectedItem = item;
+            }
+            if (entry.id == currentId) {
+                currentItem = item;
+            }
         }
+    }
+    if (currentItem) {
+        m_libraryList->setCurrentItem(currentItem);
+    } else if (firstSelectedItem) {
+        m_libraryList->setCurrentItem(firstSelectedItem);
     }
     m_libraryEntryCount = static_cast<int>(entries.size());
     updateLibraryToggleText();
     syncLibraryDrawerHeight(m_libraryExpanded);
+}
+
+QStringList FeatureListPanel::selectedLibraryEntryIds() const {
+    QStringList ids;
+    if (!m_libraryList) {
+        return ids;
+    }
+    QList<int> rows;
+    for (QListWidgetItem* item : m_libraryList->selectedItems()) {
+        if (!item) {
+            continue;
+        }
+        const int row = m_libraryList->row(item);
+        if (row < 0) {
+            continue;
+        }
+        const QString id = item->data(Qt::UserRole).toString();
+        if (!id.isEmpty()) {
+            rows.push_back(row);
+            ids.push_back(id);
+        }
+    }
+    if (rows.isEmpty()) {
+        return ids;
+    }
+    QList<QPair<int, QString>> ordered;
+    ordered.reserve(rows.size());
+    for (int i = 0; i < rows.size(); ++i) {
+        ordered.push_back({rows[i], ids[i]});
+    }
+    std::sort(ordered.begin(), ordered.end(), [](const QPair<int, QString>& a, const QPair<int, QString>& b) {
+        return a.first < b.first;
+    });
+    ids.clear();
+    for (const auto& pair : ordered) {
+        ids.push_back(pair.second);
+    }
+    return ids;
+}
+
+void FeatureListPanel::onRemoveLibraryEntries() {
+    const QStringList entryIds = selectedLibraryEntryIds();
+    if (entryIds.isEmpty()) {
+        return;
+    }
+    emit deleteLibraryEntriesRequested(entryIds);
 }
 
 void FeatureListPanel::onLibraryContextMenu(const QPoint& pos) {
@@ -1046,18 +1123,26 @@ void FeatureListPanel::onLibraryContextMenu(const QPoint& pos) {
     if (!item) {
         return;
     }
-    m_libraryList->setCurrentItem(item);
-    const QString entryId = item->data(Qt::UserRole).toString();
+    if (!item->isSelected()) {
+        m_libraryList->setCurrentItem(item, QItemSelectionModel::ClearAndSelect);
+    }
+    const QStringList entryIds = selectedLibraryEntryIds();
+    if (entryIds.isEmpty()) {
+        return;
+    }
 
     QMenu menu(this);
-    menu.addAction(tr("현재 프로필로 가져오기"), this, [this, entryId]() {
-        emit importLibraryEntryRequested(entryId);
-    })
+    const bool multiple = entryIds.size() > 1;
+    menu.addAction(multiple ? tr("선택 항목 가져오기 (%1)").arg(entryIds.size())
+                            : tr("현재 프로필로 가져오기"),
+                   this,
+                   [this, entryIds]() { emit importLibraryEntriesRequested(entryIds); })
         ->setEnabled(m_editControlsEnabled);
     menu.addSeparator();
-    menu.addAction(tr("라이브러리에서 삭제"), this, [this, entryId]() {
-        emit deleteLibraryEntryRequested(entryId);
-    });
+    menu.addAction(multiple ? tr("선택 항목 삭제 (%1)").arg(entryIds.size())
+                            : tr("라이브러리에서 삭제"),
+                   this,
+                   [this, entryIds]() { emit deleteLibraryEntriesRequested(entryIds); });
     menu.exec(m_libraryList->mapToGlobal(pos));
 }
 

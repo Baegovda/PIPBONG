@@ -15,8 +15,10 @@ public:
 signals:
     void featureDroppedOnLibrary(const QMimeData* mime);
     void libraryRowsReordered(int fromRow, int toRow);
+    void deleteRequested();
 
 protected:
+    void keyPressEvent(QKeyEvent* event) override;
     QMimeData* buildDragMimeData(int row) const override;
     bool acceptsExternalMime(const QMimeData* mime) const override;
     Qt::DropAction preferredExternalDropAction(const QMimeData* mime) const override;
