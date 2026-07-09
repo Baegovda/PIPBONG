@@ -66,6 +66,13 @@ nlohmann::json featureToJsonImpl(const Feature& feature) {
     if (feature.triggerCooldownMs() != kDefaultTriggerCooldownMs) {
         json["triggerCooldownMs"] = feature.triggerCooldownMs();
     }
+    if (feature.loopIntervalRandomRange()) {
+        json["loopIntervalRandomRange"] = true;
+        json["loopIntervalMinMs"] = feature.loopIntervalMinMs();
+        json["loopIntervalMaxMs"] = feature.loopIntervalMaxMs();
+    } else if (feature.loopIntervalMs() > 0) {
+        json["loopIntervalMs"] = feature.loopIntervalMs();
+    }
     if (!feature.hotkey().isEmpty()) {
         json["hotkey"] = feature.hotkey().toJson();
     }
@@ -97,6 +104,10 @@ void featureFromJsonImpl(const nlohmann::json& json, Feature& feature) {
     feature.setEditFirstTemplateRoiOnStart(json.value("editFirstTemplateRoiOnStart", false));
     feature.setTriggerCooldownMs(
         snapTriggerCooldownMs(json.value("triggerCooldownMs", kDefaultTriggerCooldownMs)));
+    feature.setLoopIntervalRandomRange(json.value("loopIntervalRandomRange", false));
+    feature.setLoopIntervalMs(json.value("loopIntervalMs", 0));
+    feature.setLoopIntervalMinMs(json.value("loopIntervalMinMs", 0));
+    feature.setLoopIntervalMaxMs(json.value("loopIntervalMaxMs", 0));
     if (json.contains("hotkey")) {
         feature.setHotkey(HotkeyBinding::fromJson(json["hotkey"]));
     } else {

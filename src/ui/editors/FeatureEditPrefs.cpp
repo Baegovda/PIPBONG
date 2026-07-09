@@ -2,6 +2,7 @@
 
 #include "core/input/HotkeyBinding.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
+#include "core/workflow/blocks/WaitBlock.h"
 #include "model/Feature.h"
 #include "model/FeatureRunMode.h"
 #include "model/UserInputInterruptMode.h"
@@ -52,6 +53,18 @@ void applySettingsJson(const nlohmann::json& json, Feature& feature) {
         feature.setTriggerCooldownMs(
             snapTriggerCooldownMs(json.value("triggerCooldownMs", kDefaultTriggerCooldownMs)));
     }
+    if (json.contains("loopIntervalRandomRange")) {
+        feature.setLoopIntervalRandomRange(json.value("loopIntervalRandomRange", false));
+    }
+    if (json.contains("loopIntervalMs")) {
+        feature.setLoopIntervalMs(json.value("loopIntervalMs", 0));
+    }
+    if (json.contains("loopIntervalMinMs")) {
+        feature.setLoopIntervalMinMs(json.value("loopIntervalMinMs", 0));
+    }
+    if (json.contains("loopIntervalMaxMs")) {
+        feature.setLoopIntervalMaxMs(json.value("loopIntervalMaxMs", 0));
+    }
     if (json.contains("hotkeyAllowExtraModifiers")) {
         feature.setHotkeyAllowExtraModifiers(json.value("hotkeyAllowExtraModifiers", false));
     }
@@ -75,6 +88,10 @@ nlohmann::json featureSettingsToJson(const Feature& feature) {
     json["roiCorrectionExpandPercent"] = feature.roiCorrectionExpandPercent();
     json["editFirstTemplateRoiOnStart"] = feature.editFirstTemplateRoiOnStart();
     json["triggerCooldownMs"] = feature.triggerCooldownMs();
+    json["loopIntervalRandomRange"] = feature.loopIntervalRandomRange();
+    json["loopIntervalMs"] = feature.loopIntervalMs();
+    json["loopIntervalMinMs"] = feature.loopIntervalMinMs();
+    json["loopIntervalMaxMs"] = feature.loopIntervalMaxMs();
     json["hotkeyAllowExtraModifiers"] = feature.hotkeyAllowExtraModifiers();
     if (feature.hotkey().isEmpty()) {
         json["hotkeyCleared"] = true;

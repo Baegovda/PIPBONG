@@ -1,8 +1,10 @@
 #include "model/Feature.h"
 
 #include "core/workflow/blocks/ImageFindBlock.h"
+#include "core/workflow/blocks/WaitBlock.h"
 
 #include <algorithm>
+#include <random>
 
 #include <QUuid>
 
@@ -12,6 +14,28 @@ int snapTriggerCooldownMs(int ms) {
     }
     const int snapped = (ms / kTriggerCooldownStepMs) * kTriggerCooldownStepMs;
     return std::min(snapped, 600000);
+}
+
+void Feature::setLoopIntervalMs(int ms) {
+    m_loopIntervalMs = snapWaitDelayMs(ms);
+}
+
+void Feature::setLoopIntervalMinMs(int ms) {
+    m_loopIntervalMinMs = snapWaitDelayMs(ms);
+}
+
+void Feature::setLoopIntervalMaxMs(int ms) {
+    m_loopIntervalMaxMs = snapWaitDelayMs(ms);
+}
+
+int Feature::resolvedLoopIntervalMs() const {
+    if (m_loopIntervalRandomRange && m_loopIntervalMaxMs >= m_loopIntervalMinMs) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> dist(m_loopIntervalMinMs, m_loopIntervalMaxMs);
+        return dist(gen);
+    }
+    return m_loopIntervalMs;
 }
 
 bool Feature::roiCorrectionSessionEligible() const {
@@ -50,6 +74,10 @@ std::unique_ptr<Feature> Feature::clone() const {
     copy->m_roiCorrectionExpandPercent = m_roiCorrectionExpandPercent;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_triggerCooldownMs = m_triggerCooldownMs;
+    copy->m_loopIntervalMs = m_loopIntervalMs;
+    copy->m_loopIntervalMinMs = m_loopIntervalMinMs;
+    copy->m_loopIntervalMaxMs = m_loopIntervalMaxMs;
+    copy->m_loopIntervalRandomRange = m_loopIntervalRandomRange;
     copy->m_hotkeyAllowExtraModifiers = m_hotkeyAllowExtraModifiers;
     copy->m_hotkey = m_hotkey;
     copy->m_workflow.assignFrom(m_workflow);
@@ -73,6 +101,10 @@ std::unique_ptr<Feature> Feature::duplicateAsNewInstance(bool preserveHotkey) co
     copy->m_roiCorrectionExpandPercent = m_roiCorrectionExpandPercent;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_triggerCooldownMs = m_triggerCooldownMs;
+    copy->m_loopIntervalMs = m_loopIntervalMs;
+    copy->m_loopIntervalMinMs = m_loopIntervalMinMs;
+    copy->m_loopIntervalMaxMs = m_loopIntervalMaxMs;
+    copy->m_loopIntervalRandomRange = m_loopIntervalRandomRange;
     copy->m_hotkeyAllowExtraModifiers = m_hotkeyAllowExtraModifiers;
     copy->m_hotkey = preserveHotkey ? m_hotkey : HotkeyBinding{};
     copy->m_workflow.assignFrom(m_workflow);

@@ -6,6 +6,7 @@
 #include "model/Feature.h"
 #include "ui/UiStrings.h"
 #include "ui/UiThemeColors.h"
+#include "ui/widgets/AnimatedTwoWaySwitch.h"
 
 #include <QCheckBox>
 #include <QAbstractButton>
@@ -21,10 +22,41 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QShowEvent>
+#include <QStackedWidget>
 #include "ui/widgets/DragAdjustSpinBox.h"
 #include <QVBoxLayout>
 
 #include "core/workflow/blocks/ImageFindBlock.h"
+#include "core/workflow/blocks/WaitBlock.h"
+
+namespace {
+
+void configureLoopIntervalSpin(DragAdjustSpinBox* spin) {
+    if (!spin) {
+        return;
+    }
+    spin->setRange(0, 600000);
+    spin->setSingleStep(kWaitDelayStepMs);
+    QObject::connect(spin, &QAbstractSpinBox::editingFinished, spin, [spin]() {
+        const int snapped = snapWaitDelayMs(spin->value());
+        if (snapped != spin->value()) {
+            spin->setValue(snapped);
+        }
+    });
+}
+
+QWidget* makeLoopIntervalMsRow(QWidget* parent, DragAdjustSpinBox* spin) {
+    auto* row = new QWidget(parent);
+    auto* layout = new QHBoxLayout(row);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(4);
+    spin->setMinimumWidth(88);
+    layout->addWidget(spin);
+    layout->addWidget(new QLabel(QStringLiteral("ms"), row));
+    return row;
+}
+
+} // namespace
 
 FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      bool enabled,
@@ -40,6 +72,10 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      int roiCorrectionExpandPercent,
                                      bool editFirstTemplateRoiOnStart,
                                      int triggerCooldownMs,
+                                     int loopIntervalMs,
+                                     bool loopIntervalRandomRange,
+                                     int loopIntervalMinMs,
+                                     int loopIntervalMaxMs,
                                      Project* project,
                                      const std::string& featureId,
                                      QWidget* parent)
@@ -82,6 +118,18 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     m_editFirstTemplateRoiOnStartCheck->setChecked(editFirstTemplateRoiOnStart);
     m_triggerCooldownSpin->setValue(snapTriggerCooldownMs(triggerCooldownMs));
     m_hotkeyAllowExtraModifiersCheck->setChecked(hotkeyAllowExtraModifiers);
+    if (m_loopIntervalMsSpin) {
+        m_loopIntervalMsSpin->setValue(snapWaitDelayMs(loopIntervalMs));
+    }
+    if (m_loopIntervalMinSpin) {
+        m_loopIntervalMinSpin->setValue(snapWaitDelayMs(loopIntervalMinMs));
+    }
+    if (m_loopIntervalMaxSpin) {
+        m_loopIntervalMaxSpin->setValue(snapWaitDelayMs(loopIntervalMaxMs));
+    }
+    if (m_loopIntervalModeSwitch) {
+        m_loopIntervalModeSwitch->setRightSelected(loopIntervalRandomRange, false);
+    }
 
     updateModeDependentUi();
     updateHotkeyOptionUi();
@@ -164,6 +212,58 @@ void FeatureEditDialog::setupUi() {
     m_infiniteExitSpin->setToolTip(tr("연속으로 감지에 실패한 루프 횟수가 이 값에 도달하면 실행을 종료합니다."));
     m_infiniteExitCountLabel = new QLabel(tr("연속 실패 허용"), this);
     form->addRow(m_infiniteExitCountLabel, m_infiniteExitSpin);
+
+    m_loopIntervalSection = new QWidget(this);
+    auto* loopIntervalLayout = new QVBoxLayout(m_loopIntervalSection);
+    loopIntervalLayout->setContentsMargins(0, 0, 0, 0);
+    loopIntervalLayout->setSpacing(8);
+
+    m_loopIntervalModeSwitch = new AnimatedTwoWaySwitch(tr("고정"), tr("랜덤"), m_loopIntervalSection);
+    auto* loopIntervalSwitchRow = new QHBoxLayout();
+    loopIntervalSwitchRow->addStretch();
+    loopIntervalSwitchRow->addWidget(m_loopIntervalModeSwitch);
+    loopIntervalSwitchRow->addStretch();
+    loopIntervalLayout->addLayout(loopIntervalSwitchRow);
+
+    m_loopIntervalMsSpin = new DragAdjustSpinBox(m_loopIntervalSection);
+    configureLoopIntervalSpin(m_loopIntervalMsSpin);
+    auto* fixedLoopIntervalRow = new QWidget(m_loopIntervalSection);
+    auto* fixedLoopIntervalLayout = new QHBoxLayout(fixedLoopIntervalRow);
+    fixedLoopIntervalLayout->setContentsMargins(0, 0, 0, 0);
+    fixedLoopIntervalLayout->addStretch();
+    fixedLoopIntervalLayout->addWidget(makeLoopIntervalMsRow(fixedLoopIntervalRow, m_loopIntervalMsSpin));
+    fixedLoopIntervalLayout->addStretch();
+
+    m_loopIntervalMinSpin = new DragAdjustSpinBox(m_loopIntervalSection);
+    m_loopIntervalMaxSpin = new DragAdjustSpinBox(m_loopIntervalSection);
+    configureLoopIntervalSpin(m_loopIntervalMinSpin);
+    configureLoopIntervalSpin(m_loopIntervalMaxSpin);
+    auto* randomLoopIntervalRow = new QWidget(m_loopIntervalSection);
+    auto* randomLoopIntervalLayout = new QHBoxLayout(randomLoopIntervalRow);
+    randomLoopIntervalLayout->setContentsMargins(0, 0, 0, 0);
+    randomLoopIntervalLayout->setSpacing(6);
+    randomLoopIntervalLayout->addStretch();
+    randomLoopIntervalLayout->addWidget(
+        makeLoopIntervalMsRow(randomLoopIntervalRow, m_loopIntervalMinSpin));
+    randomLoopIntervalLayout->addWidget(new QLabel(QStringLiteral("~"), randomLoopIntervalRow));
+    randomLoopIntervalLayout->addWidget(
+        makeLoopIntervalMsRow(randomLoopIntervalRow, m_loopIntervalMaxSpin));
+    randomLoopIntervalLayout->addStretch();
+
+    m_loopIntervalInputStack = new QStackedWidget(m_loopIntervalSection);
+    m_loopIntervalInputStack->addWidget(fixedLoopIntervalRow);
+    m_loopIntervalInputStack->addWidget(randomLoopIntervalRow);
+    loopIntervalLayout->addWidget(m_loopIntervalInputStack);
+
+    connect(m_loopIntervalModeSwitch,
+            &AnimatedTwoWaySwitch::rightSelectedChanged,
+            this,
+            &FeatureEditDialog::updateLoopIntervalInputUi);
+
+    form->addRow(tr("루프 간격"), m_loopIntervalSection);
+    m_loopIntervalSection->setToolTip(
+        tr("무한 반복·누를 동안 실행에서 한 루프가 끝난 뒤 다음 루프를 시작하기 전에 대기합니다. "
+           "0ms이면 즉시 다음 루프를 시작합니다."));
 
     m_triggerCooldownSpin = new DragAdjustSpinBox(this);
     m_triggerCooldownSpin->setRange(0, 600000);
@@ -327,6 +427,13 @@ void FeatureEditDialog::updateModeDependentUi() {
     }
     m_infiniteExitSpin->setVisible(showInfiniteExitCount);
 
+    if (m_loopIntervalSection) {
+        m_loopIntervalSection->setVisible(infiniteStyle);
+    }
+    if (infiniteStyle) {
+        updateLoopIntervalInputUi();
+    }
+
     if (m_triggerCooldownLabel) {
         m_triggerCooldownLabel->setVisible(triggerMode);
     }
@@ -343,6 +450,13 @@ void FeatureEditDialog::updateModeDependentUi() {
     }
 
     adjustSize();
+}
+
+void FeatureEditDialog::updateLoopIntervalInputUi() {
+    if (!m_loopIntervalInputStack || !m_loopIntervalModeSwitch) {
+        return;
+    }
+    m_loopIntervalInputStack->setCurrentIndex(m_loopIntervalModeSwitch->isRightSelected() ? 1 : 0);
 }
 
 void FeatureEditDialog::applyCapturedBinding(int virtualKey, Qt::KeyboardModifiers modifiers) {
@@ -401,6 +515,8 @@ bool FeatureEditDialog::isInteractiveWidget(const QWidget* widget) const {
     while (widget && widget != this) {
         if (widget == m_nameEdit || widget == m_modeCombo || widget == m_repeatSpin
             || widget == m_infiniteExitCheck || widget == m_infiniteExitSpin
+            || widget == m_loopIntervalMsSpin || widget == m_loopIntervalMinSpin
+            || widget == m_loopIntervalMaxSpin || widget == m_loopIntervalModeSwitch
             || widget == m_triggerCooldownSpin
             || widget == m_userInputInterruptCombo || widget == m_pointerVisualFeedbackCheck
             || widget == m_restoreMousePositionOnEndCheck || widget == m_roiCorrectionCheck
@@ -478,6 +594,22 @@ bool FeatureEditDialog::editFirstTemplateRoiOnStart() const {
 
 int FeatureEditDialog::triggerCooldownMs() const {
     return snapTriggerCooldownMs(m_triggerCooldownSpin->value());
+}
+
+int FeatureEditDialog::loopIntervalMs() const {
+    return m_loopIntervalMsSpin ? snapWaitDelayMs(m_loopIntervalMsSpin->value()) : 0;
+}
+
+bool FeatureEditDialog::loopIntervalRandomRange() const {
+    return m_loopIntervalModeSwitch && m_loopIntervalModeSwitch->isRightSelected();
+}
+
+int FeatureEditDialog::loopIntervalMinMs() const {
+    return m_loopIntervalMinSpin ? snapWaitDelayMs(m_loopIntervalMinSpin->value()) : 0;
+}
+
+int FeatureEditDialog::loopIntervalMaxMs() const {
+    return m_loopIntervalMaxSpin ? snapWaitDelayMs(m_loopIntervalMaxSpin->value()) : 0;
 }
 
 void FeatureEditDialog::reject() {

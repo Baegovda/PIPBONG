@@ -1838,6 +1838,7 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     session->userStopRequested = true;
     session->repeatSession = false;
     session->holdRunActive = false;
+    ++session->holdRepeatGeneration;
     ++session->triggerCooldownGeneration;
     session->engine->stop();
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
@@ -1855,6 +1856,7 @@ void MainWindow::stopAllSessions() {
             entry.second.userStopRequested = true;
             entry.second.repeatSession = false;
             entry.second.holdRunActive = false;
+            ++entry.second.holdRepeatGeneration;
             ++entry.second.triggerCooldownGeneration;
             entry.second.engine->stopAndWait();
         }
@@ -2647,7 +2649,8 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
         session.triggerPhase = TriggerSessionPhase::Monitoring;
         session.triggerBlockIndex = WorkflowRunner::firstImageFindBlockIndex(feature->workflow());
     }
-    if (session.runningMode == FeatureRunMode::Hold) {
+    if (session.runningMode == FeatureRunMode::Hold
+        || session.runningMode == FeatureRunMode::RepeatInfinite) {
         ++session.holdRepeatGeneration;
     }
     session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
@@ -2986,18 +2989,19 @@ bool MainWindow::shouldContinueRunSession(const FeatureRunSession& session, Feat
     }
 }
 
-void MainWindow::scheduleHoldRepeat(FeatureRunSession& session,
-                                    Feature* feature,
-                                    bool success,
-                                    const QString& message) {
+void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
+                                         Feature* feature,
+                                         bool success,
+                                         const QString& message) {
     if (!shouldContinueRunSession(session, feature)) {
         finishRunSession(session.featureId, success, message);
         return;
     }
 
+    const int delayMs = feature ? feature->resolvedLoopIntervalMs() : 0;
     const quint64 generation = ++session.holdRepeatGeneration;
     const std::string featureId = session.featureId;
-    QTimer::singleShot(0, this, [this, featureId, success, message, generation]() {
+    QTimer::singleShot(qMax(0, delayMs), this, [this, featureId, success, message, generation]() {
         FeatureRunSession* session = sessionFor(featureId);
         if (!session || generation != session->holdRepeatGeneration) {
             return;
@@ -3278,6 +3282,7 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
 
     if (session) {
         ++session->triggerCooldownGeneration;
+        ++session->holdRepeatGeneration;
         restoreRunStartCursorPosition(*session);
     }
 
@@ -3333,7 +3338,7 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
         if (session->holdRunActive) {
             if (session->engine && !session->engine->isRunning()) {
                 session->repeatSession = true;
-                continueRepeatSession(*session, feature, session->lastLoopSuccess, QString());
+                scheduleRepeatIteration(*session, feature, session->lastLoopSuccess, QString());
             }
             return;
         }
@@ -3726,8 +3731,9 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
         }
     }
 
-    if (session->runningMode == FeatureRunMode::Hold) {
-        scheduleHoldRepeat(*session, feature, success, message);
+    if (session->runningMode == FeatureRunMode::Hold
+        || session->runningMode == FeatureRunMode::RepeatInfinite) {
+        scheduleRepeatIteration(*session, feature, success, message);
         return;
     }
 

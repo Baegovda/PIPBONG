@@ -214,7 +214,10 @@ private:
     void continueRepeatSession(FeatureRunSession& session, Feature* feature, bool success, const QString& message);
     bool shouldContinueRunSession(const FeatureRunSession& session, Feature* feature) const;
     void finishRunSession(const std::string& featureId, bool success, const QString& message);
-    void scheduleHoldRepeat(FeatureRunSession& session, Feature* feature, bool success, const QString& message);
+    void scheduleRepeatIteration(FeatureRunSession& session,
+                                 Feature* feature,
+                                 bool success,
+                                 const QString& message);
     void launchTriggerMonitor(FeatureRunSession& session, Feature* feature, bool firstSessionStart);
     void launchTriggerActionRun(FeatureRunSession& session, Feature* feature);
     void scheduleTriggerCooldown(FeatureRunSession& session, Feature* feature);

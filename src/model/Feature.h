@@ -63,6 +63,21 @@ public:
     int triggerCooldownMs() const { return m_triggerCooldownMs; }
     void setTriggerCooldownMs(int ms) { m_triggerCooldownMs = snapTriggerCooldownMs(ms); }
 
+    int loopIntervalMs() const { return m_loopIntervalMs; }
+    void setLoopIntervalMs(int ms);
+
+    bool loopIntervalRandomRange() const { return m_loopIntervalRandomRange; }
+    void setLoopIntervalRandomRange(bool enabled) { m_loopIntervalRandomRange = enabled; }
+
+    int loopIntervalMinMs() const { return m_loopIntervalMinMs; }
+    void setLoopIntervalMinMs(int ms);
+
+    int loopIntervalMaxMs() const { return m_loopIntervalMaxMs; }
+    void setLoopIntervalMaxMs(int ms);
+
+    /// Delay before the next loop iteration for Hold / infinite repeat (0 when fixed ms is 0 and not random).
+    int resolvedLoopIntervalMs() const;
+
     /// True when run mode supports ROI correction (infinite repeat or N≥2).
     bool roiCorrectionSessionEligible() const;
 
@@ -97,6 +112,10 @@ private:
     int m_roiCorrectionExpandPercent = 110;
     bool m_editFirstTemplateRoiOnStart = false;
     int m_triggerCooldownMs = kDefaultTriggerCooldownMs;
+    int m_loopIntervalMs = 0;
+    int m_loopIntervalMinMs = 0;
+    int m_loopIntervalMaxMs = 0;
+    bool m_loopIntervalRandomRange = false;
     bool m_hotkeyAllowExtraModifiers = false;
     HotkeyBinding m_hotkey;
     Workflow m_workflow;

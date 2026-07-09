@@ -18,6 +18,8 @@ class QLabel;
 class QPushButton;
 class QShowEvent;
 class QWidget;
+class QStackedWidget;
+class AnimatedTwoWaySwitch;
 class DragAdjustSpinBox;
 
 class FeatureEditDialog : public QDialog {
@@ -37,6 +39,10 @@ public:
                       int roiCorrectionExpandPercent,
                       bool editFirstTemplateRoiOnStart,
                       int triggerCooldownMs,
+                      int loopIntervalMs,
+                      bool loopIntervalRandomRange,
+                      int loopIntervalMinMs,
+                      int loopIntervalMaxMs,
                       Project* project,
                       const std::string& featureId,
                       QWidget* parent = nullptr);
@@ -55,6 +61,10 @@ public:
     int roiCorrectionExpandPercent() const;
     bool editFirstTemplateRoiOnStart() const;
     int triggerCooldownMs() const;
+    int loopIntervalMs() const;
+    bool loopIntervalRandomRange() const;
+    int loopIntervalMinMs() const;
+    int loopIntervalMaxMs() const;
 
 protected:
     void showEvent(QShowEvent* event) override;
@@ -69,6 +79,7 @@ private:
     void updateCaptureUi();
     void updateHotkeyOptionUi();
     void updateModeDependentUi();
+    void updateLoopIntervalInputUi();
     void startHotkeyCapture();
     void stopHotkeyCapture();
     void applyCapturedBinding(int virtualKey, Qt::KeyboardModifiers modifiers);
@@ -102,4 +113,10 @@ private:
     QLabel* m_triggerCooldownLabel = nullptr;
     QWidget* m_triggerCooldownRow = nullptr;
     DragAdjustSpinBox* m_triggerCooldownSpin = nullptr;
+    QWidget* m_loopIntervalSection = nullptr;
+    AnimatedTwoWaySwitch* m_loopIntervalModeSwitch = nullptr;
+    QStackedWidget* m_loopIntervalInputStack = nullptr;
+    DragAdjustSpinBox* m_loopIntervalMsSpin = nullptr;
+    DragAdjustSpinBox* m_loopIntervalMinSpin = nullptr;
+    DragAdjustSpinBox* m_loopIntervalMaxSpin = nullptr;
 };

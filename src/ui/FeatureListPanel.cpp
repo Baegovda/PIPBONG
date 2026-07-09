@@ -1712,6 +1712,10 @@ bool FeatureListPanel::editFeatureAt(int index) {
                              feature->roiCorrectionExpandPercent(),
                              feature->editFirstTemplateRoiOnStart(),
                              feature->triggerCooldownMs(),
+                             feature->loopIntervalMs(),
+                             feature->loopIntervalRandomRange(),
+                             feature->loopIntervalMinMs(),
+                             feature->loopIntervalMaxMs(),
                              m_project,
                              feature->id(),
                              this);
@@ -1733,6 +1737,10 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setRoiCorrectionExpandPercent(dialog.roiCorrectionExpandPercent());
     feature->setEditFirstTemplateRoiOnStart(dialog.editFirstTemplateRoiOnStart());
     feature->setTriggerCooldownMs(dialog.triggerCooldownMs());
+    feature->setLoopIntervalMs(dialog.loopIntervalMs());
+    feature->setLoopIntervalRandomRange(dialog.loopIntervalRandomRange());
+    feature->setLoopIntervalMinMs(dialog.loopIntervalMinMs());
+    feature->setLoopIntervalMaxMs(dialog.loopIntervalMaxMs());
     saveLastFeatureEditSettings(*feature);
     refresh();
     m_list->setCurrentRow(index);

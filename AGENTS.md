@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.63` (from `project(PIPBONG VERSION 0.8.63)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.64` (from `project(PIPBONG VERSION 0.8.64)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -445,6 +445,9 @@ Sbm1.0/                        # repo root (local workspace)
 | `repeatCount` | `1` | Used when `runMode` is `RepeatCount` |
 | `triggerCooldownMs` | `1000` | After a trigger fires in `Trigger` mode, wait this many ms before monitoring again (5 ms step, `0` = immediate); omitted when default |
 | `infiniteExitAfterConsecutiveMisses` | `0` (omitted) | When `> 0` with `RepeatInfinite` or `Hold`, stop after this many consecutive loop iterations where template matching fails |
+| `loopIntervalMs` | `0` (omitted) | Fixed delay between loop iterations for `RepeatInfinite` / `Hold` (5 ms step); omitted when `0` and not using random range |
+| `loopIntervalRandomRange` | `false` (omitted) | When `true` with `RepeatInfinite` / `Hold`, wait a random duration between `loopIntervalMinMs` and `loopIntervalMaxMs` before the next loop |
+| `loopIntervalMinMs` / `loopIntervalMaxMs` | `0` | Random loop-gap bounds (5 ms step); written when `loopIntervalRandomRange` is `true` |
 | `userInputInterrupt` | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run; `"None"` — ignore user input (no pause/stop). Excludes mouse movement, injected input, and the feature's own hotkey |
 | `pointerVisualFeedback` | `true` (omitted) | When `false`, disables target-window click/match pulse overlay for this feature during runs |
 | `restoreMousePositionOnEnd` | `false` (omitted) | When `true`, moves the mouse cursor back to its screen position when the workflow session started |
@@ -891,6 +894,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.64] - 2026-07-09
+
+### Added
+
+- Feature **루프 간격** for **무한 반복** and **누를 동안** modes: fixed or random ms delay between loop iterations (same 5 ms step as Wait blocks), configured in **기능 편집** with **고정** / **랜덤** switch (`Feature`, `FeatureEditDialog`, `MainWindow::scheduleRepeatIteration`, JSON `loopIntervalMs` / `loopIntervalRandomRange` / `loopIntervalMinMs` / `loopIntervalMaxMs`).
 
 ## [0.8.63] - 2026-07-09
 
