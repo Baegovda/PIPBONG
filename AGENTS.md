@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.42` (from `project(PIPBONG VERSION 0.8.42)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.43` (from `project(PIPBONG VERSION 0.8.43)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -878,6 +878,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.43] - 2026-07-09
+
+### Added
+
+- Library drawer selection previews the selected library feature in the workflow panel without importing it; preview uses the library entry folder as the template base so ImageFind thumbnails resolve (`FeatureListPanel::libraryEntrySelected`, `FeatureLibraryManager::loadEntryFeature`, `MainWindow::onLibraryEntrySelected`).
+
+### Changed
+
+- Library workflow previews are read-only: feature-list selection is cleared while a library entry is selected, and workflow editing/reorder controls stay disabled until a normal profile feature is selected again (`MainWindow::refreshWorkflowEditor`, `updateRunUiState`).
 
 ## [0.8.42] - 2026-07-09
 

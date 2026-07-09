@@ -20,6 +20,7 @@
 #include <QPainterPath>
 #include <QPushButton>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
 #include <QTimer>
@@ -840,6 +841,10 @@ void FeatureListPanel::setupUi() {
             this,
             &FeatureListPanel::onLibraryRowsReordered);
     connect(m_libraryList,
+            &QListWidget::itemSelectionChanged,
+            this,
+            &FeatureListPanel::onLibrarySelectionChanged);
+    connect(m_libraryList,
             &QListWidget::customContextMenuRequested,
             this,
             &FeatureListPanel::onLibraryContextMenu);
@@ -1314,6 +1319,23 @@ void FeatureListPanel::onLibraryRowsReordered(int fromRow, int toRow) {
         m_libraryList->setCurrentRow(toRow);
     }
 }
+
+void FeatureListPanel::onLibrarySelectionChanged() {
+    if (!m_libraryList) {
+        return;
+    }
+
+    const QString entryId = m_libraryList->currentItem()
+                                ? m_libraryList->currentItem()->data(Qt::UserRole).toString()
+                                : QString();
+    if (!entryId.isEmpty() && m_list) {
+        const QSignalBlocker blocker(m_list);
+        m_list->setCurrentRow(-1);
+        m_list->clearSelection();
+    }
+    emit libraryEntrySelected(entryId);
+}
+
 void FeatureListPanel::onAnimationTick() {
     m_animPhase = (m_animPhase + 1) % 72;
     if (m_list && m_list->viewport()) {
@@ -1625,6 +1647,11 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
 void FeatureListPanel::onSelectionChanged() {
     if (Feature* feature = selectedFeature()) {
         m_lastSelectedFeatureId = QString::fromStdString(feature->id());
+    }
+    if (m_libraryList) {
+        const QSignalBlocker blocker(m_libraryList);
+        m_libraryList->setCurrentRow(-1);
+        m_libraryList->clearSelection();
     }
     emit selectionChanged();
 }

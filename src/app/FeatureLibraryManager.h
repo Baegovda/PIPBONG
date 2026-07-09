@@ -45,6 +45,12 @@ public:
     ImportResult importEntryToProfile(const QString& entryId,
                                        const QString& targetProjectDirectory);
 
+    /// Loads the library entry as-is for read-only preview; no ids or templates are copied.
+    std::unique_ptr<Feature> loadEntryFeature(const QString& entryId) const;
+
+    /// Returns the library entry directory used as the template base for preview thumbnails.
+    QString entryProjectDirectory(const QString& entryId) const;
+
     /// Copies referenced templates from one profile project directory to another.
     static QStringList copyFeatureTemplatesBetweenDirectories(const Feature& feature,
                                                                const QString& sourceProjectDirectory,

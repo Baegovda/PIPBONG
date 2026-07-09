@@ -78,6 +78,7 @@ private slots:
     void onImportFeatureFromLibraryRequested();
     void onImportLibraryEntryRequested(const QString& entryId);
     void onDeleteLibraryEntryRequested(const QString& entryId);
+    void onLibraryEntrySelected(const QString& entryId);
     void onStopWorkflow();
     void onExitRequested();
     void onCheckForUpdates();
@@ -275,6 +276,8 @@ private:
     HotkeyManager* m_hotkeyManager = nullptr;
     UiStateManager* m_uiState = nullptr;
     std::unique_ptr<FeatureLibraryManager> m_featureLibraryManager;
+    std::unique_ptr<Feature> m_libraryPreviewFeature;
+    QString m_libraryPreviewEntryId;
     QTimer* m_autoSaveTimer = nullptr;
     QTimer* m_statusClearTimer = nullptr;
     QTimer* m_updateCheckTimer = nullptr;

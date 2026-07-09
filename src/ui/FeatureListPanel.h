@@ -122,6 +122,8 @@ signals:
     void featureDroppedOnLibrary(const QMimeData* mime);
     /// Library drawer entry order changed by drag.
     void libraryEntriesReordered(int fromRow, int toRow);
+    /// Library drawer selection changed for workflow preview.
+    void libraryEntrySelected(const QString& entryId);
 
 
 
@@ -144,6 +146,7 @@ private slots:
     void onEditFeature();
 
     void onSelectionChanged();
+    void onLibrarySelectionChanged();
 
     void onContextMenu(const QPoint& pos);
 

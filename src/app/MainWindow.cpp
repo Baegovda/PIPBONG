@@ -648,6 +648,10 @@ void MainWindow::connectSignals() {
             &FeatureListPanel::libraryEntriesReordered,
             this,
             &MainWindow::onLibraryEntriesReordered);
+    connect(m_featureList,
+            &FeatureListPanel::libraryEntrySelected,
+            this,
+            &MainWindow::onLibraryEntrySelected);
     connect(m_profileList,
             &ProfileListWidget::featureDroppedOnProfile,
             this,
@@ -1515,6 +1519,8 @@ void MainWindow::onSaveProjectAs() {
 }
 
 void MainWindow::onFeatureSelectionChanged() {
+    m_libraryPreviewFeature.reset();
+    m_libraryPreviewEntryId.clear();
     saveSelectedFeaturePreference();
     refreshWorkflowEditor();
 }
@@ -1577,6 +1583,17 @@ void MainWindow::autoSaveProject() {
 }
 
 void MainWindow::refreshWorkflowEditor() {
+    if (m_libraryPreviewFeature && !m_libraryPreviewEntryId.isEmpty()) {
+        m_workflowEditor->setProjectDirectory(m_featureLibraryManager
+                                                  ? m_featureLibraryManager->entryProjectDirectory(m_libraryPreviewEntryId)
+                                                  : Application::instance()->projectDirectory());
+        m_workflowEditor->setFeature(m_libraryPreviewFeature.get());
+        m_workflowEditor->clearLoopTiming();
+        m_workflowEditor->setEditingEnabled(false);
+        updateRunUiState();
+        return;
+    }
+
     Feature* feature = m_featureList->selectedFeature();
     m_workflowEditor->setProjectDirectory(Application::instance()->projectDirectory());
     m_workflowEditor->setFeature(feature);
@@ -1722,7 +1739,7 @@ void MainWindow::updateRunUiState() {
         m_profileList->setFeatureDropEnabled(canTransferFeatures());
     }
     if (m_workflowEditor) {
-        m_workflowEditor->setEditingEnabled(!selectedRunning);
+        m_workflowEditor->setEditingEnabled(!m_libraryPreviewFeature && !selectedRunning);
     }
 
     if (hasAnyRunningSession()) {
@@ -1905,6 +1922,27 @@ void MainWindow::onImportLibraryEntryRequested(const QString& entryId) {
     importLibraryEntry(entryId);
 }
 
+void MainWindow::onLibraryEntrySelected(const QString& entryId) {
+    m_libraryPreviewFeature.reset();
+    m_libraryPreviewEntryId.clear();
+
+    if (!m_featureLibraryManager || entryId.isEmpty()) {
+        refreshWorkflowEditor();
+        return;
+    }
+
+    auto preview = m_featureLibraryManager->loadEntryFeature(entryId);
+    if (!preview) {
+        showTransientStatus(tr("라이브러리 항목을 미리볼 수 없습니다."), 2500);
+        refreshWorkflowEditor();
+        return;
+    }
+
+    m_libraryPreviewEntryId = entryId;
+    m_libraryPreviewFeature = std::move(preview);
+    refreshWorkflowEditor();
+}
+
 void MainWindow::onDeleteLibraryEntryRequested(const QString& entryId) {
     if (!m_featureLibraryManager || entryId.isEmpty()) {
         return;
@@ -1927,6 +1965,11 @@ void MainWindow::onDeleteLibraryEntryRequested(const QString& entryId) {
         return;
     }
     if (m_featureLibraryManager->removeEntry(entryId)) {
+        if (m_libraryPreviewEntryId == entryId) {
+            m_libraryPreviewEntryId.clear();
+            m_libraryPreviewFeature.reset();
+            refreshWorkflowEditor();
+        }
         showTransientStatus(tr("라이브러리에서 삭제됨: %1").arg(entryName), 2500);
     }
     refreshFeatureLibraryPanel();

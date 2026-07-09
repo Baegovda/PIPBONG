@@ -306,6 +306,34 @@ std::vector<QString> FeatureLibraryManager::templatePathsFromFeatureJson(const n
     return templatePathsRecursive(featureJson);
 }
 
+std::unique_ptr<Feature> FeatureLibraryManager::loadEntryFeature(const QString& entryId) const {
+    if (entryId.isEmpty()) {
+        return nullptr;
+    }
+
+    QFile file(featureJsonPath(entryId));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return nullptr;
+    }
+    const QByteArray raw = file.readAll();
+    file.close();
+
+    nlohmann::json featureJson;
+    try {
+        featureJson = nlohmann::json::parse(raw.constData());
+    } catch (...) {
+        return nullptr;
+    }
+
+    auto feature = std::make_unique<Feature>();
+    JsonSerializer::featureFromJson(featureJson, *feature);
+    return feature;
+}
+
+QString FeatureLibraryManager::entryProjectDirectory(const QString& entryId) const {
+    return entryDir(entryId);
+}
+
 bool FeatureLibraryManager::saveFeatureToLibrary(const Feature& feature,
                                                   const QString& sourceProjectDirectory,
                                                   const QString& entryNameOverride,
