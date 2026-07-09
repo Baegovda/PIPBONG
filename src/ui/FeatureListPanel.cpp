@@ -181,7 +181,7 @@ void drawCellText(QPainter* painter,
 }
 
 QRect featureEnableToggleHitRect(const QRect& enableColumnRect) {
-    const int size = qMin(enableColumnRect.width(), enableColumnRect.height()) - 4;
+    const int size = qBound(12, qMin(enableColumnRect.width(), enableColumnRect.height()) - 8, 16);
     return QRect(enableColumnRect.left() + (enableColumnRect.width() - size) / 2,
                  enableColumnRect.top() + (enableColumnRect.height() - size) / 2,
                  size,
@@ -196,30 +196,34 @@ void paintFeatureEnableToggle(QPainter* painter,
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing, true);
 
-    const QColor border = enabled ? palette.color(QPalette::Highlight) : palette.color(QPalette::Mid);
-    QColor fill = enabled ? palette.color(QPalette::Highlight) : palette.color(QPalette::Button);
-    if (!enabled) {
-        fill = palette.color(QPalette::Midlight);
-    }
-    fill.setAlpha(enabled ? 220 : 150);
-
-    painter->setPen(QPen(border, 1.2));
-    painter->setBrush(fill);
-    painter->drawRoundedRect(box, 4, 4);
+    const QColor content = primaryContentTextColor(palette, false);
+    const QColor accent = content.lightness() < 128 ? QColor(0x4a, 0x90, 0xd9) : QColor(0x1e, 0x88, 0xe5);
+    const QColor muted = content.lightness() < 128 ? QColor(0x8a, 0x96, 0xa8) : QColor(0x90, 0x9a, 0xaa);
 
     if (enabled) {
         painter->setPen(Qt::NoPen);
-        painter->setBrush(Qt::white);
+        painter->setBrush(accent);
+        painter->drawEllipse(box);
+
         QPainterPath check;
-        const qreal x = box.left() + box.width() * 0.22;
-        const qreal y = box.center().y();
-        check.moveTo(x, y);
-        check.lineTo(box.left() + box.width() * 0.42, box.bottom() - box.height() * 0.28);
-        check.lineTo(box.right() - box.width() * 0.2, box.top() + box.height() * 0.28);
-        QPen checkPen(Qt::white, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
-        painter->setPen(checkPen);
+        const qreal x0 = box.left() + box.width() * 0.24;
+        const qreal y0 = box.center().y() + box.height() * 0.02;
+        const qreal x1 = box.left() + box.width() * 0.42;
+        const qreal y1 = box.bottom() - box.height() * 0.30;
+        const qreal x2 = box.right() - box.width() * 0.22;
+        const qreal y2 = box.top() + box.height() * 0.28;
+        check.moveTo(x0, y0);
+        check.lineTo(x1, y1);
+        check.lineTo(x2, y2);
+        painter->setBrush(Qt::NoBrush);
+        painter->setPen(QPen(Qt::white, qMax(1.6, box.width() * 0.14), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         painter->drawPath(check);
+    } else {
+        painter->setPen(QPen(muted, 1.35));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawEllipse(QRectF(box).adjusted(0.6, 0.6, -0.6, -0.6));
     }
+
     painter->restore();
 }
 
