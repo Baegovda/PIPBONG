@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.74` (from `project(PIPBONG VERSION 0.8.74)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.75` (from `project(PIPBONG VERSION 0.8.75)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1012,6 +1012,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.75] - 2026-07-10
+
+### Fixed
+
+- Keyboard **탭** reliability in games: KeyPress taps now send hardware scancodes (`KEYEVENTF_SCANCODE`, `wVk=0`) with a short down→up hold (~35 ms) instead of a zero-duration VK-only `SendInput` batch that many titles miss intermittently (`InputSimulator`).
 
 ## [0.8.74] - 2026-07-10
 
@@ -3388,4 +3394,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.74._
+_Last consolidated: 2026-07-10. Current application version: 0.8.75._

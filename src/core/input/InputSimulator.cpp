@@ -15,6 +15,8 @@ namespace {
 #ifdef _WIN32
 constexpr auto kCursorSettleDelay = std::chrono::milliseconds(16);
 constexpr auto kTapHoldDelay = std::chrono::milliseconds(12);
+/// Games often miss zero-duration / VK-only taps; hold briefly and send scancodes.
+constexpr auto kKeyTapHoldDelay = std::chrono::milliseconds(35);
 constexpr auto kMultiClickGap = std::chrono::milliseconds(8);
 constexpr auto kCursorMultiClickGap = std::chrono::milliseconds(1);
 constexpr auto kWheelRepeatGap = std::chrono::milliseconds(10);
@@ -87,6 +89,74 @@ DWORD xButtonData(MouseButton button) {
 
 void sendInputs(const INPUT* inputs, UINT count) {
     SendInput(count, const_cast<INPUT*>(inputs), sizeof(INPUT));
+}
+
+bool isExtendedVirtualKey(int virtualKey) {
+    switch (virtualKey) {
+    case VK_RMENU:
+    case VK_RCONTROL:
+    case VK_INSERT:
+    case VK_DELETE:
+    case VK_HOME:
+    case VK_END:
+    case VK_PRIOR:
+    case VK_NEXT:
+    case VK_LEFT:
+    case VK_UP:
+    case VK_RIGHT:
+    case VK_DOWN:
+    case VK_NUMLOCK:
+    case VK_CANCEL:
+    case VK_SNAPSHOT:
+    case VK_DIVIDE:
+    case VK_APPS:
+        return true;
+    default:
+        return false;
+    }
+}
+
+void fillKeyboardInput(INPUT& input, int virtualKey, bool down) {
+    input = {};
+    input.type = INPUT_KEYBOARD;
+    // Prefer hardware scancodes (wVk=0). Many games ignore VK-only SendInput.
+    const UINT scanEx = MapVirtualKeyW(static_cast<UINT>(virtualKey), MAPVK_VK_TO_VSC_EX);
+    const WORD scan = static_cast<WORD>(scanEx & 0xFF);
+    const bool extended = isExtendedVirtualKey(virtualKey) || ((scanEx & 0xFF00) != 0);
+    DWORD flags = 0;
+    if (!down) {
+        flags |= KEYEVENTF_KEYUP;
+    }
+    if (scan != 0) {
+        input.ki.wVk = 0;
+        input.ki.wScan = scan;
+        flags |= KEYEVENTF_SCANCODE;
+        if (extended) {
+            flags |= KEYEVENTF_EXTENDEDKEY;
+        }
+    } else {
+        input.ki.wVk = static_cast<WORD>(virtualKey);
+        input.ki.wScan = 0;
+        if (extended) {
+            flags |= KEYEVENTF_EXTENDEDKEY;
+        }
+    }
+    input.ki.dwFlags = flags;
+}
+
+void sendKeyboardVk(int virtualKey, bool down, bool track = true) {
+    INPUT input{};
+    fillKeyboardInput(input, virtualKey, down);
+    sendInputs(&input, 1);
+    if (track) {
+        trackSyntheticKey(virtualKey, down);
+    }
+}
+
+void sendKeyboardTap(int virtualKey) {
+    sendKeyboardVk(virtualKey, true);
+    std::this_thread::sleep_for(kKeyTapHoldDelay);
+    sendKeyboardVk(virtualKey, false);
 }
 
 void setCursorScreenPos(int screenX, int screenY) {
@@ -373,12 +443,7 @@ void sendWheelScroll(MouseButton button, int count) {
 }
 
 void pressModifier(int vk, bool down) {
-    INPUT input{};
-    input.type = INPUT_KEYBOARD;
-    input.ki.wVk = static_cast<WORD>(vk);
-    input.ki.dwFlags = down ? 0 : KEYEVENTF_KEYUP;
-    sendInputs(&input, 1);
-    trackSyntheticKey(vk, down);
+    sendKeyboardVk(vk, down);
 }
 
 struct AppliedKeyModifiers {
@@ -783,15 +848,7 @@ void InputSimulator::sendKey(int virtualKey,
             applied.*appliedField = true;
             return;
         }
-        INPUT inputs[2]{};
-        inputs[0].type = INPUT_KEYBOARD;
-        inputs[0].ki.wVk = static_cast<WORD>(vk);
-        inputs[1].type = INPUT_KEYBOARD;
-        inputs[1].ki.wVk = static_cast<WORD>(vk);
-        inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-        sendInputs(inputs, 2);
-        trackSyntheticKey(vk, true);
-        trackSyntheticKey(vk, false);
+        sendKeyboardTap(vk);
     };
 
     const auto applyModifierUp = [&](ModifierKeyAction modAction, bool beforeHeld, int vk) {
@@ -812,34 +869,16 @@ void InputSimulator::sendKey(int virtualKey,
     applyModifierDownOrTap(mods.shift, beforeBlock.shift, VK_SHIFT, &AppliedKeyModifiers::shift);
 
     if (sendMainKey) {
-        auto sendVk = [&](bool down) {
-            INPUT input{};
-            input.type = INPUT_KEYBOARD;
-            input.ki.wVk = static_cast<WORD>(virtualKey);
-            input.ki.dwFlags = down ? 0 : KEYEVENTF_KEYUP;
-            sendInputs(&input, 1);
-            trackSyntheticKey(virtualKey, down);
-        };
-
         switch (action) {
         case KeyAction::Down:
-            sendVk(true);
+            sendKeyboardVk(virtualKey, true);
             break;
         case KeyAction::Up:
-            sendVk(false);
+            sendKeyboardVk(virtualKey, false);
             break;
-        case KeyAction::Tap: {
-            INPUT inputs[2]{};
-            inputs[0].type = INPUT_KEYBOARD;
-            inputs[0].ki.wVk = static_cast<WORD>(virtualKey);
-            inputs[1].type = INPUT_KEYBOARD;
-            inputs[1].ki.wVk = static_cast<WORD>(virtualKey);
-            inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
-            sendInputs(inputs, 2);
-            trackSyntheticKey(virtualKey, true);
-            trackSyntheticKey(virtualKey, false);
+        case KeyAction::Tap:
+            sendKeyboardTap(virtualKey);
             break;
-        }
         }
     }
 
@@ -898,11 +937,7 @@ void InputSimulator::restoreTrackedKeyboard(std::unordered_set<int>& heldKeys,
                                             const SessionModifierSnapshot& /*sessionStart*/) {
     const auto keysToRelease = heldKeys;
     for (int virtualKey : keysToRelease) {
-        INPUT input{};
-        input.type = INPUT_KEYBOARD;
-        input.ki.wVk = static_cast<WORD>(normalizeModifierVirtualKey(virtualKey));
-        input.ki.dwFlags = KEYEVENTF_KEYUP;
-        sendInputs(&input, 1);
+        sendKeyboardVk(normalizeModifierVirtualKey(virtualKey), true);
         heldKeys.erase(virtualKey);
     }
 }
