@@ -17,7 +17,6 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
-#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -1665,17 +1664,6 @@ void FeatureListPanel::onRemoveFeature() {
     }
     const QList<int> rows = selectedRows();
     if (rows.isEmpty()) {
-        return;
-    }
-    const bool multiple = rows.size() > 1;
-    QMessageBox box(QMessageBox::Question,
-                    tr("기능 삭제"),
-                    multiple ? tr("선택한 기능 %1개를 삭제할까요?").arg(rows.size())
-                             : tr("선택한 기능을 삭제할까요?"),
-                    QMessageBox::Yes | QMessageBox::No, this);
-    box.button(QMessageBox::Yes)->setText(tr("예"));
-    box.button(QMessageBox::No)->setText(tr("아니오"));
-    if (static_cast<QMessageBox::StandardButton>(box.exec()) != QMessageBox::Yes) {
         return;
     }
     const int restoreRow = qMax(0, rows.front() - 1);
