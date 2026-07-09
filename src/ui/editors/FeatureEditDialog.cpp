@@ -262,7 +262,7 @@ void FeatureEditDialog::setupUi() {
 
     form->addRow(tr("루프 간격"), m_loopIntervalSection);
     m_loopIntervalSection->setToolTip(
-        tr("무한 반복·누를 동안 실행에서 한 루프가 끝난 뒤 다음 루프를 시작하기 전에 대기합니다. "
+        tr("무한 반복·N회 반복(2회 이상)·누를 동안 실행에서 한 루프가 끝난 뒤 다음 루프를 시작하기 전에 대기합니다. "
            "0ms이면 즉시 다음 루프를 시작합니다."));
 
     m_triggerCooldownSpin = new DragAdjustSpinBox(this);
@@ -413,6 +413,7 @@ void FeatureEditDialog::updateModeDependentUi() {
     const bool repeatCountMode = mode == FeatureRunMode::RepeatCount;
     const bool infiniteStyle = mode == FeatureRunMode::RepeatInfinite || mode == FeatureRunMode::Hold;
     const bool triggerMode = mode == FeatureRunMode::Trigger;
+    const bool loopIntervalEligible = infiniteStyle || (repeatCountMode && m_repeatSpin->value() >= 2);
 
     if (m_repeatCountLabel) {
         m_repeatCountLabel->setVisible(repeatCountMode);
@@ -428,9 +429,9 @@ void FeatureEditDialog::updateModeDependentUi() {
     m_infiniteExitSpin->setVisible(showInfiniteExitCount);
 
     if (m_loopIntervalSection) {
-        m_loopIntervalSection->setVisible(infiniteStyle);
+        m_loopIntervalSection->setVisible(loopIntervalEligible);
     }
-    if (infiniteStyle) {
+    if (loopIntervalEligible) {
         updateLoopIntervalInputUi();
     }
 

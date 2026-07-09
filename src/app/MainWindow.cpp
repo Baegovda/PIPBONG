@@ -2650,7 +2650,8 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
         session.triggerBlockIndex = WorkflowRunner::firstImageFindBlockIndex(feature->workflow());
     }
     if (session.runningMode == FeatureRunMode::Hold
-        || session.runningMode == FeatureRunMode::RepeatInfinite) {
+        || session.runningMode == FeatureRunMode::RepeatInfinite
+        || session.runningMode == FeatureRunMode::RepeatCount) {
         ++session.holdRepeatGeneration;
     }
     session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
@@ -3741,14 +3742,13 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
     }
 
     if (session->runningMode == FeatureRunMode::Hold
-        || session->runningMode == FeatureRunMode::RepeatInfinite) {
+        || session->runningMode == FeatureRunMode::RepeatInfinite
+        || session->runningMode == FeatureRunMode::RepeatCount) {
+        if (session->runningMode == FeatureRunMode::RepeatCount && !success) {
+            finishRunSession(session->featureId, success, message);
+            return;
+        }
         scheduleRepeatIteration(*session, feature, success, message);
-        return;
-    }
-
-    if (shouldContinueRunSession(*session, feature)
-        && (success || infiniteExitEnabled)) {
-        continueRepeatSession(*session, feature, success, message);
         return;
     }
 

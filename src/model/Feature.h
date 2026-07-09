@@ -75,8 +75,11 @@ public:
     int loopIntervalMaxMs() const { return m_loopIntervalMaxMs; }
     void setLoopIntervalMaxMs(int ms);
 
-    /// Delay before the next loop iteration for Hold / infinite repeat (0 when fixed ms is 0 and not random).
+    /// Delay before the next loop iteration for Hold / infinite / N-repeat (0 when fixed ms is 0 and not random).
     int resolvedLoopIntervalMs() const;
+
+    /// True when run mode supports configuring a gap between loop iterations.
+    bool supportsLoopInterval() const;
 
     /// True when run mode supports ROI correction (infinite repeat or N≥2).
     bool roiCorrectionSessionEligible() const;

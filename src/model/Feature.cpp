@@ -38,6 +38,13 @@ int Feature::resolvedLoopIntervalMs() const {
     return m_loopIntervalMs;
 }
 
+bool Feature::supportsLoopInterval() const {
+    if (m_runMode == FeatureRunMode::Hold || m_runMode == FeatureRunMode::RepeatInfinite) {
+        return true;
+    }
+    return m_runMode == FeatureRunMode::RepeatCount && m_repeatCount >= 2;
+}
+
 bool Feature::roiCorrectionSessionEligible() const {
     if (m_runMode == FeatureRunMode::RepeatInfinite || m_runMode == FeatureRunMode::Trigger) {
         return true;

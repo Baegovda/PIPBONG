@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.66` (from `project(PIPBONG VERSION 0.8.66)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.67` (from `project(PIPBONG VERSION 0.8.67)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -449,8 +449,8 @@ Sbm1.0/                        # repo root (local workspace)
 | `repeatCount`                             | `1`                | Used when `runMode` is `RepeatCount`                                                                                                                                                                                                            |
 | `triggerCooldownMs`                       | `1000`             | After a trigger fires in `Trigger` mode, wait this many ms before monitoring again (5 ms step, `0` = immediate); omitted when default                                                                                                           |
 | `infiniteExitAfterConsecutiveMisses`      | `0` (omitted)      | When `> 0` with `RepeatInfinite` or `Hold`, stop after this many consecutive loop iterations where template matching fails                                                                                                                      |
-| `loopIntervalMs`                          | `0` (omitted)      | Fixed delay between loop iterations for `RepeatInfinite` / `Hold` (5 ms step); omitted when `0` and not using random range                                                                                                                      |
-| `loopIntervalRandomRange`                 | `false` (omitted)  | When `true` with `RepeatInfinite` / `Hold`, wait a random duration between `loopIntervalMinMs` and `loopIntervalMaxMs` before the next loop                                                                                                     |
+| `loopIntervalMs`                          | `0` (omitted)      | Fixed delay between loop iterations for `RepeatInfinite` / `Hold` / `RepeatCount` (5 ms step); omitted when `0` and not using random range                                                                                                      |
+| `loopIntervalRandomRange`                 | `false` (omitted)  | When `true` with `RepeatInfinite` / `Hold` / `RepeatCount`, wait a random duration between `loopIntervalMinMs` and `loopIntervalMaxMs` before the next loop                                                                                      |
 | `loopIntervalMinMs` / `loopIntervalMaxMs` | `0`                | Random loop-gap bounds (5 ms step); written when `loopIntervalRandomRange` is `true`                                                                                                                                                            |
 | `userInputInterrupt`                      | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run; `"None"` — ignore user input (no pause/stop). Excludes mouse movement, injected input, and the feature's own hotkey             |
 | `pointerVisualFeedback`                   | `true` (omitted)   | When `false`, disables target-window click/match pulse overlay for this feature during runs                                                                                                                                                     |
@@ -898,6 +898,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.67] - 2026-07-09
+
+### Fixed
+
+- Feature **루프 간격** now applies between workflow cycles for **N회 반복** as well as **무한 반복** / **누를 동안**: `RepeatCount` sessions use `scheduleRepeatIteration` (timer + `resolvedLoopIntervalMs`) instead of immediately launching the next loop (`MainWindow`, `FeatureEditDialog`).
+
+### Changed
+
+- **루프 간격** editor row is shown for **N회 반복** when repeat count is ≥2 (`Feature::supportsLoopInterval`, `FeatureEditDialog`).
 
 ## [0.8.66] - 2026-07-09
 
