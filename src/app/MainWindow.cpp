@@ -567,10 +567,32 @@ void MainWindow::setupUiState() {
                                                        QStringLiteral("featureList/columns")));
             }
         });
+    m_uiState->registerSettingsHooks(
+        QStringLiteral("workflowBlockList/rowHeight"),
+        [this](QSettings& settings) {
+            if (m_workflowEditor && m_workflowEditor->blockList()) {
+                m_workflowEditor->blockList()->saveRowHeight(
+                    settings,
+                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/rowHeight")));
+            }
+        },
+        [this](const QSettings& settings) {
+            if (m_workflowEditor && m_workflowEditor->blockList()) {
+                m_workflowEditor->blockList()->restoreRowHeight(
+                    settings,
+                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/rowHeight")));
+            }
+        });
     connect(m_featureList,
             &FeatureListPanel::columnLayoutChanged,
             m_uiState,
             &UiStateManager::scheduleSave);
+    if (m_workflowEditor && m_workflowEditor->blockList()) {
+        connect(m_workflowEditor->blockList(),
+                &BlockListWidget::rowHeightChanged,
+                m_uiState,
+                &UiStateManager::scheduleSave);
+    }
     m_uiState->restoreAll();
     if (m_workflowEditor) {
         m_workflowEditor->applyBlockListHeaderResizeModes();

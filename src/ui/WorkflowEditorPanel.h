@@ -60,6 +60,8 @@ public:
 
     QHeaderView* blockListHeader() const;
 
+    BlockListWidget* blockList() const { return m_blockList; }
+
     void applyBlockListHeaderResizeModes();
 
 signals:

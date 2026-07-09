@@ -2,7 +2,8 @@
 
 #include <QtGlobal>
 
-// Shared grab zones for column dividers, splitter bars, and frameless window edges.
+// Shared grab zones for column dividers, splitter bars, frameless window edges,
+// and list/table row-height resize (header bottom drag).
 // Horizontal dividers: ±kDividerHalfWidthPx on each side of the divider line.
 namespace UiResizeHandle {
 
@@ -11,12 +12,22 @@ constexpr int kDividerHalfHeightPx = 10;
 constexpr int kSplitterHandleWidthPx = 12;
 constexpr int kWindowResizeBorderPx = 10;
 
+// Shared list/table row-height drag (feature list header + workflow block list header).
+constexpr int kMinListRowHeightPx = 20;
+constexpr int kMaxListRowHeightPx = 64;
+constexpr int kDefaultFeatureListRowHeightPx = 26;
+constexpr int kDefaultBlockListRowHeightPx = 36;
+
 inline bool isWithinHorizontalGrab(int pos, int dividerPos) {
     return qAbs(pos - dividerPos) <= kDividerHalfWidthPx;
 }
 
 inline bool isWithinBottomGrab(int posY, int widgetHeight) {
     return posY >= widgetHeight - kDividerHalfHeightPx;
+}
+
+inline int clampListRowHeight(int rowHeight) {
+    return qBound(kMinListRowHeightPx, rowHeight, kMaxListRowHeightPx);
 }
 
 inline int nearestHorizontalDivider(const int* dividerPositions, int dividerCount, int pos) {

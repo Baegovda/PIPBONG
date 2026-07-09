@@ -36,6 +36,7 @@
 #include <QGroupBox>
 namespace {
 constexpr int kHeaderExtraHeight = 4;
+// Row-height min/max: UiResizeHandle::kMinListRowHeightPx / kMaxListRowHeightPx
 constexpr int kRowSeparatorHeight = 1;
 constexpr int kSelectionBarWidth = 3;
 constexpr int kFeatureIdRole = Qt::UserRole;
@@ -51,8 +52,6 @@ constexpr int kMinModeColumnWidth = 28;
 constexpr int kMaxModeColumnWidth = 120;
 constexpr int kMinHotkeyColumnWidth = 36;
 constexpr int kMaxHotkeyColumnWidth = 180;
-constexpr int kMinRowHeight = 20;
-constexpr int kMaxRowHeight = 48;
 constexpr int kRunButtonColumnWidth = 24;
 constexpr int kEnableColumnWidth = 26;
 struct FeatureListColumnRects {
@@ -620,7 +619,7 @@ private:
             break;
         case FeatureListResizeHandle::RowHeight:
             layout.rowHeight =
-                qBound(kMinRowHeight, m_dragStartLayout.rowHeight + deltaY, kMaxRowHeight);
+                UiResizeHandle::clampListRowHeight(m_dragStartLayout.rowHeight + deltaY);
             m_dragGuideY = pos.y();
             break;
         default:
@@ -1185,7 +1184,7 @@ void FeatureListPanel::setColumnLayout(const FeatureListColumnLayout& layout, bo
         qBound(kMinModeColumnWidth, layout.modeColumnWidth, kMaxModeColumnWidth);
     clamped.hotkeyColumnWidth =
         qBound(kMinHotkeyColumnWidth, layout.hotkeyColumnWidth, kMaxHotkeyColumnWidth);
-    clamped.rowHeight = qBound(kMinRowHeight, layout.rowHeight, kMaxRowHeight);
+    clamped.rowHeight = UiResizeHandle::clampListRowHeight(layout.rowHeight);
     if (clamped.modeColumnWidth == m_columnLayout.modeColumnWidth
         && clamped.hotkeyColumnWidth == m_columnLayout.hotkeyColumnWidth
         && clamped.rowHeight == m_columnLayout.rowHeight) {
@@ -1236,11 +1235,10 @@ void FeatureListPanel::restoreColumnLayout(const QSettings& settings, const QStr
                                                     settingsKey + QStringLiteral("/hotkeyColumnWidth"),
                                                     layout.hotkeyColumnWidth),
                                       kMaxHotkeyColumnWidth);
-    layout.rowHeight = qBound(kMinRowHeight,
-                              readLayoutInt(settings,
-                                            settingsKey + QStringLiteral("/rowHeight"),
-                                            layout.rowHeight),
-                              kMaxRowHeight);
+    layout.rowHeight = UiResizeHandle::clampListRowHeight(
+        readLayoutInt(settings,
+                      settingsKey + QStringLiteral("/rowHeight"),
+                      layout.rowHeight));
     m_restoringColumnLayout = true;
     setColumnLayout(layout, false);
     m_restoringColumnLayout = false;

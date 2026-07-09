@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.54` (from `project(PIPBONG VERSION 0.8.54)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.55` (from `project(PIPBONG VERSION 0.8.55)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -788,13 +788,13 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 ### 8.9 Column divider and resize grab zones (mandatory default)
 
-**Status:** Program-wide policy (2026-07). All custom column-divider hit tests, horizontal threshold-drag slack, splitter bars, and frameless window resize borders use shared constants in `src/ui/UiResizeHandle.h` — do not hardcode narrow 4–5 px zones.
+**Status:** Program-wide policy (2026-07). All custom column-divider hit tests, horizontal threshold-drag slack, splitter bars, frameless window resize borders, and list/table **row-height** header-bottom drags use shared constants in `src/ui/UiResizeHandle.h` — do not hardcode narrow 4–5 px zones.
 
 | Surface | Constant / rule |
 |---------|-----------------|
 | Column divider cursor + drag | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `BlockListHeaderView`, `FeatureListHeaderWidget` |
 | In-cell horizontal drag slack | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
-| Row-height divider (feature list header bottom) | `kDividerHalfHeightPx` (bottom 10 px) |
+| Row-height divider (feature list / workflow block list header bottom) | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight` (`kMinListRowHeightPx`–`kMaxListRowHeightPx`) |
 | `QSplitter` handles | `kSplitterHandleWidthPx` (12 px) via `UiStateManager::registerSplitter` |
 | Frameless main window edges | `kWindowResizeBorderPx` (10 px) — `MainWindow::nativeEvent` |
 
@@ -891,6 +891,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.55] - 2026-07-09
+
+### Added
+
+- Workflow block list row height is adjustable by dragging the header bottom edge (same UX as the feature list), with shared min/max clamp in `UiResizeHandle` and persistence under `workflowBlockList/rowHeight` (`BlockListWidget`, `MainWindow`).
+
+### Changed
+
+- Feature list and workflow block list share `UiResizeHandle` row-height constants (`kMinListRowHeightPx` / `kMaxListRowHeightPx` / `clampListRowHeight`); feature list max row height raised to 64 to match (`FeatureListPanel`, `UiResizeHandle.h`, AGENTS.md §8.9).
 
 ## [0.8.54] - 2026-07-09
 

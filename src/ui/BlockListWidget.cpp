@@ -12,6 +12,7 @@
 #include <QCursor>
 #include <QDrag>
 #include <QMimeData>
+#include <QSettings>
 #include <QStyle>
 #include <QDragLeaveEvent>
 #include <QDragMoveEvent>
@@ -44,7 +45,6 @@
 namespace {
 
 constexpr int kThumbnailSize = 32;
-constexpr int kRowHeight = kThumbnailSize + 4;
 constexpr int kLoopRegionHeaderHeight = 28;
 constexpr int kColIndex = 0;
 constexpr int kColPreview = 1;
@@ -62,8 +62,9 @@ constexpr int kColumnCount = 12;
 
 class BlockListHeaderView : public QHeaderView {
 public:
-    explicit BlockListHeaderView(QWidget* parent = nullptr)
-        : QHeaderView(Qt::Horizontal, parent) {
+    explicit BlockListHeaderView(BlockListWidget* owner)
+        : QHeaderView(Qt::Horizontal, owner)
+        , m_owner(owner) {
         setMouseTracking(true);
     }
 
@@ -89,10 +90,25 @@ protected:
         return bestSection;
     }
 
+    bool isRowHeightHandle(const QPoint& pos) const {
+        return UiResizeHandle::isWithinBottomGrab(pos.y(), height());
+    }
+
     void mousePressEvent(QMouseEvent* event) override {
         if (event->button() == Qt::LeftButton) {
+            if (isRowHeightHandle(event->pos())) {
+                m_resizingRowHeight = true;
+                m_resizingSection = -1;
+                m_resizePressPos = event->globalPosition().toPoint().y();
+                m_resizeStartSize = m_owner ? m_owner->blockRowHeight()
+                                            : UiResizeHandle::kDefaultBlockListRowHeightPx;
+                setCursor(Qt::SizeVerCursor);
+                event->accept();
+                return;
+            }
             const int section = resizeHandleSectionAt(event->pos().x());
             if (section >= 0) {
+                m_resizingRowHeight = false;
                 m_resizingSection = section;
                 m_resizePressPos = event->globalPosition().toPoint().x();
                 m_resizeStartSize = sectionSize(section);
@@ -101,10 +117,20 @@ protected:
             }
         }
         m_resizingSection = -1;
+        m_resizingRowHeight = false;
         QHeaderView::mousePressEvent(event);
     }
 
     void mouseMoveEvent(QMouseEvent* event) override {
+        if (m_resizingRowHeight && (event->buttons() & Qt::LeftButton)) {
+            const int delta = event->globalPosition().toPoint().y() - m_resizePressPos;
+            if (m_owner) {
+                m_owner->setBlockRowHeight(m_resizeStartSize + delta, true);
+            }
+            setCursor(Qt::SizeVerCursor);
+            event->accept();
+            return;
+        }
         if (m_resizingSection >= 0 && (event->buttons() & Qt::LeftButton)) {
             const int delta = event->globalPosition().toPoint().x() - m_resizePressPos;
             resizeSection(m_resizingSection, qMax(minimumSectionSize(), m_resizeStartSize + delta));
@@ -113,8 +139,10 @@ protected:
         }
 
         QHeaderView::mouseMoveEvent(event);
-        if (m_resizingSection < 0) {
-            if (resizeHandleSectionAt(event->pos().x()) >= 0) {
+        if (m_resizingSection < 0 && !m_resizingRowHeight) {
+            if (isRowHeightHandle(event->pos())) {
+                setCursor(Qt::SizeVerCursor);
+            } else if (resizeHandleSectionAt(event->pos().x()) >= 0) {
                 setCursor(Qt::SplitHCursor);
             } else {
                 unsetCursor();
@@ -123,7 +151,8 @@ protected:
     }
 
     void mouseReleaseEvent(QMouseEvent* event) override {
-        if (m_resizingSection >= 0) {
+        if (m_resizingRowHeight || m_resizingSection >= 0) {
+            m_resizingRowHeight = false;
             m_resizingSection = -1;
             unsetCursor();
             event->accept();
@@ -133,14 +162,16 @@ protected:
     }
 
     void leaveEvent(QEvent* event) override {
-        if (m_resizingSection < 0) {
+        if (m_resizingSection < 0 && !m_resizingRowHeight) {
             unsetCursor();
         }
         QHeaderView::leaveEvent(event);
     }
 
 private:
+    BlockListWidget* m_owner = nullptr;
     int m_resizingSection = -1;
+    bool m_resizingRowHeight = false;
     int m_resizePressPos = 0;
     int m_resizeStartSize = 0;
 };
@@ -915,7 +946,8 @@ private:
 } // namespace
 
 BlockListWidget::BlockListWidget(QWidget* parent)
-    : QTableWidget(parent) {
+    : QTableWidget(parent)
+    , m_blockRowHeight(UiResizeHandle::kDefaultBlockListRowHeightPx) {
     setHorizontalHeader(new BlockListHeaderView(this));
     horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
     horizontalHeader()->setSectionsMovable(false);
@@ -926,7 +958,7 @@ BlockListWidget::BlockListWidget(QWidget* parent)
     setItemDelegateForColumn(1, new CenterIconDelegate(this));
     setItemDelegateForColumn(kColRoiCorrection, new CenterCheckBoxDelegate(this));
 
-    verticalHeader()->setDefaultSectionSize(kRowHeight);
+    verticalHeader()->setDefaultSectionSize(m_blockRowHeight);
     verticalHeader()->setVisible(false);
     setStyleSheet(QStringLiteral("QTableWidget::item { padding-top: 1px; padding-bottom: 1px; }"));
     setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -1026,6 +1058,37 @@ void BlockListWidget::applyHeaderResizeModes() {
     applyBlockListHeaderResizeModes(horizontalHeader());
 }
 
+void BlockListWidget::setBlockRowHeight(int height, bool persist) {
+    const int clamped = UiResizeHandle::clampListRowHeight(height);
+    if (clamped == m_blockRowHeight) {
+        return;
+    }
+    m_blockRowHeight = clamped;
+    verticalHeader()->setDefaultSectionSize(m_blockRowHeight);
+    for (int tableRow = 0; tableRow < rowCount(); ++tableRow) {
+        if (blockRowForTableRow(tableRow) >= 0) {
+            setRowHeight(tableRow, m_blockRowHeight);
+        }
+    }
+    if (persist && !m_restoringRowHeight) {
+        emit rowHeightChanged();
+    }
+}
+
+void BlockListWidget::saveRowHeight(QSettings& settings, const QString& settingsKey) const {
+    settings.setValue(settingsKey + QStringLiteral("/rowHeight"), m_blockRowHeight);
+}
+
+void BlockListWidget::restoreRowHeight(const QSettings& settings, const QString& settingsKey) {
+    if (!settings.contains(settingsKey + QStringLiteral("/rowHeight"))) {
+        return;
+    }
+    const int restored = settings.value(settingsKey + QStringLiteral("/rowHeight")).toInt();
+    m_restoringRowHeight = true;
+    setBlockRowHeight(restored, false);
+    m_restoringRowHeight = false;
+}
+
 void BlockListWidget::setRoiCorrectionColumnVisible(bool visible) {
     m_roiCorrectionColumnVisible = visible;
     if (QHeaderView* header = horizontalHeader()) {
@@ -1116,7 +1179,7 @@ void BlockListWidget::rebuildTableRows() {
         blockMeta.mainBlockRow = block;
         m_tableRowMeta.push_back(blockMeta);
         m_blockTableRow[block] = tableRow;
-        setRowHeight(tableRow, kRowHeight);
+        setRowHeight(tableRow, m_blockRowHeight);
         ++tableRow;
     }
 }
@@ -2135,7 +2198,7 @@ void BlockListWidget::applyActiveRowVisuals() {
 
         if (showGlass) {
             glassColors = glassColorsFor(rowHighlight, glassIntensity, rowPalette);
-            rowBrush = glassBodyBrush(glassColors, rowPalette, kRowHeight);
+            rowBrush = glassBodyBrush(glassColors, rowPalette, m_blockRowHeight);
             rowForeground = glassColors.foreground;
             useGlassIndex = true;
         }
@@ -2146,7 +2209,7 @@ void BlockListWidget::applyActiveRowVisuals() {
                 continue;
             }
             if (c == kColIndex && useGlassIndex) {
-                cellItem->setBackground(glassIndexBrush(glassColors, rowPalette, kRowHeight));
+                cellItem->setBackground(glassIndexBrush(glassColors, rowPalette, m_blockRowHeight));
             } else if (showGlass) {
                 cellItem->setBackground(rowBrush);
             } else if (inPickPreview) {

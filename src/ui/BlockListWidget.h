@@ -36,6 +36,8 @@ class QDropEvent;
 
 class QResizeEvent;
 
+class QSettings;
+
 class QTimer;
 
 class QVariantAnimation;
@@ -74,6 +76,11 @@ public:
     void setRoiCorrectionColumnVisible(bool visible);
 
     void setBlockRoiCorrection(int row, bool enabled, bool interactive);
+
+    int blockRowHeight() const { return m_blockRowHeight; }
+    void setBlockRowHeight(int height, bool persist = true);
+    void saveRowHeight(QSettings& settings, const QString& settingsKey) const;
+    void restoreRowHeight(const QSettings& settings, const QString& settingsKey);
 
     void setBlockCount(int count);
 
@@ -178,6 +185,8 @@ signals:
 
     void redoRequested();
 
+    void rowHeightChanged();
+
 
 
 protected:
@@ -268,6 +277,10 @@ private:
     bool m_reorderEnabled = true;
 
     int m_blockCount = 0;
+
+    int m_blockRowHeight = 36; // UiResizeHandle::kDefaultBlockListRowHeightPx
+
+    bool m_restoringRowHeight = false;
 
     QVector<int> m_blockTableRow;
 
