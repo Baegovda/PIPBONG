@@ -244,7 +244,6 @@ private:
     void restoreSelectedFeaturePreference();
     QString selectedFeaturePreferenceKey() const;
     void scheduleRunWarmup();
-    void finishDeferredStartup();
     void prepareProjectUnload();
     bool pushGlobalUiUndoSnapshot(const QString& reason);
     void clearGlobalUiRedoHistory();
@@ -311,7 +310,6 @@ private:
     QTimer* m_targetWindowCenterPinTimer = nullptr;
     QTimer* m_profileAutoSwitchTimer = nullptr;
     UpdateChecker* m_updateChecker = nullptr;
-    bool m_deferredStartupDone = false;
     bool m_initialUpdateCheckDone = false;
     bool m_lastUpdateCheckWasSilent = false;
     bool m_autoUpdateDeferred = false;

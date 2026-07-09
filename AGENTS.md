@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.83` (from `project(PIPBONG VERSION 0.8.83)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.84` (from `project(PIPBONG VERSION 0.8.84)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1051,6 +1051,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.84] - 2026-07-10
+
+### Removed
+
+- Reverted v0.8.79 startup “speed” work that deferred profile/project load, delay-loaded OpenCV, skipped live profile-icon EnumWindows, and deferred silent update check — F5 slowness was CodeLLDB, not app init (`MainWindow`, `main.cpp`, `CMakeLists.txt`, `ProfileManager`).
 
 ## [0.8.83] - 2026-07-10
 
@@ -3497,4 +3503,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.83._
+_Last consolidated: 2026-07-10. Current application version: 0.8.84._

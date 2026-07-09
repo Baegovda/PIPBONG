@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.83 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.84 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -144,17 +144,6 @@ target_link_libraries(PIPBONG PRIVATE
     opencv_imgcodecs
     nlohmann_json::nlohmann_json
 )
-
-if(WIN32)
-    # OpenCV is unused until ImageFind / RunWarmup — delay-load so first paint is not blocked
-    # by opencv_*.dll (+ transitive) mapping into the process.
-    target_link_libraries(PIPBONG PRIVATE delayimp)
-    target_link_options(PIPBONG PRIVATE
-        "/DELAYLOAD:opencv_core4.dll"
-        "/DELAYLOAD:opencv_imgproc4.dll"
-        "/DELAYLOAD:opencv_imgcodecs4.dll"
-    )
-endif()
 
 if(WIN32)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "$ENV{Qt6_DIR}/../../../bin" "${Qt6_DIR}/../../../bin")
