@@ -77,6 +77,43 @@ void Project::moveFeature(int fromIndex, int toIndex) {
     }
 }
 
+void Project::moveFeatures(const std::vector<int>& selectedRowsSorted, int insertIndex) {
+    if (selectedRowsSorted.empty()) {
+        return;
+    }
+    const int size = static_cast<int>(m_features.size());
+    for (int row : selectedRowsSorted) {
+        if (row < 0 || row >= size) {
+            return;
+        }
+    }
+    for (size_t i = 1; i < selectedRowsSorted.size(); ++i) {
+        if (selectedRowsSorted[i] <= selectedRowsSorted[i - 1]) {
+            return;
+        }
+    }
+
+    std::vector<std::unique_ptr<Feature>> moved;
+    moved.reserve(selectedRowsSorted.size());
+    for (int row : selectedRowsSorted) {
+        moved.push_back(std::move(m_features[static_cast<size_t>(row)]));
+    }
+    for (int i = static_cast<int>(selectedRowsSorted.size()) - 1; i >= 0; --i) {
+        m_features.erase(m_features.begin() + selectedRowsSorted[static_cast<size_t>(i)]);
+    }
+
+    int dest = insertIndex;
+    for (int row : selectedRowsSorted) {
+        if (row < insertIndex) {
+            --dest;
+        }
+    }
+    dest = std::clamp(dest, 0, static_cast<int>(m_features.size()));
+    m_features.insert(m_features.begin() + dest,
+                      std::make_move_iterator(moved.begin()),
+                      std::make_move_iterator(moved.end()));
+}
+
 void Project::clear() {
     m_features.clear();
 }

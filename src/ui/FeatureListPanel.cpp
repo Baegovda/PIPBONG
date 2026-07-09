@@ -1,6 +1,7 @@
 #include "ui/FeatureListPanel.h"
 #include "ui/FeatureListWidget.h"
 #include "ui/FeatureLibraryListWidget.h"
+#include "ui/widgets/ReorderableListWidget.h"
 #include "ui/UiResizeHandle.h"
 #include "ui/HotkeyBindingIcon.h"
 #include "model/Feature.h"
@@ -803,6 +804,7 @@ void FeatureListPanel::setupUi() {
     m_list->setSpacing(0);
     m_list->setItemDelegate(new FeatureListItemDelegate(this));
     connect(m_list, &FeatureListWidget::featureRowsReordered, this, &FeatureListPanel::onFeatureRowsReordered);
+    connect(m_list, &ReorderableListWidget::multiRowsReordered, this, &FeatureListPanel::onFeatureMultiRowsReordered);
     connect(m_list, &FeatureListWidget::featureDropped, this, &FeatureListPanel::featureDropped);
     connect(m_list, &FeatureListWidget::deleteRequested, this, &FeatureListPanel::onRemoveFeature);
     connect(m_list, &FeatureListWidget::copyRequested, this, &FeatureListPanel::onCopyFeature);
@@ -860,6 +862,10 @@ void FeatureListPanel::setupUi() {
             &FeatureLibraryListWidget::libraryRowsReordered,
             this,
             &FeatureListPanel::onLibraryRowsReordered);
+    connect(m_libraryList,
+            &ReorderableListWidget::multiRowsReordered,
+            this,
+            &FeatureListPanel::onLibraryMultiRowsReordered);
     connect(m_libraryList,
             &QListWidget::itemSelectionChanged,
             this,
@@ -1418,6 +1424,41 @@ void FeatureListPanel::onFeatureRowsReordered(int fromRow, int toRow) {
     }
 }
 
+void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRows, int insertIndex) {
+    if (!m_project || selectedRows.isEmpty()) {
+        if (m_list) {
+            refresh();
+        }
+        return;
+    }
+    std::vector<int> rows;
+    rows.reserve(static_cast<size_t>(selectedRows.size()));
+    for (int row : selectedRows) {
+        rows.push_back(row);
+    }
+    m_project->moveFeatures(rows, insertIndex);
+    emit projectModified();
+    refresh();
+    if (m_list) {
+        m_list->clearSelection();
+        int dest = insertIndex;
+        for (int row : selectedRows) {
+            if (row < insertIndex) {
+                --dest;
+            }
+        }
+        dest = qBound(0, dest, m_list->count());
+        for (int i = 0; i < selectedRows.size() && dest + i < m_list->count(); ++i) {
+            if (QListWidgetItem* item = m_list->item(dest + i)) {
+                item->setSelected(true);
+            }
+        }
+        if (dest < m_list->count()) {
+            m_list->setCurrentRow(dest);
+        }
+    }
+}
+
 void FeatureListPanel::onLibraryRowsReordered(int fromRow, int toRow) {
     if (!m_libraryList || fromRow == toRow || !m_editControlsEnabled) {
         return;
@@ -1426,6 +1467,13 @@ void FeatureListPanel::onLibraryRowsReordered(int fromRow, int toRow) {
     if (fromRow >= 0 && fromRow < m_libraryList->count()) {
         m_libraryList->setCurrentRow(toRow);
     }
+}
+
+void FeatureListPanel::onLibraryMultiRowsReordered(const QList<int>& selectedRows, int insertIndex) {
+    if (!m_libraryList || selectedRows.isEmpty() || !m_editControlsEnabled) {
+        return;
+    }
+    emit libraryEntriesMultiReordered(selectedRows, insertIndex);
 }
 
 void FeatureListPanel::onLibrarySelectionChanged() {

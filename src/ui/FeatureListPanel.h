@@ -122,6 +122,7 @@ signals:
     void featureDroppedOnLibrary(const QMimeData* mime);
     /// Library drawer entry order changed by drag.
     void libraryEntriesReordered(int fromRow, int toRow);
+    void libraryEntriesMultiReordered(const QList<int>& selectedRows, int insertIndex);
     /// Library drawer selection changed for workflow preview.
     void libraryEntrySelected(const QString& entryId);
 
@@ -153,7 +154,9 @@ private slots:
     void onAnimationTick();
 
     void onFeatureRowsReordered(int fromRow, int toRow);
+    void onFeatureMultiRowsReordered(const QList<int>& selectedRows, int insertIndex);
     void onLibraryRowsReordered(int fromRow, int toRow);
+    void onLibraryMultiRowsReordered(const QList<int>& selectedRows, int insertIndex);
 
 
 

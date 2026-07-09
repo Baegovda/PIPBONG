@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.49` (from `project(PIPBONG VERSION 0.8.49)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.50` (from `project(PIPBONG VERSION 0.8.50)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -631,9 +631,10 @@ If POE runs **as administrator**, a non-elevated PIPBONG process may not receive
 
 | Layer | Responsibility |
 |-------|----------------|
-| `ReorderableListWidget` | Insertion-line indicator, `startDrag` / `dropEvent`, `rowsReordered` + `externalItemDropped` signals |
+| `ReorderableListWidget` | Insertion-line indicator, `startDrag` / `dropEvent`, `rowsReordered` + `multiRowsReordered` + `externalItemDropped` signals; multi-select drag reorders as a block |
 | Subclass hooks | `buildDragMimeData`, `acceptsExternalMime`, `canStartDragFromRow`, `minimumDropInsertionIndex` |
-| Persistence | Parent connects `rowsReordered` → model save → `refresh()` (feature `Project::moveFeature`, library `manifest.json`, profile `ProfileManager::reorderProfiles`) |
+| Persistence | Parent connects reorder signals → model save → `refresh()` (feature `Project::moveFeature` / `moveFeatures`, library `manifest.json`, profile `ProfileManager::reorderProfiles`) |
+| Cross-panel MIME | `FeatureDragMime` supports multi-id payloads (`ids` array); drops copy all selected items |
 
 Subclasses: `FeatureListWidget`, `FeatureLibraryListWidget`, `ProfileListWidget` (default profile row 0: no drag, min insertion index 1). Cross-panel MIME: `FeatureDragMime`. Disable via `setReorderEnabled(false)` / `setTransferEnabled(false)` while workflows run.
 
@@ -890,6 +891,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.50] - 2026-07-09
+
+### Changed
+
+- Multi-select drag is unified across feature list and library: selected rows can be reordered as a block, and cross-panel drops (library ↔ feature list ↔ profile) copy all selected items (`ReorderableListWidget`, `FeatureDragMime` multi-id payload, `MainWindow` drop handlers).
 
 ## [0.8.49] - 2026-07-09
 

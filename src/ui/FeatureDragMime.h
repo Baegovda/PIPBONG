@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 class QMimeData;
 
@@ -15,17 +16,30 @@ enum class Source {
 
 struct Payload {
     Source source = Source::Profile;
+    /// Primary / first selected id (kept for callers that only need one).
     QString id;
+    /// All selected ids in list order (includes @a id as first when non-empty).
+    QStringList ids;
     QString profileId;
 
     bool isValid() const {
-        if (id.isEmpty()) {
+        if (ids.isEmpty() && id.isEmpty()) {
             return false;
         }
         if (source == Source::Profile) {
             return !profileId.isEmpty();
         }
         return true;
+    }
+
+    QStringList allIds() const {
+        if (!ids.isEmpty()) {
+            return ids;
+        }
+        if (!id.isEmpty()) {
+            return QStringList{id};
+        }
+        return {};
     }
 };
 

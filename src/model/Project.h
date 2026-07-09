@@ -27,6 +27,8 @@ public:
     Feature* insertFeature(int index, std::unique_ptr<Feature> feature);
     void removeFeature(int index);
     void moveFeature(int fromIndex, int toIndex);
+    /// Move selected rows (sorted ascending) as a contiguous block before @a insertIndex.
+    void moveFeatures(const std::vector<int>& selectedRowsSorted, int insertIndex);
     void clear();
 
     std::unique_ptr<Project> clone() const;

@@ -14,6 +14,8 @@
 #include <QResizeEvent>
 #include <QTimer>
 
+#include <algorithm>
+
 namespace {
 
 constexpr const char* kInternalReorderMime = "application/x-pipbong-list-reorder";
@@ -129,15 +131,37 @@ bool ReorderableListWidget::showInsertionIndicator() const {
     return m_dragSourceRow >= 0 || m_externalDropHover;
 }
 
+QList<int> ReorderableListWidget::selectedRowsSorted() const {
+    QList<int> rows;
+    for (QListWidgetItem* selected : selectedItems()) {
+        if (!selected) {
+            continue;
+        }
+        const int r = row(selected);
+        if (r >= 0) {
+            rows.push_back(r);
+        }
+    }
+    std::sort(rows.begin(), rows.end());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    return rows;
+}
+
 void ReorderableListWidget::startDrag(Qt::DropActions supportedActions) {
-    if (selectedItems().size() != 1) {
+    const QList<int> selectedRows = selectedRowsSorted();
+    if (selectedRows.isEmpty()) {
         m_dragSourceRow = -1;
         return;
     }
 
     m_dragSourceRow = currentRow();
+    if (m_dragSourceRow < 0 || !selectedRows.contains(m_dragSourceRow)) {
+        m_dragSourceRow = selectedRows.first();
+    }
     m_pendingReorderFrom = -1;
     m_pendingReorderTo = -1;
+    m_pendingMultiRows.clear();
+    m_pendingMultiInsert = -1;
     m_dropInsertionIndex = -1;
 
     if (m_dragSourceRow < 0 || !m_reorderEnabled || !canStartDragFromRow(m_dragSourceRow)) {
@@ -174,17 +198,25 @@ void ReorderableListWidget::startDrag(Qt::DropActions supportedActions) {
         viewport()->update();
     }
 
-    const bool internalReorder = m_pendingReorderFrom >= 0 && m_pendingReorderTo >= 0
-                                 && m_pendingReorderFrom != m_pendingReorderTo;
-    const int settleRow = m_pendingReorderTo;
-    if (internalReorder) {
-        emit rowsReordered(m_pendingReorderFrom, m_pendingReorderTo);
+    if (!m_pendingMultiRows.isEmpty() && m_pendingMultiInsert >= 0) {
+        const int settleRow = qBound(0, m_pendingMultiInsert, qMax(0, count() - 1));
+        emit multiRowsReordered(m_pendingMultiRows, m_pendingMultiInsert);
         playDropSettleAtRow(settleRow);
+    } else {
+        const bool internalReorder = m_pendingReorderFrom >= 0 && m_pendingReorderTo >= 0
+                                     && m_pendingReorderFrom != m_pendingReorderTo;
+        const int settleRow = m_pendingReorderTo;
+        if (internalReorder) {
+            emit rowsReordered(m_pendingReorderFrom, m_pendingReorderTo);
+            playDropSettleAtRow(settleRow);
+        }
     }
 
     m_dragSourceRow = -1;
     m_pendingReorderFrom = -1;
     m_pendingReorderTo = -1;
+    m_pendingMultiRows.clear();
+    m_pendingMultiInsert = -1;
 }
 
 void ReorderableListWidget::dragEnterEvent(QDragEnterEvent* event) {
@@ -339,13 +371,39 @@ void ReorderableListWidget::dropEvent(QDropEvent* event) {
         return;
     }
 
-    const int toRow = dropTargetRow(event->position().toPoint());
-    const int fromRow = m_dragSourceRow;
-    m_dragSourceRow = -1;
+    const QList<int> selectedRows = selectedRowsSorted();
+    const int insertIndex = dropInsertionIndex(event->position().toPoint());
     clearDropIndicator();
     m_externalDropHover = false;
+    m_dragSourceRow = -1;
 
-    if (fromRow != toRow) {
+    if (selectedRows.size() > 1) {
+        const bool contiguous = [&]() {
+            for (int i = 1; i < selectedRows.size(); ++i) {
+                if (selectedRows[i] != selectedRows[i - 1] + 1) {
+                    return false;
+                }
+            }
+            return true;
+        }();
+        const bool unchanged = contiguous && insertIndex >= selectedRows.first()
+                               && insertIndex <= selectedRows.last() + 1;
+        if (!unchanged) {
+            m_pendingMultiRows = selectedRows;
+            m_pendingMultiInsert = insertIndex;
+        }
+        event->setDropAction(Qt::IgnoreAction);
+        event->accept();
+        return;
+    }
+
+    const int fromRow = selectedRows.isEmpty() ? -1 : selectedRows.first();
+    int toRow = insertIndex;
+    if (fromRow >= 0 && fromRow < toRow) {
+        --toRow;
+    }
+    toRow = qBound(0, toRow, qMax(0, count() - 1));
+    if (fromRow >= 0 && fromRow != toRow) {
         m_pendingReorderFrom = fromRow;
         m_pendingReorderTo = toRow;
     }

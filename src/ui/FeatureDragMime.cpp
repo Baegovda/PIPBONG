@@ -37,9 +37,19 @@ QMimeData* createMimeData(const Payload& payload) {
         return nullptr;
     }
 
+    QStringList ids = payload.allIds();
+    if (ids.isEmpty()) {
+        return nullptr;
+    }
+
     nlohmann::json json;
     json["source"] = sourceToString(payload.source).toStdString();
-    json["id"] = payload.id.toStdString();
+    json["id"] = ids.first().toStdString();
+    nlohmann::json idsJson = nlohmann::json::array();
+    for (const QString& entryId : ids) {
+        idsJson.push_back(entryId.toStdString());
+    }
+    json["ids"] = idsJson;
     if (payload.source == Source::Profile) {
         json["profileId"] = payload.profileId.toStdString();
     }
@@ -73,6 +83,22 @@ Payload parse(const QMimeData* mime) {
         payload.source = *source;
         payload.id = QString::fromStdString(json.value("id", std::string{}));
         payload.profileId = QString::fromStdString(json.value("profileId", std::string{}));
+        if (json.contains("ids") && json["ids"].is_array()) {
+            for (const auto& entry : json["ids"]) {
+                if (!entry.is_string()) {
+                    continue;
+                }
+                const QString entryId = QString::fromStdString(entry.get<std::string>());
+                if (!entryId.isEmpty() && !payload.ids.contains(entryId)) {
+                    payload.ids.push_back(entryId);
+                }
+            }
+        }
+        if (payload.ids.isEmpty() && !payload.id.isEmpty()) {
+            payload.ids.push_back(payload.id);
+        } else if (!payload.ids.isEmpty() && payload.id.isEmpty()) {
+            payload.id = payload.ids.first();
+        }
     } catch (...) {
         return {};
     }

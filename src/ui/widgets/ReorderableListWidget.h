@@ -21,6 +21,8 @@ public:
 
 signals:
     void rowsReordered(int fromRow, int toRow);
+    /// Multi-select internal reorder: move @a selectedRows (sorted) as a block before @a insertIndex.
+    void multiRowsReordered(const QList<int>& selectedRows, int insertIndex);
     /// @a insertIndex is the row gap index for ordered insert; -1 when not applicable.
     void externalItemDropped(const QMimeData* mime, int insertIndex);
 
@@ -54,9 +56,12 @@ private:
     int m_dragSourceRow = -1;
     int m_pendingReorderFrom = -1;
     int m_pendingReorderTo = -1;
+    QList<int> m_pendingMultiRows;
+    int m_pendingMultiInsert = -1;
     int m_dropInsertionIndex = -1;
     QWidget* m_dropIndicator = nullptr;
     QWidget* m_dragSlotPlaceholder = nullptr;
 
     void playDropSettleAtRow(int row);
+    QList<int> selectedRowsSorted() const;
 };

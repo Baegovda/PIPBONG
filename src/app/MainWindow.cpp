@@ -638,6 +638,10 @@ void MainWindow::connectSignals() {
             this,
             &MainWindow::onLibraryEntriesReordered);
     connect(m_featureList,
+            &FeatureListPanel::libraryEntriesMultiReordered,
+            this,
+            &MainWindow::onLibraryEntriesMultiReordered);
+    connect(m_featureList,
             &FeatureListPanel::libraryEntrySelected,
             this,
             &MainWindow::onLibraryEntrySelected);
@@ -2218,15 +2222,34 @@ void MainWindow::onFeatureDroppedOnFeatureList(const QMimeData* mime, int insert
         return;
     }
 
-    const QString entryName = libraryEntryDisplayName(m_featureLibraryManager.get(), payload.id);
-    if (!importLibraryEntryToProfile(payload.id, m_profileManager->activeProfileId(), insertIndex)) {
-        QMessageBox::critical(this,
-                              tr("라이브러리 가져오기 실패"),
-                              tr("라이브러리 항목을 불러오지 못했습니다."));
+    const QStringList ids = payload.allIds();
+    if (ids.isEmpty()) {
         return;
     }
 
-    showTransientStatus(tr("라이브러리에서 가져옴: %1").arg(entryName), 2500);
+    int nextInsert = insertIndex;
+    int imported = 0;
+    QStringList names;
+    for (const QString& entryId : ids) {
+        const QString entryName = libraryEntryDisplayName(m_featureLibraryManager.get(), entryId);
+        if (!importLibraryEntryToProfile(entryId, m_profileManager->activeProfileId(), nextInsert)) {
+            QMessageBox::critical(this,
+                                  tr("라이브러리 가져오기 실패"),
+                                  tr("라이브러리 항목을 불러오지 못했습니다."));
+            return;
+        }
+        ++imported;
+        names.push_back(entryName);
+        if (nextInsert >= 0) {
+            ++nextInsert;
+        }
+    }
+
+    if (imported == 1) {
+        showTransientStatus(tr("라이브러리에서 가져옴: %1").arg(names.first()), 2500);
+    } else {
+        showTransientStatus(tr("라이브러리에서 %1개 가져옴").arg(imported), 2500);
+    }
 }
 
 void MainWindow::onFeatureDroppedOnLibrary(const QMimeData* mime) {
@@ -2242,20 +2265,37 @@ void MainWindow::onFeatureDroppedOnLibrary(const QMimeData* mime) {
         return;
     }
 
-    Feature* feature = m_project ? m_project->featureById(payload.id.toStdString()) : nullptr;
-    if (!feature) {
+    const QStringList ids = payload.allIds();
+    if (ids.isEmpty()) {
         return;
     }
 
-    const QString featureName = QString::fromStdString(feature->name());
-    if (!saveFeatureToLibraryFromDrag(payload.id, payload.profileId)) {
-        QMessageBox::critical(this,
-                              tr("라이브러리 저장 실패"),
-                              tr("기능을 라이브러리에 저장하지 못했습니다."));
-        return;
+    int saved = 0;
+    QStringList names;
+    for (const QString& featureId : ids) {
+        Feature* feature = m_project ? m_project->featureById(featureId.toStdString()) : nullptr;
+        if (!feature) {
+            continue;
+        }
+        const QString featureName = QString::fromStdString(feature->name());
+        if (!saveFeatureToLibraryFromDrag(featureId, payload.profileId)) {
+            QMessageBox::critical(this,
+                                  tr("라이브러리 저장 실패"),
+                                  tr("기능을 라이브러리에 저장하지 못했습니다."));
+            return;
+        }
+        ++saved;
+        names.push_back(featureName);
     }
 
-    showTransientStatus(tr("라이브러리에 저장됨: %1").arg(featureName), 2500);
+    if (saved <= 0) {
+        return;
+    }
+    if (saved == 1) {
+        showTransientStatus(tr("라이브러리에 저장됨: %1").arg(names.first()), 2500);
+    } else {
+        showTransientStatus(tr("라이브러리에 %1개 저장됨").arg(saved), 2500);
+    }
 }
 
 void MainWindow::onLibraryEntriesReordered(int fromRow, int toRow) {
@@ -2282,6 +2322,46 @@ void MainWindow::onLibraryEntriesReordered(int fromRow, int toRow) {
     }
 }
 
+void MainWindow::onLibraryEntriesMultiReordered(const QList<int>& selectedRows, int insertIndex) {
+    if (!m_featureLibraryManager || selectedRows.isEmpty()) {
+        return;
+    }
+
+    const std::vector<FeatureLibraryManager::Entry> entries = m_featureLibraryManager->listEntries();
+    QStringList orderedIds;
+    orderedIds.reserve(static_cast<int>(entries.size()));
+    for (const FeatureLibraryManager::Entry& entry : entries) {
+        orderedIds.push_back(entry.id);
+    }
+
+    QStringList movedIds;
+    movedIds.reserve(selectedRows.size());
+    for (int row : selectedRows) {
+        if (row < 0 || row >= orderedIds.size()) {
+            return;
+        }
+        movedIds.push_back(orderedIds.at(row));
+    }
+    for (int i = selectedRows.size() - 1; i >= 0; --i) {
+        orderedIds.removeAt(selectedRows.at(i));
+    }
+    int dest = insertIndex;
+    for (int row : selectedRows) {
+        if (row < insertIndex) {
+            --dest;
+        }
+    }
+    dest = qBound(0, dest, orderedIds.size());
+    for (int i = 0; i < movedIds.size(); ++i) {
+        orderedIds.insert(dest + i, movedIds.at(i));
+    }
+
+    if (m_featureLibraryManager->reorderEntries(orderedIds)) {
+        refreshFeatureLibraryPanel();
+        showTransientStatus(tr("라이브러리 순서를 저장했습니다."), 1500);
+    }
+}
+
 void MainWindow::onFeatureDroppedOnProfile(const QString& targetProfileId, const QMimeData* mime) {
     if (!canTransferFeatures() || !mime || !m_profileManager || targetProfileId.isEmpty()) {
         return;
@@ -2293,18 +2373,33 @@ void MainWindow::onFeatureDroppedOnProfile(const QString& targetProfileId, const
     }
 
     const QString profileName = profileDisplayName(m_profileManager.get(), targetProfileId);
+    const QStringList ids = payload.allIds();
+    if (ids.isEmpty()) {
+        return;
+    }
 
     if (payload.source == FeatureDragMime::Source::Library) {
-        const QString entryName = libraryEntryDisplayName(m_featureLibraryManager.get(), payload.id);
-        if (!importLibraryEntryToProfile(payload.id, targetProfileId, -1)) {
-            QMessageBox::critical(this,
-                                  tr("라이브러리 가져오기 실패"),
-                                  tr("라이브러리 항목을 불러오지 못했습니다."));
-            return;
+        int imported = 0;
+        for (const QString& entryId : ids) {
+            if (!importLibraryEntryToProfile(entryId, targetProfileId, -1)) {
+                QMessageBox::critical(this,
+                                      tr("라이브러리 가져오기 실패"),
+                                      tr("라이브러리 항목을 불러오지 못했습니다."));
+                return;
+            }
+            ++imported;
         }
-        showTransientStatus(tr("프로필 '%1'에 라이브러리 기능을 가져옴: %2")
-                                .arg(profileName, entryName),
-                            2500);
+        if (imported == 1) {
+            const QString entryName = libraryEntryDisplayName(m_featureLibraryManager.get(), ids.first());
+            showTransientStatus(tr("프로필 '%1'에 라이브러리 기능을 가져옴: %2")
+                                    .arg(profileName, entryName),
+                                2500);
+        } else {
+            showTransientStatus(tr("프로필 '%1'에 라이브러리 기능 %2개 가져옴")
+                                    .arg(profileName)
+                                    .arg(imported),
+                                2500);
+        }
         return;
     }
 
@@ -2312,22 +2407,35 @@ void MainWindow::onFeatureDroppedOnProfile(const QString& targetProfileId, const
         return;
     }
 
-    Feature* sourceFeature = nullptr;
-    if (payload.profileId == m_profileManager->activeProfileId() && m_project) {
-        sourceFeature = m_project->featureById(payload.id.toStdString());
+    int copied = 0;
+    QString firstName;
+    for (const QString& featureId : ids) {
+        if (!copyFeatureBetweenProfiles(featureId, payload.profileId, targetProfileId, -1)) {
+            QMessageBox::critical(this,
+                                  tr("기능 복사 실패"),
+                                  tr("기능을 다른 프로필로 복사하지 못했습니다."));
+            return;
+        }
+        if (copied == 0) {
+            Feature* sourceFeature = nullptr;
+            if (payload.profileId == m_profileManager->activeProfileId() && m_project) {
+                sourceFeature = m_project->featureById(featureId.toStdString());
+            }
+            firstName = sourceFeature ? QString::fromStdString(sourceFeature->name()) : featureId;
+        }
+        ++copied;
     }
-    const QString featureName = sourceFeature ? QString::fromStdString(sourceFeature->name()) : payload.id;
 
-    if (!copyFeatureBetweenProfiles(payload.id, payload.profileId, targetProfileId, -1)) {
-        QMessageBox::critical(this,
-                              tr("기능 복사 실패"),
-                              tr("기능을 다른 프로필로 복사하지 못했습니다."));
-        return;
+    if (copied == 1) {
+        showTransientStatus(tr("프로필 '%1'로 기능을 복사했습니다: %2")
+                                .arg(profileName, firstName),
+                            2500);
+    } else {
+        showTransientStatus(tr("프로필 '%1'로 기능 %2개를 복사했습니다")
+                                .arg(profileName)
+                                .arg(copied),
+                            2500);
     }
-
-    showTransientStatus(tr("프로필 '%1'로 기능을 복사했습니다: %2")
-                            .arg(profileName, featureName),
-                        2500);
 }
 
 bool MainWindow::importLibraryEntry(const QString& entryId) {

@@ -13,7 +13,37 @@
 #include <QStyle>
 #include <QStyledItemDelegate>
 
+#include <algorithm>
+
 namespace {
+
+QStringList selectedIdsInRowOrder(const QListWidget* list) {
+    QStringList ids;
+    if (!list) {
+        return ids;
+    }
+    QList<int> rows;
+    for (QListWidgetItem* selected : list->selectedItems()) {
+        if (!selected) {
+            continue;
+        }
+        const int row = list->row(selected);
+        if (row >= 0) {
+            rows.push_back(row);
+        }
+    }
+    std::sort(rows.begin(), rows.end());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    for (int row : rows) {
+        if (QListWidgetItem* item = list->item(row)) {
+            const QString id = item->data(Qt::UserRole).toString();
+            if (!id.isEmpty()) {
+                ids.push_back(id);
+            }
+        }
+    }
+    return ids;
+}
 
 class FeatureLibraryItemDelegate : public QStyledItemDelegate {
 public:
@@ -92,18 +122,16 @@ void FeatureLibraryListWidget::setTransferEnabled(bool enabled) {
 }
 
 QMimeData* FeatureLibraryListWidget::buildDragMimeData(int row) const {
-    QListWidgetItem* item = this->item(row);
-    if (!item) {
-        return nullptr;
-    }
-    const QString entryId = item->data(Qt::UserRole).toString();
-    if (entryId.isEmpty()) {
+    Q_UNUSED(row);
+    const QStringList ids = selectedIdsInRowOrder(this);
+    if (ids.isEmpty()) {
         return nullptr;
     }
 
     FeatureDragMime::Payload payload;
     payload.source = FeatureDragMime::Source::Library;
-    payload.id = entryId;
+    payload.ids = ids;
+    payload.id = ids.first();
     return FeatureDragMime::createMimeData(payload);
 }
 
