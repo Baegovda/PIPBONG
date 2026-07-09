@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.56` (from `project(PIPBONG VERSION 0.8.56)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.57` (from `project(PIPBONG VERSION 0.8.57)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -891,6 +891,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.57] - 2026-07-09
+
+### Changed
+
+- Workflow **키보드** / **딜레이** preview icons render at device-pixel-ratio (2×+) for crisp display on HiDPI; keycap and timer chrome refined (`WorkflowEditorPanel`, `BlockListWidget::CenterIconDelegate`).
 
 ## [0.8.56] - 2026-07-09
 

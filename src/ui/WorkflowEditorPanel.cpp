@@ -28,14 +28,14 @@
 #include <QItemSelectionModel>
 #include <QKeySequence>
 #include <QLabel>
-#include <QLinearGradient>
+#include <QRadialGradient>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
 #include <QPolygonF>
-#include <QPushButton>
-#include <QSet>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QSettings>
 #include <QSizePolicy>
 #include <QSplitter>
@@ -57,6 +57,30 @@ namespace {
 constexpr int kThumbnailSize = 32;
 constexpr const char* kLastBulkInsertWaitMsKey = "ui/state/workflowEditor/lastBulkInsertWaitMs";
 constexpr int kDefaultBulkInsertWaitMs = 500;
+
+qreal workflowPreviewDevicePixelRatio() {
+    qreal dpr = 2.0;
+    if (QGuiApplication::instance()) {
+        if (const QScreen* screen = QGuiApplication::primaryScreen()) {
+            dpr = qMax(2.0, screen->devicePixelRatio());
+        }
+    }
+    return dpr;
+}
+
+QPixmap createWorkflowPreviewCanvas(int logicalSize = kThumbnailSize) {
+    const qreal dpr = workflowPreviewDevicePixelRatio();
+    QPixmap pixmap(qRound(logicalSize * dpr), qRound(logicalSize * dpr));
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+    return pixmap;
+}
+
+void beginWorkflowPreviewPaint(QPainter& painter) {
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+}
 
 int lastBulkInsertWaitMs() {
     QSettings settings;
@@ -101,11 +125,10 @@ void drawMouseBody(QPainter& painter, const QRectF& body) {
 }
 
 QPixmap clickBlockPreviewIcon(MouseButton button) {
-    QPixmap pixmap(kThumbnailSize, kThumbnailSize);
-    pixmap.fill(Qt::transparent);
+    QPixmap pixmap = createWorkflowPreviewCanvas();
 
     QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
+    beginWorkflowPreviewPaint(painter);
 
     const QRectF body = mouseBodyRect();
     const QColor accent(74, 144, 217);
@@ -250,34 +273,31 @@ QString modifierPrefix(const KeyPressModifierActions& modifierActions) {
 QPixmap keyPressPreviewIcon(int virtualKey,
                             const KeyPressModifierActions& modifierActions,
                             bool useMainKey) {
-    QPixmap pixmap(kThumbnailSize, kThumbnailSize);
-    pixmap.fill(Qt::transparent);
+    QPixmap pixmap = createWorkflowPreviewCanvas();
 
     QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setRenderHint(QPainter::TextAntialiasing, true);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    beginWorkflowPreviewPaint(painter);
 
-    const QColor accent(56, 132, 214);
-    const QColor ink(28, 36, 48);
-    const QRectF shadow(3.5, 6.5, 25.0, 21.0);
-    const QRectF cap(3.0, 4.5, 25.0, 21.0);
+    const QColor accent(59, 130, 246);
+    const QColor ink(24, 32, 44);
+    const QColor border(148, 163, 184);
+    const QRectF cap(4.0, 5.0, 24.0, 22.0);
 
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(20, 28, 40, 36));
-    painter.drawRoundedRect(shadow, 5.0, 5.0);
+    painter.setBrush(QColor(15, 23, 42, 28));
+    painter.drawRoundedRect(cap.translated(0.0, 1.2), 6.0, 6.0);
 
     QLinearGradient face(cap.topLeft(), cap.bottomLeft());
     face.setColorAt(0.0, QColor(255, 255, 255));
-    face.setColorAt(1.0, QColor(232, 238, 246));
+    face.setColorAt(0.45, QColor(248, 250, 252));
+    face.setColorAt(1.0, QColor(226, 232, 240));
     painter.setBrush(face);
-    painter.setPen(QPen(QColor(120, 138, 162), 1.15));
-    painter.drawRoundedRect(cap, 5.0, 5.0);
+    painter.setPen(QPen(border, 1.0));
+    painter.drawRoundedRect(cap, 6.0, 6.0);
 
-    // Soft top bevel highlight
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(255, 255, 255, 170));
-    painter.drawRoundedRect(QRectF(cap.left() + 1.2, cap.top() + 1.0, cap.width() - 2.4, 4.5), 3.0, 3.0);
+    painter.setBrush(QColor(255, 255, 255, 200));
+    painter.drawRoundedRect(QRectF(cap.left() + 1.5, cap.top() + 1.0, cap.width() - 3.0, 5.0), 4.0, 4.0);
 
     const QString modText = modifierPrefix(modifierActions);
     const QString keyText = useMainKey ? compactKeyLabel(virtualKey) : QString();
@@ -285,28 +305,24 @@ QPixmap keyPressPreviewIcon(int virtualKey,
 
     if (!modText.isEmpty()) {
         QFont modFont(QStringLiteral("Segoe UI"));
-        modFont.setPixelSize(hasBoth ? 7 : 10);
-        modFont.setBold(true);
+        modFont.setPixelSize(hasBoth ? 8 : 10);
+        modFont.setWeight(QFont::DemiBold);
         painter.setFont(modFont);
         painter.setPen(accent);
-        if (hasBoth) {
-            painter.drawText(QRectF(cap.left() + 1.0, cap.top() + 1.5, cap.width() - 2.0, 8.0),
-                             Qt::AlignHCenter | Qt::AlignVCenter,
-                             modText);
-        } else {
-            painter.drawText(cap.adjusted(1.0, 0.0, -1.0, 0.0), Qt::AlignCenter, modText);
-        }
+        const QRectF modRect = hasBoth ? QRectF(cap.left(), cap.top() + 2.0, cap.width(), 8.0)
+                                     : cap.adjusted(1.0, 0.0, -1.0, 0.0);
+        painter.drawText(modRect, Qt::AlignHCenter | Qt::AlignVCenter, modText);
     }
 
     if (!keyText.isEmpty()) {
         QFont keyFont(QStringLiteral("Segoe UI"));
         const int len = keyText.size();
-        keyFont.setPixelSize(len >= 5 ? 8 : (len >= 3 ? 9 : 12));
-        keyFont.setBold(true);
+        keyFont.setPixelSize(len >= 5 ? 9 : (len >= 3 ? 10 : 13));
+        keyFont.setWeight(QFont::Bold);
         painter.setFont(keyFont);
         painter.setPen(ink);
         const QRectF keyRect = hasBoth
-                                   ? QRectF(cap.left() + 1.0, cap.top() + 8.5, cap.width() - 2.0, cap.height() - 10.0)
+                                   ? QRectF(cap.left(), cap.top() + 9.0, cap.width(), cap.height() - 10.0)
                                    : cap.adjusted(1.0, 0.5, -1.0, -0.5);
         painter.drawText(keyRect, Qt::AlignCenter, keyText);
     }
@@ -315,67 +331,54 @@ QPixmap keyPressPreviewIcon(int virtualKey,
 }
 
 QPixmap waitBlockPreviewIcon() {
-    QPixmap pixmap(kThumbnailSize, kThumbnailSize);
-    pixmap.fill(Qt::transparent);
+    QPixmap pixmap = createWorkflowPreviewCanvas();
 
     QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    beginWorkflowPreviewPaint(painter);
 
-    const QColor accent(56, 132, 214);
-    const QColor ring(120, 138, 162);
-    const QRectF outer(4.5, 3.5, 23.0, 23.0);
-    const QPointF center = outer.center();
+    const QColor accent(59, 130, 246);
+    const QColor ring(148, 163, 184);
+    const QRectF dial(5.0, 4.0, 22.0, 22.0);
+    const QPointF center = dial.center();
 
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(20, 28, 40, 30));
-    painter.drawEllipse(outer.translated(0.6, 1.0));
+    painter.setBrush(QColor(15, 23, 42, 24));
+    painter.drawEllipse(dial.translated(0.0, 1.0));
 
-    QLinearGradient face(outer.topLeft(), outer.bottomLeft());
+    QRadialGradient face(center, dial.width() * 0.5);
     face.setColorAt(0.0, QColor(255, 255, 255));
-    face.setColorAt(1.0, QColor(230, 237, 246));
+    face.setColorAt(0.72, QColor(241, 245, 249));
+    face.setColorAt(1.0, QColor(226, 232, 240));
     painter.setBrush(face);
-    painter.setPen(QPen(ring, 1.2));
-    painter.drawEllipse(outer);
+    painter.setPen(QPen(ring, 1.0));
+    painter.drawEllipse(dial);
 
-    // Progress arc (delay cue)
-    const QRectF arcRect = outer.adjusted(2.4, 2.4, -2.4, -2.4);
+    const QRectF arcRect = dial.adjusted(3.0, 3.0, -3.0, -3.0);
     painter.setBrush(Qt::NoBrush);
-    painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 55), 2.4, Qt::SolidLine, Qt::RoundCap));
-    painter.drawArc(arcRect, 90 * 16, -270 * 16);
-    painter.setPen(QPen(accent, 2.4, Qt::SolidLine, Qt::RoundCap));
-    painter.drawArc(arcRect, 90 * 16, -210 * 16);
+    painter.setPen(QPen(QColor(203, 213, 225), 2.0, Qt::SolidLine, Qt::RoundCap));
+    painter.drawArc(arcRect, 0, 360 * 16);
+    painter.setPen(QPen(accent, 2.2, Qt::SolidLine, Qt::RoundCap));
+    painter.drawArc(arcRect, 90 * 16, -300 * 16);
 
-    // Hour / minute marks (cardinal only — cleaner)
-    painter.setPen(QPen(QColor(150, 164, 184), 1.35, Qt::SolidLine, Qt::RoundCap));
-    for (int i = 0; i < 4; ++i) {
-        const qreal angleRad = qDegreesToRadians(i * 90.0 - 90.0);
-        const qreal innerR = outer.width() * 0.30;
-        const qreal outerR = outer.width() * 0.38;
-        painter.drawLine(QPointF(center.x() + innerR * qCos(angleRad), center.y() + innerR * qSin(angleRad)),
-                         QPointF(center.x() + outerR * qCos(angleRad), center.y() + outerR * qSin(angleRad)));
-    }
-
-    painter.setPen(QPen(accent, 2.15, Qt::SolidLine, Qt::RoundCap));
-    painter.drawLine(center, QPointF(center.x(), center.y() - outer.height() * 0.18));
-    painter.setPen(QPen(accent, 1.75, Qt::SolidLine, Qt::RoundCap));
-    painter.drawLine(center, QPointF(center.x() + outer.width() * 0.22, center.y() + outer.height() * 0.04));
+    painter.setPen(QPen(accent, 2.0, Qt::SolidLine, Qt::RoundCap));
+    painter.drawLine(center, QPointF(center.x(), center.y() - dial.height() * 0.17));
+    painter.setPen(QPen(accent, 1.6, Qt::SolidLine, Qt::RoundCap));
+    painter.drawLine(center, QPointF(center.x() + dial.width() * 0.19, center.y() + dial.height() * 0.05));
 
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(255, 255, 255));
-    painter.drawEllipse(center, 2.4, 2.4);
+    painter.drawEllipse(center, 2.2, 2.2);
     painter.setBrush(accent);
-    painter.drawEllipse(center, 1.55, 1.55);
+    painter.drawEllipse(center, 1.4, 1.4);
 
     return pixmap;
 }
 
 QPixmap mouseMovePreviewIcon() {
-    QPixmap pixmap(kThumbnailSize, kThumbnailSize);
-    pixmap.fill(Qt::transparent);
+    QPixmap pixmap = createWorkflowPreviewCanvas();
 
     QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
+    beginWorkflowPreviewPaint(painter);
 
     const QRectF body = mouseBodyRect();
     const QColor accent(74, 144, 217);
@@ -392,11 +395,10 @@ QPixmap mouseMovePreviewIcon() {
 }
 
 QPixmap textBlockPreviewIcon() {
-    QPixmap pixmap(kThumbnailSize, kThumbnailSize);
-    pixmap.fill(Qt::transparent);
+    QPixmap pixmap = createWorkflowPreviewCanvas();
 
     QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
+    beginWorkflowPreviewPaint(painter);
 
     const QRectF doc(7.0, 5.0, 18.0, 22.0);
     const QColor accent(74, 144, 217);

@@ -476,7 +476,16 @@ public:
                              rect.top() + (rect.height() - iconSize.height()) / 2,
                              iconSize.width(),
                              iconSize.height());
-        icon.paint(painter, iconRect, Qt::AlignCenter, QIcon::Normal, QIcon::On);
+        const qreal dpr = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
+        const QPixmap pm = icon.pixmap(QSize(qRound(iconSize.width() * dpr),
+                                             qRound(iconSize.height() * dpr)));
+        if (pm.isNull()) {
+            return;
+        }
+        painter->save();
+        painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+        painter->drawPixmap(iconRect, pm);
+        painter->restore();
     }
 };
 
