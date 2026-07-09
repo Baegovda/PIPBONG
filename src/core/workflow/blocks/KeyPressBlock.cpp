@@ -123,7 +123,7 @@ BlockResult KeyPressBlock::execute(ExecutionContext& ctx) {
     if (!useMainKey && !modifierActions.hasAny()) {
         BlockResult result;
         result.success = false;
-        result.message = "수정키 동작이 지정되지 않음";
+        result.message = "수정키 동작이 없습니다";
         ctx.log(result.message);
         return result;
     }

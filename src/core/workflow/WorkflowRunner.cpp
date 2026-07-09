@@ -94,7 +94,7 @@ ImageFindFailureResolution resolveImageFindDetectionFailure(const Workflow& work
             }
         }
 
-        ctx.log("매칭 실패 — 바로 다음 블록 실행 후 다시 감지 시도 (#"
+        ctx.log("화면에서 찾지 못함 → 다음 동작 후 재시도 (단계 #"
                 + std::to_string(currentIndex + 1) + ")");
         resolution.handled = true;
         resolution.continueAtIndex = currentIndex;
@@ -112,8 +112,8 @@ ImageFindFailureResolution resolveImageFindDetectionFailure(const Workflow& work
                 hooks->onImageFindReturnToPrevious(currentIndex, previousImageFind);
             }
             ctx.clearDetectionFailedFlag();
-            ctx.log("매칭 실패 — 이전 템플릿 매칭 블록 #"
-                    + std::to_string(previousImageFind + 1) + "으로 돌아감");
+            ctx.log("화면에서 찾지 못함 → 이전 검색 단계 #"
+                    + std::to_string(previousImageFind + 1) + "으로 이동");
             resolution.handled = true;
             resolution.continueAtIndex = previousImageFind;
             return resolution;
@@ -127,7 +127,7 @@ ImageFindFailureResolution resolveImageFindDetectionFailure(const Workflow& work
         if (nextImageFind >= 0) {
             ctx.incrementImageFindRetryAfterNextCount(currentIndex);
             notifyImageFindFailureHandling(currentIndex, ctx, hooks);
-            ctx.log("감지 실패 — 다음 템플릿 매칭 블록 #"
+            ctx.log("화면에서 찾지 못함 → 다음 검색 단계 #"
                     + std::to_string(nextImageFind + 1) + "으로 이동");
             resolution.handled = true;
             resolution.continueAtIndex = nextImageFind;
@@ -151,7 +151,7 @@ bool applyImageFindFailureResolution(ImageFindFailureResolution& resolution,
     if (resolution.continueAtIndex < rangeStartIndex || resolution.continueAtIndex > rangeEndIndex) {
         overall.jumpToBlockIndex = resolution.continueAtIndex;
         overall.success = true;
-        overall.message = "완료";
+        overall.message = "정상 완료";
         return true;
     }
 
@@ -205,23 +205,23 @@ WorkflowRunResult executeSingleBlock(const Workflow& workflow,
                                      const WorkflowRunHooks* hooks) {
     WorkflowRunResult overall;
     overall.success = true;
-    overall.message = "완료";
+    overall.message = "정상 완료";
 
     const auto& blocks = workflow.blocks();
     if (blockIndex < 0 || blockIndex >= static_cast<int>(blocks.size())) {
         overall.success = false;
-        overall.message = "잘못된 블록 인덱스";
+        overall.message = "잘못된 단계 번호";
         return overall;
     }
 
     if (!ctx.waitWhilePaused()) {
         overall.success = false;
-        overall.message = "사용자에 의해 중지됨";
+        overall.message = "사용자가 중지함";
         return overall;
     }
     if (ctx.shouldStop()) {
         overall.success = false;
-        overall.message = "사용자에 의해 중지됨";
+        overall.message = "사용자가 중지함";
         return overall;
     }
 
@@ -315,7 +315,7 @@ WorkflowRunResult executeBlockRange(const Workflow& workflow,
                                     const WorkflowRunHooks* hooks) {
     WorkflowRunResult overall;
     overall.success = true;
-    overall.message = "완료";
+    overall.message = "정상 완료";
 
     for (int i = startIndex; i <= endIndex;) {
         WorkflowRunResult step = executeSingleBlock(workflow, i, ctx, hooks);
@@ -332,7 +332,7 @@ WorkflowRunResult executeBlockRange(const Workflow& workflow,
         }
         if (ctx.shouldStop()) {
             overall.success = false;
-            overall.message = "사용자에 의해 중지됨";
+            overall.message = "사용자가 중지함";
             return overall;
         }
         ++i;
@@ -347,7 +347,7 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
     if (!ctx.enterNestingScope()) {
         WorkflowRunResult result;
         result.success = false;
-        result.message = "구간 반복 중첩 깊이 초과";
+        result.message = "반복 구간이 너무 깊게 중첩됨";
         ctx.log(result.message);
         return result;
     }
@@ -358,14 +358,14 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
             ctx.leaveNestingScope();
             WorkflowRunResult result;
             result.success = false;
-            result.message = "사용자에 의해 중지됨";
+            result.message = "사용자가 중지함";
             return result;
         }
         if (ctx.shouldStop()) {
             ctx.leaveNestingScope();
             WorkflowRunResult result;
             result.success = false;
-            result.message = "사용자에 의해 중지됨";
+            result.message = "사용자가 중지함";
             return result;
         }
 
@@ -391,19 +391,20 @@ WorkflowRunResult runLoopRegion(const Workflow& workflow,
             ctx.leaveNestingScope();
             WorkflowRunResult result;
             result.success = false;
-            result.message = "사용자에 의해 중지됨";
+            result.message = "사용자가 중지함";
             return result;
         }
 
         if (shouldExitLoopIteration(region.exitCondition, ctx, runResult.success)) {
-            ctx.log("구간 반복 종료: #" + std::to_string(region.startIndex + 1) + "~#"
-                    + std::to_string(region.endIndex + 1) + " "
-                    + loopExitConditionToString(region.exitCondition) + " (" + std::to_string(iteration)
-                    + "회)");
+            ctx.log("반복 구간 종료 · 단계 #"
+                    + std::to_string(region.startIndex + 1) + "~#"
+                    + std::to_string(region.endIndex + 1) + " · "
+                    + loopExitConditionToString(region.exitCondition) + " · "
+                    + std::to_string(iteration) + "회");
             ctx.leaveNestingScope();
             WorkflowRunResult result;
             result.success = true;
-            result.message = "구간 반복 완료";
+            result.message = "반복 구간 완료";
             return result;
         }
 
@@ -446,18 +447,18 @@ WorkflowRunResult WorkflowRunner::run(const Workflow& workflow,
 
     WorkflowRunResult overall;
     overall.success = true;
-    overall.message = "완료";
+    overall.message = "정상 완료";
 
     const int blockCount = static_cast<int>(workflow.blocks().size());
     for (int i = 0; i < blockCount;) {
         if (!ctx.waitWhilePaused()) {
             overall.success = false;
-            overall.message = "사용자에 의해 중지됨";
+            overall.message = "사용자가 중지함";
             break;
         }
         if (ctx.shouldStop()) {
             overall.success = false;
-            overall.message = "사용자에 의해 중지됨";
+            overall.message = "사용자가 중지함";
             break;
         }
 

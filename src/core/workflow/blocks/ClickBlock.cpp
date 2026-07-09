@@ -234,7 +234,7 @@ BlockResult ClickBlock::execute(ExecutionContext& ctx) {
         if (!ctx.hasLastMatch()) {
             BlockResult result;
             result.success = false;
-            result.message = "직전 이미지 매칭 결과가 없음";
+            result.message = "먼저 화면 찾기 단계가 성공해야 합니다";
             return result;
         }
         clickX = ctx.lastMatchPoint().x;
@@ -326,12 +326,13 @@ BlockResult ClickBlock::execute(ExecutionContext& ctx) {
     BlockResult result;
     result.success = true;
     if (action == ClickAction::MoveOnly) {
-        result.message = std::string("이동만 @ (") + std::to_string(clickX) + "," + std::to_string(clickY) + ")";
+        result.message = std::string("커서만 이동 · (") + std::to_string(clickX) + ","
+                         + std::to_string(clickY) + ")";
     } else if (target == ClickTarget::CurrentPosition) {
-        result.message = clickActionDisplayName(action) + " @ 현재 위치";
+        result.message = clickActionDisplayName(action) + " · 현재 위치";
     } else {
-        result.message = clickActionDisplayName(action) + " @ (" + std::to_string(clickX) + "," +
-                         std::to_string(clickY) + ")";
+        result.message = clickActionDisplayName(action) + " · (" + std::to_string(clickX) + ","
+                         + std::to_string(clickY) + ")";
     }
     ctx.log(result.message);
     return result;

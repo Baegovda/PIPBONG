@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.46` (from `project(PIPBONG VERSION 0.8.46)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.47` (from `project(PIPBONG VERSION 0.8.47)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -890,6 +890,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.47] - 2026-07-09
+
+### Changed
+
+- Log panel redesigned as a terminal-style `LogPanelWidget`: dark background, monospace font, green default text, color-coded success/warning/error lines, timestamps, feature-name accent, and **지우기** button (`LogPanelWidget`, `MainWindow`).
+- Workflow and app log messages rewritten in concise Korean for readability (`MainWindow`, `WorkflowRunner`, block execution messages).
 
 ## [0.8.46] - 2026-07-09
 

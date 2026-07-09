@@ -34,10 +34,11 @@
 #include "ui/TargetWindowHighlightOverlay.h"
 #include "app/UpdateChecker.h"
 #include "ui/AppHelpDialog.h"
+#include "ui/CustomTitleBar.h"
 #include "ui/ProfileListWidget.h"
 #include "ui/widgets/ReorderableListWidget.h"
 #include "ui/FeatureDragMime.h"
-#include "ui/CustomTitleBar.h"
+#include "ui/LogPanelWidget.h"
 #include "ui/UiResizeHandle.h"
 #include "ui/ProfileEditDialog.h"
 #include "ui/UiStateManager.h"
@@ -69,7 +70,6 @@
 #include <QListWidget>
 #include <QMenuBar>
 #include <QMessageBox>
-#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QShowEvent>
@@ -504,28 +504,11 @@ void MainWindow::setupUi() {
     exitRow->addWidget(m_settingsButton);
     exitRow->addWidget(m_exitButton);
 
-    auto* logGroup = new QGroupBox(tr("로그"), bottomPanel);
-    auto* logLayout = new QVBoxLayout(logGroup);
-    logLayout->setContentsMargins(0, 4, 0, 0);
-    logLayout->setSpacing(4);
-
-    m_logView = new QPlainTextEdit(logGroup);
-    m_logView->setObjectName(QStringLiteral("logPanelView"));
-    m_logView->setReadOnly(true);
-    m_logView->setMaximumBlockCount(2000);
-    m_logView->setMinimumHeight(48);
-    m_logView->setStyleSheet(QStringLiteral(
-        "QPlainTextEdit#logPanelView {"
-        "  background-color: palette(window);"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 8px;"
-        "  padding: 6px;"
-        "}"));
-
-    logLayout->addWidget(m_logView);
+    m_logPanel = new LogPanelWidget(bottomPanel);
+    m_logPanel->setMinimumHeight(72);
 
     m_bottomHorizontalSplitter = new QSplitter(Qt::Horizontal, bottomPanel);
-    m_bottomHorizontalSplitter->addWidget(logGroup);
+    m_bottomHorizontalSplitter->addWidget(m_logPanel);
     m_bottomHorizontalSplitter->addWidget(targetGroup);
     m_bottomHorizontalSplitter->setStretchFactor(0, 1);
     m_bottomHorizontalSplitter->setStretchFactor(1, 1);
@@ -1472,7 +1455,7 @@ void MainWindow::onNewProject() {
     syncHotkeys();
     updateTargetWindowDetails();
     autoSaveProject();
-    appendLog(tr("새 프로젝트를 만들었습니다."));
+    appendLog(tr("새 프로젝트를 준비했습니다."), LogLineKind::Info);
 }
 
 void MainWindow::onOpenProject() {
@@ -1498,7 +1481,7 @@ void MainWindow::onSaveProject() {
     if (JsonSerializer::saveToFile(*m_project, m_projectFilePath, Application::instance()->projectDirectory())) {
         m_modified = false;
         updateWindowTitle();
-        appendLog(tr("프로젝트를 저장했습니다."));
+        appendLog(tr("변경 내용을 저장했습니다."), LogLineKind::Success);
         showTransientStatus(tr("저장됨"), 2000);
     } else {
         QMessageBox::critical(this, tr("프로젝트 저장"), tr("프로젝트 저장에 실패했습니다."));
@@ -1699,8 +1682,12 @@ QString MainWindow::featureDisplayName(const std::string& featureId) const {
     return QString::fromStdString(featureId);
 }
 
-void MainWindow::appendSessionLog(const FeatureRunSession& session, const QString& message) {
-    appendLog(tr("[%1] %2").arg(featureDisplayName(session.featureId), message));
+void MainWindow::appendSessionLog(const FeatureRunSession& session,
+                                  const QString& message,
+                                  LogLineKind kind) {
+    if (m_logPanel) {
+        m_logPanel->appendSessionLine(featureDisplayName(session.featureId), kind, message);
+    }
 }
 
 void MainWindow::connectSessionEngine(FeatureRunSession& session) {
@@ -1784,7 +1771,7 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     ++session->triggerCooldownGeneration;
     session->engine->stop();
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
-    appendSessionLog(*session, tr("중지 요청됨."));
+    appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
 }
 
 void MainWindow::stopAllSessions() {
@@ -1876,8 +1863,9 @@ void MainWindow::onSaveFeatureToLibraryRequested(const QString& featureId) {
     }
 
     if (!missingTemplates.empty()) {
-        appendLog(tr("라이브러리에 저장했지만 템플릿 일부를 복사하지 못했습니다: %1")
-                       .arg(missingTemplates.join(QStringLiteral(", "))));
+        appendLog(tr("템플릿 일부를 라이브러리에 복사하지 못했습니다: %1")
+                       .arg(missingTemplates.join(QStringLiteral(", "))),
+                  LogLineKind::Warning);
     }
 
     showTransientStatus(tr("라이브러리에 저장됨: %1").arg(entryName), 2500);
@@ -2091,8 +2079,9 @@ bool MainWindow::importLibraryEntryToProfile(const QString& entryId,
     }
 
     if (!res.missingTemplatePaths.empty()) {
-        appendLog(tr("라이브러리 가져오기: 템플릿 일부를 복사하지 못했습니다: %1")
-                      .arg(res.missingTemplatePaths.join(QStringLiteral(", "))));
+        appendLog(tr("가져온 기능의 템플릿 일부를 복사하지 못했습니다: %1")
+                      .arg(res.missingTemplatePaths.join(QStringLiteral(", "))),
+                  LogLineKind::Warning);
     }
     return true;
 }
@@ -2123,8 +2112,9 @@ bool MainWindow::saveFeatureToLibraryFromDrag(const QString& featureId, const QS
     }
 
     if (!missingTemplates.empty()) {
-        appendLog(tr("라이브러리에 저장했지만 템플릿 일부를 복사하지 못했습니다: %1")
-                      .arg(missingTemplates.join(QStringLiteral(", "))));
+        appendLog(tr("템플릿 일부를 라이브러리에 복사하지 못했습니다: %1")
+                      .arg(missingTemplates.join(QStringLiteral(", "))),
+                  LogLineKind::Warning);
     }
 
     refreshFeatureLibraryPanel();
@@ -2178,8 +2168,9 @@ bool MainWindow::moveFeatureBetweenProfiles(const QString& featureId,
                                                                      sourceProjectDir,
                                                                      targetProjectDir);
     if (!missingTemplates.empty()) {
-        appendLog(tr("프로필 이동: 템플릿 일부를 복사하지 못했습니다: %1")
-                      .arg(missingTemplates.join(QStringLiteral(", "))));
+        appendLog(tr("프로필 이동 시 템플릿 일부를 복사하지 못했습니다: %1")
+                      .arg(missingTemplates.join(QStringLiteral(", "))),
+                  LogLineKind::Warning);
     }
 
     const QString newFeatureId = QString::fromStdString(movedFeature->id());
@@ -2671,14 +2662,14 @@ void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, con
         session.completedLoopCount > 0 ? session.totalLoopElapsedMs / session.completedLoopCount : 0;
     session.lastLoopSuccess = success;
 
-    QString line = tr("루프 %1: %2 ms (%3)")
+    QString line = tr("%1회째 루프 · %2ms · %3")
                        .arg(loopNumber)
                        .arg(elapsedMs)
                        .arg(success ? tr("성공") : tr("실패"));
     if (!success && !message.isEmpty()) {
-        line += QStringLiteral(" — ") + message;
+        line += QStringLiteral(" · ") + message;
     }
-    appendSessionLog(session, line);
+    appendSessionLog(session, line, success ? LogLineKind::Success : LogLineKind::Warning);
     if (isDisplayedRunningFeature(&session)) {
         syncLoopTimingToWorkflowEditor(&session);
     }
@@ -2739,7 +2730,7 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         }
 
         if (shouldLogRunDetails(session)) {
-            appendSessionLog(session, tr("기능 실행"));
+            appendSessionLog(session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
         }
         updateRunUiState();
         session.runningBlockIndex = -1;
@@ -2863,7 +2854,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
             m_workflowEditor->clearExecutionHighlight();
             m_workflowEditor->persistRunFeedbackForCurrentFeature();
         }
-        appendSessionLog(session, tr("트리거 감시 시작"));
+        appendSessionLog(session, tr("트리거 감시를 시작합니다"), LogLineKind::Accent);
         updateRunUiState();
         session.runningBlockIndex = -1;
         session.runningBlockHighlight = BlockListWidget::ExecutionHighlight::None;
@@ -2924,7 +2915,7 @@ void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* fea
         session.sessionContext->setTriggerMonitorBlockIndex(-1);
         session.sessionContext->setImageFindPrimedBlockIndex(session.triggerBlockIndex);
     }
-    appendSessionLog(session, tr("트리거 발동 — 워크플로 실행"));
+    appendSessionLog(session, tr("화면에서 찾음 — 워크플로 실행"), LogLineKind::Success);
     launchWorkflowRun(session, feature, session.sessionIteration > 0);
 }
 
@@ -2957,7 +2948,7 @@ void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession)
 
         if (snap.pausedByTrigger || snap.releasedMouseLock) {
             triggerSession.triggerPreemptedSessions.push_back(std::move(snap));
-            appendSessionLog(other, tr("트리거 발동 — 일시정지"));
+            appendSessionLog(other, tr("다른 기능 실행을 잠시 멈춤"), LogLineKind::Warning);
         }
     }
 
@@ -2980,7 +2971,8 @@ void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession)
     reconcileMouseLocksFromRunningSessions();
 
     appendSessionLog(triggerSession,
-                     tr("다른 기능 %1개 일시정지").arg(triggerSession.triggerPreemptedSessions.size()));
+                     tr("다른 기능 %1개를 잠시 멈춤").arg(triggerSession.triggerPreemptedSessions.size()),
+                     LogLineKind::Warning);
     updateRunUiState();
 }
 
@@ -3009,7 +3001,7 @@ void MainWindow::resumePreemptedSessionsForTrigger(FeatureRunSession& triggerSes
 
         if (snap.pausedByTrigger) {
             other->sessionContext->setPaused(false);
-            appendSessionLog(*other, tr("트리거 완료 — 재개"));
+            appendSessionLog(*other, tr("일시정지했던 기능을 다시 실행합니다"), LogLineKind::Success);
         }
     }
 
@@ -3037,7 +3029,7 @@ void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* fe
         return;
     }
 
-    appendSessionLog(session, tr("재감지 대기 %1 ms").arg(cooldownMs));
+    appendSessionLog(session, tr("다시 감시하기까지 %1ms 대기").arg(cooldownMs), LogLineKind::Info);
     const quint64 generation = ++session.triggerCooldownGeneration;
     const std::string featureId = session.featureId;
     QTimer::singleShot(cooldownMs, this, [this, featureId, generation]() {
@@ -3077,7 +3069,7 @@ void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
     if (session.triggerPhase == TriggerSessionPhase::RunningAction) {
         logLoopCompletion(session, success, message);
         if (!success && !session.userStopRequested) {
-            appendSessionLog(session, tr("워크플로 실패 — 감시 재개"));
+            appendSessionLog(session, tr("실행 실패 — 감시를 다시 시작합니다"), LogLineKind::Warning);
         }
         resumePreemptedSessionsForTrigger(session);
         scheduleTriggerCooldown(session, feature);
@@ -3233,8 +3225,9 @@ void MainWindow::syncHotkeys() {
             }
         }
         if (hasKeyboardBinding) {
-            appendLog(tr("키보드 단축키 후크를 설치하지 못했습니다. RegisterHotKey 백업을 시도합니다. "
-                         "계속 동작하지 않으면 PIPBONG을 관리자 권한으로 실행하거나 보안 프로그램 예외를 확인하세요."));
+            appendLog(tr("키보드 단축키를 등록하지 못했습니다. 백업 방식으로 다시 시도합니다. "
+                         "계속 안 되면 관리자 권한으로 실행하거나 보안 프로그램 예외를 확인하세요."),
+                      LogLineKind::Warning);
         }
     }
     if (!m_hotkeyManager->isMouseHookActive()) {
@@ -3246,13 +3239,15 @@ void MainWindow::syncHotkeys() {
             }
         }
         if (hasMouseBinding) {
-            appendLog(tr("마우스 단축키 후크를 설치하지 못했습니다. 마우스 단축키가 동작하지 않을 수 있습니다."));
+            appendLog(tr("마우스 단축키를 등록하지 못했습니다. 마우스 단축키가 동작하지 않을 수 있습니다."),
+                      LogLineKind::Warning);
         }
     }
 #endif
     for (const auto& failure : failures) {
-        appendLog(tr("단축키 등록 실패 (%1): 시스템에서 이미 사용 중이거나 권한이 부족할 수 있습니다.")
-                      .arg(QString::fromStdString(failure.featureName)));
+        appendLog(tr("단축키 등록 실패 (%1) — 다른 프로그램이 쓰 중이거나 권한이 부족할 수 있습니다.")
+                      .arg(QString::fromStdString(failure.featureName)),
+                  LogLineKind::Error);
     }
 }
 
@@ -3281,7 +3276,9 @@ void MainWindow::onPickTargetWindow() {
 
         const QString title = QString::fromStdWString(result.title);
         commitActiveProfileTargetWindow(result.hwnd, title);
-        appendLog(tr("창 지정: %1").arg(title.isEmpty() ? tr("(제목 없음)") : title));
+        appendLog(tr("대상 창을 지정했습니다: %1")
+                      .arg(title.isEmpty() ? tr("(제목 없음)") : title),
+                  LogLineKind::Success);
         showTransientStatus(tr("대상 창을 지정했습니다."), 3000);
         updateTargetWindowDetails();
         refreshProfileList();
@@ -3408,7 +3405,8 @@ void MainWindow::onPickTargetWindowFromList() {
     const QString title = currentItem->data(Qt::UserRole + 1).toString();
     const HWND selectedHwnd = hwnd;
     commitActiveProfileTargetWindow(selectedHwnd, title);
-    appendLog(tr("창 지정: %1").arg(title.isEmpty() ? tr("(제목 없음)") : title));
+    appendLog(tr("대상 창을 지정했습니다: %1").arg(title.isEmpty() ? tr("(제목 없음)") : title),
+              LogLineKind::Success);
     showTransientStatus(tr("대상 창을 목록에서 지정했습니다."), 3000);
     updateTargetWindowDetails();
     refreshProfileList();
@@ -3468,7 +3466,7 @@ void MainWindow::syncTargetWindowCenterPin() {
 }
 
 void MainWindow::onEngineLog(const QString& message) {
-    appendLog(message);
+    appendLog(message, logKindForWorkflowMessage(message));
 }
 
 void MainWindow::onEngineSessionPrepared(std::shared_ptr<Workflow> workflow,
@@ -3561,7 +3559,11 @@ void MainWindow::onBlockStarted(int index, const QString& summary) {
         return;
     }
     if (shouldLogRunDetails(*session)) {
-        appendSessionLog(*session, tr("블록 %1 시작: %2").arg(index + 1).arg(summary));
+        appendSessionLog(*session,
+                         tr("단계 %1 · %2")
+                             .arg(index + 1)
+                             .arg(summary),
+                         LogLineKind::Info);
     }
     applyRunningBlockVisuals(*session, index, BlockListWidget::ExecutionHighlight::Running);
 }
@@ -3631,10 +3633,11 @@ void MainWindow::onBlockFinished(int index, bool success, const QString& message
 
     if (shouldLogRunDetails(*session) || !success) {
         appendSessionLog(*session,
-                         tr("블록 %1 %2: %3")
+                         tr("단계 %1 · %2 · %3")
                              .arg(index + 1)
                              .arg(success ? tr("성공") : tr("실패"))
-                             .arg(message));
+                             .arg(message),
+                         success ? LogLineKind::Success : LogLineKind::Warning);
     }
     if (isDisplayedRunningFeature(session)) {
         m_workflowEditor->setBlockDuration(index, durationMs);
@@ -3687,8 +3690,10 @@ void MainWindow::onImageFindReturnToPrevious(int sourceIndex, int targetIndex) {
     m_workflowEditor->notifyImageFindReturnToPrevious(sourceIndex, targetIndex);
 }
 
-void MainWindow::appendLog(const QString& message) {
-    m_logView->appendPlainText(message);
+void MainWindow::appendLog(const QString& message, LogLineKind kind) {
+    if (m_logPanel) {
+        m_logPanel->appendLine(kind, message);
+    }
 }
 
 bool MainWindow::maybeSave() {
@@ -3975,7 +3980,7 @@ void MainWindow::loadProjectFromFile(const QString& path) {
 
     QSettings settings;
     settings.setValue(QStringLiteral("project/lastFile"), m_projectFilePath);
-    appendLog(tr("프로젝트 불러옴: %1").arg(path));
+    appendLog(tr("프로젝트 파일을 불러왔습니다: %1").arg(path), LogLineKind::Success);
 }
 
 void MainWindow::updateWindowTitle() {
@@ -4193,7 +4198,7 @@ void MainWindow::onUserInputInterrupt(const std::string& featureId) {
         if (session->engine) {
             session->engine->stop();
         }
-        appendSessionLog(*session, tr("사용자 입력으로 완전 정지"));
+        appendSessionLog(*session, tr("사용자 입력으로 실행을 멈췄습니다"), LogLineKind::Warning);
         showTransientStatus(
             tr("[%1] 사용자 입력 — 정지").arg(featureDisplayName(featureId)), 3000);
         return;
@@ -4202,7 +4207,9 @@ void MainWindow::onUserInputInterrupt(const std::string& featureId) {
     if (mode == UserInputInterruptMode::Pause) {
         session->sessionContext->togglePaused();
         const bool paused = session->sessionContext->isPaused();
-        appendSessionLog(*session, paused ? tr("사용자 입력으로 일시정지") : tr("사용자 입력으로 재개"));
+        appendSessionLog(*session,
+                         paused ? tr("사용자 입력으로 잠시 멈춤") : tr("사용자 입력으로 다시 실행"),
+                         paused ? LogLineKind::Warning : LogLineKind::Success);
         updateRunUiState();
     }
 }

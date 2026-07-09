@@ -34,13 +34,13 @@ BlockResult WaitBlock::execute(ExecutionContext& ctx) {
         if (ctx.shouldStop()) {
             BlockResult result;
             result.success = false;
-            result.message = "딜레이 중 중지됨";
+            result.message = "대기 중 중지됨";
             return result;
         }
         if (!ctx.waitWhilePaused()) {
             BlockResult result;
             result.success = false;
-            result.message = "딜레이 중 중지됨";
+            result.message = "대기 중 중지됨";
             return result;
         }
         const auto sleepFor = remaining > step ? step : remaining;
@@ -50,7 +50,7 @@ BlockResult WaitBlock::execute(ExecutionContext& ctx) {
 
     BlockResult result;
     result.success = true;
-    result.message = std::to_string(delay) + "ms 딜레이";
+    result.message = std::to_string(delay) + "ms 대기";
     ctx.log(result.message);
     return result;
 }

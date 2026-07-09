@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <sstream>
 #include <thread>
@@ -214,9 +215,9 @@ ImageFindSelection trySelectImageFindMatch(const cv::Mat& haystack,
     }
 
     if (!selection.allMatches.empty()) {
-        ctx.log("매칭 후보가 있으나 모두 이미 사용한 영역입니다.");
+        ctx.log("같은 위치는 이미 사용함 — 다른 곳을 찾는 중");
     } else {
-        ctx.log("임계값 이상이나 이미 사용한 매칭 영역입니다.");
+        ctx.log("조건은 맞지만 이미 쓴 위치라 건너뜀");
     }
     return selection;
 }
@@ -533,7 +534,7 @@ BlockResult imageFindDetectionFailureResult(ExecutionContext& ctx) {
     ctx.markDetectionFailure();
     BlockResult result;
     result.success = false;
-    result.message = "감지 실패";
+    result.message = "화면에서 찾지 못함";
     return result;
 }
 
@@ -628,9 +629,10 @@ BlockResult imageFindSuccessResult(ExecutionContext& ctx,
 
     BlockResult result;
     result.success = true;
-    result.message = "발견 (" + std::to_string(match.confidence) + ", scale " +
-                     std::to_string(match.scale) + ") @ (" + std::to_string(match.center.x) +
-                     "," + std::to_string(match.center.y) + ")";
+    char confidenceText[16];
+    std::snprintf(confidenceText, sizeof(confidenceText), "%.2f", match.confidence);
+    result.message = std::string("화면에서 찾음 · 일치도 ") + confidenceText + " · ("
+                     + std::to_string(match.center.x) + "," + std::to_string(match.center.y) + ")";
     if (!matchedTemplatePath.empty()) {
         const std::filesystem::path fileName = std::filesystem::path(matchedTemplatePath).filename();
         result.message += " [" + fileName.string() + "]";
@@ -772,7 +774,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         if (templ.empty()) {
             BlockResult result;
             result.success = false;
-            result.message = "템플릿을 찾을 수 없음: " + resolved;
+            result.message = "템플릿 파일을 찾을 수 없음: " + resolved;
             return result;
         }
         relativePaths.push_back(path);
@@ -781,7 +783,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
     if (relativePaths.empty()) {
         BlockResult result;
         result.success = false;
-        result.message = "템플릿이 지정되지 않음";
+        result.message = "템플릿이 없습니다";
         return result;
     }
 
@@ -789,11 +791,11 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         BlockResult result;
         if (!ctx.hasLastMatch()) {
             result.success = false;
-            result.message = "트리거 상태가 유효하지 않음";
+            result.message = "트리거 상태 오류";
             return result;
         }
         result.success = true;
-        result.message = "트리거 발동";
+        result.message = "트리거 조건 충족";
         ctx.reportProgress(BlockProgressKind::ImageFindSuccess);
         ctx.log(result.message);
         return result;
@@ -843,7 +845,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             accumulateMatchWork();
             BlockResult result;
             result.success = false;
-            result.message = "중지됨";
+            result.message = "사용자가 중지함";
             result.imageFindMatchDurationMs = matchWorkMs;
             result.imageFindPollAttempts = pollAttemptCount;
             return result;
@@ -852,7 +854,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             accumulateMatchWork();
             BlockResult result;
             result.success = false;
-            result.message = "사용자에 의해 중지됨";
+            result.message = "사용자가 중지함";
             result.imageFindMatchDurationMs = matchWorkMs;
             result.imageFindPollAttempts = pollAttemptCount;
             return result;
@@ -967,7 +969,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         if (!sleepUnlessStopped(ctx, pollIntervalMs)) {
             BlockResult result;
             result.success = false;
-            result.message = "사용자에 의해 중지됨";
+            result.message = "사용자가 중지함";
             result.imageFindMatchDurationMs = matchWorkMs;
             result.imageFindPollAttempts = pollAttemptCount;
             return result;

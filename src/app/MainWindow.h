@@ -5,6 +5,7 @@
 #include "core/workflow/ExecutionContext.h"
 #include "model/UserInputInterruptMode.h"
 #include "ui/BlockListWidget.h"
+#include "ui/LogPanelWidget.h"
 
 #include <QByteArray>
 #include <QElapsedTimer>
@@ -36,7 +37,6 @@ class UiStateManager;
 class QCheckBox;
 class QCloseEvent;
 class QShowEvent;
-class QPlainTextEdit;
 class QTimer;
 class QPushButton;
 class QLabel;
@@ -151,10 +151,12 @@ private:
     bool hasAnyRunningSession() const;
     QSet<QString> runningFeatureIds() const;
     QString featureDisplayName(const std::string& featureId) const;
-    void appendSessionLog(const FeatureRunSession& session, const QString& message);
+    void appendSessionLog(const FeatureRunSession& session,
+                          const QString& message,
+                          LogLineKind kind = LogLineKind::Info);
     void stopFeatureRun(const std::string& featureId);
     void stopAllSessions();
-    void appendLog(const QString& message);
+    void appendLog(const QString& message, LogLineKind kind = LogLineKind::Info);
     bool maybeSave();
     void loadProjectFromFile(const QString& path);
     void loadActiveProfile();
@@ -263,7 +265,7 @@ private:
     QSplitter* m_mainHorizontalSplitter = nullptr;
     QSplitter* m_mainVerticalSplitter = nullptr;
     QSplitter* m_bottomHorizontalSplitter = nullptr;
-    QPlainTextEdit* m_logView = nullptr;
+    LogPanelWidget* m_logPanel = nullptr;
     QToolButton* m_pickWindowButton = nullptr;
     QToolButton* m_pickWindowListButton = nullptr;
     QToolButton* m_showTargetWindowButton = nullptr;
