@@ -656,7 +656,16 @@ void MainWindow::connectSignals() {
     connect(m_profileList,
             &QListWidget::itemDoubleClicked,
             this,
-            [this](QListWidgetItem*) { onRenameProfile(); });
+            [this](QListWidgetItem* item) {
+                if (!item || !m_profileManager) {
+                    return;
+                }
+                const QString id = item->data(Qt::UserRole).toString();
+                if (m_profileManager->isDefaultProfile(id)) {
+                    return;
+                }
+                onRenameProfile();
+            });
     connect(m_profileList,
             &ReorderableListWidget::rowsReordered,
             this,
