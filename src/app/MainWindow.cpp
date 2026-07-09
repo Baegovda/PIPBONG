@@ -35,6 +35,7 @@
 #include "app/UpdateChecker.h"
 #include "ui/AppHelpDialog.h"
 #include "ui/ProfileListWidget.h"
+#include "ui/FeatureDragMime.h"
 #include "ui/CustomTitleBar.h"
 #include "ui/ProfileEditDialog.h"
 #include "ui/UiStateManager.h"
@@ -54,6 +55,7 @@
 #include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QMimeData>
 #include <QFileIconProvider>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -211,6 +213,40 @@ void configureTargetWindowActionButton(QToolButton* button) {
     button->setAutoRaise(false);
     button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     button->setFixedHeight(22);
+}
+
+int featureIndexById(const Project& project, const std::string& featureId) {
+    const auto& features = project.features();
+    for (int i = 0; i < static_cast<int>(features.size()); ++i) {
+        if (features[static_cast<size_t>(i)]->id() == featureId) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+QString profileDisplayName(ProfileManager* profileManager, const QString& profileId) {
+    if (!profileManager) {
+        return profileId;
+    }
+    for (const ProfileManager::Profile& profile : profileManager->profiles()) {
+        if (profile.id == profileId) {
+            return profile.name;
+        }
+    }
+    return profileId;
+}
+
+QString libraryEntryDisplayName(FeatureLibraryManager* libraryManager, const QString& entryId) {
+    if (!libraryManager) {
+        return entryId;
+    }
+    for (const FeatureLibraryManager::Entry& entry : libraryManager->listEntries()) {
+        if (entry.id == entryId) {
+            return entry.name;
+        }
+    }
+    return entryId;
 }
 
 } // namespace
@@ -604,6 +640,18 @@ void MainWindow::connectSignals() {
             &FeatureListPanel::featureEnabledChanged,
             this,
             &MainWindow::onFeatureEnabledChanged);
+    connect(m_featureList,
+            &FeatureListPanel::featureDropped,
+            this,
+            &MainWindow::onFeatureDroppedOnFeatureList);
+    connect(m_featureList,
+            &FeatureListPanel::featureDroppedOnLibrary,
+            this,
+            &MainWindow::onFeatureDroppedOnLibrary);
+    connect(m_profileList,
+            &ProfileListWidget::featureDroppedOnProfile,
+            this,
+            &MainWindow::onFeatureDroppedOnProfile);
     connect(m_profileList,
             &QListWidget::currentRowChanged,
             this,
@@ -1394,6 +1442,9 @@ void MainWindow::onNewProject() {
     ScreenCapture::setTargetWindow(nullptr);
     ScreenCapture::setTargetWindowTitle(L"");
     m_featureList->setProject(m_project.get());
+    if (m_profileManager) {
+        m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
+    }
     m_featureList->refresh();
     onFeatureSelectionChanged();
     m_modified = false;
@@ -1650,7 +1701,10 @@ void MainWindow::updateRunUiState() {
     Feature* selected = m_featureList ? m_featureList->selectedFeature() : nullptr;
     const bool selectedRunning = selected && isFeatureRunning(selected->id());
     if (m_featureList) {
-        m_featureList->setEditControlsEnabled(!selectedRunning);
+        m_featureList->setEditControlsEnabled(!selectedRunning && !hasAnyRunningSession());
+    }
+    if (m_profileList) {
+        m_profileList->setFeatureDropEnabled(canTransferFeatures());
     }
     if (m_workflowEditor) {
         m_workflowEditor->setEditingEnabled(!selectedRunning);
@@ -1863,36 +1917,334 @@ void MainWindow::onDeleteLibraryEntryRequested(const QString& entryId) {
     refreshFeatureLibraryPanel();
 }
 
-bool MainWindow::importLibraryEntry(const QString& entryId) {
-    if (!m_project || !m_featureLibraryManager || !m_featureList || entryId.isEmpty()) {
+bool MainWindow::canTransferFeatures() const {
+    return !hasAnyRunningSession();
+}
+
+bool MainWindow::removeFeatureFromProfile(const QString& profileId, const QString& featureId) {
+    if (!m_profileManager || featureId.isEmpty()) {
         return false;
     }
 
-    const QString targetProjectDir = Application::instance()->projectDirectory();
+    if (isFeatureRunning(featureId.toStdString())) {
+        stopFeatureRun(featureId.toStdString());
+    }
+
+    if (profileId == m_profileManager->activeProfileId()) {
+        if (!m_project) {
+            return false;
+        }
+        const int index = featureIndexById(*m_project, featureId.toStdString());
+        if (index < 0) {
+            return false;
+        }
+        m_project->removeFeature(index);
+        if (m_featureList) {
+            m_featureList->refresh();
+            onFeatureSelectionChanged();
+        }
+        syncHotkeys();
+        scheduleAutoSave();
+        return true;
+    }
+
+    const QString path = m_profileManager->projectPath(profileId);
+    QString projectDir = m_profileManager->projectDirectory(profileId);
+    auto project = JsonSerializer::loadFromFile(path, &projectDir);
+    if (!project) {
+        return false;
+    }
+    const int index = featureIndexById(*project, featureId.toStdString());
+    if (index < 0) {
+        return false;
+    }
+    project->removeFeature(index);
+    return JsonSerializer::saveToFile(*project, path, projectDir);
+}
+
+bool MainWindow::importLibraryEntryToProfile(const QString& entryId,
+                                             const QString& profileId,
+                                             int insertIndex) {
+    if (!m_featureLibraryManager || !m_profileManager || entryId.isEmpty() || profileId.isEmpty()) {
+        return false;
+    }
+
+    const QString targetProjectDir = m_profileManager->projectDirectory(profileId);
     FeatureLibraryManager::ImportResult res =
         m_featureLibraryManager->importEntryToProfile(entryId, targetProjectDir);
     if (!res.feature) {
+        return false;
+    }
+
+    const QString newFeatureId = QString::fromStdString(res.feature->id());
+    if (profileId == m_profileManager->activeProfileId()) {
+        if (!m_project || !m_featureList) {
+            return false;
+        }
+        const int count = static_cast<int>(m_project->features().size());
+        const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
+        m_project->insertFeature(idx, std::move(res.feature));
+        m_featureList->refresh();
+        m_featureList->selectFeatureById(newFeatureId);
+        syncHotkeys();
+        scheduleAutoSave();
+    } else {
+        const QString path = m_profileManager->projectPath(profileId);
+        QString projectDir = targetProjectDir;
+        auto project = JsonSerializer::loadFromFile(path, &projectDir);
+        if (!project) {
+            return false;
+        }
+        const int count = static_cast<int>(project->features().size());
+        const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
+        project->insertFeature(idx, std::move(res.feature));
+        if (!JsonSerializer::saveToFile(*project, path, projectDir)) {
+            return false;
+        }
+    }
+
+    if (!res.missingTemplatePaths.empty()) {
+        appendLog(tr("라이브러리 가져오기: 템플릿 일부를 복사하지 못했습니다: %1")
+                      .arg(res.missingTemplatePaths.join(QStringLiteral(", "))));
+    }
+    return true;
+}
+
+bool MainWindow::saveFeatureToLibraryFromDrag(const QString& featureId, const QString& profileId) {
+    if (!m_featureLibraryManager || !m_profileManager || featureId.isEmpty()) {
+        return false;
+    }
+    if (profileId != m_profileManager->activeProfileId() || !m_project) {
+        return false;
+    }
+
+    Feature* feature = m_project->featureById(featureId.toStdString());
+    if (!feature) {
+        return false;
+    }
+
+    QString entryId;
+    QStringList missingTemplates;
+    const QString sourceProjectDir = m_profileManager->activeProjectDirectory();
+    const QString entryName = QString::fromStdString(feature->name());
+    if (!m_featureLibraryManager->saveFeatureToLibrary(*feature,
+                                                        sourceProjectDir,
+                                                        entryName,
+                                                        &entryId,
+                                                        &missingTemplates)) {
+        return false;
+    }
+
+    if (!missingTemplates.empty()) {
+        appendLog(tr("라이브러리에 저장했지만 템플릿 일부를 복사하지 못했습니다: %1")
+                      .arg(missingTemplates.join(QStringLiteral(", "))));
+    }
+
+    refreshFeatureLibraryPanel();
+    return true;
+}
+
+bool MainWindow::moveFeatureBetweenProfiles(const QString& featureId,
+                                            const QString& sourceProfileId,
+                                            const QString& targetProfileId,
+                                            int insertIndex) {
+    if (!canTransferFeatures() || !m_profileManager || featureId.isEmpty()) {
+        return false;
+    }
+    if (sourceProfileId.isEmpty() || targetProfileId.isEmpty()
+        || sourceProfileId == targetProfileId) {
+        return false;
+    }
+
+    QString sourceProjectDir;
+    const Feature* sourceFeature = nullptr;
+    std::unique_ptr<Project> loadedSourceProject;
+
+    if (sourceProfileId == m_profileManager->activeProfileId()) {
+        if (!m_project) {
+            return false;
+        }
+        sourceProjectDir = m_profileManager->activeProjectDirectory();
+        sourceFeature = m_project->featureById(featureId.toStdString());
+    } else {
+        const QString sourcePath = m_profileManager->projectPath(sourceProfileId);
+        sourceProjectDir = m_profileManager->projectDirectory(sourceProfileId);
+        loadedSourceProject = JsonSerializer::loadFromFile(sourcePath, &sourceProjectDir);
+        if (!loadedSourceProject) {
+            return false;
+        }
+        sourceFeature = loadedSourceProject->featureById(featureId.toStdString());
+    }
+
+    if (!sourceFeature) {
+        return false;
+    }
+
+    std::unique_ptr<Feature> movedFeature = sourceFeature->duplicateAsNewInstance();
+    if (!movedFeature) {
+        return false;
+    }
+
+    const QString targetProjectDir = m_profileManager->projectDirectory(targetProfileId);
+    const QStringList missingTemplates =
+        FeatureLibraryManager::copyFeatureTemplatesBetweenDirectories(*sourceFeature,
+                                                                     sourceProjectDir,
+                                                                     targetProjectDir);
+    if (!missingTemplates.empty()) {
+        appendLog(tr("프로필 이동: 템플릿 일부를 복사하지 못했습니다: %1")
+                      .arg(missingTemplates.join(QStringLiteral(", "))));
+    }
+
+    const QString newFeatureId = QString::fromStdString(movedFeature->id());
+    if (targetProfileId == m_profileManager->activeProfileId()) {
+        if (!m_project || !m_featureList) {
+            return false;
+        }
+        const int count = static_cast<int>(m_project->features().size());
+        const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
+        m_project->insertFeature(idx, std::move(movedFeature));
+        m_featureList->refresh();
+        m_featureList->selectFeatureById(newFeatureId);
+        syncHotkeys();
+        scheduleAutoSave();
+    } else {
+        const QString targetPath = m_profileManager->projectPath(targetProfileId);
+        QString loadedProjectDir = targetProjectDir;
+        auto targetProject = JsonSerializer::loadFromFile(targetPath, &loadedProjectDir);
+        if (!targetProject) {
+            return false;
+        }
+        const int count = static_cast<int>(targetProject->features().size());
+        const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
+        targetProject->insertFeature(idx, std::move(movedFeature));
+        if (!JsonSerializer::saveToFile(*targetProject, targetPath, loadedProjectDir)) {
+            return false;
+        }
+    }
+
+    if (!removeFeatureFromProfile(sourceProfileId, featureId)) {
+        return false;
+    }
+
+    return true;
+}
+
+void MainWindow::onFeatureDroppedOnFeatureList(const QMimeData* mime, int insertIndex) {
+    if (!canTransferFeatures() || !mime || !m_profileManager) {
+        return;
+    }
+
+    const FeatureDragMime::Payload payload = FeatureDragMime::parse(mime);
+    if (!payload.isValid() || payload.source != FeatureDragMime::Source::Library) {
+        return;
+    }
+
+    const QString entryName = libraryEntryDisplayName(m_featureLibraryManager.get(), payload.id);
+    if (!importLibraryEntryToProfile(payload.id, m_profileManager->activeProfileId(), insertIndex)) {
+        QMessageBox::critical(this,
+                              tr("라이브러리 가져오기 실패"),
+                              tr("라이브러리 항목을 불러오지 못했습니다."));
+        return;
+    }
+
+    showTransientStatus(tr("라이브러리에서 가져옴: %1").arg(entryName), 2500);
+}
+
+void MainWindow::onFeatureDroppedOnLibrary(const QMimeData* mime) {
+    if (!canTransferFeatures() || !mime || !m_profileManager) {
+        return;
+    }
+
+    const FeatureDragMime::Payload payload = FeatureDragMime::parse(mime);
+    if (!payload.isValid() || payload.source != FeatureDragMime::Source::Profile) {
+        return;
+    }
+    if (payload.profileId != m_profileManager->activeProfileId()) {
+        return;
+    }
+
+    Feature* feature = m_project ? m_project->featureById(payload.id.toStdString()) : nullptr;
+    if (!feature) {
+        return;
+    }
+
+    const QString featureName = QString::fromStdString(feature->name());
+    if (!saveFeatureToLibraryFromDrag(payload.id, payload.profileId)) {
+        QMessageBox::critical(this,
+                              tr("라이브러리 저장 실패"),
+                              tr("기능을 라이브러리에 저장하지 못했습니다."));
+        return;
+    }
+
+    showTransientStatus(tr("라이브러리에 저장됨: %1").arg(featureName), 2500);
+}
+
+void MainWindow::onFeatureDroppedOnProfile(const QString& targetProfileId, const QMimeData* mime) {
+    if (!canTransferFeatures() || !mime || !m_profileManager || targetProfileId.isEmpty()) {
+        return;
+    }
+
+    const FeatureDragMime::Payload payload = FeatureDragMime::parse(mime);
+    if (!payload.isValid()) {
+        return;
+    }
+
+    const QString profileName = profileDisplayName(m_profileManager.get(), targetProfileId);
+
+    if (payload.source == FeatureDragMime::Source::Library) {
+        const QString entryName = libraryEntryDisplayName(m_featureLibraryManager.get(), payload.id);
+        if (!importLibraryEntryToProfile(payload.id, targetProfileId, -1)) {
+            QMessageBox::critical(this,
+                                  tr("라이브러리 가져오기 실패"),
+                                  tr("라이브러리 항목을 불러오지 못했습니다."));
+            return;
+        }
+        showTransientStatus(tr("프로필 '%1'에 라이브러리 기능을 가져옴: %2")
+                                .arg(profileName, entryName),
+                            2500);
+        return;
+    }
+
+    if (payload.profileId == targetProfileId) {
+        return;
+    }
+
+    Feature* sourceFeature = nullptr;
+    if (payload.profileId == m_profileManager->activeProfileId() && m_project) {
+        sourceFeature = m_project->featureById(payload.id.toStdString());
+    }
+    const QString featureName = sourceFeature ? QString::fromStdString(sourceFeature->name()) : payload.id;
+
+    if (!moveFeatureBetweenProfiles(payload.id, payload.profileId, targetProfileId, -1)) {
+        QMessageBox::critical(this,
+                              tr("기능 이동 실패"),
+                              tr("기능을 다른 프로필로 옮기지 못했습니다."));
+        return;
+    }
+
+    showTransientStatus(tr("프로필 '%1'로 기능을 이동했습니다: %2")
+                            .arg(profileName, featureName),
+                        2500);
+}
+
+bool MainWindow::importLibraryEntry(const QString& entryId) {
+    if (!m_project || !m_featureLibraryManager || !m_featureList || !m_profileManager
+        || entryId.isEmpty()) {
+        return false;
+    }
+
+    const int insertIndex = m_featureList->selectedIndex() >= 0
+                                ? m_featureList->selectedIndex() + 1
+                                : static_cast<int>(m_project->features().size());
+    const QString entryName = libraryEntryDisplayName(m_featureLibraryManager.get(), entryId);
+    if (!importLibraryEntryToProfile(entryId, m_profileManager->activeProfileId(), insertIndex)) {
         QMessageBox::critical(this,
                               tr("라이브러리 가져오기 실패"),
                               tr("라이브러리 항목을 불러오지 못했습니다."));
         return false;
     }
 
-    const QString newFeatureId = QString::fromStdString(res.feature->id());
-    const int insertIndex = m_featureList->selectedIndex() >= 0
-                                ? m_featureList->selectedIndex() + 1
-                                : static_cast<int>(m_project->features().size());
-    m_project->insertFeature(insertIndex, std::move(res.feature));
-    m_featureList->refresh();
-    m_featureList->selectFeatureById(newFeatureId);
-    syncHotkeys();
-    scheduleAutoSave();
-    showTransientStatus(tr("라이브러리에서 가져옴: %1").arg(res.importedName), 2500);
-
-    if (!res.missingTemplatePaths.empty()) {
-        appendLog(tr("라이브러리 가져오기: 템플릿 일부를 복사하지 못했습니다: %1")
-                       .arg(res.missingTemplatePaths.join(QStringLiteral(", "))));
-    }
+    showTransientStatus(tr("라이브러리에서 가져옴: %1").arg(entryName), 2500);
     return true;
 }
 
@@ -3246,6 +3598,9 @@ void MainWindow::loadActiveProfile() {
     ScreenCapture::setTargetWindow(nullptr);
     ScreenCapture::setTargetWindowTitle(L"");
     m_featureList->setProject(m_project.get());
+    if (m_profileManager) {
+        m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
+    }
     m_featureList->refresh();
     onFeatureSelectionChanged();
     m_modified = false;
@@ -3447,6 +3802,9 @@ void MainWindow::loadProjectFromFile(const QString& path) {
 #endif
 
     m_featureList->setProject(m_project.get());
+    if (m_profileManager) {
+        m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
+    }
     m_featureList->refresh();
     restoreSelectedFeaturePreference();
     onFeatureSelectionChanged();

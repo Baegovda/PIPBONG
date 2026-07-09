@@ -42,6 +42,11 @@ public:
     ImportResult importEntryToProfile(const QString& entryId,
                                        const QString& targetProjectDirectory);
 
+    /// Copies referenced templates from one profile project directory to another.
+    static QStringList copyFeatureTemplatesBetweenDirectories(const Feature& feature,
+                                                               const QString& sourceProjectDirectory,
+                                                               const QString& targetProjectDirectory);
+
     /// Permanently deletes a library entry (feature JSON + copied templates).
     bool removeEntry(const QString& entryId);
 

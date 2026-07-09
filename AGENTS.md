@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.38` (from `project(PIPBONG VERSION 0.8.38)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.39` (from `project(PIPBONG VERSION 0.8.39)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -862,6 +862,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.39] - 2026-07-09
+
+### Added
+
+- Cross-panel feature drag-and-drop: drag features between the feature list, library drawer, and profile list using shared `FeatureDragMime` (`FeatureListWidget`, `FeatureLibraryListWidget`, `ProfileListWidget`, `FeatureListPanel`, `MainWindow::moveFeatureBetweenProfiles`, `importLibraryEntryToProfile`, `saveFeatureToLibraryFromDrag`); feature list → library saves a copy, library → feature list imports at the drop index, feature list → another profile moves the feature (with template copy), library → profile imports into that profile; disabled while any feature session is running.
 
 ## [0.8.38] - 2026-07-09
 

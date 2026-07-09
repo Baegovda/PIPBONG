@@ -1,10 +1,15 @@
 #include "ui/FeatureListWidget.h"
 
+#include "ui/FeatureDragMime.h"
+
+#include <QDrag>
 #include <QDragEnterEvent>
 #include <QDragLeaveEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
 #include <QKeyEvent>
+#include <QListWidgetItem>
+#include <QMimeData>
 #include <QPainter>
 #include <QResizeEvent>
 #include <QTimer>
@@ -74,7 +79,7 @@ FeatureListWidget::FeatureListWidget(QWidget* parent)
     setDefaultDropAction(Qt::MoveAction);
     setDragDropOverwriteMode(false);
     setDropIndicatorShown(false);
-    setToolTip(tr("Ctrl/Shift+클릭 다중 선택 · 드래그하여 기능 순서 변경 · Ctrl+C/V 복사/붙여넣기 · Delete 삭제"));
+    setToolTip(tr("Ctrl/Shift+클릭 다중 선택 · 드래그하여 기능 순서 변경 · 기능/라이브러리/프로필 간 드래그 이동 · Ctrl+C/V · Delete"));
     setReorderEnabled(true);
 
     m_dropIndicator = new DropInsertionIndicator(viewport());
@@ -85,10 +90,11 @@ void FeatureListWidget::setReorderEnabled(bool enabled) {
     m_reorderEnabled = enabled;
     setDragEnabled(enabled);
     setAcceptDrops(enabled);
-    setDragDropMode(enabled ? QAbstractItemView::InternalMove : QAbstractItemView::NoDragDrop);
+    setDragDropMode(enabled ? QAbstractItemView::DragDrop : QAbstractItemView::NoDragDrop);
     if (!enabled) {
         clearDropIndicator();
         m_dragSourceRow = -1;
+        m_externalDropHover = false;
         if (viewport()) {
             viewport()->update();
         }
@@ -109,38 +115,87 @@ void FeatureListWidget::startDrag(Qt::DropActions supportedActions) {
         return;
     }
 
+    QListWidgetItem* item = currentItem();
+    if (!item) {
+        m_dragSourceRow = -1;
+        return;
+    }
+
+    const QString featureId = item->data(Qt::UserRole).toString();
+    if (featureId.isEmpty() || m_activeProfileId.isEmpty()) {
+        m_dragSourceRow = -1;
+        return;
+    }
+
     updateDragSourceVisuals();
 
-    const int sourceRow = m_dragSourceRow;
-    QListWidget::startDrag(supportedActions);
+    FeatureDragMime::Payload payload;
+    payload.source = FeatureDragMime::Source::Profile;
+    payload.id = featureId;
+    payload.profileId = m_activeProfileId;
+
+    QMimeData* mimeData = FeatureDragMime::createMimeData(payload);
+    if (!mimeData) {
+        m_dragSourceRow = -1;
+        return;
+    }
+
+    auto* drag = new QDrag(this);
+    drag->setMimeData(mimeData);
+    drag->exec(supportedActions | Qt::CopyAction, Qt::MoveAction);
 
     clearDropIndicator();
+    m_externalDropHover = false;
     if (viewport()) {
         viewport()->update();
     }
 
-    const int fromRow = m_pendingReorderFrom >= 0 ? m_pendingReorderFrom : sourceRow;
-    const int toRow = m_pendingReorderTo >= 0 ? m_pendingReorderTo : sourceRow;
+    const bool internalReorder = m_pendingReorderFrom >= 0 && m_pendingReorderTo >= 0
+                                 && m_pendingReorderFrom != m_pendingReorderTo;
+    if (internalReorder) {
+        emit featureRowsReordered(m_pendingReorderFrom, m_pendingReorderTo);
+    }
+
     m_dragSourceRow = -1;
     m_pendingReorderFrom = -1;
     m_pendingReorderTo = -1;
-
-    emit featureRowsReordered(fromRow, toRow);
 }
 
 void FeatureListWidget::dragEnterEvent(QDragEnterEvent* event) {
     if (m_reorderEnabled && event->source() == this && m_dragSourceRow >= 0) {
+        m_externalDropHover = false;
+        m_dropInsertionIndex = dropInsertionIndex(event->position().toPoint());
+        updateDropIndicator();
+        event->acceptProposedAction();
+        return;
+    }
+    if (m_reorderEnabled && FeatureDragMime::accepts(event->mimeData()) && event->source() != this) {
+        m_externalDropHover = true;
         m_dropInsertionIndex = dropInsertionIndex(event->position().toPoint());
         updateDropIndicator();
         event->acceptProposedAction();
         return;
     }
     clearDropIndicator();
+    m_externalDropHover = false;
     event->ignore();
 }
 
 void FeatureListWidget::dragMoveEvent(QDragMoveEvent* event) {
     if (m_reorderEnabled && event->source() == this && m_dragSourceRow >= 0) {
+        m_externalDropHover = false;
+        const int insertIdx = dropInsertionIndex(event->position().toPoint());
+        if (insertIdx != m_dropInsertionIndex) {
+            m_dropInsertionIndex = insertIdx;
+            updateDropIndicator();
+        } else if (m_dropIndicator && m_dropIndicator->isVisible()) {
+            updateDropIndicator();
+        }
+        event->acceptProposedAction();
+        return;
+    }
+    if (m_reorderEnabled && FeatureDragMime::accepts(event->mimeData()) && event->source() != this) {
+        m_externalDropHover = true;
         const int insertIdx = dropInsertionIndex(event->position().toPoint());
         if (insertIdx != m_dropInsertionIndex) {
             m_dropInsertionIndex = insertIdx;
@@ -152,11 +207,13 @@ void FeatureListWidget::dragMoveEvent(QDragMoveEvent* event) {
         return;
     }
     clearDropIndicator();
+    m_externalDropHover = false;
     event->ignore();
 }
 
 void FeatureListWidget::dragLeaveEvent(QDragLeaveEvent* event) {
     clearDropIndicator();
+    m_externalDropHover = false;
     QListWidget::dragLeaveEvent(event);
 }
 
@@ -191,7 +248,10 @@ int FeatureListWidget::insertionLineY(int insertionIndex) const {
 }
 
 void FeatureListWidget::updateDropIndicator() {
-    if (!m_dropIndicator || m_dropInsertionIndex < 0 || m_dragSourceRow < 0) {
+    if (!m_dropIndicator || m_dropInsertionIndex < 0) {
+        return;
+    }
+    if (m_dragSourceRow < 0 && !m_externalDropHover) {
         return;
     }
     const int y = insertionLineY(m_dropInsertionIndex);
@@ -230,9 +290,20 @@ int FeatureListWidget::dropTargetRow(const QPoint& pos) const {
 }
 
 void FeatureListWidget::dropEvent(QDropEvent* event) {
+    if (m_reorderEnabled && FeatureDragMime::accepts(event->mimeData()) && event->source() != this) {
+        const int insertIndex = dropInsertionIndex(event->position().toPoint());
+        clearDropIndicator();
+        m_externalDropHover = false;
+        emit featureDropped(event->mimeData(), insertIndex);
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
+        return;
+    }
+
     if (!m_reorderEnabled || m_dragSourceRow < 0 || event->source() != this) {
         m_dragSourceRow = -1;
         clearDropIndicator();
+        m_externalDropHover = false;
         event->ignore();
         return;
     }
@@ -241,6 +312,7 @@ void FeatureListWidget::dropEvent(QDropEvent* event) {
     const int fromRow = m_dragSourceRow;
     m_dragSourceRow = -1;
     clearDropIndicator();
+    m_externalDropHover = false;
 
     if (fromRow != toRow) {
         m_pendingReorderFrom = fromRow;

@@ -6,6 +6,7 @@
 #include <memory>
 
 class QListWidgetItem;
+class QMimeData;
 class QPushButton;
 class QListWidget;
 class QToolButton;
@@ -15,6 +16,7 @@ class QVariantAnimation;
 class Project;
 class Feature;
 class FeatureListWidget;
+class FeatureLibraryListWidget;
 
 
 
@@ -48,6 +50,8 @@ public:
 
 
     void setProject(Project* project);
+
+    void setActiveProfileId(const QString& profileId);
 
     void refresh();
 
@@ -112,6 +116,10 @@ signals:
     void importLibraryEntryRequested(const QString& entryId);
     /// Delete a library entry from the drawer context menu.
     void deleteLibraryEntryRequested(const QString& entryId);
+    /// Feature or library entry dropped onto the feature list.
+    void featureDropped(const QMimeData* mime, int insertIndex);
+    /// Active-profile feature dropped onto the library drawer.
+    void featureDroppedOnLibrary(const QMimeData* mime);
 
 
 
@@ -204,7 +212,7 @@ private:
 
     QWidget* m_libraryDrawerHost = nullptr;
 
-    QListWidget* m_libraryList = nullptr;
+    FeatureLibraryListWidget* m_libraryList = nullptr;
 
     QVariantAnimation* m_libraryDrawerAnimation = nullptr;
 

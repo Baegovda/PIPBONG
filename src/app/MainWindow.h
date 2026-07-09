@@ -45,6 +45,7 @@ class QSplitter;
 class QSystemTrayIcon;
 class QMenu;
 class QListWidget;
+class QMimeData;
 class ProfileListWidget;
 class TargetWindowDetailPanel;
 class CustomTitleBar;
@@ -159,6 +160,19 @@ private:
     void refreshProfileList();
     void refreshFeatureLibraryPanel();
     bool importLibraryEntry(const QString& entryId);
+    bool importLibraryEntryToProfile(const QString& entryId,
+                                     const QString& profileId,
+                                     int insertIndex);
+    bool saveFeatureToLibraryFromDrag(const QString& featureId, const QString& profileId);
+    bool moveFeatureBetweenProfiles(const QString& featureId,
+                                    const QString& sourceProfileId,
+                                    const QString& targetProfileId,
+                                    int insertIndex);
+    bool removeFeatureFromProfile(const QString& profileId, const QString& featureId);
+    bool canTransferFeatures() const;
+    void onFeatureDroppedOnFeatureList(const QMimeData* mime, int insertIndex);
+    void onFeatureDroppedOnLibrary(const QMimeData* mime);
+    void onFeatureDroppedOnProfile(const QString& targetProfileId, const QMimeData* mime);
     void syncProfileListSelection();
     bool switchToProfile(const QString& profileId, bool automatic = false);
     void saveActiveProfileSettings();

@@ -6,6 +6,7 @@ class QDragEnterEvent;
 class QDragLeaveEvent;
 class QDragMoveEvent;
 class QDropEvent;
+class QMimeData;
 
 class FeatureListWidget : public QListWidget {
     Q_OBJECT
@@ -16,8 +17,12 @@ public:
     bool reorderEnabled() const { return m_reorderEnabled; }
     int dragSourceRow() const { return m_dragSourceRow; }
 
+    void setActiveProfileId(const QString& profileId) { m_activeProfileId = profileId; }
+    QString activeProfileId() const { return m_activeProfileId; }
+
 signals:
     void featureRowsReordered(int fromRow, int toRow);
+    void featureDropped(const QMimeData* mime, int insertIndex);
     void deleteRequested();
     void copyRequested();
     void pasteRequested();
@@ -40,6 +45,8 @@ private:
     void updateDragSourceVisuals();
 
     bool m_reorderEnabled = true;
+    bool m_externalDropHover = false;
+    QString m_activeProfileId;
     int m_dragSourceRow = -1;
     int m_pendingReorderFrom = -1;
     int m_pendingReorderTo = -1;

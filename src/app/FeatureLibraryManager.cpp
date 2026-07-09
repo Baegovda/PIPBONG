@@ -286,6 +286,28 @@ FeatureLibraryManager::ImportResult FeatureLibraryManager::importEntryToProfile(
     return res;
 }
 
+QStringList FeatureLibraryManager::copyFeatureTemplatesBetweenDirectories(
+    const Feature& feature,
+    const QString& sourceProjectDirectory,
+    const QString& targetProjectDirectory) {
+    QStringList missing;
+    const std::vector<QString> relTemplatePaths = templatePathsFromFeature(feature);
+    for (const QString& relPath : relTemplatePaths) {
+        const QString src = QDir(sourceProjectDirectory).filePath(relPath);
+        const QString dst = QDir(targetProjectDirectory).filePath(relPath);
+        if (!QFileInfo(src).exists()) {
+            missing.push_back(relPath);
+            continue;
+        }
+        bool ok = true;
+        copyFileOverwrite(src, dst, ok);
+        if (!ok) {
+            missing.push_back(relPath);
+        }
+    }
+    return missing;
+}
+
 bool FeatureLibraryManager::removeEntry(const QString& entryId) {
     if (entryId.isEmpty()) {
         return false;

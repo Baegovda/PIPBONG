@@ -1,5 +1,6 @@
 #include "ui/FeatureListPanel.h"
 #include "ui/FeatureListWidget.h"
+#include "ui/FeatureLibraryListWidget.h"
 #include "ui/HotkeyBindingIcon.h"
 #include "model/Feature.h"
 #include "model/FeatureRunMode.h"
@@ -755,6 +756,7 @@ void FeatureListPanel::setupUi() {
     m_list->setSpacing(0);
     m_list->setItemDelegate(new FeatureListItemDelegate(this));
     connect(m_list, &FeatureListWidget::featureRowsReordered, this, &FeatureListPanel::onFeatureRowsReordered);
+    connect(m_list, &FeatureListWidget::featureDropped, this, &FeatureListPanel::featureDropped);
     connect(m_list, &FeatureListWidget::deleteRequested, this, &FeatureListPanel::onRemoveFeature);
     connect(m_list, &FeatureListWidget::copyRequested, this, &FeatureListPanel::onCopyFeature);
     connect(m_list, &FeatureListWidget::pasteRequested, this, &FeatureListPanel::onPasteFeature);
@@ -790,7 +792,7 @@ void FeatureListPanel::setupUi() {
     drawerLayout->setContentsMargins(0, 2, 0, 0);
     drawerLayout->setSpacing(0);
 
-    m_libraryList = new QListWidget(m_libraryDrawerHost);
+    m_libraryList = new FeatureLibraryListWidget(m_libraryDrawerHost);
     m_libraryList->setObjectName(QStringLiteral("featureLibraryList"));
     m_libraryList->setFrameShape(QFrame::NoFrame);
     m_libraryList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -818,6 +820,10 @@ void FeatureListPanel::setupUi() {
             emit importLibraryEntryRequested(item->data(Qt::UserRole).toString());
         }
     });
+    connect(m_libraryList,
+            &FeatureLibraryListWidget::featureDroppedOnLibrary,
+            this,
+            &FeatureListPanel::featureDroppedOnLibrary);
     connect(m_libraryList,
             &QListWidget::customContextMenuRequested,
             this,
@@ -1140,7 +1146,11 @@ void FeatureListPanel::updateReorderEnabled() {
     if (!m_list) {
         return;
     }
-    m_list->setReorderEnabled(m_editControlsEnabled && m_runningFeatureIds.isEmpty());
+    const bool enabled = m_editControlsEnabled && m_runningFeatureIds.isEmpty();
+    m_list->setReorderEnabled(enabled);
+    if (m_libraryList) {
+        m_libraryList->setTransferEnabled(enabled);
+    }
 }
 
 const Feature* FeatureListPanel::projectFeatureById(const QString& featureId) const {
@@ -1285,6 +1295,12 @@ void FeatureListPanel::onAnimationTick() {
         m_list->viewport()->update();
     }
 }
+void FeatureListPanel::setActiveProfileId(const QString& profileId) {
+    if (m_list) {
+        m_list->setActiveProfileId(profileId);
+    }
+}
+
 void FeatureListPanel::setProject(Project* project) {
     m_project = project;
     refresh();
