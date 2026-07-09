@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.60` (from `project(PIPBONG VERSION 0.8.60)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.61` (from `project(PIPBONG VERSION 0.8.61)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -445,7 +445,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `repeatCount` | `1` | Used when `runMode` is `RepeatCount` |
 | `triggerCooldownMs` | `1000` | After a trigger fires in `Trigger` mode, wait this many ms before monitoring again (5 ms step, `0` = immediate); omitted when default |
 | `infiniteExitAfterConsecutiveMisses` | `0` (omitted) | When `> 0` with `RepeatInfinite` or `Hold`, stop after this many consecutive loop iterations where template matching fails |
-| `userInputInterrupt` | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run. Legacy `"None"` loads as `"Stop"`. Excludes mouse movement, injected input, and the feature's own hotkey |
+| `userInputInterrupt` | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run; `"None"` — ignore user input (no pause/stop). Excludes mouse movement, injected input, and the feature's own hotkey |
 | `pointerVisualFeedback` | `true` (omitted) | When `false`, disables target-window click/match pulse overlay for this feature during runs |
 | `restoreMousePositionOnEnd` | `false` (omitted) | When `true`, moves the mouse cursor back to its screen position when the workflow session started |
 | `lockMouseToScreenCenterDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to the target window center (DWM bounds) for the feature run session; follows window moves (`MouseCenterLock`, mouse block editor) |
@@ -891,6 +891,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.61] - 2026-07-09
+
+### Added
+
+- Feature **사용자 입력 시** option **영향 없음** (`UserInputInterruptMode::None`, JSON `userInputInterrupt: "None"`): physical keyboard/mouse-button input during a run does not pause or stop the workflow; interrupt hooks are not registered for that session (`FeatureEditDialog`, `MainWindow::syncUserInputInterruptForSession`, `UserInputInterruptMode`, `JsonSerializer`).
 
 ## [0.8.60] - 2026-07-09
 

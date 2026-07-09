@@ -4402,6 +4402,9 @@ void MainWindow::syncUserInputInterruptForSession(FeatureRunSession& session, Fe
     if (!feature || !session.sessionContext) {
         return;
     }
+    if (feature->userInputInterruptMode() == UserInputInterruptMode::None) {
+        return;
+    }
     monitor.registerSession(session.featureId,
                             feature->userInputInterruptMode(),
                             feature->hotkey(),

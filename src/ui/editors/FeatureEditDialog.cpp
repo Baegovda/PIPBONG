@@ -185,9 +185,11 @@ void FeatureEditDialog::setupUi() {
     m_userInputInterruptCombo = new QComboBox(this);
     m_userInputInterruptCombo->addItem(tr("완전 정지"), static_cast<int>(UserInputInterruptMode::Stop));
     m_userInputInterruptCombo->addItem(tr("일시정지"), static_cast<int>(UserInputInterruptMode::Pause));
+    m_userInputInterruptCombo->addItem(tr("영향 없음"), static_cast<int>(UserInputInterruptMode::None));
     m_userInputInterruptCombo->setToolTip(
         tr("워크플로 실행 중 사용자가 직접 키보드를 누르거나 마우스 버튼을 클릭하면(이동 제외) "
-           "일시정지하거나 완전히 정지합니다. 기능 단축키 입력은 제외됩니다."));
+           "일시정지하거나 완전히 정지합니다. 영향 없음은 사용자 입력을 무시합니다. "
+           "기능 단축키 입력은 항상 제외됩니다."));
     form->addRow(tr("사용자 입력 시"), m_userInputInterruptCombo);
 
     m_pointerVisualFeedbackCheck =

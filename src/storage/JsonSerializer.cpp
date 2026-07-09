@@ -39,7 +39,7 @@ nlohmann::json featureToJsonImpl(const Feature& feature) {
     if (feature.infiniteExitAfterConsecutiveMisses() > 0) {
         json["infiniteExitAfterConsecutiveMisses"] = feature.infiniteExitAfterConsecutiveMisses();
     }
-    if (feature.userInputInterruptMode() == UserInputInterruptMode::Pause) {
+    if (feature.userInputInterruptMode() != UserInputInterruptMode::Stop) {
         json["userInputInterrupt"] = userInputInterruptModeToString(feature.userInputInterruptMode());
     }
     if (!feature.pointerVisualFeedback()) {

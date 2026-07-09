@@ -4,7 +4,8 @@
 
 enum class UserInputInterruptMode {
     Pause,
-    Stop
+    Stop,
+    None
 };
 
 std::string userInputInterruptModeToString(UserInputInterruptMode mode);
