@@ -422,6 +422,40 @@ void applyFeatureListPanelStyle(QWidget* panel) {
         "}"
         "QPushButton.featureListToolButton:pressed {"
         "  background-color: palette(midlight);"
+        "}"
+        "QToolButton#featureLibraryToggle {"
+        "  border: 1px solid palette(mid);"
+        "  border-radius: 6px;"
+        "  padding: 5px 8px;"
+        "  text-align: left;"
+        "  font-weight: 600;"
+        "  font-size: 11px;"
+        "  background-color: palette(button);"
+        "  color: palette(window-text);"
+        "}"
+        "QToolButton#featureLibraryToggle:hover {"
+        "  background-color: palette(light);"
+        "}"
+        "QToolButton#featureLibraryToggle:checked {"
+        "  background-color: palette(base);"
+        "}"
+        "QWidget#featureLibraryDrawerHost {"
+        "  background-color: palette(base);"
+        "  border: 1px solid palette(mid);"
+        "  border-radius: 6px;"
+        "}"
+        "QListWidget#featureLibraryList {"
+        "  border: none;"
+        "  background: transparent;"
+        "  outline: none;"
+        "}"
+        "QListWidget#featureLibraryList::item {"
+        "  background: transparent;"
+        "  border: none;"
+        "  padding: 0;"
+        "}"
+        "QListWidget#featureLibraryList::item:selected {"
+        "  background: transparent;"
         "}"));
 }
 enum class FeatureListResizeHandle {
@@ -790,19 +824,13 @@ void FeatureListPanel::setupUi() {
     m_libraryToggle->setToolTip(
         tr("전역 기능 라이브러리입니다. 항목을 더블클릭하면 현재 프로필로 가져옵니다.\n"
            "기능 우클릭 → '라이브러리에 저장'으로 항목을 추가할 수 있습니다."));
-    m_libraryToggle->setStyleSheet(QStringLiteral(
-        "QToolButton#featureLibraryToggle {"
-        "  border: none;"
-        "  padding: 3px 4px;"
-        "  text-align: left;"
-        "  font-weight: 600;"
-        "}"));
 
     m_libraryDrawerHost = new QWidget(group);
     m_libraryDrawerHost->setObjectName(QStringLiteral("featureLibraryDrawerHost"));
+    m_libraryDrawerHost->setAttribute(Qt::WA_StyledBackground, true);
     m_libraryDrawerHost->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto* drawerLayout = new QVBoxLayout(m_libraryDrawerHost);
-    drawerLayout->setContentsMargins(0, 2, 0, 0);
+    drawerLayout->setContentsMargins(4, 4, 4, 4);
     drawerLayout->setSpacing(0);
 
     m_libraryList = new FeatureLibraryListWidget(m_libraryDrawerHost);
@@ -812,15 +840,6 @@ void FeatureListPanel::setupUi() {
     m_libraryList->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_libraryList->setContextMenuPolicy(Qt::CustomContextMenu);
     m_libraryList->setUniformItemSizes(true);
-    m_libraryList->setStyleSheet(QStringLiteral(
-        "QListWidget#featureLibraryList {"
-        "  border: none;"
-        "  background: transparent;"
-        "  outline: none;"
-        "}"
-        "QListWidget#featureLibraryList::item {"
-        "  padding: 3px 6px;"
-        "}"));
     drawerLayout->addWidget(m_libraryList);
     applyLibraryDrawerHeight(0, false);
 
@@ -1044,12 +1063,15 @@ void FeatureListPanel::setLibraryEntries(const std::vector<LibraryEntryUi>& entr
     QListWidgetItem* firstSelectedItem = nullptr;
     QListWidgetItem* currentItem = nullptr;
     for (const LibraryEntryUi& entry : entries) {
-        const QString label = entry.templateCount > 0
-                                  ? tr("%1  ·  템플릿 %2").arg(entry.name).arg(entry.templateCount)
-                                  : entry.name;
-        auto* item = new QListWidgetItem(label, m_libraryList);
+        auto* item = new QListWidgetItem(entry.name, m_libraryList);
         item->setData(Qt::UserRole, entry.id);
-        item->setToolTip(tr("%1\n더블클릭: 현재 프로필로 가져오기").arg(entry.name));
+        item->setTextAlignment(Qt::AlignCenter);
+        const QString tip = entry.templateCount > 0
+                                ? tr("%1\n템플릿 %2개\n더블클릭: 현재 프로필로 가져오기")
+                                      .arg(entry.name)
+                                      .arg(entry.templateCount)
+                                : tr("%1\n더블클릭: 현재 프로필로 가져오기").arg(entry.name);
+        item->setToolTip(tip);
         if (selectedIds.contains(entry.id)) {
             item->setSelected(true);
             if (!firstSelectedItem) {

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.48` (from `project(PIPBONG VERSION 0.8.48)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.49` (from `project(PIPBONG VERSION 0.8.49)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -890,6 +890,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.49] - 2026-07-09
+
+### Changed
+
+- Default profile row simplified: the default profile no longer draws a separate name label, and the fixed-system pill now displays only **기본**; profile-drop feedback uses copy semantics (`ProfileListWidget`).
+- All profile list rows use the same centered card style as the default profile (icon + name centered; default keeps the **기본** pill) (`ProfileListWidget`).
+- Feature library drawer restyled to match: bordered toggle chip, rounded drawer surface, and centered card rows for library entries (`FeatureListPanel`, `FeatureLibraryListWidget`).
 
 ## [0.8.48] - 2026-07-09
 

@@ -365,7 +365,12 @@ void MainWindow::setupUi() {
         "  outline: none;"
         "}"
         "QListWidget#profileListView::item {"
-        "  padding: 2px 4px;"
+        "  background: transparent;"
+        "  border: none;"
+        "  padding: 0;"
+        "}"
+        "QListWidget#profileListView::item:selected {"
+        "  background: transparent;"
         "}"));
     m_profileList->setToolTip(tr("활성 프로필의 기능과 단축키만 동작합니다. 포커스된 창에 맞춰 프로필이 자동으로 전환됩니다."));
 

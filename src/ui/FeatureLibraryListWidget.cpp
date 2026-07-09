@@ -1,14 +1,81 @@
 #include "ui/FeatureLibraryListWidget.h"
 
 #include "ui/FeatureDragMime.h"
+#include "ui/UiThemeColors.h"
 
+#include <QApplication>
+#include <QFontMetrics>
 #include <QKeyEvent>
 #include <QListWidgetItem>
 #include <QMimeData>
+#include <QPainter>
+#include <QPainterPath>
+#include <QStyle>
+#include <QStyledItemDelegate>
+
+namespace {
+
+class FeatureLibraryItemDelegate : public QStyledItemDelegate {
+public:
+    explicit FeatureLibraryItemDelegate(QObject* parent = nullptr)
+        : QStyledItemDelegate(parent) {}
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+
+        const QPalette pal = opt.widget ? opt.widget->palette() : QApplication::palette();
+        const bool selected = opt.state.testFlag(QStyle::State_Selected);
+        const QColor contentColor = primaryContentTextColor(pal, selected);
+        const QColor accent = contentColor.lightness() < 128 ? QColor(0x64, 0xb5, 0xf6)
+                                                             : QColor(0x1e, 0x88, 0xe5);
+        const QColor fill = selected ? pal.color(QPalette::Highlight)
+                                     : (pal.color(QPalette::Button).isValid() ? pal.color(QPalette::Button)
+                                                                              : pal.color(QPalette::AlternateBase));
+        const QColor border = selected ? accent : fill.darker(108);
+
+        const QRect rowRect = opt.rect.adjusted(2, 1, -2, -1);
+        QPainterPath path;
+        path.addRoundedRect(rowRect, 6, 6);
+        painter->fillPath(path, fill);
+        painter->setPen(QPen(border, 1));
+        painter->drawPath(path);
+
+        QFont nameFont = opt.font;
+        nameFont.setBold(true);
+        painter->setFont(nameFont);
+        painter->setPen(contentColor);
+        painter->drawText(rowRect.adjusted(8, 0, -8, 0), Qt::AlignCenter, opt.text);
+
+        if (selected && opt.state.testFlag(QStyle::State_HasFocus)) {
+            QStyleOptionFocusRect focus;
+            focus.rect = rowRect.adjusted(1, 1, -1, -1);
+            focus.state = opt.state;
+            focus.palette = pal;
+            if (const QStyle* style = opt.widget ? opt.widget->style() : QApplication::style()) {
+                style->drawPrimitive(QStyle::PE_FrameFocusRect, &focus, painter, opt.widget);
+            }
+        }
+
+        painter->restore();
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override {
+        Q_UNUSED(index);
+        QSize size = QStyledItemDelegate::sizeHint(option, index);
+        size.setHeight(qMax(size.height(), 28));
+        return size;
+    }
+};
+
+} // namespace
 
 FeatureLibraryListWidget::FeatureLibraryListWidget(QWidget* parent)
     : ReorderableListWidget(parent) {
     setSelectionMode(QAbstractItemView::ExtendedSelection);
+    setItemDelegate(new FeatureLibraryItemDelegate(this));
     setToolTip(tr("Ctrl/Shift+클릭 다중 선택 · 드래그하여 라이브러리 순서 변경 · 기능 목록에서 드래그하여 저장 · Delete"));
     connect(this, &ReorderableListWidget::rowsReordered, this, &FeatureLibraryListWidget::libraryRowsReordered);
     connect(this,
