@@ -235,6 +235,7 @@ private:
     void restoreSelectedFeaturePreference();
     QString selectedFeaturePreferenceKey() const;
     void scheduleRunWarmup();
+    void prepareProjectUnload();
     void onEngineSessionPrepared(std::shared_ptr<Workflow> workflow, std::shared_ptr<ExecutionContext> context);
     void applyAlwaysOnTop(bool enabled);
     void restoreAlwaysOnTopPreference();
@@ -305,6 +306,8 @@ private:
     bool m_trayMinimizeNotified = false;
     bool m_modified = false;
     bool m_refreshingProfileList = false;
+    bool m_switchingProfile = false;
+    QString m_deferredProfileSwitchId;
     QString m_pendingProfileSwitchId;
     int m_pendingProfileSwitchPolls = 0;
 };

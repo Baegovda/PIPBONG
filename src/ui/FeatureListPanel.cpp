@@ -1501,6 +1501,7 @@ void FeatureListPanel::onAnimationTick() {
     }
 }
 void FeatureListPanel::setActiveProfileId(const QString& profileId) {
+    m_lastSelectedFeatureId.clear();
     if (m_list) {
         m_list->setActiveProfileId(profileId);
     }

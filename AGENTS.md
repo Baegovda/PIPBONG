@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.57` (from `project(PIPBONG VERSION 0.8.57)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.58` (from `project(PIPBONG VERSION 0.8.58)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -891,6 +891,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.58] - 2026-07-09
+
+### Fixed
+
+- Profile switch crash after repeated switches: detach `WorkflowEditorPanel` from the current feature via `prepareProjectUnload()` before replacing `m_project` (avoids use-after-free in `setFeature` run-feedback save); queue one deferred switch while a switch is in progress; skip foreground auto-switch during manual switch; clear stale feature-list selection id on profile change (`MainWindow`, `FeatureListPanel`).
 
 ## [0.8.57] - 2026-07-09
 

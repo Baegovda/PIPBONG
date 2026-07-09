@@ -1476,6 +1476,7 @@ void MainWindow::onNewProject() {
         return;
     }
 
+    prepareProjectUnload();
     m_project = std::make_unique<Project>();
     m_projectFilePath = m_profileManager ? m_profileManager->activeProjectPath()
                                          : Application::autoSaveFilePath();
@@ -3891,6 +3892,7 @@ void MainWindow::loadActiveProfile(bool quiet) {
         return;
     }
 
+    prepareProjectUnload();
     m_project = std::make_unique<Project>();
     m_project->addFeature(QStringLiteral("예시 기능").toStdString());
     m_projectFilePath = projectPath;
@@ -4024,6 +4026,26 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         || profileId == m_profileManager->activeProfileId()) {
         return false;
     }
+    if (m_switchingProfile) {
+        m_deferredProfileSwitchId = profileId;
+        return false;
+    }
+    m_switchingProfile = true;
+    struct SwitchGuard {
+        MainWindow* window = nullptr;
+        ~SwitchGuard() {
+            if (!window) {
+                return;
+            }
+            window->m_switchingProfile = false;
+            const QString deferred = window->m_deferredProfileSwitchId;
+            if (!deferred.isEmpty()) {
+                window->m_deferredProfileSwitchId.clear();
+                window->switchToProfile(deferred, true);
+            }
+        }
+    } guard{this};
+
     // Quiet flush: avoid "자동 저장됨" / load-log flicker on every profile switch.
     if (!maybeSave(true)) {
         syncProfileListSelection();
@@ -4054,7 +4076,7 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
 }
 
 void MainWindow::syncProfileToForegroundWindow() {
-    if (!m_profileManager) {
+    if (!m_profileManager || m_switchingProfile) {
         return;
     }
 #ifdef _WIN32
@@ -4110,6 +4132,7 @@ void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
         return;
     }
 
+    prepareProjectUnload();
     m_project = std::move(loaded);
     m_projectFilePath = path;
     if (!projectDirectory.isEmpty()) {
@@ -4393,4 +4416,12 @@ void MainWindow::scheduleRunWarmup() {
             Application::instance()->projectDirectory().toStdString();
         RunWarmup::prefetch(project, projectDirectory);
     });
+}
+
+void MainWindow::prepareProjectUnload() {
+    m_libraryPreviewFeature.reset();
+    m_libraryPreviewEntryId.clear();
+    if (m_workflowEditor) {
+        m_workflowEditor->setFeature(nullptr);
+    }
 }
