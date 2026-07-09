@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.36` (from `project(PIPBONG VERSION 0.8.36)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.37` (from `project(PIPBONG VERSION 0.8.37)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -862,6 +862,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.37] - 2026-07-09
+
+### Fixed
+
+- Workflow block list column resize handles: custom `BlockListHeaderView` widens header divider hit zone to ±10 px (was ~4 px) so the split-arrow cursor and drag resize are easier to grab on narrow columns (`BlockListWidget`).
+- ImageFind **기준/감지** threshold drag: hit test uses the cell visual rect with ±10 px horizontal slack instead of strict `columnAt`, so horizontal resize cursor and drag work more reliably on tight column layouts (`BlockListWidget::imageFindScoreColumnAt`).
 
 ## [0.8.36] - 2026-07-09
 

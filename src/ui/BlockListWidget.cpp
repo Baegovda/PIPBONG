@@ -53,6 +53,92 @@ constexpr int kColScore = 9;
 constexpr int kColRoiCorrection = 10;
 constexpr int kColMatch = 11;
 constexpr int kColumnCount = 12;
+constexpr int kHeaderResizeHandleHalfWidth = 10;
+
+class BlockListHeaderView : public QHeaderView {
+public:
+    explicit BlockListHeaderView(QWidget* parent = nullptr)
+        : QHeaderView(Qt::Horizontal, parent) {
+        setMouseTracking(true);
+    }
+
+protected:
+    int resizeHandleSectionAt(int x) const {
+        int bestSection = -1;
+        int bestDistance = kHeaderResizeHandleHalfWidth + 1;
+        for (int visual = 0; visual < count(); ++visual) {
+            const int logical = logicalIndex(visual);
+            if (isSectionHidden(logical)) {
+                continue;
+            }
+            if (sectionResizeMode(logical) != QHeaderView::Interactive) {
+                continue;
+            }
+            const int handleX = sectionViewportPosition(logical) + sectionSize(logical);
+            const int distance = qAbs(x - handleX);
+            if (distance <= kHeaderResizeHandleHalfWidth && distance < bestDistance) {
+                bestDistance = distance;
+                bestSection = logical;
+            }
+        }
+        return bestSection;
+    }
+
+    void mousePressEvent(QMouseEvent* event) override {
+        if (event->button() == Qt::LeftButton) {
+            const int section = resizeHandleSectionAt(event->pos().x());
+            if (section >= 0) {
+                m_resizingSection = section;
+                m_resizePressPos = event->globalPosition().toPoint().x();
+                m_resizeStartSize = sectionSize(section);
+                event->accept();
+                return;
+            }
+        }
+        m_resizingSection = -1;
+        QHeaderView::mousePressEvent(event);
+    }
+
+    void mouseMoveEvent(QMouseEvent* event) override {
+        if (m_resizingSection >= 0 && (event->buttons() & Qt::LeftButton)) {
+            const int delta = event->globalPosition().toPoint().x() - m_resizePressPos;
+            resizeSection(m_resizingSection, qMax(minimumSectionSize(), m_resizeStartSize + delta));
+            event->accept();
+            return;
+        }
+
+        QHeaderView::mouseMoveEvent(event);
+        if (m_resizingSection < 0) {
+            if (resizeHandleSectionAt(event->pos().x()) >= 0) {
+                setCursor(Qt::SplitHCursor);
+            } else {
+                unsetCursor();
+            }
+        }
+    }
+
+    void mouseReleaseEvent(QMouseEvent* event) override {
+        if (m_resizingSection >= 0) {
+            m_resizingSection = -1;
+            unsetCursor();
+            event->accept();
+            return;
+        }
+        QHeaderView::mouseReleaseEvent(event);
+    }
+
+    void leaveEvent(QEvent* event) override {
+        if (m_resizingSection < 0) {
+            unsetCursor();
+        }
+        QHeaderView::leaveEvent(event);
+    }
+
+private:
+    int m_resizingSection = -1;
+    int m_resizePressPos = 0;
+    int m_resizeStartSize = 0;
+};
 
 void applyDefaultBlockListColumnWidths(QTableWidget* table) {
     const QSignalBlocker blocker(table->horizontalHeader());
@@ -820,6 +906,7 @@ private:
 
 BlockListWidget::BlockListWidget(QWidget* parent)
     : QTableWidget(parent) {
+    setHorizontalHeader(new BlockListHeaderView(this));
     horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
     horizontalHeader()->setSectionsMovable(false);
     horizontalHeader()->setFirstSectionMovable(false);
@@ -1218,13 +1305,22 @@ void BlockListWidget::cancelLoopRegionPick() {
 }
 
 bool BlockListWidget::imageFindScoreColumnAt(const QPoint& viewportPos, int& blockRowOut) const {
-    if (columnAt(viewportPos.x()) != kColScore) {
-        return false;
-    }
-    const int blockRow = blockRowForTableRow(rowAtViewportY(viewportPos.y()));
+    const int tableRow = rowAtViewportY(viewportPos.y());
+    const int blockRow = blockRowForTableRow(tableRow);
     if (blockRow < 0 || blockRow >= m_rowIsImageFind.size() || !m_rowIsImageFind[blockRow]) {
         return false;
     }
+
+    constexpr int kHorizontalSlack = 10;
+    const QModelIndex scoreIndex = model()->index(tableRow, kColScore);
+    if (!scoreIndex.isValid()) {
+        return false;
+    }
+    const QRect hitRect = visualRect(scoreIndex).adjusted(-kHorizontalSlack, 0, kHorizontalSlack, 0);
+    if (!hitRect.contains(viewportPos)) {
+        return false;
+    }
+
     blockRowOut = blockRow;
     return true;
 }
