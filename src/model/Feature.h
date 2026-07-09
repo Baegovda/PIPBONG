@@ -81,10 +81,6 @@ public:
     /// True when run mode supports configuring a gap between loop iterations.
     bool supportsLoopInterval() const;
 
-    /// Hold hotkey VK also appears as a KeyPress main key in the workflow (game still sees
-    /// continuous physical hold via GetAsyncKeyState — loop interval only spaces SendInput).
-    bool holdHotkeyConflictsWithWorkflowKeyPress() const;
-
     /// True when run mode supports ROI correction (infinite repeat or N≥2).
     bool roiCorrectionSessionEligible() const;
 

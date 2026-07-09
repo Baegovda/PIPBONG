@@ -17,6 +17,9 @@ constexpr auto kCursorSettleDelay = std::chrono::milliseconds(16);
 constexpr auto kTapHoldDelay = std::chrono::milliseconds(12);
 /// Games often miss zero-duration / VK-only taps; hold briefly and send scancodes.
 constexpr auto kKeyTapHoldDelay = std::chrono::milliseconds(35);
+/// When the key is already down (e.g. Hold hotkey = same KeyPress VK), release first
+/// so the game sees a real gap before the next down (GetAsyncKeyState / DirectInput).
+constexpr auto kKeyPulseGapDelay = std::chrono::milliseconds(30);
 constexpr auto kMultiClickGap = std::chrono::milliseconds(8);
 constexpr auto kCursorMultiClickGap = std::chrono::milliseconds(1);
 constexpr auto kWheelRepeatGap = std::chrono::milliseconds(10);
@@ -91,6 +94,10 @@ void sendInputs(const INPUT* inputs, UINT count) {
     SendInput(count, const_cast<INPUT*>(inputs), sizeof(INPUT));
 }
 
+bool isAsyncKeyDown(int vk) {
+    return (GetAsyncKeyState(vk) & 0x8000) != 0;
+}
+
 bool isExtendedVirtualKey(int virtualKey) {
     switch (virtualKey) {
     case VK_RMENU:
@@ -153,7 +160,21 @@ void sendKeyboardVk(int virtualKey, bool down, bool track = true) {
     }
 }
 
+void ensureKeyReleasedUntracked(int virtualKey) {
+    if (!isAsyncKeyDown(virtualKey)) {
+        return;
+    }
+    sendKeyboardVk(virtualKey, false, false);
+}
+
 void sendKeyboardTap(int virtualKey) {
+    // Hold hotkey + same-key Tap: finger keeps the VK "down" in async state. A plain
+    // DOWN+UP does nothing useful — pulse UP → gap → DOWN → hold → UP so the game
+    // sees discrete presses and loop-interval gaps.
+    if (isAsyncKeyDown(virtualKey)) {
+        ensureKeyReleasedUntracked(virtualKey);
+        std::this_thread::sleep_for(kKeyPulseGapDelay);
+    }
     sendKeyboardVk(virtualKey, true);
     std::this_thread::sleep_for(kKeyTapHoldDelay);
     sendKeyboardVk(virtualKey, false);
@@ -457,10 +478,6 @@ struct ModifierSnapshot {
     bool ctrl = false;
     bool alt = false;
 };
-
-bool isAsyncKeyDown(int vk) {
-    return (GetAsyncKeyState(vk) & 0x8000) != 0;
-}
 
 bool isShiftPhysicallyDown() {
     return isAsyncKeyDown(VK_SHIFT) || isAsyncKeyDown(VK_LSHIFT) || isAsyncKeyDown(VK_RSHIFT);
@@ -819,6 +836,14 @@ void InputSimulator::moveAtClient(HWND hwnd, int clientX, int clientY) {
     SendMessage(hwnd, WM_MOUSEMOVE, physicalMouseMoveWParam(), lParam);
 }
 #endif
+
+void InputSimulator::ensureKeyReleased(int virtualKey) {
+#ifdef _WIN32
+    ensureKeyReleasedUntracked(virtualKey);
+#else
+    (void)virtualKey;
+#endif
+}
 
 void InputSimulator::sendKey(int virtualKey,
                              KeyAction action,

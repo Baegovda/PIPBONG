@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.75` (from `project(PIPBONG VERSION 0.8.75)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.76` (from `project(PIPBONG VERSION 0.8.76)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1012,6 +1012,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.76] - 2026-07-10
+
+### Fixed
+
+- Hold hotkey + same-key KeyPress Tap (e.g. **Q** hold + **Q 탭**): when the key is already down, taps now pulse UP → gap → DOWN → UP so the game sees discrete presses; loop-interval wait also releases the hold VK so the gap is felt in-game (`InputSimulator::sendKeyboardTap`, `ensureKeyReleased`, `MainWindow::scheduleRepeatIteration`).
+
+### Removed
+
+- Misleading warning dialog / run-log that claimed Hold + same-key KeyPress was impossible (`Feature::holdHotkeyConflictsWithWorkflowKeyPress`, `FeatureListPanel`, `MainWindow`).
 
 ## [0.8.75] - 2026-07-10
 
@@ -3394,4 +3404,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.75._
+_Last consolidated: 2026-07-10. Current application version: 0.8.76._

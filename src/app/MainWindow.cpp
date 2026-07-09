@@ -16,6 +16,7 @@
 #include "core/capture/CursorPositionPicker.h"
 #include "core/capture/WindowPicker.h"
 #include "core/input/InputSimulator.h"
+#include "core/input/HotkeyBinding.h"
 #include "ui/WindowPickerHoverOverlay.h"
 #include "core/RunWarmup.h"
 #include "core/workflow/ExecutionContext.h"
@@ -2662,15 +2663,6 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     m_runSessions.emplace(featureId, std::move(session));
     selectRunningFeatureForDisplay(feature);
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
-    if (feature->holdHotkeyConflictsWithWorkflowKeyPress()) {
-        appendSessionLog(
-            activeSession,
-            tr("주의: 누를 동안 단축키와 워크플로 키보드가 같습니다. "
-               "손가락으로 누르는 동안 게임은 키가 계속 눌린 것으로 보므로 "
-               "루프 간격·탭 간격이 체감되지 않습니다. "
-               "단축키를 다른 키/마우스 버튼으로 바꾸세요."),
-            LogLineKind::Warning);
-    }
     if (tryBeginFirstTemplateRoiEdit(activeSession, feature)) {
         return;
     }
@@ -3012,6 +3004,15 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
 
     const int delayMs = feature ? feature->resolvedLoopIntervalMs() : 0;
     if (delayMs > 0) {
+#ifdef _WIN32
+        // Hold + same-key KeyPress: clear async key state so the game feels the gap
+        // (synthetic KEYUP; finger may still be down — hook latch keeps the session alive).
+        if (feature && feature->runMode() == FeatureRunMode::Hold
+            && !feature->hotkey().isEmpty()
+            && !HotkeyBinding::isMouseVirtualKey(feature->hotkey().virtualKey)) {
+            InputSimulator::ensureKeyReleased(feature->hotkey().virtualKey);
+        }
+#endif
         appendSessionLog(session,
                          tr("루프 간격 %1ms 대기").arg(delayMs),
                          LogLineKind::Info);

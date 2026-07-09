@@ -125,6 +125,9 @@ public:
                         KeyAction action,
                         const KeyPressModifierActions& mods = {},
                         bool sendMainKey = true);
+    /// If the VK is currently down (physical or synthetic), send an untracked KEYUP so
+    /// games see a release — used for Hold+same-key Tap gaps and loop-interval spacing.
+    static void ensureKeyReleased(int virtualKey);
     static void sendText(const std::wstring& text);
 
 #ifdef _WIN32
