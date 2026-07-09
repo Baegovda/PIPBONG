@@ -5,7 +5,6 @@
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QToolButton>
 #include <QStackedLayout>
 #include <QVBoxLayout>
 
@@ -73,59 +72,24 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
     m_statusLabel->setAlignment(Qt::AlignCenter);
     m_statusLabel->setMinimumWidth(82);
 
-    m_moreButton = new QToolButton(m_detailsPage);
-    m_moreButton->setObjectName(QStringLiteral("targetWindowDetailMoreButton"));
-    m_moreButton->setText(tr("더 보기"));
-    m_moreButton->setCursor(Qt::PointingHandCursor);
-    m_moreButton->setCheckable(true);
-    m_moreButton->setAutoRaise(true);
-    m_moreButton->setFocusPolicy(Qt::NoFocus);
-    m_moreButton->setMinimumHeight(22);
-    m_moreButton->setStyleSheet(QStringLiteral(
-        "QToolButton#targetWindowDetailMoreButton {"
-        "  padding: 2px 8px;"
-        "  border: none;"
-        "  background: transparent;"
-        "}"));
-    m_moreButton->setVisible(true);
-
     titleRow->addWidget(m_titleLabel, 1);
     titleRow->addWidget(m_statusLabel, 0);
-    titleRow->addWidget(m_moreButton, 0);
 
     m_primaryLine = new QLabel(m_detailsPage);
     m_primaryLine->setObjectName(QStringLiteral("targetWindowDetailPrimary"));
     m_primaryLine->setTextFormat(Qt::RichText);
     m_primaryLine->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_primaryLine->setWordWrap(false);
+    m_primaryLine->setWordWrap(true);
 
     m_secondaryLine = new QLabel(m_detailsPage);
     m_secondaryLine->setObjectName(QStringLiteral("targetWindowDetailSecondary"));
     m_secondaryLine->setTextFormat(Qt::RichText);
     m_secondaryLine->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_secondaryLine->setWordWrap(false);
-
-    m_tertiaryLine = new QLabel(m_detailsPage);
-    m_tertiaryLine->setObjectName(QStringLiteral("targetWindowDetailTertiary"));
-    m_tertiaryLine->setTextFormat(Qt::RichText);
-    m_tertiaryLine->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_tertiaryLine->setWordWrap(false);
+    m_secondaryLine->setWordWrap(true);
 
     detailsLayout->addLayout(titleRow);
     detailsLayout->addWidget(m_primaryLine);
     detailsLayout->addWidget(m_secondaryLine);
-    detailsLayout->addWidget(m_tertiaryLine);
-
-    m_tertiaryLine->setVisible(m_expandedDetails);
-
-    connect(m_moreButton, &QToolButton::toggled, this, [this](bool expanded) {
-        m_expandedDetails = expanded;
-        m_moreButton->setText(expanded ? tr("접기") : tr("더 보기"));
-        if (m_tertiaryLine) {
-            m_tertiaryLine->setVisible(expanded);
-        }
-        updateThemeColors();
-    });
 
     stackedLayout->addWidget(m_messagePage);
     stackedLayout->addWidget(m_detailsPage);
@@ -215,19 +179,12 @@ void TargetWindowDetailPanel::refreshDetailText() {
     const QString secondary =
         captionSpan(tr("창 영역"), muted) + QLatin1Char(' ')
         + valueSpan(m_lastDetailData.frameBounds, text) + sep + captionSpan(tr("클라이언트"), muted)
-        + QLatin1Char(' ') + valueSpan(m_lastDetailData.clientSize, text);
-
-    const QString tertiary =
-        captionSpan(tr("모니터"), muted) + QLatin1Char(' ')
+        + QLatin1Char(' ') + valueSpan(m_lastDetailData.clientSize, text) + sep
+        + captionSpan(tr("모니터"), muted) + QLatin1Char(' ')
         + valueSpan(m_lastDetailData.monitor, text);
 
     m_primaryLine->setText(primary);
     m_secondaryLine->setText(secondary);
-    m_tertiaryLine->setText(tertiary);
-
-    if (m_tertiaryLine) {
-        m_tertiaryLine->setVisible(m_expandedDetails);
-    }
 }
 
 void TargetWindowDetailPanel::updateThemeColors() {
@@ -244,17 +201,6 @@ void TargetWindowDetailPanel::updateThemeColors() {
     setLabelTextColor(m_titleLabel, text, 13, true);
     setLabelTextColor(m_primaryLine, text, 10, false);
     setLabelTextColor(m_secondaryLine, text, 10, false);
-    setLabelTextColor(m_tertiaryLine, text, 10, false);
-
-    if (m_moreButton) {
-        QPalette btnPal = m_moreButton->palette();
-        btnPal.setColor(QPalette::ButtonText, text);
-        btnPal.setColor(QPalette::WindowText, text);
-        m_moreButton->setPalette(btnPal);
-        QFont f = m_moreButton->font();
-        f.setPixelSize(12);
-        m_moreButton->setFont(f);
-    }
 
     if (m_detailsPage->isVisible() && m_globalDefaultProfileMode) {
         refreshGlobalDefaultProfileText();
@@ -306,9 +252,6 @@ void TargetWindowDetailPanel::showDetails(const TargetWindowDetailData& data) {
     }
 
     refreshDetailText();
-    if (m_moreButton) {
-        m_moreButton->setVisible(true);
-    }
     updateThemeColors();
 
     QString panelTooltip = tr("프로세스 경로: %1").arg(data.processPath.isEmpty() ? tr("알 수 없음") : data.processPath);
@@ -328,14 +271,6 @@ void TargetWindowDetailPanel::showGlobalDefaultProfile() {
         if (auto* stackedLayout = qobject_cast<QStackedLayout*>(stackHost->layout())) {
             stackedLayout->setCurrentWidget(m_detailsPage);
         }
-    }
-
-    if (m_moreButton) {
-        m_moreButton->setVisible(false);
-        m_moreButton->setChecked(false);
-    }
-    if (m_tertiaryLine) {
-        m_tertiaryLine->setVisible(false);
     }
 
     refreshGlobalDefaultProfileText();
@@ -382,14 +317,6 @@ void TargetWindowDetailPanel::showStoredTargetBinding(const QString& title,
         if (auto* stackedLayout = qobject_cast<QStackedLayout*>(stackHost->layout())) {
             stackedLayout->setCurrentWidget(m_detailsPage);
         }
-    }
-
-    if (m_moreButton) {
-        m_moreButton->setVisible(false);
-        m_moreButton->setChecked(false);
-    }
-    if (m_tertiaryLine) {
-        m_tertiaryLine->setVisible(false);
     }
 
     refreshStoredTargetBindingText(title, processName, processPath);

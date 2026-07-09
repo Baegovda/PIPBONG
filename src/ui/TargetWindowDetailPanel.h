@@ -5,7 +5,6 @@
 #include <QString>
 
 class QEvent;
-class QToolButton;
 class QLabel;
 
 struct TargetWindowDetailData {
@@ -55,14 +54,11 @@ private:
     QLabel* m_statusLabel = nullptr;
     QLabel* m_primaryLine = nullptr;
     QLabel* m_secondaryLine = nullptr;
-    QLabel* m_tertiaryLine = nullptr;
-    QToolButton* m_moreButton = nullptr;
     TargetWindowDetailData m_lastDetailData;
     QString m_storedBindingTitle;
     QString m_storedBindingProcessName;
     QString m_storedBindingProcessPath;
     bool m_updatingTheme = false;
-    bool m_expandedDetails = false;
     bool m_globalDefaultProfileMode = false;
     bool m_storedTargetBindingMode = false;
 };

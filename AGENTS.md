@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.65` (from `project(PIPBONG VERSION 0.8.65)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.66` (from `project(PIPBONG VERSION 0.8.66)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -32,13 +32,13 @@ This is the **only development document** — AI handover, user quick start, dev
 
 **PIPBONG** is a C++17 / Qt6 Windows desktop automation utility with a visual block workflow editor. It targets any application window by title — not a single game. There is **no Python** or external script runtime.
 
-| Aspect | Detail |
-|--------|--------|
-| **Purpose** | Define automation “features” (macros) as ordered block workflows; capture screen templates; match images; simulate mouse/keyboard input |
-| **Target OS** | Windows 10/11 only (Win32 capture, `SendInput`, DWM APIs) |
-| **UI language** | Korean in-app (`tr()`, `QStringLiteral`) |
-| **Doc/code language** | English |
-| **Maintenance model** | 100% AI-maintained; human user directs work in Korean chat only |
+| Aspect                | Detail                                                                                                                                  |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Purpose**           | Define automation “features” (macros) as ordered block workflows; capture screen templates; match images; simulate mouse/keyboard input |
+| **Target OS**         | Windows 10/11 only (Win32 capture, `SendInput`, DWM APIs)                                                                               |
+| **UI language**       | Korean in-app (`tr()`, `QStringLiteral`)                                                                                                |
+| **Doc/code language** | English                                                                                                                                 |
+| **Maintenance model** | 100% AI-maintained; human user directs work in Korean chat only                                                                         |
 
 **Warning:** Automation may violate target application Terms of Service. Use at your own risk.
 
@@ -46,14 +46,14 @@ This is the **only development document** — AI handover, user quick start, dev
 
 ## 2. Stack and Dependencies
 
-| Layer | Technology |
-|-------|------------|
-| Language | C++17 |
-| GUI | Qt 6 Widgets |
-| Vision | OpenCV 4 (`opencv_core`, `opencv_imgproc`, `opencv_imgcodecs`) — template matching |
-| Serialization | nlohmann/json |
-| Platform | Win32 (`user32`, `gdi32`, `dwmapi`) — `SendInput`, GDI BitBlt, DWM extended frame bounds |
-| Package manager | [vcpkg](https://github.com/microsoft/vcpkg) via `vcpkg.json` |
+| Layer           | Technology                                                                               |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| Language        | C++17                                                                                    |
+| GUI             | Qt 6 Widgets                                                                             |
+| Vision          | OpenCV 4 (`opencv_core`, `opencv_imgproc`, `opencv_imgcodecs`) — template matching       |
+| Serialization   | nlohmann/json                                                                            |
+| Platform        | Win32 (`user32`, `gdi32`, `dwmapi`) — `SendInput`, GDI BitBlt, DWM extended frame bounds |
+| Package manager | [vcpkg](https://github.com/microsoft/vcpkg) via `vcpkg.json`                             |
 
 **vcpkg dependencies** (`vcpkg.json`):
 
@@ -96,11 +96,11 @@ cmake --build build --config Release
 
 Or **Ctrl+Shift+B** / `빌드.bat` → `scripts/build-release.ps1` (same command; kills running exe before link).
 
-| Situation | Typical time |
-|-----------|----------------|
-| One `.cpp` changed | ~5–15 s |
-| No source changes | ~3 s |
-| `CMakeLists.txt` / version bump (full recompile) | ~2–3 min |
+| Situation                                        | Typical time |
+| ------------------------------------------------ | ------------ |
+| One `.cpp` changed                               | ~5–15 s      |
+| No source changes                                | ~3 s         |
+| `CMakeLists.txt` / version bump (full recompile) | ~2–3 min     |
 
 Only re-run `cmake --preset default` when `build/` does not exist yet, or after changing `CMakeLists.txt` (new sources), `CMakePresets.json`, or `vcpkg.json`. CMake re-configures automatically on the next `--build` when `CMakeLists.txt` changes — **do not** run `--preset` again just for a version number change.
 
@@ -116,15 +116,15 @@ Equivalent: `cmake --build build --config Release --target deploy-qt`
 
 #### AI build policy
 
-| When | Build? | Command |
-|------|--------|---------|
-| **Task close** — C++/headers/`CMakeLists.txt` changed | **Yes** — incremental only (changed `.cpp` recompile) | `cmake --build build --config Release` or `scripts/build-release.ps1` |
-| Task close — docs / rules / changelog only | **No** | — |
-| Mid-implementation (unless compile check needed) | **No** | — |
-| User explicitly asks mid-task (e.g. “빌드해줘”) | **Yes** | same incremental command |
-| `build/` missing at close | Configure once, then build | `cmake --preset default` then `--build` |
-| **Version bump at task close** | **Yes** — backup + GitHub release (mandatory) | `git commit` / `git push` then `scripts/create-github-release.ps1` — see [§3.6](#36-github-backup-and-release) |
-| Ad-hoc distribution only (no version bump) | Package ZIP | `scripts/package-release.ps1` |
+| When                                                  | Build?                                                | Command                                                                                                        |
+| ----------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Task close** — C++/headers/`CMakeLists.txt` changed | **Yes** — incremental only (changed `.cpp` recompile) | `cmake --build build --config Release` or `scripts/build-release.ps1`                                          |
+| Task close — docs / rules / changelog only            | **No**                                                | —                                                                                                              |
+| Mid-implementation (unless compile check needed)      | **No**                                                | —                                                                                                              |
+| User explicitly asks mid-task (e.g. “빌드해줘”)       | **Yes**                                               | same incremental command                                                                                       |
+| `build/` missing at close                             | Configure once, then build                            | `cmake --preset default` then `--build`                                                                        |
+| **Version bump at task close**                        | **Yes** — backup + GitHub release (mandatory)         | `git commit` / `git push` then `scripts/create-github-release.ps1` — see [§3.6](#36-github-backup-and-release) |
+| Ad-hoc distribution only (no version bump)            | Package ZIP                                           | `scripts/package-release.ps1`                                                                                  |
 
 Before link, kill a running `PIPBONG.exe` only when a build is actually run (`LNK1104`).
 
@@ -165,12 +165,12 @@ Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static e
 
 #### What to use
 
-| Action | Command / UI |
-|--------|----------------|
-| **Build** | **Ctrl+Shift+B**, `빌드.bat`, or `.\scripts\build-release.ps1` |
-| **Run** | Run and Debug → **`Run PIPBONG (Release)`** → **F5** |
-| **Binary** | `build/Release/PIPBONG.exe` (working directory `build/Release/`) |
-| **Task close (AI)** | Same script when C++/headers/`CMakeLists.txt` changed |
+| Action              | Command / UI                                                     |
+| ------------------- | ---------------------------------------------------------------- |
+| **Build**           | **Ctrl+Shift+B**, `빌드.bat`, or `.\scripts\build-release.ps1`   |
+| **Run**             | Run and Debug → **`Run PIPBONG (Release)`** → **F5**             |
+| **Binary**          | `build/Release/PIPBONG.exe` (working directory `build/Release/`) |
+| **Task close (AI)** | Same script when C++/headers/`CMakeLists.txt` changed            |
 
 `build-release.ps1` kills a running `PIPBONG.exe`, auto-runs `cmake --preset default` only if `build/CMakeCache.txt` is missing, then `cmake --build build --config Release`.
 
@@ -178,12 +178,12 @@ Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static e
 
 These files **must** remain in git (see `.gitignore` whitelist). They are **not** optional local-only config.
 
-| File | Purpose |
-|------|---------|
-| `.vscode/tasks.json` | Default build task **`Build Release`** → `scripts/build-release.ps1` |
-| `.vscode/launch.json` | **`Run PIPBONG (Release)`** — Release exe + `preLaunchTask`: `Build Release` |
-| `.vscode/settings.json` | **`cmake.enabled`: `false`** — prevents CMake Tools from hijacking F5/configure |
-| `.vscode/extensions.json` | Discourage `ms-vscode.cmake-tools` and C# Dev Kit in this workspace |
+| File                      | Purpose                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `.vscode/tasks.json`      | Default build task **`Build Release`** → `scripts/build-release.ps1`            |
+| `.vscode/launch.json`     | **`Run PIPBONG (Release)`** — Release exe + `preLaunchTask`: `Build Release`    |
+| `.vscode/settings.json`   | **`cmake.enabled`: `false`** — prevents CMake Tools from hijacking F5/configure |
+| `.vscode/extensions.json` | Discourage `ms-vscode.cmake-tools` and C# Dev Kit in this workspace             |
 
 **Critical setting:** `"cmake.enabled": false` in workspace `settings.json`. Without it, CMake Tools may run **configure → vcpkg → qtbase** on F5 or open (10–30 minutes) and show **“A CMake task is already running”** (exit -1).
 
@@ -214,12 +214,12 @@ Cursor rule: `.cursor/rules/ide-build-workflow.mdc` (always applied).
 
 Whenever an AI task closes with a **version bump** (`CMakeLists.txt` `project(PIPBONG VERSION …)` incremented per [§10](#10-versioning-policy)), **always** run backup **and** release in the same task — do not wait for the user to ask.
 
-| Step | Action |
-|------|--------|
-| 1 | Finish code/docs, changelog, and version bump ([§10](#10-versioning-policy)) |
-| 2 | Incremental Release build when C++/headers/`CMakeLists.txt` changed (`scripts/build-release.ps1` or `cmake --build build --config Release`); skip for docs/rules-only |
-| 3 | **Backup:** `git add` (tracked sources only — not `build/`), `git commit`, `git push origin main` on **`Baegovda/PIPBONG`** |
-| 4 | **Release:** `.\scripts\create-github-release.ps1` (runs `package-release.ps1`, uploads `dist/PIPBONG-win64.zip`, tag `vX.Y.Z`, deletes older releases) |
+| Step | Action                                                                                                                                                                |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Finish code/docs, changelog, and version bump ([§10](#10-versioning-policy))                                                                                          |
+| 2    | Incremental Release build when C++/headers/`CMakeLists.txt` changed (`scripts/build-release.ps1` or `cmake --build build --config Release`); skip for docs/rules-only |
+| 3    | **Backup:** `git add` (tracked sources only — not `build/`), `git commit`, `git push origin main` on **`Baegovda/PIPBONG`**                                           |
+| 4    | **Release:** `.\scripts\create-github-release.ps1` (runs `package-release.ps1`, uploads `dist/PIPBONG-win64.zip`, tag `vX.Y.Z`, deletes older releases)               |
 
 **Prerequisites:** [GitHub CLI](https://cli.github.com/) (`gh auth login` once). Remote: `https://github.com/Baegovda/PIPBONG.git`.
 
@@ -227,10 +227,10 @@ Whenever an AI task closes with a **version bump** (`CMakeLists.txt` `project(PI
 
 #### Ad-hoc (user phrase — same commands)
 
-| User says (Korean) | AI action |
-|--------------------|-----------|
-| **백업해줘** | `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** |
-| **릴리즈 해줘** | `scripts/create-github-release.ps1` only (package + publish) |
+| User says (Korean)           | AI action                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| **백업해줘**                 | `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`**        |
+| **릴리즈 해줘**              | `scripts/create-github-release.ps1` only (package + publish)                       |
 | **백업하고 릴리즈까지 해줘** | Commit + push + `create-github-release.ps1` (same as mandatory version-bump close) |
 
 **Release script:** `scripts/create-github-release.ps1` reads version from `CMakeLists.txt`, runs `package-release.ps1`, uploads `dist/PIPBONG-win64.zip` to **`Baegovda/PIPBONG`** Releases, then deletes older releases (latest only visible).
@@ -284,19 +284,19 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### Path reference
 
-| Path | Purpose |
-|------|---------|
-| `src/app/` | `Application`, `MainWindow`, menus, auto-save, run/stop, shutdown |
-| `src/core/capture/` | `ScreenCapture` — window find, PrintWindow/BitBlt fallbacks, DPI mapping |
-| `src/core/vision/` | `ImageMatcher` — `PreparedTemplate`, multi-scale matching, NMS |
-| `src/core/input/` | `InputSimulator` — mouse/keyboard via Win32; `HotkeyBinding` |
-| `src/core/workflow/` | `WorkflowEngine`, `Workflow`, `ExecutionContext`, block types |
-| `src/core/poeninja/` | `PoeNinjaClient` — unofficial poe.ninja PoE2 Currency Exchange API |
-| `src/ui/calculator/` | `CalculatorDialog`, `SpreadsheetModel` — 시세 계산기 (workflow-independent) |
-| `src/ui/` | `FeatureListPanel`, `WorkflowEditorPanel`, `BlockListWidget`, editors |
-| `src/ui/editors/ScreenRegionOverlay.*` | Win32 overlay for in-game template capture |
-| `src/storage/` | `JsonSerializer` |
-| `src/model/` | `Project`, `Feature` |
+| Path                                   | Purpose                                                                     |
+| -------------------------------------- | --------------------------------------------------------------------------- |
+| `src/app/`                             | `Application`, `MainWindow`, menus, auto-save, run/stop, shutdown           |
+| `src/core/capture/`                    | `ScreenCapture` — window find, PrintWindow/BitBlt fallbacks, DPI mapping    |
+| `src/core/vision/`                     | `ImageMatcher` — `PreparedTemplate`, multi-scale matching, NMS              |
+| `src/core/input/`                      | `InputSimulator` — mouse/keyboard via Win32; `HotkeyBinding`                |
+| `src/core/workflow/`                   | `WorkflowEngine`, `Workflow`, `ExecutionContext`, block types               |
+| `src/core/poeninja/`                   | `PoeNinjaClient` — unofficial poe.ninja PoE2 Currency Exchange API          |
+| `src/ui/calculator/`                   | `CalculatorDialog`, `SpreadsheetModel` — 시세 계산기 (workflow-independent) |
+| `src/ui/`                              | `FeatureListPanel`, `WorkflowEditorPanel`, `BlockListWidget`, editors       |
+| `src/ui/editors/ScreenRegionOverlay.*` | Win32 overlay for in-game template capture                                  |
+| `src/storage/`                         | `JsonSerializer`                                                            |
+| `src/model/`                           | `Project`, `Feature`                                                        |
 
 ---
 
@@ -348,16 +348,16 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.7 Persistence
 
-| Item | Location |
-|------|----------|
-| Active profile manifest | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/manifest.json` (`activeProfileId`, `defaultProfileId`, unlimited profile list) |
-| Profile project file | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/project.json` via `ProfileManager` |
-| Profile settings file | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`, `linkedTargetProcessPath` for persisted target-program icon when the window is not running) |
-| Templates | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/templates/*.png` |
-| Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
-| Debounce | 800 ms after edits; also on window close |
-| Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog |
-| Calculator sheet | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry` |
+| Item                    | Location                                                                                                                                                                                                                                                                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Active profile manifest | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/manifest.json` (`activeProfileId`, `defaultProfileId`, unlimited profile list)                                                                                                                                                                                                      |
+| Profile project file    | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/project.json` via `ProfileManager`                                                                                                                                                                                                                                      |
+| Profile settings file   | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`, `linkedTargetProcessPath` for persisted target-program icon when the window is not running) |
+| Templates               | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/templates/*.png`                                                                                                                                                                                                                                                        |
+| Manual save/open        | File menu; last path in `QSettings` key `project/lastFile`                                                                                                                                                                                                                                                                   |
+| Debounce                | 800 ms after edits; also on window close                                                                                                                                                                                                                                                                                     |
+| Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog                               |
+| Calculator sheet        | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry`                                                                                                                                                                                                                        |
 
 ### 5.8 poe.ninja economy calculator
 
@@ -414,16 +414,18 @@ Sbm1.0/                        # repo root (local workspace)
   "version": 1,
   "targetWindowTitle": "",
   "projectDirectory": "C:/path/to/project/data",
-  "features": [ /* ... */ ]
+  "features": [
+    /* ... */
+  ]
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `version` | Project format version (`Project::version()`) |
-| `targetWindowTitle` | Target window title for `FindWindow` |
-| `projectDirectory` | Base path for relative template paths |
-| `features` | Array of feature objects |
+| Field               | Description                                   |
+| ------------------- | --------------------------------------------- |
+| `version`           | Project format version (`Project::version()`) |
+| `targetWindowTitle` | Target window title for `FindWindow`          |
+| `projectDirectory`  | Base path for relative template paths         |
+| `features`          | Array of feature objects                      |
 
 ### Feature object
 
@@ -435,28 +437,30 @@ Sbm1.0/                        # repo root (local workspace)
   "runMode": "Toggle",
   "repeatCount": 1,
   "hotkey": { "virtualKey": 112, "ctrl": false, "alt": false, "shift": false },
-  "workflow": [ /* blocks */ ]
+  "workflow": [
+    /* blocks */
+  ]
 }
 ```
 
-| Field | Default | Notes |
-|-------|---------|-------|
-| `runMode` | `"RepeatCount"` | `Hold`, `RepeatInfinite`, `RepeatCount`, `Trigger` (legacy `"Toggle"` loads as `RepeatCount`) |
-| `repeatCount` | `1` | Used when `runMode` is `RepeatCount` |
-| `triggerCooldownMs` | `1000` | After a trigger fires in `Trigger` mode, wait this many ms before monitoring again (5 ms step, `0` = immediate); omitted when default |
-| `infiniteExitAfterConsecutiveMisses` | `0` (omitted) | When `> 0` with `RepeatInfinite` or `Hold`, stop after this many consecutive loop iterations where template matching fails |
-| `loopIntervalMs` | `0` (omitted) | Fixed delay between loop iterations for `RepeatInfinite` / `Hold` (5 ms step); omitted when `0` and not using random range |
-| `loopIntervalRandomRange` | `false` (omitted) | When `true` with `RepeatInfinite` / `Hold`, wait a random duration between `loopIntervalMinMs` and `loopIntervalMaxMs` before the next loop |
-| `loopIntervalMinMs` / `loopIntervalMaxMs` | `0` | Random loop-gap bounds (5 ms step); written when `loopIntervalRandomRange` is `true` |
-| `userInputInterrupt` | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run; `"None"` — ignore user input (no pause/stop). Excludes mouse movement, injected input, and the feature's own hotkey |
-| `pointerVisualFeedback` | `true` (omitted) | When `false`, disables target-window click/match pulse overlay for this feature during runs |
-| `restoreMousePositionOnEnd` | `false` (omitted) | When `true`, moves the mouse cursor back to its screen position when the workflow session started |
-| `lockMouseToScreenCenterDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to the target window center (DWM bounds) for the feature run session; follows window moves (`MouseCenterLock`, mouse block editor) |
-| `lockMouseToCurrentPositionDuringRun` | `false` (omitted) | When `true`, clips the physical cursor to its feature-start screen position for the run session (configured in mouse block editor; mutually exclusive with center lock in UI) |
-| `roiCorrection` | `false` (omitted) | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
-| `roiCorrectionExpandPercent` | `110` (omitted) | Template-relative corrected search ROI size on loop 2+ when feature `roiCorrection` is on (see ImageFind `roiCorrectionExpandPercent`) |
-| `editFirstTemplateRoiOnStart` | `false` (omitted) | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run |
-| `hotkeyAllowExtraModifiers` | `false` (omitted) | When `true`, feature hotkey fires even if extra Ctrl/Alt/Shift not in the binding are held (e.g. **F4** binding still runs on **Shift+F4**); default is strict exact modifier match |
+| Field                                     | Default            | Notes                                                                                                                                                                                                                                           |
+| ----------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runMode`                                 | `"RepeatCount"`    | `Hold`, `RepeatInfinite`, `RepeatCount`, `Trigger` (legacy `"Toggle"` loads as `RepeatCount`)                                                                                                                                                   |
+| `repeatCount`                             | `1`                | Used when `runMode` is `RepeatCount`                                                                                                                                                                                                            |
+| `triggerCooldownMs`                       | `1000`             | After a trigger fires in `Trigger` mode, wait this many ms before monitoring again (5 ms step, `0` = immediate); omitted when default                                                                                                           |
+| `infiniteExitAfterConsecutiveMisses`      | `0` (omitted)      | When `> 0` with `RepeatInfinite` or `Hold`, stop after this many consecutive loop iterations where template matching fails                                                                                                                      |
+| `loopIntervalMs`                          | `0` (omitted)      | Fixed delay between loop iterations for `RepeatInfinite` / `Hold` (5 ms step); omitted when `0` and not using random range                                                                                                                      |
+| `loopIntervalRandomRange`                 | `false` (omitted)  | When `true` with `RepeatInfinite` / `Hold`, wait a random duration between `loopIntervalMinMs` and `loopIntervalMaxMs` before the next loop                                                                                                     |
+| `loopIntervalMinMs` / `loopIntervalMaxMs` | `0`                | Random loop-gap bounds (5 ms step); written when `loopIntervalRandomRange` is `true`                                                                                                                                                            |
+| `userInputInterrupt`                      | `"Stop"` (omitted) | `"Pause"` — toggle pause/resume on physical keyboard or mouse-button input during run; `"Stop"` — stop the run; `"None"` — ignore user input (no pause/stop). Excludes mouse movement, injected input, and the feature's own hotkey             |
+| `pointerVisualFeedback`                   | `true` (omitted)   | When `false`, disables target-window click/match pulse overlay for this feature during runs                                                                                                                                                     |
+| `restoreMousePositionOnEnd`               | `false` (omitted)  | When `true`, moves the mouse cursor back to its screen position when the workflow session started                                                                                                                                               |
+| `lockMouseToScreenCenterDuringRun`        | `false` (omitted)  | When `true`, clips the physical cursor to the target window center (DWM bounds) for the feature run session; follows window moves (`MouseCenterLock`, mouse block editor)                                                                       |
+| `lockMouseToCurrentPositionDuringRun`     | `false` (omitted)  | When `true`, clips the physical cursor to its feature-start screen position for the run session (configured in mouse block editor; mutually exclusive with center lock in UI)                                                                   |
+| `roiCorrection`                           | `false` (omitted)  | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
+| `roiCorrectionExpandPercent`              | `110` (omitted)    | Template-relative corrected search ROI size on loop 2+ when feature `roiCorrection` is on (see ImageFind `roiCorrectionExpandPercent`)                                                                                                          |
+| `editFirstTemplateRoiOnStart`             | `false` (omitted)  | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run                     |
+| `hotkeyAllowExtraModifiers`               | `false` (omitted)  | When `true`, feature hotkey fires even if extra Ctrl/Alt/Shift not in the binding are held (e.g. **F4** binding still runs on **Shift+F4**); default is strict exact modifier match                                                             |
 
 `hotkey` is optional. `virtualKey` is Win32 VK code.
 
@@ -464,63 +468,63 @@ Sbm1.0/                        # repo root (local workspace)
 
 #### `ImageFind`
 
-| Field | Default | Notes |
-|-------|---------|-------|
-| `templates` | `[]` | Relative paths under `templates/`; multiple entries per block |
-| `template` | `""` | Legacy single path; loaded when `templates` is empty; first `templates` entry is also written for backward compat |
-| `templateMatchMode` | `"Any"` | `"Any"` (one hit succeeds) or `"All"` (every template must match on the same capture) |
-| `templateColorMode` | `"Auto"` | `"Auto"` (analyze template), `"Grayscale"` (reject saturated color UI regions in haystack), or `"Color"` (no grayscale haystack filter); omitted when `Auto` |
-| `threshold` | `0.85` | Match confidence threshold |
-| `pollIntervalMs` | `200` | Delay between retries when no match (5–60000 ms, 5 ms step); block polls until success or workflow stop |
-| `searchArea` | `"TargetWindow"` | `FullScreen`, `TargetWindow`, `CustomRegion`; legacy `"ScreenPercent"` loads as `CustomRegion` |
-| `customRegion` | `{x,y,width,height}` | Legacy single ROI (screen pixels); migrated to `customRegions` window % on load |
-| `customRegions` | `[{x,y,width,height}, …]` | **Window-relative percent** (0–100 of target DWM bounds); resolved at capture time so ROI follows window move and resize |
-| `customRegionsAnchoredToTargetWindow` | `true` (omitted) | Always window %; legacy absolute-pixel and virtual-desktop `ScreenPercent` JSON auto-migrates on load |
-| `percentRegion` | `{x,y,width,height}` | Legacy `ScreenPercent`; migrated to `customRegions` on load |
-| `multiScale` | `false` | Written as `true` when enabled |
-| `minScale` / `maxScale` | `0.9` / `1.1` | Written only when non-default |
-| `roiCorrection` | `false` (omitted) | Per-block ROI correction when feature `roiCorrection` is off; loop 2+ uses session-only matched template rect from loop 1, stored as window % and re-resolved each poll |
-| `roiCorrectionExpandPercent` | `110` (omitted) | Loop 2+ corrected search ROI size as % of matched template (100 = same size, 110 = 10% wider/taller per axis); feature JSON uses same field for global correction |
-| `returnToPreviousImageFindOnFailure` | `false` (omitted) | On detection failure (miss limit), jump workflow execution to the previous `ImageFind` block in the list |
-| `retryAfterNextActionOnFailure` | `false` (omitted) | On first detection failure: run the next block once, then retry this block; on second failure jump to the next `ImageFind` block |
+| Field                                 | Default                   | Notes                                                                                                                                                                   |
+| ------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `templates`                           | `[]`                      | Relative paths under `templates/`; multiple entries per block                                                                                                           |
+| `template`                            | `""`                      | Legacy single path; loaded when `templates` is empty; first `templates` entry is also written for backward compat                                                       |
+| `templateMatchMode`                   | `"Any"`                   | `"Any"` (one hit succeeds) or `"All"` (every template must match on the same capture)                                                                                   |
+| `templateColorMode`                   | `"Auto"`                  | `"Auto"` (analyze template), `"Grayscale"` (reject saturated color UI regions in haystack), or `"Color"` (no grayscale haystack filter); omitted when `Auto`            |
+| `threshold`                           | `0.85`                    | Match confidence threshold                                                                                                                                              |
+| `pollIntervalMs`                      | `200`                     | Delay between retries when no match (5–60000 ms, 5 ms step); block polls until success or workflow stop                                                                 |
+| `searchArea`                          | `"TargetWindow"`          | `FullScreen`, `TargetWindow`, `CustomRegion`; legacy `"ScreenPercent"` loads as `CustomRegion`                                                                          |
+| `customRegion`                        | `{x,y,width,height}`      | Legacy single ROI (screen pixels); migrated to `customRegions` window % on load                                                                                         |
+| `customRegions`                       | `[{x,y,width,height}, …]` | **Window-relative percent** (0–100 of target DWM bounds); resolved at capture time so ROI follows window move and resize                                                |
+| `customRegionsAnchoredToTargetWindow` | `true` (omitted)          | Always window %; legacy absolute-pixel and virtual-desktop `ScreenPercent` JSON auto-migrates on load                                                                   |
+| `percentRegion`                       | `{x,y,width,height}`      | Legacy `ScreenPercent`; migrated to `customRegions` on load                                                                                                             |
+| `multiScale`                          | `false`                   | Written as `true` when enabled                                                                                                                                          |
+| `minScale` / `maxScale`               | `0.9` / `1.1`             | Written only when non-default                                                                                                                                           |
+| `roiCorrection`                       | `false` (omitted)         | Per-block ROI correction when feature `roiCorrection` is off; loop 2+ uses session-only matched template rect from loop 1, stored as window % and re-resolved each poll |
+| `roiCorrectionExpandPercent`          | `110` (omitted)           | Loop 2+ corrected search ROI size as % of matched template (100 = same size, 110 = 10% wider/taller per axis); feature JSON uses same field for global correction       |
+| `returnToPreviousImageFindOnFailure`  | `false` (omitted)         | On detection failure (miss limit), jump workflow execution to the previous `ImageFind` block in the list                                                                |
+| `retryAfterNextActionOnFailure`       | `false` (omitted)         | On first detection failure: run the next block once, then retry this block; on second failure jump to the next `ImageFind` block                                        |
 
 #### `Click`
 
-| Field | Default | Notes |
-|-------|---------|-------|
-| `target` | `"LastMatch"` | `"Fixed"`, `"LastMatch"`, or `"CurrentPosition"` |
-| `x`, `y` | `0` | For `Fixed` target; offset from last match center when `lastMatchRelativeOffset` is true |
-| `lastMatchRelativeOffset` | `false` | When true with `LastMatch`, click at match center plus `x`/`y` offset (client coords) |
-| `button` | `"Left"` | `Left`, `Right`, `Middle`, `Back`, `Forward`, `WheelUp`, `WheelDown` |
-| `action` | `"Tap"` | `Tap`, `Down` (hold), `Up` (release), `MoveOnly` (cursor move only); omitted when `Tap` |
-| `count` | `1` | Click count (`Tap` only) |
-| `useClientCoordinates` | `true` | Client vs screen coords |
-| `ctrl`, `alt`, `shift` | `false` | Keyboard modifiers held during the click |
+| Field                     | Default       | Notes                                                                                    |
+| ------------------------- | ------------- | ---------------------------------------------------------------------------------------- |
+| `target`                  | `"LastMatch"` | `"Fixed"`, `"LastMatch"`, or `"CurrentPosition"`                                         |
+| `x`, `y`                  | `0`           | For `Fixed` target; offset from last match center when `lastMatchRelativeOffset` is true |
+| `lastMatchRelativeOffset` | `false`       | When true with `LastMatch`, click at match center plus `x`/`y` offset (client coords)    |
+| `button`                  | `"Left"`      | `Left`, `Right`, `Middle`, `Back`, `Forward`, `WheelUp`, `WheelDown`                     |
+| `action`                  | `"Tap"`       | `Tap`, `Down` (hold), `Up` (release), `MoveOnly` (cursor move only); omitted when `Tap`  |
+| `count`                   | `1`           | Click count (`Tap` only)                                                                 |
+| `useClientCoordinates`    | `true`        | Client vs screen coords                                                                  |
+| `ctrl`, `alt`, `shift`    | `false`       | Keyboard modifiers held during the click                                                 |
 
 #### `KeyPress`
 
-| Field | Default | Notes |
-|-------|---------|-------|
-| `virtualKey` | `0x20` (Space) | Omitted when `useMainKey` is false |
-| `useMainKey` | `true` | When `false`, only `ctrlAction` / `altAction` / `shiftAction` run |
-| `action` | `"Tap"` | Main key action; omitted when `useMainKey` is false |
-| `ctrlAction` | omitted (`None`) | `None`, `Tap`, `Down`, `Up` for Ctrl |
-| `altAction` | omitted (`None`) | Same for Alt |
-| `shiftAction` | omitted (`None`) | Same for Shift |
-| `ctrl`, `alt`, `shift` | legacy | Legacy `true` loads as `Down`; omitted on save |
+| Field                  | Default          | Notes                                                             |
+| ---------------------- | ---------------- | ----------------------------------------------------------------- |
+| `virtualKey`           | `0x20` (Space)   | Omitted when `useMainKey` is false                                |
+| `useMainKey`           | `true`           | When `false`, only `ctrlAction` / `altAction` / `shiftAction` run |
+| `action`               | `"Tap"`          | Main key action; omitted when `useMainKey` is false               |
+| `ctrlAction`           | omitted (`None`) | `None`, `Tap`, `Down`, `Up` for Ctrl                              |
+| `altAction`            | omitted (`None`) | Same for Alt                                                      |
+| `shiftAction`          | omitted (`None`) | Same for Shift                                                    |
+| `ctrl`, `alt`, `shift` | legacy           | Legacy `true` loads as `Down`; omitted on save                    |
 
 #### `Wait`
 
-| Field | Default | Notes |
-|-------|---------|-------|
-| `ms` | `500` | Fixed delay (0–600000 ms, 5 ms step) |
-| `randomRange` | `false` | Use min/max instead |
-| `minMs`, `maxMs` | `0` | Random range bounds (5 ms step) |
+| Field            | Default | Notes                                |
+| ---------------- | ------- | ------------------------------------ |
+| `ms`             | `500`   | Fixed delay (0–600000 ms, 5 ms step) |
+| `randomRange`    | `false` | Use min/max instead                  |
+| `minMs`, `maxMs` | `0`     | Random range bounds (5 ms step)      |
 
 #### `Text`
 
-| Field | Default | Notes |
-|-------|---------|-------|
+| Field  | Default        | Notes                                                                                                                                                                                 |
+| ------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `text` | `""` (omitted) | UTF-8 string typed into the foreground target via `SendInput` (`InputSimulator::sendText`); `\n` / `\r\n` emit Enter, `\t` emits Tab. Legacy JSON `"type": "Comment"` loads as `Text` |
 
 #### Workflow loop regions (feature `workflow` document)
@@ -542,11 +546,11 @@ Root feature `workflow` may be a **block array** (legacy) or an **object** when 
 }
 ```
 
-| Field | Default | Notes |
-|-------|---------|-------|
-| `startBlock` / `endBlock` | — | **1-based inclusive** block numbers matching the workflow list `#` column; regions must not overlap |
-| `exitCondition` | `"DetectionFailed"` | `DetectionFailed`, `DetectionSucceeded`, `LastMatchSuccess`, `LastMatchFailed` |
-| `detectionMissLimit` | `1` | Consecutive ImageFind poll misses inside the region before detection counts as failed (`DetectionFailed` only); omitted when default |
+| Field                     | Default             | Notes                                                                                                                                |
+| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `startBlock` / `endBlock` | —                   | **1-based inclusive** block numbers matching the workflow list `#` column; regions must not overlap                                  |
+| `exitCondition`           | `"DetectionFailed"` | `DetectionFailed`, `DetectionSucceeded`, `LastMatchSuccess`, `LastMatchFailed`                                                       |
+| `detectionMissLimit`      | `1`                 | Consecutive ImageFind poll misses inside the region before detection counts as failed (`DetectionFailed` only); omitted when default |
 
 When `loopRegions` is empty, `workflow` saves as a plain block array for backward compatibility. `WorkflowRunner` repeats each region until its exit condition is met, then continues with the next block after `endBlock`.
 
@@ -568,13 +572,13 @@ Mixing Qt logical geometry, `WA_TranslucentBackground`, and `SetWindowPos` in ph
 
 #### Architecture
 
-| Layer | Responsibility |
-|-------|----------------|
-| `ScreenRegionOverlay` | Static API only — **not** a `QWidget` subclass |
-| Win32 popup `HWND` | Topmost layered window over POE bounds; owns input during pick |
-| `ScreenCapture::getTargetWindowScreenRect()` | POE bounds via DWM `DWMWA_EXTENDED_FRAME_BOUNDS` (physical pixels) |
-| `ImageFindEditor` callback | BitBlt via `ScreenCapture::capturePhysicalRect` **before** host restore |
-| `MainWindow::prepareForShutdown` | Calls `ScreenRegionOverlay::dismissAll()` |
+| Layer                                        | Responsibility                                                          |
+| -------------------------------------------- | ----------------------------------------------------------------------- |
+| `ScreenRegionOverlay`                        | Static API only — **not** a `QWidget` subclass                          |
+| Win32 popup `HWND`                           | Topmost layered window over POE bounds; owns input during pick          |
+| `ScreenCapture::getTargetWindowScreenRect()` | POE bounds via DWM `DWMWA_EXTENDED_FRAME_BOUNDS` (physical pixels)      |
+| `ImageFindEditor` callback                   | BitBlt via `ScreenCapture::capturePhysicalRect` **before** host restore |
+| `MainWindow::prepareForShutdown`             | Calls `ScreenRegionOverlay::dismissAll()`                               |
 
 #### Win32 overlay rules
 
@@ -632,12 +636,12 @@ If POE runs **as administrator**, a non-elevated PIPBONG process may not receive
 
 **Status:** Verified working on Windows (2026-07). Sidebar `QListWidget` reorder and cross-panel drops share `ReorderableListWidget` — do not reimplement per-list drag logic.
 
-| Layer | Responsibility |
-|-------|----------------|
-| `ReorderableListWidget` | Insertion-line indicator, `startDrag` / `dropEvent`, `rowsReordered` + `multiRowsReordered` + `externalItemDropped` signals; multi-select drag reorders as a block |
-| Subclass hooks | `buildDragMimeData`, `acceptsExternalMime`, `canStartDragFromRow`, `minimumDropInsertionIndex` |
-| Persistence | Parent connects reorder signals → model save → `refresh()` (feature `Project::moveFeature` / `moveFeatures`, library `manifest.json`, profile `ProfileManager::reorderProfiles`) |
-| Cross-panel MIME | `FeatureDragMime` supports multi-id payloads (`ids` array); drops copy all selected items |
+| Layer                   | Responsibility                                                                                                                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ReorderableListWidget` | Insertion-line indicator, `startDrag` / `dropEvent`, `rowsReordered` + `multiRowsReordered` + `externalItemDropped` signals; multi-select drag reorders as a block               |
+| Subclass hooks          | `buildDragMimeData`, `acceptsExternalMime`, `canStartDragFromRow`, `minimumDropInsertionIndex`                                                                                   |
+| Persistence             | Parent connects reorder signals → model save → `refresh()` (feature `Project::moveFeature` / `moveFeatures`, library `manifest.json`, profile `ProfileManager::reorderProfiles`) |
+| Cross-panel MIME        | `FeatureDragMime` supports multi-id payloads (`ids` array); drops copy all selected items                                                                                        |
 
 Subclasses: `FeatureListWidget`, `FeatureLibraryListWidget`, `ProfileListWidget` (default profile row 0: no drag, min insertion index 1). Cross-panel MIME: `FeatureDragMime`. Disable via `setReorderEnabled(false)` / `setTransferEnabled(false)` while workflows run.
 
@@ -656,12 +660,12 @@ Key files: `src/ui/widgets/ReorderableListWidget.*`, `src/ui/widgets/ListDragVis
 
 **Never** call `setStyleSheet()` from `changeEvent` on `QEvent::StyleChange`. Qt re-posts `StyleChange` after every `setStyleSheet`, causing infinite recursion and stack overflow (`0xC00000FD`) — the app exits after a few seconds with no visible window.
 
-| Rule | Detail |
-|------|--------|
-| Stylesheet | Apply **once** in constructor / `setupUi`; use `palette(...)` in QSS for theme-aware colors |
-| `changeEvent` | React only to `PaletteChange` / `ApplicationPaletteChange` when updating colors |
+| Rule           | Detail                                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Stylesheet     | Apply **once** in constructor / `setupUi`; use `palette(...)` in QSS for theme-aware colors                          |
+| `changeEvent`  | React only to `PaletteChange` / `ApplicationPaletteChange` when updating colors                                      |
 | Dynamic colors | Use `QPalette` on labels (`setPalette`, `setStyleSheet` on children avoided) with `m_updatingTheme` reentrancy guard |
-| Never | `StyleChange` → `setStyleSheet` / unguarded `setPalette` cascade |
+| Never          | `StyleChange` → `setStyleSheet` / unguarded `setPalette` cascade                                                     |
 
 Reference implementations: `TargetWindowDetailPanel`, `CustomTitleBar`. Cursor rule: `.cursor/rules/qt-changeevent-stylesheet.mdc`.
 
@@ -669,12 +673,12 @@ Reference implementations: `TargetWindowDetailPanel`, `CustomTitleBar`. Cursor r
 
 After overlay pick or template capture changes, **manually test on Windows** before marking the task done:
 
-| Check | Expected |
-|-------|----------|
-| Confirm dialog position | Near release cursor, clamped on-screen (`positionDialogNearGlobalPoint`, `deferUntilHostRestored`) |
-| Cursor visibility | Pointer visible over confirm dialog, main window, and block editor after pick |
-| PNG content | No overlay dim, no selection chrome, no cursor in saved template |
-| Teardown order | Overlay destroyed → sync BitBlt (`capturePhysicalRectForTemplate`) → restore parked host → modal UI |
+| Check                   | Expected                                                                                            |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| Confirm dialog position | Near release cursor, clamped on-screen (`positionDialogNearGlobalPoint`, `deferUntilHostRestored`)  |
+| Cursor visibility       | Pointer visible over confirm dialog, main window, and block editor after pick                       |
+| PNG content             | No overlay dim, no selection chrome, no cursor in saved template                                    |
+| Teardown order          | Overlay destroyed → sync BitBlt (`capturePhysicalRectForTemplate`) → restore parked host → modal UI |
 
 **Never** use `ShowCursor(FALSE)` loops in `capturePhysicalRectForTemplate` — corrupts global display count and hides the cursor over the app.
 
@@ -692,31 +696,31 @@ User holds **Shift** (run/walk in games) while a feature runs — often **click-
 
 #### Run-end keyboard restore (default)
 
-| Rule | Detail |
-|------|--------|
-| Track | `InputSimulator` records synthetic KEYDOWN/KEYUP into `ExecutionContext::m_pipbongHeldVirtualKeys` while the worker runs |
-| Restore | `ExecutionContext::restoreRunKeyboard()` after each `WorkflowRunner::run` and `endRunKeyboardSession()` in `finishRunSession` |
-| Scope | Only virtual keys PIPBONG actually sent DOWN and did not later UP — not keys the user held before the session (those never get a synthetic DOWN) |
-| Per-block guards unchanged | `GetAsyncKeyState` + pre-block `ModifierSnapshot` still prevent duplicate DOWN/UP during blocks |
+| Rule                       | Detail                                                                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Track                      | `InputSimulator` records synthetic KEYDOWN/KEYUP into `ExecutionContext::m_pipbongHeldVirtualKeys` while the worker runs                         |
+| Restore                    | `ExecutionContext::restoreRunKeyboard()` after each `WorkflowRunner::run` and `endRunKeyboardSession()` in `finishRunSession`                    |
+| Scope                      | Only virtual keys PIPBONG actually sent DOWN and did not later UP — not keys the user held before the session (those never get a synthetic DOWN) |
+| Per-block guards unchanged | `GetAsyncKeyState` + pre-block `ModifierSnapshot` still prevent duplicate DOWN/UP during blocks                                                  |
 
 #### Root causes (historical bugs — user-held modifiers)
 
-| Cause | Why it breaks physical holds |
-|-------|------------------------------|
-| `AttachThreadInput` in focus restore | Detach clears modifier state Windows tracks for keys still held physically |
-| Unconditional `SendInput` KEYUP | Synthetic KEYUP cancels a real hold, not only PIPBONG's own synthetic DOWN |
-| `reassertPhysicallyHeldModifiers` on run finish | End-of-loop KEYDOWN/KEYUP “sync” disturbed real keyboard state — **removed** |
-| Hold hotkey UP delivered to game | Feature binding release (e.g. side button UP) reaches target app when loop ends |
-| Global `SendInput` for client clicks | Keyboard/mouse input queue pollution vs. in-window `SendMessage` |
+| Cause                                           | Why it breaks physical holds                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------------------------- |
+| `AttachThreadInput` in focus restore            | Detach clears modifier state Windows tracks for keys still held physically      |
+| Unconditional `SendInput` KEYUP                 | Synthetic KEYUP cancels a real hold, not only PIPBONG's own synthetic DOWN      |
+| `reassertPhysicallyHeldModifiers` on run finish | End-of-loop KEYDOWN/KEYUP “sync” disturbed real keyboard state — **removed**    |
+| Hold hotkey UP delivered to game                | Feature binding release (e.g. side button UP) reaches target app when loop ends |
+| Global `SendInput` for client clicks            | Keyboard/mouse input queue pollution vs. in-window `SendMessage`                |
 
 #### Architecture (required)
 
-| Layer | Responsibility |
-|-------|----------------|
-| `restoreForegroundWindow` | `AllowSetForegroundWindow(ASFW_ANY)` + `SetForegroundWindow` only — **never** `AttachThreadInput` (`HotkeyManager.cpp`, `ScreenCapture.cpp`) |
-| `InputSimulator` | Modifier KEYDOWN/KEYUP guarded by `GetAsyncKeyState` (generic + L/R VK); track `AppliedKeyModifiers` per block; track session `m_pipbongHeldVirtualKeys` for run-end restore |
-| `HotkeyManager` | Low-level keyboard/mouse hooks swallow consumed feature hotkeys (`return 1`); ignore `LLKHF_INJECTED` / `LLMHF_INJECTED` |
-| Run teardown | `WorkflowEngine` worker calls `restoreRunKeyboard()` after each loop; `finishRunSession` calls `endRunKeyboardSession()` — releases **PIPBONG-held keys only**, never blind sync of full keyboard state |
+| Layer                     | Responsibility                                                                                                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `restoreForegroundWindow` | `AllowSetForegroundWindow(ASFW_ANY)` + `SetForegroundWindow` only — **never** `AttachThreadInput` (`HotkeyManager.cpp`, `ScreenCapture.cpp`)                                                            |
+| `InputSimulator`          | Modifier KEYDOWN/KEYUP guarded by `GetAsyncKeyState` (generic + L/R VK); track `AppliedKeyModifiers` per block; track session `m_pipbongHeldVirtualKeys` for run-end restore                            |
+| `HotkeyManager`           | Low-level keyboard/mouse hooks swallow consumed feature hotkeys (`return 1`); ignore `LLKHF_INJECTED` / `LLMHF_INJECTED`                                                                                |
+| Run teardown              | `WorkflowEngine` worker calls `restoreRunKeyboard()` after each loop; `finishRunSession` calls `endRunKeyboardSession()` — releases **PIPBONG-held keys only**, never blind sync of full keyboard state |
 
 #### InputSimulator rules
 
@@ -742,12 +746,12 @@ User holds **Shift** (run/walk in games) while a feature runs — often **click-
 
 #### Manual verification (required for input / hotkey / workflow changes)
 
-| Step | Expected |
-|------|----------|
-| Hold **Shift** in target app; run click-only feature on **Hold** + side-button hotkey; release hotkey | Shift remains held in-game |
-| Stop infinite / N-repeat mid-loop while Shift held | Same — no modifier drop |
-| Click block with **Shift** checked while user already holds Shift | No spurious release when loop ends |
-| KeyPress **누름** (or modifier **누름**) during run; stop feature | SBM-pressed key is released in target app |
+| Step                                                                                                  | Expected                                  |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Hold **Shift** in target app; run click-only feature on **Hold** + side-button hotkey; release hotkey | Shift remains held in-game                |
+| Stop infinite / N-repeat mid-loop while Shift held                                                    | Same — no modifier drop                   |
+| Click block with **Shift** checked while user already holds Shift                                     | No spurious release when loop ends        |
+| KeyPress **누름** (or modifier **누름**) during run; stop feature                                     | SBM-pressed key is released in target app |
 
 #### Key files
 
@@ -764,14 +768,14 @@ Cursor rule: `.cursor/rules/physical-keyboard-preservation.mdc`.
 
 **Status:** Program-wide policy (2026-06). Numeric fields in block editors and feature dialogs use **`DragAdjustSpinBox`** (integer) or **`DragAdjustDoubleSpinBox`** (decimal) — not stock `QSpinBox` / `QDoubleSpinBox` with up/down arrows.
 
-| Rule | Detail |
-|------|--------|
-| Widgets | `src/ui/widgets/DragAdjustSpinBox.*`, `DragAdjustDoubleSpinBox.*` |
-| Interaction | Single click → text input; horizontal drag anywhere on field; `NoButtons`; `SizeHorCursor` (I-beam while editing) |
-| Step | Every 4 horizontal px: `singleStep()` (int and double); Shift ×10; Ctrl ×100 |
-| Drag threshold | `QApplication::startDragDistance()` before drag steals the click |
-| Labels | Put unit suffixes (`ms`, `회`) on adjacent labels when possible (`WaitEditor::makeMsInputRow`) |
-| Never | Add raw spin boxes in UI unless user explicitly requests stock arrows |
+| Rule           | Detail                                                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Widgets        | `src/ui/widgets/DragAdjustSpinBox.*`, `DragAdjustDoubleSpinBox.*`                                                 |
+| Interaction    | Single click → text input; horizontal drag anywhere on field; `NoButtons`; `SizeHorCursor` (I-beam while editing) |
+| Step           | Every 4 horizontal px: `singleStep()` (int and double); Shift ×10; Ctrl ×100                                      |
+| Drag threshold | `QApplication::startDragDistance()` before drag steals the click                                                  |
+| Labels         | Put unit suffixes (`ms`, `회`) on adjacent labels when possible (`WaitEditor::makeMsInputRow`)                    |
+| Never          | Add raw spin boxes in UI unless user explicitly requests stock arrows                                             |
 
 Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
@@ -779,13 +783,13 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 **Status:** Verified working on Windows (2026-06). IDE build and F5 **must not** trigger CMake Tools configure or vcpkg reinstall. Use tracked `.vscode/` + `scripts/build-release.ps1` only.
 
-| Layer | Rule |
-|-------|------|
-| Build | **Ctrl+Shift+B** / `빌드.bat` / `build-release.ps1` → `cmake --build build --config Release` |
-| Run | `launch.json` **`Run PIPBONG (Release)`** with `preLaunchTask` **`Build Release`** |
-| CMake Tools | **`cmake.enabled`: `false`** in `.vscode/settings.json` — workspace only |
-| Git | Four `.vscode/*` files whitelisted in `.gitignore` — never delete from repo |
-| Exclude | `build-clangd/` — do not use as CMake build dir |
+| Layer       | Rule                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------- |
+| Build       | **Ctrl+Shift+B** / `빌드.bat` / `build-release.ps1` → `cmake --build build --config Release` |
+| Run         | `launch.json` **`Run PIPBONG (Release)`** with `preLaunchTask` **`Build Release`**           |
+| CMake Tools | **`cmake.enabled`: `false`** in `.vscode/settings.json` — workspace only                     |
+| Git         | Four `.vscode/*` files whitelisted in `.gitignore` — never delete from repo                  |
+| Exclude     | `build-clangd/` — do not use as CMake build dir                                              |
 
 **Recovery:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) checklist + `.cursor/rules/ide-build-workflow.mdc`.
 
@@ -793,13 +797,13 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 **Status:** Program-wide policy (2026-07). All custom column-divider hit tests, horizontal threshold-drag slack, splitter bars, frameless window resize borders, and list/table **row-height** header-bottom drags use shared constants in `src/ui/UiResizeHandle.h` — do not hardcode narrow 4–5 px zones.
 
-| Surface | Constant / rule |
-|---------|-----------------|
-| Column divider cursor + drag | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `BlockListHeaderView`, `FeatureListHeaderWidget` |
-| In-cell horizontal drag slack | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
-| Row-height divider (feature list / workflow block list header bottom) | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight` (`kMinListRowHeightPx`–`kMaxListRowHeightPx`) |
-| `QSplitter` handles | `kSplitterHandleWidthPx` (12 px) via `UiStateManager::registerSplitter` |
-| Frameless main window edges | `kWindowResizeBorderPx` (10 px) — `MainWindow::nativeEvent` |
+| Surface                                                               | Constant / rule                                                                                                      |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `BlockListHeaderView`, `FeatureListHeaderWidget`                    |
+| In-cell horizontal drag slack                                         | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
+| Row-height divider (feature list / workflow block list header bottom) | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight` (`kMinListRowHeightPx`–`kMaxListRowHeightPx`)  |
+| `QSplitter` handles                                                   | `kSplitterHandleWidthPx` (12 px) via `UiStateManager::registerSplitter`                                              |
+| Frameless main window edges                                           | `kWindowResizeBorderPx` (10 px) — `MainWindow::nativeEvent`                                                          |
 
 ---
 
@@ -812,12 +816,12 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 ### Language policy
 
-| Artifact | Language |
-|----------|----------|
-| Code, comments, docs, rules, changelog | English |
-| User chat replies | Korean |
-| In-app UI strings | Korean (`tr()`, `QStringLiteral`) |
-| JSON block `type` and enum strings | English (serialization stability) |
+| Artifact                               | Language                          |
+| -------------------------------------- | --------------------------------- |
+| Code, comments, docs, rules, changelog | English                           |
+| User chat replies                      | Korean                            |
+| In-app UI strings                      | Korean (`tr()`, `QStringLiteral`) |
+| JSON block `type` and enum strings     | English (serialization stability) |
 
 ### After every completed task
 
@@ -845,25 +849,25 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 When the user’s request is **done** (code merged, changelog written, version bumped):
 
-| Step | Action |
-|------|--------|
-| 1 | Increment version in `CMakeLists.txt` (see table below) |
-| 2 | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history) |
-| 3 | Leave empty `[Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` headers only, or blank) |
-| 4 | Update **Current version** at the top of this file |
-| 5 | **Incremental build at task close** when compile inputs changed — `cmake --build build --config Release` (or `scripts/build-release.ps1`; `--preset default` only if `build/` missing). Skip docs/rules-only. |
-| 6 | **Backup:** `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** ([§3.6](#36-github-backup-and-release)) |
-| 7 | **Release:** `.\scripts\create-github-release.ps1` (package + publish `vX.Y.Z` ZIP) — **mandatory on every version bump** |
+| Step | Action                                                                                                                                                                                                        |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Increment version in `CMakeLists.txt` (see table below)                                                                                                                                                       |
+| 2    | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history)                                                                                                    |
+| 3    | Leave empty `[Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` headers only, or blank)                                                                                                             |
+| 4    | Update **Current version** at the top of this file                                                                                                                                                            |
+| 5    | **Incremental build at task close** when compile inputs changed — `cmake --build build --config Release` (or `scripts/build-release.ps1`; `--preset default` only if `build/` missing). Skip docs/rules-only. |
+| 6    | **Backup:** `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** ([§3.6](#36-github-backup-and-release))                                                                               |
+| 7    | **Release:** `.\scripts\create-github-release.ps1` (package + publish `vX.Y.Z` ZIP) — **mandatory on every version bump**                                                                                     |
 
 **Do not** accumulate many tasks under `[Unreleased]` without bumping. **Do not** finish a chat task with changelog entries still unreleased and the same version number. **Do not** bump version without push + GitHub Release in the same task.
 
 ### Which segment to increment
 
-| Bump | When |
-|------|------|
-| **Patch** `0.3.0 → 0.3.1` | **Default — every completed user task** (bugfixes, UX, docs, small features, rule updates) |
+| Bump                      | When                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Patch** `0.3.0 → 0.3.1` | **Default — every completed user task** (bugfixes, UX, docs, small features, rule updates)              |
 | **Minor** `0.3.x → 0.4.0` | New block type, major subsystem, or many related features in one milestone the user treats as a release |
-| **Major** `1.0.0` | Breaking JSON/project format or stable release milestone |
+| **Major** `1.0.0`         | Breaking JSON/project format or stable release milestone                                                |
 
 When in doubt, **patch bump**.
 
@@ -894,6 +898,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.66] - 2026-07-09
+
+### Changed
+
+- Target window detail panel: removed **더 보기** / **접기** toggle; process, HWND, bounds, client size, and monitor are always shown on two compact lines (`TargetWindowDetailPanel`).
+- Workspace `.vscode/settings.json`: strengthened CMake Tools off (`configureOnOpen`, `automaticReconfigure`, hidden status bar) so daily build stays **Ctrl+Shift+B** incremental only.
 
 ## [0.8.65] - 2026-07-09
 
@@ -2960,6 +2971,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Added
 
 - Main window bottom bar: **항상 위** checkbox left of **종료** toggles `Qt::WindowStaysOnTopHint`; preference persisted in `QSettings` (`ui/state/mainWindow/alwaysOnTop`, `MainWindow::applyAlwaysOnTop`).
+
 ### Changed
 
 - Target window UI: removed title text field and **창 찾기** button; **창 지정** only, aligned to the right of the detail panel on one row (`MainWindow::setupUi`); target title stored via pick + project JSON only.
@@ -3186,4 +3198,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-*Last consolidated: 2026-07-05. Current application version: 0.8.5.*
+_Last consolidated: 2026-07-05. Current application version: 0.8.5._
