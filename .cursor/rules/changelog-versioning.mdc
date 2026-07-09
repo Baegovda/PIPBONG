@@ -18,6 +18,17 @@ Use English. Be specific (file/behavior), not vague.
 
 **Changelog ≠ handover:** §11 records *what changed*; procedures for the next agent (GitHub, release, scripts, URLs) belong in **AGENTS.md §3 / §8 / §9** in the **same task**. See `.cursor/rules/immediate-handover.mdc`.
 
+## User-facing Korean update log (required at version bump)
+
+On **every version bump**, add a matching section to **`UpdateLog/update_log.md`** (Korean, user-facing) per **AGENTS.md §3.7**:
+
+- Header: `## vX.Y.Z (YYYY/MM/DD)` at the **top** of the version list (below file intro)
+- Subsections: **추가** / **변경** / **수정** / **제거** — no file/class names unless shown in UI
+- Dev-only releases: `_(사용자 인터페이스 변경 없음)_` plus brief Korean **변경** if relevant
+- Optional draft: `python scripts/sync-update-log.py` — **always review and rewrite in Korean**
+
+`README.md` links to `UpdateLog/update_log.md` — do not duplicate per-version bullets there.
+
 ## Version Bump (mandatory — every completed user task)
 
 **Before closing the task**, bump version. Do **not** leave work only under `[Unreleased]` with an unchanged `CMakeLists.txt` version.
@@ -26,8 +37,8 @@ Use English. Be specific (file/behavior), not vague.
 |------|--------|
 | 1 | Increment `project(PIPBONG VERSION ...)` in `CMakeLists.txt` |
 | 2 | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in **AGENTS.md** §11 |
-| 3 | Leave empty `[Unreleased]` section |
-| 4 | Update **Current version** at top of **AGENTS.md** |
+| 3 | Add Korean section to **`UpdateLog/update_log.md`** ([§3.7](../../AGENTS.md#37-user-facing-korean-update-log)) |
+| 4 | Leave empty `[Unreleased]` section; update **Current version** at top of **AGENTS.md** |
 | 5 | **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed → **`.\scripts\build-release.ps1` only** (never `cmake --preset` if `build/CMakeCache.txt` exists). Skip when docs/rules-only. |
 | 6 | **Backup:** `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** |
 | 7 | **Release:** `.\scripts\create-github-release.ps1` (package + publish `vX.Y.Z` ZIP) — **mandatory on every version bump** |
@@ -46,4 +57,4 @@ When in doubt, **patch bump**.
 
 `Application.cpp` reads version from generated `PipbongVersion.h` (from `CMakeLists.txt` `PROJECT_VERSION`); do not hardcode version strings elsewhere.
 
-Full policy: [AGENTS.md](../../AGENTS.md) — **§10 Versioning Policy**, **§11 Changelog**, **§3.6 GitHub backup and release**, **§3.1 IDE workflow**.
+Full policy: [AGENTS.md](../../AGENTS.md) — **§10 Versioning Policy**, **§11 Changelog**, **§3.7 Korean update log**, **§3.6 GitHub backup and release**, **§3.1 IDE workflow**.

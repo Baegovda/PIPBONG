@@ -19,7 +19,7 @@ alwaysApply: true
 ## After Every Completed Task
 
 1. Append entries under `[Unreleased]` in **AGENTS.md** section **11. Changelog and Version History** as you implement.
-2. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed (never `cmake --preset` if `build/CMakeCache.txt` exists); skip build for docs/rules-only tasks. **Then mandatory backup + GitHub release** per **AGENTS.md** §3.6: `git commit` / `git push origin main` and `scripts/create-github-release.ps1`. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
+2. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per **AGENTS.md** §3.6.
 3. Keep diffs minimal; match existing C++ / Qt conventions in surrounding code.
 
 ## References

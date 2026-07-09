@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.68` (from `project(PIPBONG VERSION 0.8.68)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.69` (from `project(PIPBONG VERSION 0.8.69)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -15,6 +15,7 @@ This is the **only development document** — AI handover, user quick start, dev
 3. [Build and Run](#3-build-and-run)
    - [3.1 IDE / Cursor build workflow](#31-ide--cursor-build-workflow-mandatory--do-not-regress)
    - [3.2 No full rebuild / vcpkg lock prevention](#32-no-full-rebuild--vcpkg-lock-prevention-mandatory)
+   - [3.7 User-facing Korean update log](#37-user-facing-korean-update-log)
    - [3.6 GitHub backup and release](#36-github-backup-and-release)
 4. [Repository Map](#4-repository-map)
 5. [Architecture and Key Subsystems](#5-architecture-and-key-subsystems)
@@ -249,6 +250,26 @@ If a build exceeds **~2 minutes** with no new vcpkg dependency: **stop**, run re
 
 Cursor rule: `.cursor/rules/no-full-rebuild.mdc`.
 
+### 3.7 User-facing Korean update log
+
+**Status:** Added 2026-07. User-visible version history lives in **`UpdateLog/update_log.md`** (Korean), linked from **`README.md`**. Pattern matches [TrafficMonitor `UpdateLog/update_log.md`](https://github.com/Baegovda/TrafficMonitor/blob/master/UpdateLog/update_log.md).
+
+| Artifact | Language | Audience | Updated when |
+|----------|----------|----------|--------------|
+| `AGENTS.md` §11 | English | AI / developers | Every task (`[Unreleased]` → version section at bump) |
+| `UpdateLog/update_log.md` | **Korean** | GitHub users / release notes | **Every version bump** — same task, before push |
+| `README.md` | Korean | Landing page | Link to update log; no per-version duplication |
+
+#### At every version bump (mandatory)
+
+1. Finish English bullets in `AGENTS.md` §11 and move into `## [x.y.z] - YYYY-MM-DD`.
+2. Add a matching **`## vX.Y.Z (YYYY/MM/DD)`** section to **`UpdateLog/update_log.md`** at the **top** (below the header `---`), with **추가** / **변경** / **수정** / **제거** subsections.
+3. Write **user-facing Korean** — no file names, class names, or JSON keys unless shown in the UI. Use in-app terms (`기능 편집`, `누를 동안`, …).
+4. Optional draft: `python scripts/sync-update-log.py` strips dev citations from §11 for 0.7+ — **always review and rewrite in Korean**; do not ship English-only bullets.
+5. Dev-only changes (build scripts, agent rules): one-line Korean note e.g. _(사용자 인터페이스 변경 없음)_ plus brief **변경** if user-relevant (e.g. faster dev build).
+
+**Do not** finish a version bump without updating `UpdateLog/update_log.md`.
+
 ### 3.6 GitHub backup and release
 
 **Single repository:** **`Baegovda/PIPBONG`** — source code, git history, and GitHub Releases (ZIP) all live here. Legacy **`Baegovda/PIPBONG-releases`** is obsolete; delete it once (see below).
@@ -293,10 +314,13 @@ Sbm1.0/                        # repo root (local workspace)
 ├── CMakePresets.json          # VS2022 + vcpkg preset
 ├── vcpkg.json                 # dependency manifest
 ├── 빌드.bat                   # one-click Release build → scripts/build-release.ps1
+├── UpdateLog/
+│   └── update_log.md          # user-facing Korean changelog (linked from README.md)
 ├── scripts/
 │   ├── build-common.ps1       # stale vcpkg lock + stuck cmake/vcpkg helpers (sourced by build-release)
 │   ├── build-release.ps1      # canonical incremental Release build (IDE + AI task close)
 │   ├── recover-ide-build.ps1  # one-click IDE build recovery (lock, processes, .vscode restore)
+│   ├── sync-update-log.py     # draft generator from AGENTS.md §11 (review → Korean before release)
 │   ├── deploy-qt.ps1          # Qt + vcpkg runtime DLLs beside build/Release
 │   ├── package-release.ps1    # build + deploy + dist/PIPBONG-win64.zip
 │   ├── create-github-release.ps1
@@ -873,7 +897,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 ### After every completed task
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
-2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed (never `cmake --preset` if `build/CMakeCache.txt` exists); skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release): `git commit` / `git push origin main` and `scripts/create-github-release.ps1`. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
+2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release).
 3. Keep diffs minimal; match existing C++ / Qt conventions.
 4. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
 5. **Do not regress IDE build workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files and `cmake.enabled: false`; never replace F5 with CMake Tools configure-on-open.
@@ -900,11 +924,12 @@ When the user’s request is **done** (code merged, changelog written, version b
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1    | Increment version in `CMakeLists.txt` (see table below)                                                                                                                                                       |
 | 2    | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history)                                                                                                    |
-| 3    | Leave empty `[Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` headers only, or blank)                                                                                                             |
-| 4    | Update **Current version** at the top of this file                                                                                                                                                            |
-| 5    | **Incremental build at task close** when compile inputs changed — **`.\scripts\build-release.ps1` only** (never `cmake --preset` if `build/CMakeCache.txt` exists). Skip docs/rules-only. |
-| 6    | **Backup:** `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** ([§3.6](#36-github-backup-and-release))                                                                               |
-| 7    | **Release:** `.\scripts\create-github-release.ps1` (package + publish `vX.Y.Z` ZIP) — **mandatory on every version bump**                                                                                     |
+| 3    | Add matching Korean section to **`UpdateLog/update_log.md`** ([§3.7](#37-user-facing-korean-update-log))                                                                                                      |
+| 4    | Leave empty `[Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` headers only, or blank)                                                                                                             |
+| 5    | Update **Current version** at the top of this file                                                                                                                                                            |
+| 6    | **Incremental build at task close** when compile inputs changed — **`.\scripts\build-release.ps1` only** (never `cmake --preset` if `build/CMakeCache.txt` exists). Skip docs/rules-only. |
+| 7    | **Backup:** `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** ([§3.6](#36-github-backup-and-release))                                                                               |
+| 8    | **Release:** `.\scripts\create-github-release.ps1` (package + publish `vX.Y.Z` ZIP) — **mandatory on every version bump**                                                                                     |
 
 **Do not** accumulate many tasks under `[Unreleased]` without bumping. **Do not** finish a chat task with changelog entries still unreleased and the same version number. **Do not** bump version without push + GitHub Release in the same task.
 
@@ -922,9 +947,10 @@ When in doubt, **patch bump**.
 
 1. Update `project(PIPBONG VERSION ...)` in `CMakeLists.txt`.
 2. Move `[Unreleased]` items into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history).
-3. Leave empty `[Unreleased]` section.
-4. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `.\scripts\build-release.ps1` only. Skip docs/rules-only.
-5. **Backup + release** (mandatory): `git commit` / `git push origin main`, then `scripts/create-github-release.ps1` ([§3.6](#36-github-backup-and-release)).
+3. Add Korean section to **`UpdateLog/update_log.md`** ([§3.7](#37-user-facing-korean-update-log)).
+4. Leave empty `[Unreleased]` section.
+5. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `.\scripts\build-release.ps1` only. Skip docs/rules-only.
+6. **Backup + release** (mandatory): `git commit` / `git push origin main`, then `scripts/create-github-release.ps1` ([§3.6](#36-github-backup-and-release)).
 
 ### Changelog format
 
@@ -936,6 +962,8 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Use English; be
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [§10](#10-versioning-policy).
 
+**User-facing Korean log:** [`UpdateLog/update_log.md`](../UpdateLog/update_log.md) — maintained on every version bump per [§3.7](#37-user-facing-korean-update-log). English §11 below is the developer source of truth.
+
 ## [Unreleased]
 
 ### Added
@@ -945,6 +973,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.69] - 2026-07-09
+
+### Added
+
+- User-facing Korean update log at `UpdateLog/update_log.md` (linked from `README.md`); backfilled v0.8.x and notable 0.7.x milestones in Korean.
+- `scripts/sync-update-log.py` — drafts update log sections from AGENTS.md §11 (dev citation strip); output must be reviewed and rewritten in Korean before release.
+- AGENTS.md §3.7 user-facing update log policy; `changelog-versioning.mdc` step for Korean log at version bump.
 
 ## [0.8.68] - 2026-07-09
 
@@ -3270,6 +3306,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **Hard bans** on `cmake --preset` when `build/` exists, parallel configure, CMake Tools tasks.
 - Recovery: `.\scripts\recover-ide-build.ps1`. Full rules in [§3.2](#32-no-full-rebuild--vcpkg-lock-prevention-mandatory).
 
+### Korean update log (§3.7)
+
+- **`UpdateLog/update_log.md`** — user-facing Korean changelog; linked from `README.md`.
+- Updated on **every version bump** alongside AGENTS.md §11; see `changelog-versioning.mdc`.
+
 ---
 
-_Last consolidated: 2026-07-09. Current application version: 0.8.68._
+_Last consolidated: 2026-07-09. Current application version: 0.8.69._

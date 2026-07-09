@@ -26,6 +26,7 @@ Do **not** defer handover to a follow-up chat or assume the user will ask “doc
 | New mandatory build preset or close-out policy | §3.1 / §3.2 + `.cursor/rules/build-policy.mdc` + `no-full-rebuild.mdc` |
 | New subsystem / critical pattern (overlay, input, etc.) | §8 + dedicated `.cursor/rules/*.mdc` if always-applied |
 | New scripts in `scripts/` that agents must run | §3 or §4 path table |
+| User-facing Korean update log (`UpdateLog/update_log.md`) | §3.7 + changelog step in `changelog-versioning.mdc` |
 
 ## Same-task checklist (before closing)
 
