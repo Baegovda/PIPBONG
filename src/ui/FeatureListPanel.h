@@ -98,6 +98,8 @@ signals:
 
     void selectionChanged();
 
+    void mutationAboutToCommit(const QString& reason);
+
     void projectModified();
 
     void hotkeysChanged();

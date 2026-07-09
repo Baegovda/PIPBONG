@@ -1348,6 +1348,7 @@ void FeatureListPanel::toggleFeatureEnabled(int row) {
     if (!feature) {
         return;
     }
+    emit mutationAboutToCommit(QStringLiteral("feature-toggle-enabled"));
     feature->setEnabled(!feature->enabled());
     if (QListWidgetItem* item = m_list->item(row)) {
         configureListItem(item, *feature);
@@ -1415,6 +1416,7 @@ void FeatureListPanel::onFeatureRowsReordered(int fromRow, int toRow) {
         return;
     }
     if (fromRow != toRow) {
+        emit mutationAboutToCommit(QStringLiteral("feature-reorder"));
         m_project->moveFeature(fromRow, toRow);
         emit projectModified();
     }
@@ -1438,6 +1440,7 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
     for (int row : selectedRows) {
         rows.push_back(row);
     }
+    emit mutationAboutToCommit(QStringLiteral("feature-reorder-multi"));
     m_project->moveFeatures(rows, insertIndex);
     emit projectModified();
     refresh();
@@ -1611,6 +1614,7 @@ void FeatureListPanel::onAddFeature() {
     if (!m_project) {
         return;
     }
+    emit mutationAboutToCommit(QStringLiteral("feature-add"));
     m_project->addFeature(std::string{});
     refresh();
     const int index = static_cast<int>(m_project->features().size()) - 1;
@@ -1646,6 +1650,7 @@ void FeatureListPanel::onPasteFeature() {
 
     const int selected = selectedIndex();
     const int insertIndex = selected >= 0 ? selected + 1 : static_cast<int>(m_project->features().size());
+    emit mutationAboutToCommit(QStringLiteral("feature-paste"));
     m_project->insertFeature(insertIndex, std::move(duplicate));
 
     refresh();
@@ -1673,6 +1678,7 @@ void FeatureListPanel::onRemoveFeature() {
         return;
     }
     const int restoreRow = qMax(0, rows.front() - 1);
+    emit mutationAboutToCommit(QStringLiteral("feature-remove"));
     for (auto it = rows.crbegin(); it != rows.crend(); ++it) {
         m_project->removeFeature(*it);
     }
@@ -1719,6 +1725,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
     if (dialog.exec() != QDialog::Accepted) {
         return false;
     }
+    emit mutationAboutToCommit(QStringLiteral("feature-edit"));
     feature->setName(dialog.featureName().toStdString());
     feature->setEnabled(dialog.featureEnabled());
     feature->setHotkey(dialog.hotkey());

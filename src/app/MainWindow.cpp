@@ -55,7 +55,9 @@
 #include <QApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QEventLoop>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMimeData>
@@ -80,8 +82,11 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QPointer>
+#include <QShortcut>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QToolButton>
+#include <QUuid>
 #include <QVector>
 #include <QVBoxLayout>
 
@@ -308,6 +313,8 @@ MainWindow::MainWindow(QWidget* parent)
 
 MainWindow::~MainWindow() {
     stopAllSessions();
+    clearGlobalUiUndoHistory();
+    clearGlobalUiRedoHistory();
 }
 
 void MainWindow::setupUi() {
@@ -621,6 +628,10 @@ void MainWindow::setupMenus() {
 void MainWindow::connectSignals() {
     m_featureList->setProject(m_project.get());
     connect(m_featureList, &FeatureListPanel::selectionChanged, this, &MainWindow::onFeatureSelectionChanged);
+    connect(m_featureList,
+            &FeatureListPanel::mutationAboutToCommit,
+            this,
+            [this](const QString& reason) { pushGlobalUiUndoSnapshot(reason); });
     connect(m_featureList, &FeatureListPanel::projectModified, this, &MainWindow::onProjectModified);
     connect(m_featureList, &FeatureListPanel::hotkeysChanged, this, &MainWindow::syncHotkeys);
     connect(m_featureList,
@@ -709,6 +720,7 @@ void MainWindow::connectSignals() {
                 }
                 const QString movedId = orderedIds.takeAt(fromRow);
                 orderedIds.insert(toRow, movedId);
+                pushGlobalUiUndoSnapshot(QStringLiteral("profile-reorder"));
                 if (m_profileManager->reorderProfiles(orderedIds)) {
                     showTransientStatus(tr("프로필 순서를 저장했습니다."), 1500);
                     refreshProfileList();
@@ -755,6 +767,18 @@ void MainWindow::connectSignals() {
         [this](int virtualKey) {
             return m_hotkeyManager && m_hotkeyManager->matchesAnyRegisteredFeatureHotkey(virtualKey);
         });
+
+    auto* globalUndoShortcut = new QShortcut(QKeySequence::Undo, this);
+    globalUndoShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(globalUndoShortcut, &QShortcut::activated, this, &MainWindow::onGlobalUndoRequested);
+
+    auto* globalRedoShortcut = new QShortcut(QKeySequence::Redo, this);
+    globalRedoShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(globalRedoShortcut, &QShortcut::activated, this, &MainWindow::onGlobalRedoRequested);
+
+    auto* globalRedoAltShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z), this);
+    globalRedoAltShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(globalRedoAltShortcut, &QShortcut::activated, this, &MainWindow::onGlobalRedoRequested);
 }
 
 void MainWindow::onExitRequested() {
@@ -1150,6 +1174,7 @@ void MainWindow::onAddProfile() {
     }
     saveActiveProfileSettings();
     stopAllSessions();
+    pushGlobalUiUndoSnapshot(QStringLiteral("profile-add"));
     const QString id = m_profileManager->addProfile(name);
     refreshProfileList();
     switchToProfile(id);
@@ -1177,6 +1202,7 @@ void MainWindow::onRenameProfile() {
     if (fixedDefault) {
         return;
     }
+    pushGlobalUiUndoSnapshot(QStringLiteral("profile-edit"));
     const ProfileEditDialog::Result edited = dialog.result();
     m_profileManager->renameProfile(id, edited.name);
     QString effectiveTargetTitle = edited.targetWindowTitle;
@@ -1237,6 +1263,7 @@ void MainWindow::onDeleteProfile() {
     }
     saveActiveProfileSettings();
     stopAllSessions();
+    pushGlobalUiUndoSnapshot(QStringLiteral("profile-remove"));
     m_profileManager->removeProfile(id);
     refreshProfileList();
     loadActiveProfile();
@@ -1894,6 +1921,7 @@ void MainWindow::onSaveFeatureToLibraryRequested(const QString& featureId) {
     QString entryId;
     QStringList missingTemplates;
     const QString sourceProjectDir = Application::instance()->projectDirectory();
+    pushGlobalUiUndoSnapshot(QStringLiteral("library-save-entry"));
     if (!m_featureLibraryManager->saveFeatureToLibrary(*feature,
                                                         sourceProjectDir,
                                                         entryName,
@@ -1998,6 +2026,7 @@ void MainWindow::onDeleteLibraryEntriesRequested(const QStringList& entryIds) {
     if (static_cast<QMessageBox::StandardButton>(box.exec()) != QMessageBox::Yes) {
         return;
     }
+    pushGlobalUiUndoSnapshot(QStringLiteral("library-remove-entries"));
 
     int removed = 0;
     bool previewCleared = false;
@@ -2260,6 +2289,7 @@ void MainWindow::onFeatureDroppedOnFeatureList(const QMimeData* mime, int insert
     if (ids.isEmpty()) {
         return;
     }
+    pushGlobalUiUndoSnapshot(QStringLiteral("feature-import-from-library"));
 
     int nextInsert = insertIndex;
     int imported = 0;
@@ -2303,6 +2333,7 @@ void MainWindow::onFeatureDroppedOnLibrary(const QMimeData* mime) {
     if (ids.isEmpty()) {
         return;
     }
+    pushGlobalUiUndoSnapshot(QStringLiteral("feature-save-to-library"));
 
     int saved = 0;
     QStringList names;
@@ -2350,6 +2381,7 @@ void MainWindow::onLibraryEntriesReordered(int fromRow, int toRow) {
     }
     const QString movedId = orderedIds.takeAt(fromRow);
     orderedIds.insert(toRow, movedId);
+    pushGlobalUiUndoSnapshot(QStringLiteral("library-reorder"));
     if (m_featureLibraryManager->reorderEntries(orderedIds)) {
         refreshFeatureLibraryPanel();
         showTransientStatus(tr("라이브러리 순서를 저장했습니다."), 1500);
@@ -2390,6 +2422,7 @@ void MainWindow::onLibraryEntriesMultiReordered(const QList<int>& selectedRows, 
         orderedIds.insert(dest + i, movedIds.at(i));
     }
 
+    pushGlobalUiUndoSnapshot(QStringLiteral("library-reorder-multi"));
     if (m_featureLibraryManager->reorderEntries(orderedIds)) {
         refreshFeatureLibraryPanel();
         showTransientStatus(tr("라이브러리 순서를 저장했습니다."), 1500);
@@ -2413,6 +2446,7 @@ void MainWindow::onFeatureDroppedOnProfile(const QString& targetProfileId, const
     }
 
     if (payload.source == FeatureDragMime::Source::Library) {
+        pushGlobalUiUndoSnapshot(QStringLiteral("profile-import-library-feature"));
         int imported = 0;
         for (const QString& entryId : ids) {
             if (!importLibraryEntryToProfile(entryId, targetProfileId, -1)) {
@@ -2443,6 +2477,7 @@ void MainWindow::onFeatureDroppedOnProfile(const QString& targetProfileId, const
 
     int copied = 0;
     QString firstName;
+    pushGlobalUiUndoSnapshot(QStringLiteral("profile-copy-feature"));
     for (const QString& featureId : ids) {
         if (!copyFeatureBetweenProfiles(featureId, payload.profileId, targetProfileId, -1)) {
             QMessageBox::critical(this,
@@ -2487,6 +2522,7 @@ bool MainWindow::importLibraryEntries(const QStringList& entryIds) {
                           : static_cast<int>(m_project->features().size());
     const QString profileId = m_profileManager->activeProfileId();
     QString lastFeatureId;
+    pushGlobalUiUndoSnapshot(QStringLiteral("feature-import-library"));
     int imported = 0;
     for (const QString& entryId : entryIds) {
         if (entryId.isEmpty()) {
@@ -4424,4 +4460,201 @@ void MainWindow::prepareProjectUnload() {
     if (m_workflowEditor) {
         m_workflowEditor->setFeature(nullptr);
     }
+}
+
+MainWindow::GlobalUiHistorySnapshot MainWindow::createGlobalUiSnapshot(const QString& reason) const {
+    GlobalUiHistorySnapshot snapshot;
+    const QString tempRoot =
+        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+            .filePath(QStringLiteral("pipbong-global-history"));
+    const QString snapshotId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString backupRoot = QDir(tempRoot).filePath(snapshotId);
+    const QString profilesSourceDir =
+        m_profileManager ? m_profileManager->profilesDirectory()
+                         : QDir(Application::dataDirectory()).filePath(QStringLiteral("profiles"));
+    const QString librarySourceDir =
+        QDir(Application::dataDirectory()).filePath(QStringLiteral("featureLibrary"));
+    const QString profilesBackupDir = QDir(backupRoot).filePath(QStringLiteral("profiles"));
+    const QString libraryBackupDir = QDir(backupRoot).filePath(QStringLiteral("featureLibrary"));
+
+    bool ok = QDir().mkpath(backupRoot);
+    if (!ok) {
+        return {};
+    }
+    if (QDir(profilesSourceDir).exists()) {
+        ok = copyDirectoryRecursive(profilesSourceDir, profilesBackupDir);
+    }
+    if (ok && QDir(librarySourceDir).exists()) {
+        ok = copyDirectoryRecursive(librarySourceDir, libraryBackupDir);
+    }
+    if (!ok) {
+        removeDirectoryRecursive(backupRoot);
+        return {};
+    }
+
+    snapshot.backupRootPath = backupRoot;
+    snapshot.reason = reason;
+    return snapshot;
+}
+
+bool MainWindow::copyDirectoryRecursive(const QString& sourceDir, const QString& targetDir) {
+    QDir source(sourceDir);
+    if (!source.exists()) {
+        return true;
+    }
+    if (!QDir().mkpath(targetDir)) {
+        return false;
+    }
+    const QFileInfoList entries =
+        source.entryInfoList(QDir::NoDotAndDotDot | QDir::Files | QDir::Dirs | QDir::Hidden | QDir::System);
+    for (const QFileInfo& entry : entries) {
+        const QString sourcePath = entry.absoluteFilePath();
+        const QString targetPath = QDir(targetDir).filePath(entry.fileName());
+        if (entry.isDir()) {
+            if (!copyDirectoryRecursive(sourcePath, targetPath)) {
+                return false;
+            }
+            continue;
+        }
+        if (QFileInfo::exists(targetPath) && !QFile::remove(targetPath)) {
+            return false;
+        }
+        if (!QFile::copy(sourcePath, targetPath)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void MainWindow::removeDirectoryRecursive(const QString& path) {
+    if (path.isEmpty()) {
+        return;
+    }
+    QDir dir(path);
+    if (!dir.exists()) {
+        return;
+    }
+    dir.removeRecursively();
+}
+
+void MainWindow::clearGlobalUiRedoHistory() {
+    for (const GlobalUiHistorySnapshot& snapshot : m_globalUiRedoHistory) {
+        removeDirectoryRecursive(snapshot.backupRootPath);
+    }
+    m_globalUiRedoHistory.clear();
+}
+
+void MainWindow::clearGlobalUiUndoHistory() {
+    for (const GlobalUiHistorySnapshot& snapshot : m_globalUiUndoHistory) {
+        removeDirectoryRecursive(snapshot.backupRootPath);
+    }
+    m_globalUiUndoHistory.clear();
+}
+
+bool MainWindow::pushGlobalUiUndoSnapshot(const QString& reason) {
+    if (m_restoringGlobalUiHistory) {
+        return false;
+    }
+    const GlobalUiHistorySnapshot snapshot = createGlobalUiSnapshot(reason);
+    if (snapshot.backupRootPath.isEmpty()) {
+        return false;
+    }
+    m_globalUiUndoHistory.push_back(snapshot);
+    constexpr int kMaxGlobalUiHistoryDepth = 20;
+    if (static_cast<int>(m_globalUiUndoHistory.size()) > kMaxGlobalUiHistoryDepth) {
+        removeDirectoryRecursive(m_globalUiUndoHistory.front().backupRootPath);
+        m_globalUiUndoHistory.erase(m_globalUiUndoHistory.begin());
+    }
+    clearGlobalUiRedoHistory();
+    return true;
+}
+
+bool MainWindow::restoreGlobalUiSnapshot(const GlobalUiHistorySnapshot& snapshot) {
+    if (snapshot.backupRootPath.isEmpty() || !m_profileManager) {
+        return false;
+    }
+
+    const QString profilesSourceDir = QDir(snapshot.backupRootPath).filePath(QStringLiteral("profiles"));
+    const QString librarySourceDir = QDir(snapshot.backupRootPath).filePath(QStringLiteral("featureLibrary"));
+    const QString profilesTargetDir = m_profileManager->profilesDirectory();
+    const QString libraryTargetDir =
+        QDir(Application::dataDirectory()).filePath(QStringLiteral("featureLibrary"));
+
+    stopAllSessions();
+    maybeSave(true);
+
+    struct RestoreGuard {
+        MainWindow* window = nullptr;
+        ~RestoreGuard() {
+            if (window) {
+                window->m_restoringGlobalUiHistory = false;
+            }
+        }
+    } guard{this};
+    m_restoringGlobalUiHistory = true;
+
+    removeDirectoryRecursive(profilesTargetDir);
+    removeDirectoryRecursive(libraryTargetDir);
+    if (QDir(profilesSourceDir).exists() && !copyDirectoryRecursive(profilesSourceDir, profilesTargetDir)) {
+        return false;
+    }
+    if (QDir(librarySourceDir).exists() && !copyDirectoryRecursive(librarySourceDir, libraryTargetDir)) {
+        return false;
+    }
+
+    m_profileManager->initialize();
+    refreshProfileList();
+    loadActiveProfile(true);
+    refreshFeatureLibraryPanel();
+    syncProfileListSelection();
+    m_pendingProfileSwitchId.clear();
+    m_pendingProfileSwitchPolls = 0;
+    showTransientStatus(tr("실행 취소/다시 실행 적용됨"), 1200);
+    return true;
+}
+
+void MainWindow::onGlobalUndoRequested() {
+    if (m_globalUiUndoHistory.empty()) {
+        return;
+    }
+    const GlobalUiHistorySnapshot redoSnapshot = createGlobalUiSnapshot(QStringLiteral("redo"));
+    if (redoSnapshot.backupRootPath.isEmpty()) {
+        return;
+    }
+    const GlobalUiHistorySnapshot target = m_globalUiUndoHistory.back();
+    m_globalUiUndoHistory.pop_back();
+    if (!restoreGlobalUiSnapshot(target)) {
+        removeDirectoryRecursive(redoSnapshot.backupRootPath);
+        return;
+    }
+    m_globalUiRedoHistory.push_back(redoSnapshot);
+    constexpr int kMaxGlobalUiHistoryDepth = 20;
+    if (static_cast<int>(m_globalUiRedoHistory.size()) > kMaxGlobalUiHistoryDepth) {
+        removeDirectoryRecursive(m_globalUiRedoHistory.front().backupRootPath);
+        m_globalUiRedoHistory.erase(m_globalUiRedoHistory.begin());
+    }
+    removeDirectoryRecursive(target.backupRootPath);
+}
+
+void MainWindow::onGlobalRedoRequested() {
+    if (m_globalUiRedoHistory.empty()) {
+        return;
+    }
+    const GlobalUiHistorySnapshot undoSnapshot = createGlobalUiSnapshot(QStringLiteral("undo"));
+    if (undoSnapshot.backupRootPath.isEmpty()) {
+        return;
+    }
+    const GlobalUiHistorySnapshot target = m_globalUiRedoHistory.back();
+    m_globalUiRedoHistory.pop_back();
+    if (!restoreGlobalUiSnapshot(target)) {
+        removeDirectoryRecursive(undoSnapshot.backupRootPath);
+        return;
+    }
+    m_globalUiUndoHistory.push_back(undoSnapshot);
+    constexpr int kMaxGlobalUiHistoryDepth = 20;
+    if (static_cast<int>(m_globalUiUndoHistory.size()) > kMaxGlobalUiHistoryDepth) {
+        removeDirectoryRecursive(m_globalUiUndoHistory.front().backupRootPath);
+        m_globalUiUndoHistory.erase(m_globalUiUndoHistory.begin());
+    }
+    removeDirectoryRecursive(target.backupRootPath);
 }

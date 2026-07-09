@@ -15,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -129,6 +130,11 @@ private slots:
     void syncHotkeys();
 
 private:
+    struct GlobalUiHistorySnapshot {
+        QString backupRootPath;
+        QString reason;
+    };
+
     void setupUi();
     void setupUpdateChecker();
     void applyUpdateCheckInterval();
@@ -236,6 +242,15 @@ private:
     QString selectedFeaturePreferenceKey() const;
     void scheduleRunWarmup();
     void prepareProjectUnload();
+    bool pushGlobalUiUndoSnapshot(const QString& reason);
+    void clearGlobalUiRedoHistory();
+    void clearGlobalUiUndoHistory();
+    bool restoreGlobalUiSnapshot(const GlobalUiHistorySnapshot& snapshot);
+    GlobalUiHistorySnapshot createGlobalUiSnapshot(const QString& reason) const;
+    static bool copyDirectoryRecursive(const QString& sourceDir, const QString& targetDir);
+    static void removeDirectoryRecursive(const QString& path);
+    void onGlobalUndoRequested();
+    void onGlobalRedoRequested();
     void onEngineSessionPrepared(std::shared_ptr<Workflow> workflow, std::shared_ptr<ExecutionContext> context);
     void applyAlwaysOnTop(bool enabled);
     void restoreAlwaysOnTopPreference();
@@ -307,6 +322,9 @@ private:
     bool m_modified = false;
     bool m_refreshingProfileList = false;
     bool m_switchingProfile = false;
+    bool m_restoringGlobalUiHistory = false;
+    std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
+    std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;
     QString m_pendingProfileSwitchId;
     int m_pendingProfileSwitchPolls = 0;
