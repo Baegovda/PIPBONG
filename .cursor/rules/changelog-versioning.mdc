@@ -20,14 +20,15 @@ Use English. Be specific (file/behavior), not vague.
 
 ## User-facing Korean update log (required at version bump)
 
-On **every version bump**, add a matching section to **`UpdateLog/update_log.md`** (Korean, user-facing) per **AGENTS.md §3.7**:
+On **every version bump**, update **`UpdateLog/update_log.md`** (Korean) per **AGENTS.md §3.7**:
 
-- Header: `## vX.Y.Z (YYYY/MM/DD)` at the **top** of the version list (below file intro)
-- Subsections: **추가** / **변경** / **수정** / **제거** — no file/class names unless shown in UI
-- Dev-only releases: `_(사용자 인터페이스 변경 없음)_` plus brief Korean **변경** if relevant
-- Optional draft: `python scripts/sync-update-log.py` — **always review and rewrite in Korean**
+- **Grouped by patch decade** within the same `major.minor`: e.g. `v0.8.60–0.8.69`, `v0.8.70–0.8.79` (patch tens digit ×10 … ×10+9).
+- **Same block:** append bullets under **추가** / **변경** / **수정** / **제거** — no per-patch `## v0.8.65` header.
+- **New decade:** new `## vX.Y.A–X.Y.B (date)` section at the **top** below intro.
+- No file/class names unless shown in UI; dev-only: `_(사용자 인터페이스 변경 없음)_`.
+- Bulk regroup after backfill: `python scripts/regroup-update-log.py` — review Korean before release.
 
-`README.md` links to `UpdateLog/update_log.md` — do not duplicate per-version bullets there.
+`AGENTS.md` §11 remains **one English section per patch version**.
 
 ## Version Bump (mandatory — every completed user task)
 
@@ -37,7 +38,7 @@ On **every version bump**, add a matching section to **`UpdateLog/update_log.md`
 |------|--------|
 | 1 | Increment `project(PIPBONG VERSION ...)` in `CMakeLists.txt` |
 | 2 | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in **AGENTS.md** §11 |
-| 3 | Add Korean section to **`UpdateLog/update_log.md`** ([§3.7](../../AGENTS.md#37-user-facing-korean-update-log)) |
+| 3 | Append or add grouped Korean block in **`UpdateLog/update_log.md`** ([§3.7](../../AGENTS.md#37-user-facing-korean-update-log)) |
 | 4 | Leave empty `[Unreleased]` section; update **Current version** at top of **AGENTS.md** |
 | 5 | **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed → **`.\scripts\build-release.ps1` only** (never `cmake --preset` if `build/CMakeCache.txt` exists). Skip when docs/rules-only. |
 | 6 | **Backup:** `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** |

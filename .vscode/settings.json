@@ -2,6 +2,10 @@
     "dotnet.defaultSolution": "disable",
     "dotnet.autoDetect": "off",
 
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+    "C_Cpp.default.cppStandard": "c++17",
+    "C_Cpp.errorSquiggles": "enabled",
+
     "cmake.enabled": false,
     "cmake.configureOnOpen": false,
     "cmake.configureOnEdit": false,
@@ -14,8 +18,25 @@
     "cmake.showConfigureWithDebuggerNotification": false,
     "cmake.options.statusBarVisibility": "hidden",
     "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.buildType": "Release",
+
+    "python.languageServer": "None",
+    "python.analysis.diagnosticMode": "off",
+    "python.analysis.indexing": false,
+    "python.analysis.exclude": [
+        "**"
+    ],
+    "python.linting.enabled": false,
+    "python.linting.flake8Enabled": false,
+    "python.linting.pylintEnabled": false,
+    "python.linting.mypyEnabled": false,
 
     "files.exclude": {
         "**/build-clangd": true
-    }
+    },
+
+    "terminal.integrated.cwd": "${workspaceFolder}",
+
+    "task.allowAutomaticTasks": "on",
+    "task.quickOpen.detail": false
 }

@@ -52,6 +52,31 @@ function Prepare-IncrementalBuildEnvironment {
     }
 }
 
+function Ensure-VcpkgRoot {
+    if ($env:VCPKG_ROOT -and (Test-Path (Join-Path $env:VCPKG_ROOT "scripts\buildsystems\vcpkg.cmake"))) {
+        return
+    }
+
+    $candidates = @(
+        "C:\Users\Revaptor_FX\PIP2.0\third_party\vcpkg",
+        "C:\vcpkg",
+        (Join-Path $env:USERPROFILE "vcpkg"),
+        (Join-Path $env:USERPROFILE "source\repos\vcpkg")
+    )
+
+    foreach ($root in $candidates) {
+        $toolchain = Join-Path $root "scripts\buildsystems\vcpkg.cmake"
+        if (Test-Path $toolchain) {
+            $env:VCPKG_ROOT = ($root -replace '\\', '/')
+            Write-Host "Using VCPKG_ROOT=$($env:VCPKG_ROOT)" -ForegroundColor DarkGray
+            return
+        }
+    }
+
+    Write-Host "VCPKG_ROOT is not set. Set the environment variable or copy CMakeUserPresets.json.example to CMakeUserPresets.json." -ForegroundColor Red
+    exit 1
+}
+
 function Ensure-BuildTreeConfigured {
     param(
         [Parameter(Mandatory = $true)]
@@ -62,6 +87,8 @@ function Ensure-BuildTreeConfigured {
     if (Test-Path $cache) {
         return
     }
+
+    Ensure-VcpkgRoot
 
     Write-Host "Configuring default preset (first time only — build/CMakeCache.txt missing)..."
     cmake --preset default

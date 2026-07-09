@@ -262,8 +262,10 @@ void FeatureEditDialog::setupUi() {
 
     form->addRow(tr("루프 간격"), m_loopIntervalSection);
     m_loopIntervalSection->setToolTip(
-        tr("무한 반복·N회 반복(2회 이상)·누를 동안 실행에서 한 루프가 끝난 뒤 다음 루프를 시작하기 전에 대기합니다. "
-           "0ms이면 즉시 다음 루프를 시작합니다."));
+        tr("한 루프(워크플로 전체 1회)가 끝난 뒤, 다음 루프를 시작하기 전에 대기합니다. "
+           "블록 사이 대기가 아니라 사이클 사이 대기입니다. "
+           "고정/랜덤, 0ms면 즉시 다음 루프. "
+           "무한 반복·N회 반복(2회 이상)·누를 동안에서 사용합니다."));
 
     m_triggerCooldownSpin = new DragAdjustSpinBox(this);
     m_triggerCooldownSpin->setRange(0, 600000);
@@ -494,6 +496,44 @@ void FeatureEditDialog::tryAccept() {
     if (name.isEmpty()) {
         QMessageBox::warning(this, tr("기능 편집"), tr("기능 이름을 입력하세요."));
         return;
+    }
+
+    // Commit in-progress spin edits (typing without Enter left the old value).
+    if (m_loopIntervalMsSpin) {
+        m_loopIntervalMsSpin->interpretText();
+    }
+    if (m_loopIntervalMinSpin) {
+        m_loopIntervalMinSpin->interpretText();
+    }
+    if (m_loopIntervalMaxSpin) {
+        m_loopIntervalMaxSpin->interpretText();
+    }
+    if (m_repeatSpin) {
+        m_repeatSpin->interpretText();
+    }
+    if (m_triggerCooldownSpin) {
+        m_triggerCooldownSpin->interpretText();
+    }
+    if (m_infiniteExitSpin) {
+        m_infiniteExitSpin->interpretText();
+    }
+
+    if (m_loopIntervalMinSpin && m_loopIntervalMaxSpin
+        && m_loopIntervalMaxSpin->value() < m_loopIntervalMinSpin->value()) {
+        const int minValue = m_loopIntervalMinSpin->value();
+        const int maxValue = m_loopIntervalMaxSpin->value();
+        m_loopIntervalMinSpin->setValue(maxValue);
+        m_loopIntervalMaxSpin->setValue(minValue);
+    }
+
+    // Random selected with 0~0 and a fixed value set: seed random bounds from fixed
+    // so switching 고정→랜덤 without editing min/max does not silently become 0 ms.
+    if (loopIntervalRandomRange() && m_loopIntervalMinSpin && m_loopIntervalMaxSpin
+        && m_loopIntervalMinSpin->value() <= 0 && m_loopIntervalMaxSpin->value() <= 0
+        && m_loopIntervalMsSpin && m_loopIntervalMsSpin->value() > 0) {
+        const int fixedMs = snapWaitDelayMs(m_loopIntervalMsSpin->value());
+        m_loopIntervalMinSpin->setValue(fixedMs);
+        m_loopIntervalMaxSpin->setValue(fixedMs);
     }
 
     if (!m_hotkey.isEmpty() && m_project) {

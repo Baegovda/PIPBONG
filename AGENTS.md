@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.69` (from `project(PIPBONG VERSION 0.8.69)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.72` (from `project(PIPBONG VERSION 0.8.72)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -161,18 +161,26 @@ Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static e
 - **10–30 min “full rebuild” / vcpkg lock:** CMake Tools configure ran in parallel with terminal build — see [§3.2](#32-no-full-rebuild--vcpkg-lock-prevention-mandatory). Run `.\scripts\recover-ide-build.ps1`, reload window, use Ctrl+Shift+B only.
 - **Slow builds:** Do **not** run `cmake --preset default` when `build/CMakeCache.txt` exists. Version bump regenerates `PipbongVersion.h` and recompiles only `Application.cpp` + `UpdateChecker.cpp`.
 - **Missing DLLs at runtime:** Run `.\scripts\deploy-qt.ps1` once — dev builds skip `windeployqt` every link.
-- **vcpkg path:** `CMakePresets.json` may reference a machine-specific `CMAKE_TOOLCHAIN_FILE`; adjust if vcpkg is installed elsewhere.
+- **vcpkg path:** Set **`VCPKG_ROOT`** (Kitware preset `$penv{VCPKG_ROOT}`) or copy `CMakeUserPresets.json.example` → `CMakeUserPresets.json` (gitignored). `build-common.ps1` auto-detects common install paths on first configure only.
 
-### 3.1 IDE / Cursor build workflow (mandatory — do not regress)
+#### Standards alignment (VS Code + CMake)
 
-**Status:** Verified working on Windows (2026-06). Strengthened 2026-07 after CMake Tools + vcpkg lock caused 10–30 min waits. This is the **canonical daily dev path** for humans and AI. If the IDE “breaks”, run **`.\scripts\recover-ide-build.ps1`** — not CMake Tools defaults.
+| Layer | PIPBONG | Microsoft / industry norm |
+| ----- | ------- | ------------------------- |
+| Build system | **CMake** + **CMakePresets.json** v6 | Standard for C++/Qt/vcpkg |
+| Machine-specific toolchain | **`VCPKG_ROOT`** or **`CMakeUserPresets.json`** | Standard (not hardcoded paths in repo presets) |
+| IDE build | **`tasks.json`** default build + **`launch.json`** `preLaunchTask` | [VS Code C++ debugging](https://code.visualstudio.com/docs/cpp/launch-json-reference) — same pattern as many production repos |
+| IntelliSense | **`c_cpp_properties.json`** + `CMAKE_EXPORT_COMPILE_COMMANDS` | Standard **C/C++** extension layout |
+| Daily driver | **`cmake.enabled: false`** + `build-release.ps1` | **Valid alternative** to [CMake Tools Quick Start](https://code.visualstudio.com/docs/cpp/cmake-quickstart); avoids vcpkg lock / F5 hijack when multiple Cursor windows use CMake Tools |
+
+**Not the default Microsoft tutorial path:** CMake Tools as the primary F5/configure driver (`cmake.configureOnOpen`, status-bar build). That path is standard for *small* CMake demos but is **optional** for vcpkg manifest projects; PIPBONG intentionally uses **tasks + launch** instead while keeping **CMake Tools installable** (`extensions.json` recommends it for optional use in other folders).
 
 #### What to use
 
 | Action              | Command / UI                                                     |
 | ------------------- | ---------------------------------------------------------------- |
 | **Build**           | **Ctrl+Shift+B**, `빌드.bat`, or `.\scripts\build-release.ps1`   |
-| **Run**             | Run and Debug → **`Run PIPBONG (Release)`** → **F5**             |
+| **Run**             | **F5** → task **Build and Run PIPBONG (Release)** (`scripts/build-and-run.ps1` — build + `Start-Process`; **not** Run and Debug play button) |
 | **Binary**          | `build/Release/PIPBONG.exe` (working directory `build/Release/`) |
 | **Task close (AI)** | `.\scripts\build-release.ps1` only                               |
 | **Recovery**        | `.\scripts\recover-ide-build.ps1` then **Developer: Reload Window** |
@@ -185,10 +193,11 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 
 | File                      | Purpose                                                                         |
 | ------------------------- | ------------------------------------------------------------------------------- |
-| `.vscode/tasks.json`      | Default build task **`Build Release`** → `scripts/build-release.ps1`            |
-| `.vscode/launch.json`     | **`Run PIPBONG (Release)`** — Release exe + `preLaunchTask`: `Build Release`    |
-| `.vscode/settings.json`   | **CMake Tools fully off** — `cmake.enabled: false`, `configureOnOpen`/`configureOnEdit`/`automaticReconfigure` false, `ignoreCMakeListsChanged: true`, `useCMakePresets: never`, status bar hidden |
-| `.vscode/extensions.json` | Discourage `ms-vscode.cmake-tools`, C# Dev Kit, `twxs.cmake`; recommend `ms-vscode.cpptools` |
+| `.vscode/tasks.json`      | **`Build Release`**, **`Launch PIPBONG`**, **`Build and Run PIPBONG (Release)`** (F5 target) |
+| `.vscode/launch.json`     | Optional **`Debug PIPBONG (Release)`** (`cppdbg`) — breakpoints; requires C/C++ extension |
+| `.vscode/settings.json`   | **CMake Tools fully off** for daily workflow; `C_Cpp.default.compileCommands`; Python analysis scoped to open files |
+| `.vscode/c_cpp_properties.json` | MSVC C++17 IntelliSense (`compile_commands.json` when generated) |
+| `.vscode/extensions.json` | Recommend **C/C++** + **CMake Tools** (optional); discourage C# Dev Kit, `twxs.cmake` |
 
 **Critical:** Without full CMake-off settings, CMake Tools may run **configure → vcpkg → qtbase** on F5 or open (10–30 minutes) and show **“A CMake task is already running”** (exit -1) or **`vcpkg-running.lock` waiting…**.
 
@@ -208,6 +217,19 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 4. **Do not** click CMake status-bar **[Configure]** / **[Build]**.
 5. `.\scripts\build-release.ps1` — expect ~3 s (no changes) or ~5–15 s (one `.cpp`).
 6. F5 with **Run PIPBONG (Release)**; if Qt DLL error, run `.\scripts\deploy-qt.ps1` once.
+
+#### F5 shows “CMake: Run Without Debugging” / Qt platform plugin error (dual Cursor)
+
+**Symptom:** F5 runs **CMake: Run Without Debugging** instead of **Run PIPBONG (Release)**; MSVC dialog: *no Qt platform plugin could be initialized* on `build\Debug\Qt6Cored.dll`. Often appears after using **CMake Tools + F5** in another Cursor window — CMake hijacks F5 globally; Debug exe has no deployed Qt plugins (this repo’s daily path is **Release** only).
+
+**Fix (PIPBONG window only — other projects stay independent):**
+
+1. `.\scripts\fix-pipbong-cursor-f5.ps1` — F5 uses `workspaceFolderBasename == 'Sbm1.0'` (works from terminal/explorer; **not** `resourceDirname`, which only matches when a file editor is focused). Unbinds system **Debug: Start Debugging** and **Select debugger** for this workspace.
+2. **Developer: Reload Window** in the **Sbm1.0** Cursor window.
+3. Run and Debug dropdown → **Run PIPBONG (Release)**; F5 should build Release then run `build/Release/PIPBONG.exe`.
+4. Do **not** use `build/Debug/` for daily runs. If needed: `.\scripts\deploy-qt.ps1` once for Release DLLs.
+
+`recover-ide-build.ps1` also runs `fix-pipbong-cursor-f5.ps1`.
 
 Cursor rules: `.cursor/rules/ide-build-workflow.mdc`, `.cursor/rules/no-full-rebuild.mdc` (always applied).
 
@@ -257,16 +279,30 @@ Cursor rule: `.cursor/rules/no-full-rebuild.mdc`.
 | Artifact | Language | Audience | Updated when |
 |----------|----------|----------|--------------|
 | `AGENTS.md` §11 | English | AI / developers | Every task (`[Unreleased]` → version section at bump) |
-| `UpdateLog/update_log.md` | **Korean** | GitHub users / release notes | **Every version bump** — same task, before push |
+| `UpdateLog/update_log.md` | **Korean** | GitHub users / release notes | **Every version bump** — append to current patch-decade block or open new block |
 | `README.md` | Korean | Landing page | Link to update log; no per-version duplication |
+
+#### Grouping (mandatory format)
+
+User-facing log uses **patch-decade blocks** within the same `major.minor` line:
+
+| Rule | Example |
+|------|---------|
+| Header | `## v0.8.60–0.8.69 (2026/07/08 – 2026/07/09)` — patch tens digit `6` → `.60`–`.69` |
+| Date | Single day if one release; `YYYY/MM/DD – YYYY/MM/DD` when the block spans multiple days |
+| New patch in same block | **Append** Korean bullets under the existing block's **추가** / **변경** / **수정** / **제거** — do **not** add a new `## v0.8.65` header |
+| First patch in next block | New header at top, e.g. `v0.8.70` → `## v0.8.70–0.8.79` |
+| `0.8.0`–`0.8.9` | Block `v0.8.0–0.8.9` (not `v0.8.00–0.8.09`) |
+
+`AGENTS.md` §11 stays **one section per patch version** (English, developer detail). Only `UpdateLog/update_log.md` is grouped.
 
 #### At every version bump (mandatory)
 
 1. Finish English bullets in `AGENTS.md` §11 and move into `## [x.y.z] - YYYY-MM-DD`.
-2. Add a matching **`## vX.Y.Z (YYYY/MM/DD)`** section to **`UpdateLog/update_log.md`** at the **top** (below the header `---`), with **추가** / **변경** / **수정** / **제거** subsections.
+2. Update **`UpdateLog/update_log.md`**: if the new version is in the **current top block** (same patch decade), append Korean bullets there; otherwise add a new `## vX.Y.A–X.Y.B` section at the **top** (below the intro `---`).
 3. Write **user-facing Korean** — no file names, class names, or JSON keys unless shown in the UI. Use in-app terms (`기능 편집`, `누를 동안`, …).
-4. Optional draft: `python scripts/sync-update-log.py` strips dev citations from §11 for 0.7+ — **always review and rewrite in Korean**; do not ship English-only bullets.
-5. Dev-only changes (build scripts, agent rules): one-line Korean note e.g. _(사용자 인터페이스 변경 없음)_ plus brief **변경** if user-relevant (e.g. faster dev build).
+4. Optional bulk regroup from §11 draft: `python scripts/regroup-update-log.py` after large backfills — **always review Korean**; routine bumps append manually.
+5. Dev-only changes (build scripts, agent rules): one-line Korean note e.g. _(사용자 인터페이스 변경 없음)_ plus brief **변경** if user-relevant.
 
 **Do not** finish a version bump without updating `UpdateLog/update_log.md`.
 
@@ -319,8 +355,11 @@ Sbm1.0/                        # repo root (local workspace)
 ├── scripts/
 │   ├── build-common.ps1       # stale vcpkg lock + stuck cmake/vcpkg helpers (sourced by build-release)
 │   ├── build-release.ps1      # canonical incremental Release build (IDE + AI task close)
-│   ├── recover-ide-build.ps1  # one-click IDE build recovery (lock, processes, .vscode restore)
-│   ├── sync-update-log.py     # draft generator from AGENTS.md §11 (review → Korean before release)
+│   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
+│   ├── recover-ide-build.ps1  # one-click IDE build recovery (lock, processes, .vscode restore, F5 fix)
+│   ├── fix-pipbong-cursor-f5.ps1  # PIPBONG-only F5 -> launch.json (unbind CMake F5)
+│   ├── sync-update-log.py     # optional §11 → per-version draft (grouping is manual)
+│   ├── regroup-update-log.py  # merge existing update_log into patch-decade blocks
 │   ├── deploy-qt.ps1          # Qt + vcpkg runtime DLLs beside build/Release
 │   ├── package-release.ps1    # build + deploy + dist/PIPBONG-win64.zip
 │   ├── create-github-release.ps1
@@ -973,6 +1012,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.72] - 2026-07-10
+
+### Fixed
+
+- Feature **루프 간격**: random mode with unset `0~0` bounds no longer always resolves to 0 ms — falls back to fixed `loopIntervalMs` when random min/max are both 0; swaps min/max when inverted (`Feature::resolvedLoopIntervalMs`).
+- Feature edit **확인** now commits in-progress spin text (`interpretText`) for loop interval / repeat / cooldown fields, and seeds random min/max from the fixed value when switching to random with empty bounds (`FeatureEditDialog::tryAccept`).
+- Log line **루프 간격 Nms 대기** before the inter-loop timer so the gap is visible in the run log (`MainWindow::scheduleRepeatIteration`).
+
+## [0.8.71] - 2026-07-10
+
+### Changed
+
+- IDE run workflow restored to standard VS Code/C++ pattern: `.vscode/launch.json` **Run PIPBONG (Release)** (`lldb`/CodeLLDB on Cursor — `cppvsdbg` unsupported; `preLaunchTask`: **Build Release**); F5 uses **Debug: Start Debugging**; `scripts/fix-pipbong-cursor-f5.ps1` only overrides **Ctrl+Shift+B** (disables Cursor `glass.openBrowserTab`); `extensions.json` recommends **CodeLLDB** (`vadimcn.vscode-lldb`); CMake Tools remains off.
+
+## [0.8.70] - 2026-07-10
+
+### Changed
+
+- Korean update log (`UpdateLog/update_log.md`) uses patch-decade blocks (e.g. `v0.8.60–0.8.69`); append within block or open new block at decade boundary; AGENTS.md §3.7, `changelog-versioning.mdc`, `scripts/regroup-update-log.py`; existing log regrouped from per-version headers.
+- `scripts/fix-pipbong-cursor-f5.ps1` + AGENTS.md §3.1: when F5 is hijacked by CMake Tools (dual Cursor / other project), re-pin F5 to **Run PIPBONG (Release)** for workspace `Sbm1.0` only; `recover-ide-build.ps1` runs the fix script.
+- IDE standards alignment: `CMakePresets.json` uses `$penv{VCPKG_ROOT}` + `CMakeUserPresets.json.example`; `CMAKE_EXPORT_COMPILE_COMMANDS`; tracked `.vscode/c_cpp_properties.json`; Debug build preset; AGENTS.md §3.1 standards table; `cmake-tools` recommended but daily workflow remains tasks+launch (`cmake.enabled: false`).
+- F5 run fix: `tasks.json` **Build and Run PIPBONG (Release)** (no `cppvsdbg` / `preLaunchTask` hang); F5 keybinding runs task instead of `launch.json`; optional **Debug PIPBONG** via `cppdbg` when C/C++ extension installed.
 
 ## [0.8.69] - 2026-07-09
 
@@ -3309,8 +3371,9 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 ### Korean update log (§3.7)
 
 - **`UpdateLog/update_log.md`** — user-facing Korean changelog; linked from `README.md`.
+- **Patch-decade blocks** (e.g. `v0.8.60–0.8.69`); append within block or open new block at decade boundary.
 - Updated on **every version bump** alongside AGENTS.md §11; see `changelog-versioning.mdc`.
 
 ---
 
-_Last consolidated: 2026-07-09. Current application version: 0.8.69._
+_Last consolidated: 2026-07-10. Current application version: 0.8.72._

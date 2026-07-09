@@ -29,10 +29,20 @@ void Feature::setLoopIntervalMaxMs(int ms) {
 }
 
 int Feature::resolvedLoopIntervalMs() const {
-    if (m_loopIntervalRandomRange && m_loopIntervalMaxMs >= m_loopIntervalMinMs) {
+    if (m_loopIntervalRandomRange) {
+        int minMs = m_loopIntervalMinMs;
+        int maxMs = m_loopIntervalMaxMs;
+        if (maxMs < minMs) {
+            std::swap(minMs, maxMs);
+        }
+        // Random mode with unset 0~0 bounds used to always yield 0 ms (looked "broken").
+        // Fall back to the fixed interval when random bounds were never configured.
+        if (minMs <= 0 && maxMs <= 0) {
+            return m_loopIntervalMs;
+        }
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<int> dist(m_loopIntervalMinMs, m_loopIntervalMaxMs);
+        std::uniform_int_distribution<int> dist(minMs, maxMs);
         return dist(gen);
     }
     return m_loopIntervalMs;

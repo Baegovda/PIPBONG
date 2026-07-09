@@ -11,7 +11,7 @@
       },
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "C:/Users/Revaptor_FX/PIP2.0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_TOOLCHAIN_FILE": "$penv{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows",
         "PIPBONG_SKIP_WINDEPLOY": "ON"
       }
@@ -20,9 +20,15 @@
   "buildPresets": [
     {
       "name": "release",
-      "displayName": "Release (dynamic DLL)",
+      "displayName": "Release",
       "configurePreset": "default",
       "configuration": "Release"
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug",
+      "configurePreset": "default",
+      "configuration": "Debug"
     }
   ]
 }

@@ -3,10 +3,9 @@
     "configurations": [
         {
             "name": "Run PIPBONG (Release)",
-            "type": "cppvsdbg",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build/Release/PIPBONG.exe",
-            "args": [],
             "cwd": "${workspaceFolder}/build/Release",
             "preLaunchTask": "Build Release"
         }

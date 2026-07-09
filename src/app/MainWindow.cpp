@@ -3003,6 +3003,11 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
     }
 
     const int delayMs = feature ? feature->resolvedLoopIntervalMs() : 0;
+    if (delayMs > 0) {
+        appendSessionLog(session,
+                         tr("루프 간격 %1ms 대기").arg(delayMs),
+                         LogLineKind::Info);
+    }
     const quint64 generation = ++session.holdRepeatGeneration;
     const std::string featureId = session.featureId;
     QTimer::singleShot(qMax(0, delayMs), this, [this, featureId, success, message, generation]() {
