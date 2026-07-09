@@ -313,14 +313,18 @@ bool HotkeyManager::registerHotKeyFallback(const std::string& featureId, const H
 #endif
 
 bool HotkeyManager::isHoldBindingDown(const std::string& featureId) const {
+    // Trust the low-level hook latch only. Do NOT AND with GetAsyncKeyState:
+    // workflow KeyPress Tap of the same VK (e.g. Hold Q + "Q 탭") sends a synthetic
+    // KEYUP that clears async state while the finger is still down; requiring physical
+    // state here aborted the hold every loop and restarted as "루프 1" with no gap.
     for (const auto& entry : m_holdBindings) {
         if (entry.featureId == featureId) {
-            return entry.keyDown && entry.binding.isPhysicallyDown(entry.allowExtraModifiers);
+            return entry.keyDown;
         }
     }
     for (const auto& entry : m_mouseBindings) {
         if (entry.holdMode && entry.featureId == featureId) {
-            return entry.buttonDown && entry.binding.isPhysicallyDown(entry.allowExtraModifiers);
+            return entry.buttonDown;
         }
     }
     return false;

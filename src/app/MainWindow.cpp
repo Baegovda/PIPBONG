@@ -2994,9 +2994,8 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
                                          Feature* feature,
                                          bool success,
                                          const QString& message) {
-    if (session.runningMode == FeatureRunMode::Hold && m_hotkeyManager) {
-        m_hotkeyManager->reconcileHoldBindingDown(session.featureId);
-    }
+    // Do not reconcileHoldBindingDown here: same-key KeyPress Tap during Hold clears
+    // GetAsyncKeyState and would falsely end the session before the loop-interval timer.
     if (!shouldContinueRunSession(session, feature)) {
         finishRunSession(session.featureId, success, message);
         return;
