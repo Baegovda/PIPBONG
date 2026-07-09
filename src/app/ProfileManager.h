@@ -43,6 +43,7 @@ public:
     QString addProfile(const QString& name);
     bool renameProfile(const QString& id, const QString& name);
     bool removeProfile(const QString& id);
+    bool isDefaultProfile(const QString& id) const { return id == m_defaultProfileId; }
 
     ProgramSettings::ProfileSettings loadSettings(const QString& id) const;
     bool saveSettings(const QString& id, const ProgramSettings::ProfileSettings& settings) const;
@@ -57,6 +58,7 @@ private:
     void ensureAtLeastOneProfile();
     void migrateLegacyProjectIfNeeded();
     void ensureDefaultProfileConstraints();
+    void pinDefaultProfileFirst();
     QString loadProfileTargetWindowTitleFromProject(const QString& id) const;
     static QString sanitizedProfileName(const QString& name);
     static QString createProfileId();

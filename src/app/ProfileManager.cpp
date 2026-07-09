@@ -192,10 +192,22 @@ bool ProfileManager::setDefaultProfile(const QString& id) {
     if (!profileById(id)) {
         return false;
     }
+    const QString previousDefaultId = m_defaultProfileId;
     m_defaultProfileId = id;
+    if (previousDefaultId != id) {
+        for (Profile& profile : m_profiles) {
+            if (profile.id == previousDefaultId && profile.name == QStringLiteral("기본")) {
+                profile.name = QStringLiteral("프로필");
+            }
+            if (profile.id == id) {
+                profile.name = QStringLiteral("기본");
+            }
+        }
+    }
     if (!saveManifest()) {
         return false;
     }
+    pinDefaultProfileFirst();
     ensureDefaultProfileConstraints();
     return true;
 }
@@ -217,6 +229,7 @@ bool ProfileManager::reorderProfiles(const QStringList& orderedIds) {
         reordered.push_back(*it);
     }
     m_profiles = std::move(reordered);
+    pinDefaultProfileFirst();
     return saveManifest();
 }
 
@@ -233,6 +246,15 @@ QString ProfileManager::addProfile(const QString& name) {
 }
 
 bool ProfileManager::renameProfile(const QString& id, const QString& name) {
+    if (id == m_defaultProfileId) {
+        for (Profile& profile : m_profiles) {
+            if (profile.id == id) {
+                profile.name = QStringLiteral("기본");
+                return saveManifest();
+            }
+        }
+        return false;
+    }
     for (Profile& profile : m_profiles) {
         if (profile.id != id) {
             continue;
@@ -244,6 +266,9 @@ bool ProfileManager::renameProfile(const QString& id, const QString& name) {
 }
 
 bool ProfileManager::removeProfile(const QString& id) {
+    if (id == m_defaultProfileId) {
+        return false;
+    }
     if (m_profiles.size() <= 1) {
         return false;
     }
@@ -364,6 +389,8 @@ bool ProfileManager::loadManifest() {
     if (!profileById(m_defaultProfileId) && !m_profiles.empty()) {
         m_defaultProfileId = m_profiles.front().id;
     }
+    pinDefaultProfileFirst();
+    ensureDefaultProfileConstraints();
     return !m_profiles.empty();
 }
 
@@ -431,12 +458,35 @@ void ProfileManager::ensureDefaultProfileConstraints() {
     if (!profileById(m_defaultProfileId)) {
         return;
     }
+    for (Profile& profile : m_profiles) {
+        if (profile.id == m_defaultProfileId) {
+            profile.name = QStringLiteral("기본");
+            break;
+        }
+    }
     setTargetWindowTitle(m_defaultProfileId, QString());
     ProgramSettings::ProfileSettings settings = loadSettings(m_defaultProfileId);
     if (!settings.runWithoutTargetWindow) {
         settings.runWithoutTargetWindow = true;
         saveSettings(m_defaultProfileId, settings);
     }
+}
+
+void ProfileManager::pinDefaultProfileFirst() {
+    if (!profileById(m_defaultProfileId)) {
+        return;
+    }
+    const auto it = std::find_if(m_profiles.begin(),
+                                 m_profiles.end(),
+                                 [this](const Profile& profile) {
+                                     return profile.id == m_defaultProfileId;
+                                 });
+    if (it == m_profiles.end() || it == m_profiles.begin()) {
+        return;
+    }
+    Profile pinned = *it;
+    m_profiles.erase(it);
+    m_profiles.insert(m_profiles.begin(), pinned);
 }
 
 QString ProfileManager::loadProfileTargetWindowTitleFromProject(const QString& id) const {

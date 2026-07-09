@@ -1,23 +1,143 @@
 #include "ui/ProfileListWidget.h"
 
 #include "ui/FeatureDragMime.h"
+#include "ui/UiThemeColors.h"
 
+#include <QApplication>
 #include <QDragEnterEvent>
 #include <QDragLeaveEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
+#include <QFontMetrics>
 #include <QListWidgetItem>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QStyle>
+#include <QStyledItemDelegate>
+
+namespace {
+
+constexpr int kDefaultProfileRole = Qt::UserRole + 2;
+
+class ProfileListItemDelegate : public QStyledItemDelegate {
+public:
+    explicit ProfileListItemDelegate(QObject* parent = nullptr)
+        : QStyledItemDelegate(parent) {}
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override {
+        if (!index.data(kDefaultProfileRole).toBool()) {
+            QStyledItemDelegate::paint(painter, option, index);
+            return;
+        }
+
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+
+        const QPalette pal = opt.widget ? opt.widget->palette() : QApplication::palette();
+        const bool selected = opt.state.testFlag(QStyle::State_Selected);
+        const QColor textColor = primaryContentTextColor(pal, selected);
+        const QColor accent = textColor.lightness() < 128 ? QColor(0x64, 0xb5, 0xf6) : QColor(0x1e, 0x88, 0xe5);
+        const QColor fill = selected ? pal.color(QPalette::Highlight)
+                                     : (pal.color(QPalette::Button).isValid() ? pal.color(QPalette::Button)
+                                                                              : pal.color(QPalette::AlternateBase));
+        const QColor border = selected ? accent : fill.darker(108);
+
+        QRect rowRect = opt.rect.adjusted(2, 1, -2, -1);
+        QPainterPath path;
+        path.addRoundedRect(rowRect, 6, 6);
+        painter->fillPath(path, fill);
+        painter->setPen(QPen(border, 1));
+        painter->drawPath(path);
+
+        const int accentBarWidth = 3;
+        QRect accentBar(rowRect.left() + 1, rowRect.top() + 4, accentBarWidth, rowRect.height() - 8);
+        painter->fillRect(accentBar, accent);
+
+        const QIcon icon = qvariant_cast<QIcon>(index.data(Qt::DecorationRole));
+        const int iconSize = 20;
+        const int left = rowRect.left() + accentBarWidth + 8;
+        const QRect iconRect(left, rowRect.center().y() - iconSize / 2, iconSize, iconSize);
+        if (!icon.isNull()) {
+            icon.paint(painter, iconRect);
+        }
+
+        const QString badgeText = QStringLiteral("시스템 고정");
+        QFont badgeFont = opt.font;
+        badgeFont.setBold(true);
+        badgeFont.setPointSizeF(qMax(8.0, badgeFont.pointSizeF() - 0.5));
+        const QFontMetrics badgeFm(badgeFont);
+        const int badgeHorizontalPad = 8;
+        const int badgeWidth = badgeFm.horizontalAdvance(badgeText) + badgeHorizontalPad * 2;
+        const int badgeHeight = qMax(16, badgeFm.height() + 4);
+        QRect badgeRect(rowRect.right() - badgeWidth - 6,
+                        rowRect.center().y() - badgeHeight / 2,
+                        badgeWidth,
+                        badgeHeight);
+        const QColor badgeTextColor = accent.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(accent);
+        painter->drawRoundedRect(badgeRect, badgeHeight / 2.0, badgeHeight / 2.0);
+        painter->setPen(badgeTextColor);
+        painter->setFont(badgeFont);
+        painter->drawText(badgeRect, Qt::AlignCenter, badgeText);
+
+        const int textLeft = iconRect.right() + 8;
+        const int textRight = badgeRect.left() - 6;
+        QRect textRect(textLeft, rowRect.top(), qMax(0, textRight - textLeft), rowRect.height());
+        QFont nameFont = opt.font;
+        nameFont.setBold(true);
+        painter->setFont(nameFont);
+        painter->setPen(textColor);
+        painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, QStringLiteral("기본"));
+
+        if (selected && opt.state.testFlag(QStyle::State_HasFocus)) {
+            QStyleOptionFocusRect focus;
+            focus.rect = rowRect.adjusted(1, 1, -1, -1);
+            focus.state = opt.state;
+            focus.palette = pal;
+            if (const QStyle* style = opt.widget ? opt.widget->style() : QApplication::style()) {
+                style->drawPrimitive(QStyle::PE_FrameFocusRect, &focus, painter, opt.widget);
+            }
+        }
+
+        painter->restore();
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override {
+        QSize size = QStyledItemDelegate::sizeHint(option, index);
+        if (index.data(kDefaultProfileRole).toBool()) {
+            size.setHeight(qMax(size.height(), 30));
+        }
+        return size;
+    }
+};
+
+} // namespace
 
 ProfileListWidget::ProfileListWidget(QWidget* parent)
-    : QListWidget(parent) {}
+    : QListWidget(parent) {
+    m_itemDelegate = new ProfileListItemDelegate(this);
+    setItemDelegate(m_itemDelegate);
+}
+
+void ProfileListWidget::setDefaultProfileId(const QString& profileId) {
+    m_defaultProfileId = profileId;
+    viewport()->update();
+}
 
 void ProfileListWidget::setFeatureDropEnabled(bool enabled) {
     m_featureDropEnabled = enabled;
     if (!enabled) {
         updateFeatureDropHighlight(-1);
     }
+}
+
+bool ProfileListWidget::isDefaultProfileItem(QListWidgetItem* item) const {
+    return item && item->data(kDefaultProfileRole).toBool();
 }
 
 void ProfileListWidget::mousePressEvent(QMouseEvent* event) {
@@ -27,6 +147,13 @@ void ProfileListWidget::mousePressEvent(QMouseEvent* event) {
         }
     }
     QListWidget::mousePressEvent(event);
+}
+
+void ProfileListWidget::startDrag(Qt::DropActions supportedActions) {
+    if (isDefaultProfileItem(currentItem())) {
+        return;
+    }
+    QListWidget::startDrag(supportedActions);
 }
 
 void ProfileListWidget::dragEnterEvent(QDragEnterEvent* event) {

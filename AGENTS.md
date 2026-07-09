@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.39` (from `project(PIPBONG VERSION 0.8.39)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.40` (from `project(PIPBONG VERSION 0.8.40)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -862,6 +862,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.40] - 2026-07-09
+
+### Changed
+
+- Default profile is always pinned to the top of the profile list, cannot be dragged, deleted, or renamed; display name is fixed to **기본** with a **시스템 고정** badge row style (`ProfileManager::pinDefaultProfileFirst`, `ProfileListWidget` delegate, `MainWindow::refreshProfileList`).
+- Profile edit for the default profile shows read-only **기본** name and an informational dialog only — no rename, linked-program, or default-profile toggle (`ProfileEditDialog`).
 
 ## [0.8.39] - 2026-07-09
 

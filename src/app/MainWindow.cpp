@@ -678,6 +678,7 @@ void MainWindow::connectSignals() {
                 }
                 if (m_profileManager->reorderProfiles(orderedIds)) {
                     showTransientStatus(tr("프로필 순서를 저장했습니다."), 1500);
+                    refreshProfileList();
                 }
             });
     connect(m_addProfileButton, &QPushButton::clicked, this, &MainWindow::onAddProfile);
@@ -1130,12 +1131,17 @@ void MainWindow::onRenameProfile() {
     if (!profile) {
         return;
     }
+    const bool fixedDefault = m_profileManager->isDefaultProfile(id);
     ProfileEditDialog dialog(profile->name,
                              m_profileManager->targetWindowTitle(id),
-                             id == m_profileManager->defaultProfileId(),
+                             fixedDefault,
+                             fixedDefault,
                              QString::fromStdString(m_project ? m_project->targetWindowTitle() : std::string{}),
                              this);
     if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    if (fixedDefault) {
         return;
     }
     const ProfileEditDialog::Result edited = dialog.result();
@@ -1178,6 +1184,10 @@ void MainWindow::onDeleteProfile() {
     const QString id = m_profileList->currentItem()->data(Qt::UserRole).toString();
     const ProfileManager::Profile* profile = m_profileManager->profileById(id);
     if (!profile) {
+        return;
+    }
+    if (m_profileManager->isDefaultProfile(id)) {
+        QMessageBox::information(this, tr("프로필 삭제"), tr("기본 프로필은 삭제할 수 없습니다."));
         return;
     }
     if (m_profileManager->profiles().size() <= 1) {
@@ -3646,19 +3656,27 @@ void MainWindow::refreshProfileList() {
         return windowIcon();
     };
 #endif
+    m_profileList->setDefaultProfileId(defaultId);
+    constexpr int kDefaultProfileRole = Qt::UserRole + 2;
     for (int i = 0; i < static_cast<int>(profiles.size()); ++i) {
         const ProfileManager::Profile& profile = profiles[static_cast<size_t>(i)];
-        const QString displayName =
-            profile.id == defaultId ? tr("%1 (전역 기본)").arg(profile.name) : profile.name;
+        const bool isDefaultProfile = profile.id == defaultId;
+        const QString displayName = isDefaultProfile ? QStringLiteral("기본") : profile.name;
 #ifdef _WIN32
         auto* item = new QListWidgetItem(resolveProfileIcon(profile), displayName, m_profileList);
 #else
         auto* item = new QListWidgetItem(windowIcon(), displayName, m_profileList);
 #endif
         item->setData(Qt::UserRole, profile.id);
-        const QString targetTitle = profile.id == defaultId ? QString() : profile.targetWindowTitle;
+        item->setData(kDefaultProfileRole, isDefaultProfile);
+        if (isDefaultProfile) {
+            item->setFlags(item->flags() & ~Qt::ItemIsDragEnabled);
+        }
+        const QString targetTitle = isDefaultProfile ? QString() : profile.targetWindowTitle;
         QString targetTooltip;
-        if (targetTitle.isEmpty()) {
+        if (isDefaultProfile) {
+            targetTooltip = tr("시스템 기본 프로필\n이름·순서 변경 불가 · 대상 창 미지정 · 연결된 프로그램이 없을 때 자동 선택");
+        } else if (targetTitle.isEmpty()) {
             targetTooltip = tr("대상 창 없음");
         } else {
             const QString storedProcessPath = m_profileManager->linkedTargetProcessPath(profile.id);
@@ -3668,9 +3686,7 @@ void MainWindow::refreshProfileList() {
                                 ? tr("대상 창: %1").arg(targetTitle)
                                 : tr("대상 창: %1\n프로세스: %2").arg(targetTitle, processName);
         }
-        item->setToolTip(profile.id == defaultId
-                             ? tr("전역 기본 프로필\n대상 창 미지정 · 연결된 프로그램이 없을 때 자동 선택")
-                             : targetTooltip);
+        item->setToolTip(targetTooltip);
         if (profile.id == activeId) {
             activeRow = i;
         }
@@ -3679,7 +3695,10 @@ void MainWindow::refreshProfileList() {
         m_profileList->setCurrentRow(activeRow);
     }
     if (m_deleteProfileButton) {
-        m_deleteProfileButton->setEnabled(profiles.size() > 1);
+        const bool canDeleteSelected = m_profileList->currentItem()
+                                       && !m_profileManager->isDefaultProfile(
+                                           m_profileList->currentItem()->data(Qt::UserRole).toString());
+        m_deleteProfileButton->setEnabled(profiles.size() > 1 && canDeleteSelected);
     }
     updateTargetWindowControlsForActiveProfile();
     m_refreshingProfileList = false;
