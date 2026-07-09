@@ -2662,6 +2662,15 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     m_runSessions.emplace(featureId, std::move(session));
     selectRunningFeatureForDisplay(feature);
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
+    if (feature->holdHotkeyConflictsWithWorkflowKeyPress()) {
+        appendSessionLog(
+            activeSession,
+            tr("주의: 누를 동안 단축키와 워크플로 키보드가 같습니다. "
+               "손가락으로 누르는 동안 게임은 키가 계속 눌린 것으로 보므로 "
+               "루프 간격·탭 간격이 체감되지 않습니다. "
+               "단축키를 다른 키/마우스 버튼으로 바꾸세요."),
+            LogLineKind::Warning);
+    }
     if (tryBeginFirstTemplateRoiEdit(activeSession, feature)) {
         return;
     }

@@ -1,7 +1,9 @@
 #include "model/Feature.h"
 
 #include "core/workflow/blocks/ImageFindBlock.h"
+#include "core/workflow/blocks/KeyPressBlock.h"
 #include "core/workflow/blocks/WaitBlock.h"
+#include "core/workflow/Block.h"
 
 #include <algorithm>
 #include <random>
@@ -53,6 +55,23 @@ bool Feature::supportsLoopInterval() const {
         return true;
     }
     return m_runMode == FeatureRunMode::RepeatCount && m_repeatCount >= 2;
+}
+
+bool Feature::holdHotkeyConflictsWithWorkflowKeyPress() const {
+    if (m_runMode != FeatureRunMode::Hold || m_hotkey.isEmpty()
+        || HotkeyBinding::isMouseVirtualKey(m_hotkey.virtualKey)) {
+        return false;
+    }
+    for (const auto& block : m_workflow.blocks()) {
+        if (!block || block->type() != BlockType::KeyPress) {
+            continue;
+        }
+        const auto* keyPress = static_cast<const KeyPressBlock*>(block.get());
+        if (keyPress->useMainKey && keyPress->virtualKey == m_hotkey.virtualKey) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool Feature::roiCorrectionSessionEligible() const {

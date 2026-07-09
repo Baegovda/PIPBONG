@@ -17,6 +17,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -1741,6 +1742,15 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setLoopIntervalRandomRange(dialog.loopIntervalRandomRange());
     feature->setLoopIntervalMinMs(dialog.loopIntervalMinMs());
     feature->setLoopIntervalMaxMs(dialog.loopIntervalMaxMs());
+    if (feature->holdHotkeyConflictsWithWorkflowKeyPress()) {
+        QMessageBox::warning(
+            this,
+            tr("기능 편집"),
+            tr("누를 동안 단축키와 워크플로의 키보드 블록이 같은 키입니다.\n\n"
+               "손가락으로 누르는 동안 게임은 그 키가 계속 눌린 상태로 인식합니다. "
+               "PIPBONG 루프 간격은 동작하지만, 게임 안에서는 간격이 체감되지 않습니다.\n\n"
+               "해결: 단축키를 다른 키나 마우스 버튼으로 바꾸고, 워크플로에서만 Q를 탭하세요."));
+    }
     saveLastFeatureEditSettings(*feature);
     refresh();
     m_list->setCurrentRow(index);

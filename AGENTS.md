@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.73` (from `project(PIPBONG VERSION 0.8.73)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.74` (from `project(PIPBONG VERSION 0.8.74)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1012,6 +1012,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.74] - 2026-07-10
+
+### Added
+
+- Warn when Hold hotkey VK matches a workflow KeyPress main key: games still see continuous physical hold via `GetAsyncKeyState`, so loop-interval gaps are not felt in-game; dialog on feature save + run-log warning (`Feature::holdHotkeyConflictsWithWorkflowKeyPress`, `FeatureListPanel`, `MainWindow`).
 
 ## [0.8.73] - 2026-07-10
 
@@ -3382,4 +3388,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.73._
+_Last consolidated: 2026-07-10. Current application version: 0.8.74._
