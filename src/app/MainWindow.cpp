@@ -3005,12 +3005,12 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
     const int delayMs = feature ? feature->resolvedLoopIntervalMs() : 0;
     if (delayMs > 0) {
 #ifdef _WIN32
-        // Hold + same-key KeyPress: clear async key state so the game feels the gap
-        // (synthetic KEYUP; finger may still be down — hook latch keeps the session alive).
+        // Hold + same-key KeyPress: brief UP/DOWN pulse so the game feels the gap, then
+        // leave the key down again so a later physical KEYUP can end Hold mode.
         if (feature && feature->runMode() == FeatureRunMode::Hold
             && !feature->hotkey().isEmpty()
             && !HotkeyBinding::isMouseVirtualKey(feature->hotkey().virtualKey)) {
-            InputSimulator::ensureKeyReleased(feature->hotkey().virtualKey);
+            InputSimulator::pulseHeldKeyGap(feature->hotkey().virtualKey);
         }
 #endif
         appendSessionLog(session,

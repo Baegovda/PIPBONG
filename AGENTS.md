@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.76` (from `project(PIPBONG VERSION 0.8.76)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.77` (from `project(PIPBONG VERSION 0.8.77)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1012,6 +1012,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.77] - 2026-07-10
+
+### Fixed
+
+- Hold mode stuck after releasing the key when using same-key KeyPress Tap: synthetic KEYUP left OS key state up while the finger was still down, so the real KEYUP never arrived. Same-key taps and loop-interval gaps now pulse UP→DOWN and leave the key down again so physical release ends Hold (`InputSimulator::pulseHeldKeyGap`, `sendKeyboardTap`).
 
 ## [0.8.76] - 2026-07-10
 
@@ -3404,4 +3410,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.76._
+_Last consolidated: 2026-07-10. Current application version: 0.8.77._

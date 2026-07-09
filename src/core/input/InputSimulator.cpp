@@ -167,13 +167,24 @@ void ensureKeyReleasedUntracked(int virtualKey) {
     sendKeyboardVk(virtualKey, false, false);
 }
 
+void pulseHeldKeyGapUntracked(int virtualKey) {
+    if (!isAsyncKeyDown(virtualKey)) {
+        return;
+    }
+    // Must re-DOWN after the gap: leaving the key UP after a synthetic KEYUP means
+    // Windows often never delivers a physical KEYUP when the finger finally releases,
+    // so Hold mode stays latched forever.
+    sendKeyboardVk(virtualKey, false, false);
+    std::this_thread::sleep_for(kKeyPulseGapDelay);
+    sendKeyboardVk(virtualKey, true, false);
+}
+
 void sendKeyboardTap(int virtualKey) {
-    // Hold hotkey + same-key Tap: finger keeps the VK "down" in async state. A plain
-    // DOWN+UP does nothing useful — pulse UP → gap → DOWN → hold → UP so the game
-    // sees discrete presses and loop-interval gaps.
+    // Hold hotkey + same-key Tap: finger keeps the VK down. Pulse UP → gap → DOWN and
+    // leave DOWN so OS key state still matches the finger (physical KEYUP can end Hold).
     if (isAsyncKeyDown(virtualKey)) {
-        ensureKeyReleasedUntracked(virtualKey);
-        std::this_thread::sleep_for(kKeyPulseGapDelay);
+        pulseHeldKeyGapUntracked(virtualKey);
+        return;
     }
     sendKeyboardVk(virtualKey, true);
     std::this_thread::sleep_for(kKeyTapHoldDelay);
@@ -840,6 +851,14 @@ void InputSimulator::moveAtClient(HWND hwnd, int clientX, int clientY) {
 void InputSimulator::ensureKeyReleased(int virtualKey) {
 #ifdef _WIN32
     ensureKeyReleasedUntracked(virtualKey);
+#else
+    (void)virtualKey;
+#endif
+}
+
+void InputSimulator::pulseHeldKeyGap(int virtualKey) {
+#ifdef _WIN32
+    pulseHeldKeyGapUntracked(virtualKey);
 #else
     (void)virtualKey;
 #endif

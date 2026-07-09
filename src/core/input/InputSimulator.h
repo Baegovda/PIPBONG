@@ -128,6 +128,9 @@ public:
     /// If the VK is currently down (physical or synthetic), send an untracked KEYUP so
     /// games see a release — used for Hold+same-key Tap gaps and loop-interval spacing.
     static void ensureKeyReleased(int virtualKey);
+    /// Brief untracked UP then DOWN so games feel a gap while the finger still holds
+    /// (restores down state so a later physical KEYUP can end Hold mode).
+    static void pulseHeldKeyGap(int virtualKey);
     static void sendText(const std::wstring& text);
 
 #ifdef _WIN32
