@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.37` (from `project(PIPBONG VERSION 0.8.37)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.38` (from `project(PIPBONG VERSION 0.8.38)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -862,6 +862,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.38] - 2026-07-09
+
+### Changed
+
+- Feature library drawer expand/collapse now animates height smoothly (`QVariantAnimation`, OutCubic/InCubic, 220 ms open / 160 ms close) instead of snapping visible; list content height is item-count based (max 150 px) with a short resize when entries change (`FeatureListPanel`).
 
 ## [0.8.37] - 2026-07-09
 

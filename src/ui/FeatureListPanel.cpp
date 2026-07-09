@@ -24,6 +24,8 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QVariantAnimation>
+#include <QEasingCurve>
 #include <QDialog>
 #include <QEvent>
 #include <QFrame>
@@ -781,10 +783,18 @@ void FeatureListPanel::setupUi() {
         "  font-weight: 600;"
         "}"));
 
-    m_libraryList = new QListWidget(group);
+    m_libraryDrawerHost = new QWidget(group);
+    m_libraryDrawerHost->setObjectName(QStringLiteral("featureLibraryDrawerHost"));
+    m_libraryDrawerHost->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto* drawerLayout = new QVBoxLayout(m_libraryDrawerHost);
+    drawerLayout->setContentsMargins(0, 2, 0, 0);
+    drawerLayout->setSpacing(0);
+
+    m_libraryList = new QListWidget(m_libraryDrawerHost);
     m_libraryList->setObjectName(QStringLiteral("featureLibraryList"));
     m_libraryList->setFrameShape(QFrame::NoFrame);
     m_libraryList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_libraryList->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_libraryList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_libraryList->setContextMenuPolicy(Qt::CustomContextMenu);
     m_libraryList->setUniformItemSizes(true);
@@ -797,7 +807,8 @@ void FeatureListPanel::setupUi() {
         "QListWidget#featureLibraryList::item {"
         "  padding: 3px 6px;"
         "}"));
-    m_libraryList->setVisible(false);
+    drawerLayout->addWidget(m_libraryList);
+    applyLibraryDrawerHeight(0, false);
 
     connect(m_libraryToggle, &QToolButton::toggled, this, [this](bool checked) {
         setLibraryDrawerExpanded(checked, true);
@@ -815,7 +826,7 @@ void FeatureListPanel::setupUi() {
     groupLayout->addLayout(buttonRow);
     groupLayout->addWidget(tableFrame, 3);
     groupLayout->addWidget(m_libraryToggle);
-    groupLayout->addWidget(m_libraryList, 1);
+    groupLayout->addWidget(m_libraryDrawerHost, 0);
     outerLayout->addWidget(group);
 
     {
@@ -847,12 +858,126 @@ void FeatureListPanel::setLibraryDrawerExpanded(bool expanded, bool persist) {
         m_libraryToggle->setChecked(expanded);
         m_libraryToggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
     }
-    if (m_libraryList) {
-        m_libraryList->setVisible(expanded);
+
+    if (persist) {
+        animateLibraryDrawerTo(expanded);
+    } else {
+        if (m_libraryDrawerAnimation) {
+            m_libraryDrawerAnimation->stop();
+            m_libraryDrawerAnimation->deleteLater();
+            m_libraryDrawerAnimation = nullptr;
+        }
+        applyLibraryDrawerHeight(expanded ? libraryDrawerContentHeight() : 0, expanded);
     }
+
     if (persist) {
         QSettings settings;
         settings.setValue(QStringLiteral("ui/state/featureList/libraryDrawerExpanded"), expanded);
+    }
+}
+
+int FeatureListPanel::libraryDrawerContentHeight() const {
+    constexpr int kMaxListHeight = 150;
+    constexpr int kEmptyHeight = 34;
+    if (!m_libraryList) {
+        return 0;
+    }
+    if (m_libraryList->count() == 0) {
+        return kEmptyHeight;
+    }
+    const int rowHeight = qMax(m_libraryList->sizeHintForRow(0), 22);
+    return qMin(kMaxListHeight, rowHeight * m_libraryList->count() + 2);
+}
+
+void FeatureListPanel::applyLibraryDrawerHeight(int height, bool expanded) {
+    if (!m_libraryDrawerHost) {
+        return;
+    }
+    const int clamped = qMax(0, height);
+    m_libraryDrawerHost->setFixedHeight(clamped);
+    m_libraryDrawerHost->setMaximumHeight(clamped);
+    if (m_libraryList) {
+        m_libraryList->setVisible(expanded || clamped > 0);
+    }
+}
+
+void FeatureListPanel::animateLibraryDrawerTo(bool expanded) {
+    if (!m_libraryDrawerHost) {
+        return;
+    }
+
+    if (m_libraryDrawerAnimation) {
+        m_libraryDrawerAnimation->stop();
+        m_libraryDrawerAnimation->deleteLater();
+        m_libraryDrawerAnimation = nullptr;
+    }
+
+    const int from = m_libraryDrawerHost->height();
+    const int to = expanded ? libraryDrawerContentHeight() : 0;
+    if (from == to) {
+        applyLibraryDrawerHeight(to, expanded);
+        return;
+    }
+
+    if (m_libraryList) {
+        m_libraryList->setVisible(true);
+    }
+
+    auto* animation = new QVariantAnimation(this);
+    animation->setDuration(expanded ? 220 : 160);
+    animation->setStartValue(from);
+    animation->setEndValue(to);
+    animation->setEasingCurve(expanded ? QEasingCurve::OutCubic : QEasingCurve::InCubic);
+    connect(animation, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+        const int height = value.toInt();
+        applyLibraryDrawerHeight(height, height > 0);
+    });
+    connect(animation, &QVariantAnimation::finished, this, [this, expanded, animation]() {
+        applyLibraryDrawerHeight(expanded ? libraryDrawerContentHeight() : 0, expanded);
+        if (m_libraryDrawerAnimation == animation) {
+            m_libraryDrawerAnimation = nullptr;
+        }
+        animation->deleteLater();
+    });
+    m_libraryDrawerAnimation = animation;
+    animation->start();
+}
+
+void FeatureListPanel::syncLibraryDrawerHeight(bool animate) {
+    if (!m_libraryExpanded) {
+        return;
+    }
+    const int target = libraryDrawerContentHeight();
+    if (animate) {
+        if (!m_libraryDrawerHost || m_libraryDrawerHost->height() == target) {
+            applyLibraryDrawerHeight(target, true);
+            return;
+        }
+        if (m_libraryDrawerAnimation) {
+            m_libraryDrawerAnimation->stop();
+            m_libraryDrawerAnimation->deleteLater();
+            m_libraryDrawerAnimation = nullptr;
+        }
+        auto* animation = new QVariantAnimation(this);
+        animation->setDuration(140);
+        animation->setStartValue(m_libraryDrawerHost->height());
+        animation->setEndValue(target);
+        animation->setEasingCurve(QEasingCurve::OutCubic);
+        connect(animation, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+            const int height = value.toInt();
+            applyLibraryDrawerHeight(height, height > 0);
+        });
+        connect(animation, &QVariantAnimation::finished, this, [this, target, animation]() {
+            applyLibraryDrawerHeight(target, true);
+            if (m_libraryDrawerAnimation == animation) {
+                m_libraryDrawerAnimation = nullptr;
+            }
+            animation->deleteLater();
+        });
+        m_libraryDrawerAnimation = animation;
+        animation->start();
+    } else {
+        applyLibraryDrawerHeight(target, true);
     }
 }
 
@@ -884,6 +1009,7 @@ void FeatureListPanel::setLibraryEntries(const std::vector<LibraryEntryUi>& entr
     }
     m_libraryEntryCount = static_cast<int>(entries.size());
     updateLibraryToggleText();
+    syncLibraryDrawerHeight(m_libraryExpanded);
 }
 
 void FeatureListPanel::onLibraryContextMenu(const QPoint& pos) {

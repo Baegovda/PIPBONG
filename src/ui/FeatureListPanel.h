@@ -11,6 +11,7 @@ class QListWidget;
 class QToolButton;
 class QSettings;
 class QTimer;
+class QVariantAnimation;
 class Project;
 class Feature;
 class FeatureListWidget;
@@ -166,6 +167,10 @@ private:
     void setLibraryDrawerExpanded(bool expanded, bool persist);
     void updateLibraryToggleText();
     void onLibraryContextMenu(const QPoint& pos);
+    int libraryDrawerContentHeight() const;
+    void animateLibraryDrawerTo(bool expanded);
+    void applyLibraryDrawerHeight(int height, bool expanded);
+    void syncLibraryDrawerHeight(bool animate);
 
 
 
@@ -197,7 +202,11 @@ private:
 
     QToolButton* m_libraryToggle = nullptr;
 
+    QWidget* m_libraryDrawerHost = nullptr;
+
     QListWidget* m_libraryList = nullptr;
+
+    QVariantAnimation* m_libraryDrawerAnimation = nullptr;
 
     int m_libraryEntryCount = 0;
 
