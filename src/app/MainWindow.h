@@ -23,6 +23,7 @@ class Feature;
 
 class QPixmap;
 class QIcon;
+class QToolButton;
 
 class FeatureListPanel;
 class WorkflowEditorPanel;
@@ -244,10 +245,10 @@ private:
     QSplitter* m_mainVerticalSplitter = nullptr;
     QSplitter* m_bottomHorizontalSplitter = nullptr;
     QPlainTextEdit* m_logView = nullptr;
-    QPushButton* m_pickWindowButton = nullptr;
-    QPushButton* m_pickWindowListButton = nullptr;
-    QPushButton* m_showTargetWindowButton = nullptr;
-    QCheckBox* m_pinTargetWindowCenterCheck = nullptr;
+    QToolButton* m_pickWindowButton = nullptr;
+    QToolButton* m_pickWindowListButton = nullptr;
+    QToolButton* m_showTargetWindowButton = nullptr;
+    QToolButton* m_pinTargetWindowCenterButton = nullptr;
     QCheckBox* m_alwaysOnTopCheck = nullptr;
     QPushButton* m_exitButton = nullptr;
     QPushButton* m_updateButton = nullptr;

@@ -77,6 +77,7 @@
 #include <QMenu>
 #include <QPointer>
 #include <QTimer>
+#include <QToolButton>
 #include <QVector>
 #include <QVBoxLayout>
 
@@ -197,6 +198,22 @@ QVector<WindowListEntry> collectWindowListEntries() {
 
 } // namespace
 #endif
+
+namespace {
+
+void configureTargetWindowActionButton(QToolButton* button) {
+    if (!button) {
+        return;
+    }
+    button->setProperty("class", QStringLiteral("targetWindowActionButton"));
+    button->setCursor(Qt::PointingHandCursor);
+    button->setFocusPolicy(Qt::NoFocus);
+    button->setAutoRaise(false);
+    button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    button->setFixedHeight(22);
+}
+
+} // namespace
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -353,58 +370,91 @@ void MainWindow::setupUi() {
 
     auto* targetGroup = new QGroupBox(tr("대상 창"), bottomPanel);
     auto* targetLayout = new QVBoxLayout(targetGroup);
-    targetLayout->setContentsMargins(6, 6, 6, 6);
-    targetLayout->setSpacing(6);
+    targetLayout->setContentsMargins(8, 4, 8, 6);
+    targetLayout->setSpacing(4);
 
     m_targetWindowDetailPanel = new TargetWindowDetailPanel(targetGroup);
-    m_pickWindowButton = new QPushButton(tr("창 지정"), targetGroup);
-    m_pickWindowButton->setToolTip(tr("클릭한 뒤 대상 창을 눌러 지정합니다. 우클릭 또는 Esc로 취소."));
-    m_pickWindowListButton = new QPushButton(tr("창 목록"), targetGroup);
-    m_pickWindowListButton->setToolTip(tr("현재 표시 중인 창 목록에서 대상 창을 선택합니다."));
-    m_showTargetWindowButton = new QPushButton(tr("창 표시"), targetGroup);
-    m_showTargetWindowButton->setToolTip(tr("지정된 대상 창 테두리를 잠시 깜빡여 표시합니다."));
 
-    m_pinTargetWindowCenterCheck = new QCheckBox(tr("화면 중앙 고정"), targetGroup);
-    m_pinTargetWindowCenterCheck->setToolTip(
+    auto* actionBar = new QWidget(targetGroup);
+    actionBar->setObjectName(QStringLiteral("targetWindowActionBar"));
+    auto* actionLayout = new QHBoxLayout(actionBar);
+    actionLayout->setContentsMargins(0, 0, 0, 0);
+    actionLayout->setSpacing(3);
+
+    m_pickWindowButton = new QToolButton(actionBar);
+    m_pickWindowButton->setText(tr("지정"));
+    m_pickWindowButton->setToolTip(tr("클릭한 뒤 대상 창을 눌러 지정합니다. 우클릭 또는 Esc로 취소."));
+    configureTargetWindowActionButton(m_pickWindowButton);
+
+    m_pickWindowListButton = new QToolButton(actionBar);
+    m_pickWindowListButton->setText(tr("목록"));
+    m_pickWindowListButton->setToolTip(tr("현재 표시 중인 창 목록에서 대상 창을 선택합니다."));
+    configureTargetWindowActionButton(m_pickWindowListButton);
+
+    m_showTargetWindowButton = new QToolButton(actionBar);
+    m_showTargetWindowButton->setText(tr("표시"));
+    m_showTargetWindowButton->setToolTip(tr("지정된 대상 창 테두리를 잠시 깜빡여 표시합니다."));
+    configureTargetWindowActionButton(m_showTargetWindowButton);
+
+    m_pinTargetWindowCenterButton = new QToolButton(actionBar);
+    m_pinTargetWindowCenterButton->setObjectName(QStringLiteral("targetPinCenterButton"));
+    m_pinTargetWindowCenterButton->setText(tr("중앙 고정"));
+    m_pinTargetWindowCenterButton->setToolTip(
         tr("지정된 대상 창이 현재 모니터 중앙에 유지되도록 위치를 자동으로 맞춥니다."));
-    m_pinTargetWindowCenterCheck->setChecked(ProgramSettings::pinTargetWindowToScreenCenter());
+    m_pinTargetWindowCenterButton->setCheckable(true);
+    m_pinTargetWindowCenterButton->setChecked(ProgramSettings::pinTargetWindowToScreenCenter());
+    configureTargetWindowActionButton(m_pinTargetWindowCenterButton);
 #ifndef _WIN32
-    m_pinTargetWindowCenterCheck->setEnabled(false);
-    m_pinTargetWindowCenterCheck->setToolTip(tr("화면 중앙 고정은 Windows에서만 지원됩니다."));
+    m_pinTargetWindowCenterButton->setEnabled(false);
+    m_pinTargetWindowCenterButton->setToolTip(tr("화면 중앙 고정은 Windows에서만 지원됩니다."));
 #endif
+
+    actionLayout->addWidget(m_pickWindowButton);
+    actionLayout->addWidget(m_pickWindowListButton);
+    actionLayout->addWidget(m_showTargetWindowButton);
+    actionLayout->addStretch();
+    actionLayout->addWidget(m_pinTargetWindowCenterButton);
 
     targetGroup->setStyleSheet(QStringLiteral(
         "QGroupBox {"
         "  border: 1px solid palette(mid);"
-        "  border-radius: 10px;"
-        "  margin-top: 10px;"
-        "  padding-top: 10px;"
+        "  border-radius: 8px;"
+        "  margin-top: 8px;"
+        "  padding-top: 8px;"
+        "  font-size: 11px;"
         "}"
         "QGroupBox::title {"
         "  subcontrol-origin: margin;"
-        "  left: 10px;"
-        "  padding: 0 4px;"
+        "  left: 8px;"
+        "  padding: 0 3px;"
+        "}"
+        "QToolButton.targetWindowActionButton {"
+        "  padding: 1px 8px;"
+        "  border: 1px solid palette(mid);"
+        "  border-radius: 4px;"
+        "  background-color: palette(button);"
+        "  color: palette(button-text);"
+        "  font-size: 11px;"
+        "}"
+        "QToolButton.targetWindowActionButton:hover:!checked {"
+        "  background-color: palette(light);"
+        "  border-color: palette(dark);"
+        "}"
+        "QToolButton.targetWindowActionButton:pressed:!checked {"
+        "  background-color: palette(midlight);"
+        "}"
+        "QToolButton.targetWindowActionButton:checked {"
+        "  background-color: palette(highlight);"
+        "  color: palette(highlighted-text);"
+        "  border-color: palette(highlight);"
+        "}"
+        "QToolButton.targetWindowActionButton:disabled {"
+        "  color: palette(mid);"
+        "  background-color: palette(button);"
+        "  border-color: palette(mid);"
         "}"));
 
-    const QString actionButtonStyle = QStringLiteral(
-        "padding: 6px 10px; min-height: 28px; text-align: left; font-size: 12px;");
-    m_pickWindowButton->setStyleSheet(actionButtonStyle);
-    m_pickWindowListButton->setStyleSheet(actionButtonStyle);
-    m_showTargetWindowButton->setStyleSheet(actionButtonStyle);
-
-    auto* topActionRow = new QHBoxLayout();
-    topActionRow->setSpacing(4);
-    topActionRow->addWidget(m_pickWindowButton, 1);
-    topActionRow->addWidget(m_pickWindowListButton, 1);
-    topActionRow->addWidget(m_showTargetWindowButton, 1);
-
-    auto* secondaryActionRow = new QHBoxLayout();
-    secondaryActionRow->setContentsMargins(0, 0, 0, 0);
-    secondaryActionRow->addWidget(m_pinTargetWindowCenterCheck, 0, Qt::AlignLeft);
-    secondaryActionRow->addStretch();
-
-    targetLayout->addLayout(topActionRow);
-    targetLayout->addLayout(secondaryActionRow);
+    targetLayout->addWidget(actionBar);
     targetLayout->addWidget(m_targetWindowDetailPanel, 1);
 
     m_exitButton = new QPushButton(tr("종료"), bottomPanel);
@@ -609,11 +659,11 @@ void MainWindow::connectSignals() {
     connect(m_updateButton, &QPushButton::clicked, this, &MainWindow::onUpdateButtonClicked);
     connect(m_calculatorButton, &QPushButton::clicked, this, &MainWindow::onCalculator);
     connect(m_alwaysOnTopCheck, &QCheckBox::toggled, this, &MainWindow::onAlwaysOnTopToggled);
-    connect(m_pickWindowButton, &QPushButton::clicked, this, &MainWindow::onPickTargetWindow);
-    connect(m_pickWindowListButton, &QPushButton::clicked, this, &MainWindow::onPickTargetWindowFromList);
-    connect(m_showTargetWindowButton, &QPushButton::clicked, this, &MainWindow::onShowTargetWindow);
-    connect(m_pinTargetWindowCenterCheck,
-            &QCheckBox::toggled,
+    connect(m_pickWindowButton, &QToolButton::clicked, this, &MainWindow::onPickTargetWindow);
+    connect(m_pickWindowListButton, &QToolButton::clicked, this, &MainWindow::onPickTargetWindowFromList);
+    connect(m_showTargetWindowButton, &QToolButton::clicked, this, &MainWindow::onShowTargetWindow);
+    connect(m_pinTargetWindowCenterButton,
+            &QToolButton::toggled,
             this,
             &MainWindow::onPinTargetWindowCenterToggled);
 
@@ -3175,9 +3225,9 @@ void MainWindow::loadActiveProfile() {
         ScreenCapture::setTargetWindow(nullptr);
         ScreenCapture::setTargetWindowTitle(L"");
     }
-    if (m_pinTargetWindowCenterCheck) {
-        const QSignalBlocker blocker(m_pinTargetWindowCenterCheck);
-        m_pinTargetWindowCenterCheck->setChecked(ProgramSettings::pinTargetWindowToScreenCenter());
+    if (m_pinTargetWindowCenterButton) {
+        const QSignalBlocker blocker(m_pinTargetWindowCenterButton);
+        m_pinTargetWindowCenterButton->setChecked(ProgramSettings::pinTargetWindowToScreenCenter());
     }
     applyTargetWindowCenterPin(ProgramSettings::pinTargetWindowToScreenCenter());
 
@@ -3492,14 +3542,14 @@ void MainWindow::updateTargetWindowControlsForActiveProfile() {
                                                  ? lockedTooltip
                                                  : tr("지정된 대상 창 테두리를 잠시 깜빡여 표시합니다."));
     }
-    if (m_pinTargetWindowCenterCheck) {
+    if (m_pinTargetWindowCenterButton) {
 #ifdef _WIN32
-        m_pinTargetWindowCenterCheck->setEnabled(!lockedDefault);
-        m_pinTargetWindowCenterCheck->setToolTip(
+        m_pinTargetWindowCenterButton->setEnabled(!lockedDefault);
+        m_pinTargetWindowCenterButton->setToolTip(
             lockedDefault ? lockedTooltip
                           : tr("지정된 대상 창이 현재 모니터 중앙에 유지되도록 위치를 자동으로 맞춥니다."));
 #else
-        m_pinTargetWindowCenterCheck->setEnabled(false);
+        m_pinTargetWindowCenterButton->setEnabled(false);
 #endif
     }
 }

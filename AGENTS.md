@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.35` (from `project(PIPBONG VERSION 0.8.35)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.36` (from `project(PIPBONG VERSION 0.8.36)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -862,6 +862,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.36] - 2026-07-09
+
+### Changed
+
+- Target window panel action controls redesigned as a single compact toolbar row: **지정** / **목록** / **표시** chip-style `QToolButton`s (22 px height, 11 px label) with **중앙 고정** as a matching checkable toggle on the right; detail card sits below the toolbar (`MainWindow`).
 
 ## [0.8.35] - 2026-07-09
 
