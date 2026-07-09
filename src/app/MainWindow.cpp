@@ -276,7 +276,7 @@ MainWindow::MainWindow(QWidget* parent)
     setupUiState();
     setupMenus();
     connectSignals();
-    setupUpdateChecker();
+    // UpdateChecker / tray / profile load deferred until after first paint.
     m_mouseLockSyncTimer = new QTimer(this);
     m_mouseLockSyncTimer->setInterval(100);
     connect(m_mouseLockSyncTimer, &QTimer::timeout, this, &MainWindow::syncMouseLockPositions);
@@ -288,15 +288,27 @@ MainWindow::MainWindow(QWidget* parent)
     m_profileAutoSwitchTimer = new QTimer(this);
     m_profileAutoSwitchTimer->setInterval(250);
     connect(m_profileAutoSwitchTimer, &QTimer::timeout, this, &MainWindow::syncProfileToForegroundWindow);
-    m_profileAutoSwitchTimer->start();
+    // Started in finishDeferredStartup after profiles are loaded.
     if (ProgramSettings::pinTargetWindowToScreenCenter()) {
         applyTargetWindowCenterPin(true);
     }
 
     refreshUpdateButtonState();
+    // Heavy profile/project/library load runs after the first paint so the window appears quickly.
+    updateWindowTitle();
+}
+
+void MainWindow::finishDeferredStartup() {
+    if (m_deferredStartupDone) {
+        return;
+    }
+    m_deferredStartupDone = true;
+
+    setupUpdateChecker();
+    setupTrayIcon();
+
     ProgramSettings::syncWindowsStartupRegistration();
     ProgramSettings::syncWindowsRunAsAdminRegistration();
-    setupTrayIcon();
 
     m_profileManager->initialize();
     m_featureLibraryManager = std::make_unique<FeatureLibraryManager>(Application::dataDirectory());
@@ -309,7 +321,12 @@ MainWindow::MainWindow(QWidget* parent)
     updateWindowTitle();
     syncHotkeys();
     updateTargetWindowDetails();
-    scheduleRunWarmup();
+    refreshUpdateButtonState();
+    if (m_profileAutoSwitchTimer && !m_profileAutoSwitchTimer->isActive()) {
+        m_profileAutoSwitchTimer->start();
+    }
+    // Capture/OpenCV warmup after UI is interactive — not on the critical path to first paint.
+    QTimer::singleShot(300, this, [this]() { scheduleRunWarmup(); });
 }
 
 MainWindow::~MainWindow() {
@@ -1293,9 +1310,14 @@ void MainWindow::applyAlwaysOnTop(bool enabled) {
 
 void MainWindow::showEvent(QShowEvent* event) {
     QMainWindow::showEvent(event);
+    if (!m_deferredStartupDone) {
+        // Next event-loop tick after first paint — keeps constructor + show() fast.
+        QTimer::singleShot(0, this, &MainWindow::finishDeferredStartup);
+    }
     if (!m_initialUpdateCheckDone) {
         m_initialUpdateCheckDone = true;
-        QTimer::singleShot(0, this, &MainWindow::runSilentUpdateCheck);
+        // Network check well after UI is up.
+        QTimer::singleShot(1500, this, &MainWindow::runSilentUpdateCheck);
     }
 #ifdef _WIN32
     const HWND hwnd = reinterpret_cast<HWND>(winId());
@@ -3988,19 +4010,9 @@ void MainWindow::refreshProfileList() {
     const QString defaultId = m_profileManager->defaultProfileId();
     const auto& profiles = m_profileManager->profiles();
 #ifdef _WIN32
-    bool needsLiveWindowIcons = false;
-    for (const ProfileManager::Profile& profile : profiles) {
-        if (profile.id == defaultId || profile.targetWindowTitle.isEmpty()) {
-            continue;
-        }
-        if (m_profileManager->linkedTargetProcessPath(profile.id).isEmpty()) {
-            needsLiveWindowIcons = true;
-            break;
-        }
-    }
-    const QVector<WindowListEntry> windows =
-        needsLiveWindowIcons ? collectWindowListEntries() : QVector<WindowListEntry>{};
-    const auto resolveProfileIcon = [this, &defaultId, &windows](const ProfileManager::Profile& profile) {
+    // Avoid EnumWindows + per-exe icon extraction on the first paint path.
+    // Stored process-path icons are cheap; live window scan is deferred.
+    const auto resolveProfileIcon = [this, &defaultId](const ProfileManager::Profile& profile) {
         if (profile.id == defaultId) {
             return windowIcon();
         }
@@ -4009,15 +4021,6 @@ void MainWindow::refreshProfileList() {
             const QIcon storedIcon = iconForProcessPath(storedProcessPath.toStdWString());
             if (!storedIcon.isNull()) {
                 return storedIcon;
-            }
-        }
-        const QString targetTitle = profile.targetWindowTitle;
-        if (!targetTitle.isEmpty()) {
-            for (const WindowListEntry& entry : windows) {
-                if (QString::fromStdWString(entry.title).contains(targetTitle, Qt::CaseInsensitive)
-                    && !entry.icon.isNull()) {
-                    return entry.icon;
-                }
             }
         }
         return windowIcon();
@@ -4141,7 +4144,7 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
 }
 
 void MainWindow::syncProfileToForegroundWindow() {
-    if (!m_profileManager || m_switchingProfile) {
+    if (!m_deferredStartupDone || !m_profileManager || m_switchingProfile) {
         return;
     }
 #ifdef _WIN32

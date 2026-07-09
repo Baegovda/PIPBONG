@@ -461,10 +461,13 @@ void ProfileManager::ensureDefaultProfileConstraints() {
     for (Profile& profile : m_profiles) {
         if (profile.id == m_defaultProfileId) {
             profile.name = QStringLiteral("기본");
+            // Default profile must stay untitled — only rewrite project.json when dirty.
+            if (!profile.targetWindowTitle.isEmpty()) {
+                setTargetWindowTitle(m_defaultProfileId, QString());
+            }
             break;
         }
     }
-    setTargetWindowTitle(m_defaultProfileId, QString());
     ProgramSettings::ProfileSettings settings = loadSettings(m_defaultProfileId);
     if (!settings.runWithoutTargetWindow) {
         settings.runWithoutTargetWindow = true;

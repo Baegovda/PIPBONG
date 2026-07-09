@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.78` (from `project(PIPBONG VERSION 0.8.78)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.79` (from `project(PIPBONG VERSION 0.8.79)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1012,6 +1012,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.79] - 2026-07-10
+
+### Changed
+
+- Startup: show the main window first, then load profiles/project/library, registry sync, OpenCV/capture warmup, and silent update check on later event-loop ticks — first paint no longer waits on disk/network (`MainWindow::finishDeferredStartup`).
+- OpenCV DLLs are delay-loaded (`/DELAYLOAD`) so process start does not map opencv_*.dll before the window appears (`CMakeLists.txt`).
+- Profile list refresh no longer enumerates all desktop windows for icons on every load (uses stored process-path icons only).
+- Default-profile constraint no longer rewrites `project.json` every launch when already clean (`ProfileManager::ensureDefaultProfileConstraints`).
 
 ## [0.8.78] - 2026-07-10
 
@@ -3416,4 +3425,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.78._
+_Last consolidated: 2026-07-10. Current application version: 0.8.79._
