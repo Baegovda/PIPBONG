@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.80` (from `project(PIPBONG VERSION 0.8.80)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.81` (from `project(PIPBONG VERSION 0.8.81)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -169,11 +169,11 @@ Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static e
 | ----- | ------- | ------------------------- |
 | Build system | **CMake** + **CMakePresets.json** v6 | Standard for C++/Qt/vcpkg |
 | Machine-specific toolchain | **`VCPKG_ROOT`** or **`CMakeUserPresets.json`** | Standard (not hardcoded paths in repo presets) |
-| IDE build | **`tasks.json`** default build + **`launch.json`** `preLaunchTask` | [VS Code C++ debugging](https://code.visualstudio.com/docs/cpp/launch-json-reference) — same pattern as many production repos |
+| IDE build | **`tasks.json`** default build + F5 **Build and Run** task; optional CodeLLDB debug launch | [VS Code tasks](https://code.visualstudio.com/docs/editor/tasks) for daily run; [launch.json](https://code.visualstudio.com/docs/cpp/launch-json-reference) only for breakpoints |
 | IntelliSense | **`c_cpp_properties.json`** + `CMAKE_EXPORT_COMPILE_COMMANDS` | Standard **C/C++** extension layout |
 | Daily driver | **`cmake.enabled: false`** + `build-release.ps1` | **Valid alternative** to [CMake Tools Quick Start](https://code.visualstudio.com/docs/cpp/cmake-quickstart); avoids vcpkg lock / F5 hijack when multiple Cursor windows use CMake Tools |
 
-**Not the default Microsoft tutorial path:** CMake Tools as the primary F5/configure driver (`cmake.configureOnOpen`, status-bar build). That path is standard for *small* CMake demos but is **optional** for vcpkg manifest projects; PIPBONG intentionally uses **tasks + launch** instead while keeping **CMake Tools installable** (`extensions.json` recommends it for optional use in other folders).
+**Not the default Microsoft tutorial path:** CMake Tools as the primary F5/configure driver (`cmake.configureOnOpen`, status-bar build). That path is standard for *small* CMake demos but is **optional** for vcpkg manifest projects; **PIPBONG intentionally uses tasks for daily F5** (build + `Start-Process`) while keeping **CMake Tools installable** and an optional CodeLLDB debug launch for breakpoints.
 
 #### What to use
 
@@ -193,8 +193,8 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 
 | File                      | Purpose                                                                         |
 | ------------------------- | ------------------------------------------------------------------------------- |
-| `.vscode/tasks.json`      | **`Build Release`**, **`Launch PIPBONG`**, **`Build and Run PIPBONG (Release)`** (F5 target) |
-| `.vscode/launch.json`     | Optional **`Debug PIPBONG (Release)`** (`cppdbg`) — breakpoints; requires C/C++ extension |
+| `.vscode/tasks.json`      | **`Build Release`**, **`Build and Run PIPBONG (Release)`** (F5 target) |
+| `.vscode/launch.json`     | Optional **`Debug PIPBONG (Release)`** (CodeLLDB) — breakpoints only; daily F5 uses the task |
 | `.vscode/settings.json`   | **CMake Tools fully off** for daily workflow; `C_Cpp.default.compileCommands`; Python analysis scoped to open files |
 | `.vscode/c_cpp_properties.json` | MSVC C++17 IntelliSense (`compile_commands.json` when generated) |
 | `.vscode/extensions.json` | Recommend **C/C++** + **CMake Tools** (optional); discourage C# Dev Kit, `twxs.cmake` |
@@ -216,18 +216,30 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 3. Confirm full CMake-off keys in `.vscode/settings.json` (see `.cursor/rules/ide-build-workflow.mdc`).
 4. **Do not** click CMake status-bar **[Configure]** / **[Build]**.
 5. `.\scripts\build-release.ps1` — expect ~3 s (no changes) or ~5–15 s (one `.cpp`).
-6. F5 with **Run PIPBONG (Release)**; if Qt DLL error, run `.\scripts\deploy-qt.ps1` once.
+6. F5 with **Build and Run PIPBONG (Release)** (terminal shows `Started PIPBONG.exe`); if Qt DLL error, run `.\scripts\deploy-qt.ps1` once.
+
+#### F5 hangs after Build Release / blank terminal (CodeLLDB)
+
+**Symptom:** Build finishes quickly (`OK: build\Release\PIPBONG.exe`), then the terminal stays blank for many seconds before the window appears. Running `dist/PIPBONG/PIPBONG.exe` or `build/Release/PIPBONG.exe` directly is fast.
+
+**Cause:** F5 used **Debug: Start Debugging** with CodeLLDB (`lldb` launch) — debugger attach/symbol load after the build, not a slow app.
+
+**Fix:**
+
+1. `.\scripts\fix-pipbong-cursor-f5.ps1` — F5 runs task **Build and Run PIPBONG (Release)** (`Start-Process`, no debugger) for workspace `Sbm1.0` only.
+2. **Developer: Reload Window**.
+3. F5 should print `Started PIPBONG.exe` and open immediately after the build.
+4. Breakpoints: Run and Debug → **Debug PIPBONG (Release)** (optional; slower).
 
 #### F5 shows “CMake: Run Without Debugging” / Qt platform plugin error (dual Cursor)
 
-**Symptom:** F5 runs **CMake: Run Without Debugging** instead of **Run PIPBONG (Release)**; MSVC dialog: *no Qt platform plugin could be initialized* on `build\Debug\Qt6Cored.dll`. Often appears after using **CMake Tools + F5** in another Cursor window — CMake hijacks F5 globally; Debug exe has no deployed Qt plugins (this repo’s daily path is **Release** only).
+**Symptom:** F5 runs **CMake: Run Without Debugging** instead of the build-and-run task; MSVC dialog: *no Qt platform plugin could be initialized* on `build\Debug\Qt6Cored.dll`. Often appears after using **CMake Tools + F5** in another Cursor window — CMake hijacks F5 globally; Debug exe has no deployed Qt plugins (this repo’s daily path is **Release** only).
 
 **Fix (PIPBONG window only — other projects stay independent):**
 
-1. `.\scripts\fix-pipbong-cursor-f5.ps1` — F5 uses `workspaceFolderBasename == 'Sbm1.0'` (works from terminal/explorer; **not** `resourceDirname`, which only matches when a file editor is focused). Unbinds system **Debug: Start Debugging** and **Select debugger** for this workspace.
+1. `.\scripts\fix-pipbong-cursor-f5.ps1` — same as above (unbinds Debug: Start Debugging for this workspace).
 2. **Developer: Reload Window** in the **Sbm1.0** Cursor window.
-3. Run and Debug dropdown → **Run PIPBONG (Release)**; F5 should build Release then run `build/Release/PIPBONG.exe`.
-4. Do **not** use `build/Debug/` for daily runs. If needed: `.\scripts\deploy-qt.ps1` once for Release DLLs.
+3. Do **not** use `build/Debug/` for daily runs. If needed: `.\scripts\deploy-qt.ps1` once for Release DLLs.
 
 `recover-ide-build.ps1` also runs `fix-pipbong-cursor-f5.ps1`.
 
@@ -357,7 +369,7 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── build-release.ps1      # canonical incremental Release build (IDE + AI task close)
 │   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
 │   ├── recover-ide-build.ps1  # one-click IDE build recovery (lock, processes, .vscode restore, F5 fix)
-│   ├── fix-pipbong-cursor-f5.ps1  # PIPBONG-only F5 -> launch.json (unbind CMake F5)
+│   ├── fix-pipbong-cursor-f5.ps1  # PIPBONG-only F5 -> Build and Run task (no debugger)
 │   ├── sync-update-log.py     # optional §11 → per-version draft (grouping is manual)
 │   ├── regroup-update-log.py  # merge existing update_log into patch-decade blocks
 │   ├── deploy-qt.ps1          # Qt + vcpkg runtime DLLs beside build/Release
@@ -366,7 +378,7 @@ Sbm1.0/                        # repo root (local workspace)
 │   └── fetch-poe2db-ko-names.py  # regenerate EconomyNameKoData.inc
 ├── .vscode/                   # tracked IDE workflow — tasks, launch, settings (see §3.1)
 │   ├── tasks.json             # Ctrl+Shift+B → build-release.ps1
-│   ├── launch.json            # F5 → Run PIPBONG (Release)
+│   ├── launch.json            # optional Debug PIPBONG (Release); daily F5 uses task
 │   ├── settings.json          # cmake.enabled: false
 │   └── extensions.json
 ├── .cursor/rules/             # always-applied Cursor agent rules
@@ -894,7 +906,8 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 | Layer       | Rule                                                                                         |
 | ----------- | -------------------------------------------------------------------------------------------- |
 | Build       | **Ctrl+Shift+B** / `빌드.bat` / `.\scripts\build-release.ps1` only                           |
-| Run         | `launch.json` **`Run PIPBONG (Release)`** with `preLaunchTask` **`Build Release`**           |
+| Run         | F5 → task **`Build and Run PIPBONG (Release)`** (`build-and-run.ps1`, no debugger)           |
+| Optional debug | `launch.json` **`Debug PIPBONG (Release)`** (CodeLLDB) — not daily F5                     |
 | CMake Tools | Fully off in `.vscode/settings.json` — see §3.1                                              |
 | Recovery    | `.\scripts\recover-ide-build.ps1` + Reload Window                                            |
 | Git         | Four `.vscode/*` files whitelisted in `.gitignore` — never delete from repo                  |
@@ -1012,6 +1025,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.81] - 2026-07-10
+
+### Fixed
+
+- F5 no longer waits many seconds after Build Release with a blank terminal: daily F5 runs task **Build and Run PIPBONG (Release)** (`Start-Process`, no CodeLLDB); `fix-pipbong-cursor-f5.ps1` rebinds F5 for workspace `Sbm1.0`; optional breakpoints use **Debug PIPBONG (Release)** only (`.vscode/launch.json`, AGENTS.md §3.1, `ide-build-workflow.mdc`).
 
 ## [0.8.80] - 2026-07-10
 
@@ -3431,4 +3450,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.80._
+_Last consolidated: 2026-07-10. Current application version: 0.8.81._

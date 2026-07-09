@@ -12,7 +12,7 @@ alwaysApply: true
 | Action | How |
 |--------|-----|
 | **Build** | **Ctrl+Shift+B**, repo-root `빌드.bat`, or `.\scripts\build-release.ps1` |
-| **Run (F5)** | Launch config **`Run PIPBONG (Release)`** → `preLaunchTask`: **`Build Release`** |
+| **Run (F5)** | Task **`Build and Run PIPBONG (Release)`** → `scripts/build-and-run.ps1` (no debugger) |
 | **Output** | `build/Release/PIPBONG.exe` (cwd `build/Release/`) |
 | **First configure** | `build-release.ps1` runs `cmake --preset default` **only** when `build/CMakeCache.txt` is missing |
 | **Qt DLLs** | `.\scripts\deploy-qt.ps1` once when runtime DLLs missing — not every incremental link |
@@ -25,7 +25,7 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 | File | Role |
 |------|------|
 | `.vscode/tasks.json` | Default build task **`Build Release`** → `scripts/build-release.ps1` |
-| `.vscode/launch.json` | **`Run PIPBONG (Release)`** — `cppvsdbg`, Release exe, `preLaunchTask`: `Build Release` |
+| `.vscode/launch.json` | Optional **`Debug PIPBONG (Release)`** (CodeLLDB) — breakpoints only; daily F5 uses the task |
 | `.vscode/settings.json` | **CMake Tools fully off** — see required keys below |
 | `.vscode/extensions.json` | `unwantedRecommendations`: `ms-vscode.cmake-tools`, C# Dev Kit, `twxs.cmake` |
 
@@ -52,11 +52,11 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 
 ## `tasks.json` / `launch.json` invariants
 
-- Task label: **`Build Release`** (must match `preLaunchTask` in launch.json).
-- Launch program: **`${workspaceFolder}/build/Release/PIPBONG.exe`**.
-- Launch cwd: **`${workspaceFolder}/build/Release`**.
+- Default build task: **`Build Release`** → `scripts/build-release.ps1`.
+- Daily F5: keybinding runs task **`Build and Run PIPBONG (Release)`** (`build-and-run.ps1` → `Start-Process`) — **not** CodeLLDB / `Debug: Start Debugging` (debugger attach after build is multi-second delay).
+- Optional debug: `launch.json` **`Debug PIPBONG (Release)`** (`lldb`, `preLaunchTask`: **Build Release**).
 - **Never** use launch `type: "cmake"` or `preLaunchTask: "CMake: build …"`.
-- **Never** use placeholder `program` paths (`<your program>`) or Debug as the only F5 target for daily work.
+- **Never** use placeholder `program` paths (`<your program>`) or make debugger the only F5 path for daily work.
 
 ## Anti-patterns (known failures — do not reintroduce)
 
@@ -67,6 +67,7 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 | **"A CMake task is already running"** / build exit **-1** | Parallel CMake Tools tasks; status-bar **[Build]** / **[Configure]** clicked while another runs |
 | **549+ Problems** / bogus IntelliSense | Separate **`build-clangd/`** tree — keep excluded; use **`build/`** only |
 | F5 fails / wrong exe | `launch.json` placeholder or Debug path without deploy |
+| Build OK then long blank wait before window | F5 used CodeLLDB/`Debug: Start Debugging` instead of **Build and Run** task — run `fix-pipbong-cursor-f5.ps1` |
 | Slow every link | Re-enabling per-link `windeployqt` — dev preset uses `PIPBONG_SKIP_WINDEPLOY=ON` |
 | AI runs `cmake --preset` every task | Full reconfigure + vcpkg manifest pass — use incremental `build-release.ps1` only |
 
@@ -76,7 +77,7 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 2. **Developer: Reload Window** in Cursor.
 3. Confirm **`cmake.enabled`: `false`** and full CMake-off keys in `.vscode/settings.json`.
 4. **Do not** click CMake status-bar **[Configure]** — run `.\scripts\build-release.ps1` or Ctrl+Shift+B.
-5. Verify: incremental build ~3–15 s; F5 **Run PIPBONG (Release)**; exe runs from `build/Release/`.
+5. Verify: incremental build ~3–15 s; F5 starts exe quickly via **Build and Run** (terminal shows `Started PIPBONG.exe`); no long blank wait after build.
 6. If DLL missing at runtime: `.\scripts\deploy-qt.ps1` once.
 
 Manual equivalent: `git checkout -- .vscode/` + kill cmake/vcpkg + reload window.

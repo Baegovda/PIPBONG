@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run PIPBONG (Release)",
+            "name": "Debug PIPBONG (Release)",
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build/Release/PIPBONG.exe",

@@ -1,4 +1,5 @@
-# PIPBONG workspace: Ctrl+Shift+B = build (not Cursor browser). F5 uses launch.json (standard).
+# PIPBONG workspace: F5 = build+run task (no debugger). Ctrl+Shift+B = build only.
+# CodeLLDB attach on F5 was multi-second delay after Build Release finished; dist exe is fast.
 $ErrorActionPreference = "Stop"
 
 $whenWorkspace = "workspaceFolder =~ /Sbm1\.0/i"
@@ -12,6 +13,14 @@ if (-not (Test-Path $cursorUser)) {
 }
 
 $desired = @(
+  @{ key = "f5"; command = "-workbench.action.debug.start"; when = $whenWorkspace },
+  @{ key = "f5"; command = "-workbench.action.debug.selectandstart"; when = $whenWorkspace },
+  @{
+    key     = "f5"
+    command = "workbench.action.tasks.runTask"
+    when    = $whenWorkspace
+    args    = "Build and Run PIPBONG (Release)"
+  },
   @{ key = "ctrl+shift+b"; command = "-glass.openBrowserTab"; when = $whenWorkspace },
   @{ key = "ctrl+shift+b"; command = "workbench.action.tasks.build"; when = $whenWorkspace }
 )
@@ -43,18 +52,22 @@ function Binding-Exists {
 }
 
 $existing = @(Read-KeybindingsArray -Path $keybindingsPath)
-# Remove old PIPBONG F5/Ctrl+F5 task overrides; keep f3/f4 and other workspaces untouched.
+# Remove old PIPBONG F5/Ctrl+F5/Ctrl+Shift+B overrides for this workspace only.
 $existing = @($existing | Where-Object {
     -not (($_.key -in @('f5', 'ctrl+f5', 'ctrl+shift+b')) -and ($null -ne $_.when -and $_.when -like "*Sbm1.0*"))
 })
 
 foreach ($entry in $desired) {
     if (-not (Binding-Exists -List $existing -Key $entry.key -Command $entry.command -When $entry.when)) {
-        $existing += [pscustomobject]@{
+        $obj = [ordered]@{
             key     = $entry.key
             command = $entry.command
             when    = $entry.when
         }
+        if ($entry.ContainsKey('args') -and $null -ne $entry.args) {
+            $obj.args = $entry.args
+        }
+        $existing += [pscustomobject]$obj
     }
 }
 
@@ -62,6 +75,7 @@ $out = ($existing | ConvertTo-Json -Depth 4)
 Set-Content -Path $keybindingsPath -Value $out -Encoding UTF8
 
 Write-Host "Updated Cursor keybindings ($keybindingsPath)" -ForegroundColor Green
-Write-Host "  F5 -> launch.json Run PIPBONG (Release) [standard Debug: Start Debugging]" -ForegroundColor Cyan
+Write-Host "  F5 -> task Build and Run PIPBONG (Release) (no debugger; Start-Process)" -ForegroundColor Cyan
 Write-Host "  Ctrl+Shift+B -> Build Release (glass browser disabled in Sbm1.0)" -ForegroundColor Cyan
+Write-Host "  Optional debug: Run and Debug -> Debug PIPBONG (Release) (CodeLLDB)" -ForegroundColor Cyan
 Write-Host "  Reload Window, then F5." -ForegroundColor Cyan
