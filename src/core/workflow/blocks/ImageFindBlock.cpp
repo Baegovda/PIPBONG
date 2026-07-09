@@ -76,7 +76,9 @@ std::string resolveTemplatePath(const std::string& templatePath, const std::stri
 int countDistinctMatchInstances(const std::vector<MatchResult>& matches,
                                 SearchArea searchArea,
                                 const CaptureRegion& customRegion,
-                                const PercentRegion& percentRegion) {
+                                const PercentRegion& percentRegion,
+                                int haystackWidth,
+                                int haystackHeight) {
     std::vector<cv::Rect> physicalRects;
     physicalRects.reserve(matches.size());
     for (const MatchResult& match : matches) {
@@ -84,7 +86,7 @@ int countDistinctMatchInstances(const std::vector<MatchResult>& matches,
             continue;
         }
         const cv::Point physicalTopLeft = ScreenCapture::haystackTopLeftToPhysical(
-            searchArea, customRegion, percentRegion, match.location);
+            searchArea, customRegion, percentRegion, match.location, haystackWidth, haystackHeight);
         const cv::Rect physicalRect(physicalTopLeft.x,
                                       physicalTopLeft.y,
                                       match.matchedSize.width,
@@ -108,7 +110,9 @@ const MatchResult* selectNextTopLeftMatch(const std::vector<MatchResult>& matche
                                           SearchArea searchArea,
                                           const CaptureRegion& customRegion,
                                           const PercentRegion& percentRegion,
-                                          bool enforceConsumedSkip) {
+                                          bool enforceConsumedSkip,
+                                          int haystackWidth,
+                                          int haystackHeight) {
     for (const MatchResult& candidate : matches) {
         if (!candidate.found) {
             continue;
@@ -117,7 +121,7 @@ const MatchResult* selectNextTopLeftMatch(const std::vector<MatchResult>& matche
             return &candidate;
         }
         const cv::Point physicalTopLeft = ScreenCapture::haystackTopLeftToPhysical(
-            searchArea, customRegion, percentRegion, candidate.location);
+            searchArea, customRegion, percentRegion, candidate.location, haystackWidth, haystackHeight);
         if (!ctx.isMatchRegionConsumed(physicalTopLeft, candidate.matchedSize)) {
             return &candidate;
         }
@@ -205,10 +209,22 @@ ImageFindSelection trySelectImageFindMatch(const cv::Mat& haystack,
 
     const bool enforceConsumedSkip =
         ctx.hasConsumedMatchRegions()
-        && countDistinctMatchInstances(selection.allMatches, searchArea, customRegion, percentRegion) > 1;
+        && countDistinctMatchInstances(selection.allMatches,
+                                       searchArea,
+                                       customRegion,
+                                       percentRegion,
+                                       haystack.cols,
+                                       haystack.rows)
+               > 1;
 
-    if (const MatchResult* selected = selectNextTopLeftMatch(
-            selection.allMatches, ctx, searchArea, customRegion, percentRegion, enforceConsumedSkip)) {
+    if (const MatchResult* selected = selectNextTopLeftMatch(selection.allMatches,
+                                                             ctx,
+                                                             searchArea,
+                                                             customRegion,
+                                                             percentRegion,
+                                                             enforceConsumedSkip,
+                                                             haystack.cols,
+                                                             haystack.rows)) {
         selection.match = *selected;
         selection.ok = true;
         return selection;
@@ -429,6 +445,8 @@ cv::Point matchCenterToClickPoint(SearchArea searchArea,
                                   const PercentRegion& percentRegion,
                                   const cv::Point& haystackCenter,
                                   HWND targetWindow,
+                                  int haystackWidth = 0,
+                                  int haystackHeight = 0,
                                   cv::Point* screenPointOut = nullptr,
                                   bool* hasScreenPointOut = nullptr) {
     if (hasScreenPointOut) {
@@ -436,46 +454,10 @@ cv::Point matchCenterToClickPoint(SearchArea searchArea,
     }
     cv::Point clickPoint = haystackCenter;
 #ifdef _WIN32
-    int screenX = haystackCenter.x;
-    int screenY = haystackCenter.y;
-
-    switch (searchArea) {
-    case SearchArea::TargetWindow:
-#ifdef _WIN32
-        if (targetWindow) {
-            const ScreenCapture::WindowBounds bounds = ScreenCapture::physicalRectForWindow(targetWindow);
-            if (bounds.valid) {
-                screenX = bounds.x + haystackCenter.x;
-                screenY = bounds.y + haystackCenter.y;
-                if (screenPointOut) {
-                    *screenPointOut = cv::Point(screenX, screenY);
-                }
-                if (hasScreenPointOut) {
-                    *hasScreenPointOut = true;
-                }
-                POINT pt{screenX, screenY};
-                if (ScreenToClient(targetWindow, &pt)) {
-                    return cv::Point(pt.x, pt.y);
-                }
-            }
-        }
-#endif
-        return clickPoint;
-    case SearchArea::CustomRegion:
-        screenX += customRegion.x;
-        screenY += customRegion.y;
-        break;
-    case SearchArea::ScreenPercent: {
-        const CaptureRegion relative = ScreenCapture::resolveWindowPercentRegion(percentRegion);
-        screenX = relative.x + haystackCenter.x;
-        screenY = relative.y + haystackCenter.y;
-        break;
-    }
-    case SearchArea::FullScreen:
-        screenX += GetSystemMetrics(SM_XVIRTUALSCREEN);
-        screenY += GetSystemMetrics(SM_YVIRTUALSCREEN);
-        break;
-    }
+    const cv::Point screenPoint = ScreenCapture::haystackTopLeftToPhysical(
+        searchArea, customRegion, percentRegion, haystackCenter, haystackWidth, haystackHeight);
+    int screenX = screenPoint.x;
+    int screenY = screenPoint.y;
 
     if (targetWindow) {
         POINT pt{screenX, screenY};
@@ -498,6 +480,8 @@ cv::Point matchCenterToClickPoint(SearchArea searchArea,
     (void)customRegion;
     (void)percentRegion;
     (void)targetWindow;
+    (void)haystackWidth;
+    (void)haystackHeight;
 #endif
     return clickPoint;
 }
@@ -508,13 +492,20 @@ void reportImageFindMiss(ExecutionContext& ctx,
                          SearchArea searchArea,
                          const CaptureRegion& customRegion,
                          const PercentRegion& percentRegion,
-                         HWND targetWindow) {
+                         HWND targetWindow,
+                         int haystackWidth,
+                         int haystackHeight) {
     const double peakConfidence = peak.found ? peak.confidence : 0.0;
     cv::Point clientPoint;
     bool hasClientPoint = false;
     if (peak.found) {
-        clientPoint =
-            matchCenterToClickPoint(searchArea, customRegion, percentRegion, peak.center, targetWindow);
+        clientPoint = matchCenterToClickPoint(searchArea,
+                                              customRegion,
+                                              percentRegion,
+                                              peak.center,
+                                              targetWindow,
+                                              haystackWidth,
+                                              haystackHeight);
         hasClientPoint = true;
     }
     ctx.setLastMatchAttempt(matchThreshold, peakConfidence, clientPoint, hasClientPoint);
@@ -544,7 +535,9 @@ void maybeRecordRoiCorrection(ExecutionContext& ctx,
                               const MatchResult& match,
                               SearchArea searchArea,
                               const CaptureRegion& customRegion,
-                              const PercentRegion& percentRegion) {
+                              const PercentRegion& percentRegion,
+                              int haystackWidth,
+                              int haystackHeight) {
     if (!ctx.shouldUseRoiCorrectionForBlock(blockRoiCorrection) || ctx.runLoopNumber() != 1) {
         return;
     }
@@ -553,7 +546,7 @@ void maybeRecordRoiCorrection(ExecutionContext& ctx,
         return;
     }
     const cv::Point physicalTopLeft = ScreenCapture::haystackTopLeftToPhysical(
-        searchArea, customRegion, percentRegion, match.location);
+        searchArea, customRegion, percentRegion, match.location, haystackWidth, haystackHeight);
     CaptureRegion physical;
     physical.x = physicalTopLeft.x;
     physical.y = physicalTopLeft.y;
@@ -596,15 +589,24 @@ BlockResult imageFindSuccessResult(ExecutionContext& ctx,
 
     cv::Point matchScreenPoint;
     bool hasMatchScreenPoint = false;
-    const cv::Point matchPoint =
-        matchCenterToClickPoint(searchArea, customRegion, percentRegion, match.center, targetWindow,
-                                &matchScreenPoint, &hasMatchScreenPoint);
+    const cv::Point matchPoint = matchCenterToClickPoint(searchArea,
+                                                         customRegion,
+                                                         percentRegion,
+                                                         match.center,
+                                                         targetWindow,
+                                                         haystack.cols,
+                                                         haystack.rows,
+                                                         &matchScreenPoint,
+                                                         &hasMatchScreenPoint);
 
     if (consumeRegion) {
-        ctx.consumeMatchRegion(
-            ScreenCapture::haystackTopLeftToPhysical(
-                searchArea, customRegion, percentRegion, match.location),
-            match.matchedSize);
+        ctx.consumeMatchRegion(ScreenCapture::haystackTopLeftToPhysical(searchArea,
+                                                                        customRegion,
+                                                                        percentRegion,
+                                                                        match.location,
+                                                                        haystack.cols,
+                                                                        haystack.rows),
+                               match.matchedSize);
     }
     ctx.setLastMatch(matchPoint, match.confidence, preview, matchThreshold);
     if (hasMatchScreenPoint) {
@@ -647,7 +649,9 @@ BlockResult imageFindSuccessResult(ExecutionContext& ctx,
                              match,
                              searchArea,
                              customRegion,
-                             percentRegion);
+                             percentRegion,
+                             haystack.cols,
+                             haystack.rows);
     ctx.reportProgress(BlockProgressKind::ImageFindSuccess);
     ctx.log(result.message);
     return result;
@@ -657,16 +661,21 @@ void consumeAllSelections(ExecutionContext& ctx,
                           SearchArea searchArea,
                           const CaptureRegion& customRegion,
                           const PercentRegion& percentRegion,
-                          const std::vector<ImageFindSelection>& selections) {
+                          const std::vector<ImageFindSelection>& selections,
+                          int haystackWidth,
+                          int haystackHeight) {
     for (const ImageFindSelection& selection : selections) {
         if (!selection.ok) {
             continue;
         }
         const MatchResult& match = selection.match;
-        ctx.consumeMatchRegion(
-            ScreenCapture::haystackTopLeftToPhysical(
-                searchArea, customRegion, percentRegion, match.location),
-            match.matchedSize);
+        ctx.consumeMatchRegion(ScreenCapture::haystackTopLeftToPhysical(searchArea,
+                                                                        customRegion,
+                                                                        percentRegion,
+                                                                        match.location,
+                                                                        haystackWidth,
+                                                                        haystackHeight),
+                               match.matchedSize);
     }
 }
 
@@ -863,6 +872,8 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         MatchResult bestMissPeak;
         bool anyValidHaystack = false;
         CaptureRegion missReportRegion = pollRegions.front();
+        int missHaystackWidth = 0;
+        int missHaystackHeight = 0;
 
         for (const CaptureRegion& activeRegion : pollRegions) {
             missReportRegion = activeRegion;
@@ -872,6 +883,8 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                 continue;
             }
             anyValidHaystack = true;
+            missHaystackWidth = haystack.cols;
+            missHaystackHeight = haystack.rows;
             const cv::Mat hayGray = ImageMatcher::toGrayscale(haystack);
 
             if (templateMatchMode == ImageFindTemplateMatchMode::Any) {
@@ -920,7 +933,13 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             }
 
             if (allMatched && !selections.empty()) {
-                consumeAllSelections(ctx, runtimeSearchArea, activeRegion, runtimePercentRegion, selections);
+                consumeAllSelections(ctx,
+                                     runtimeSearchArea,
+                                     activeRegion,
+                                     runtimePercentRegion,
+                                     selections,
+                                     haystack.cols,
+                                     haystack.rows);
                 std::string extraSuffix;
                 if (templates.size() > 1) {
                     std::ostringstream details;
@@ -957,7 +976,9 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                             runtimeSearchArea,
                             missReportRegion,
                             runtimePercentRegion,
-                            targetWindow);
+                            targetWindow,
+                            missHaystackWidth,
+                            missHaystackHeight);
         if (imageFindExceededMissLimit(ctx, missAttempts)) {
             accumulateMatchWork();
             BlockResult result = imageFindDetectionFailureResult(ctx);

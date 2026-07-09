@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.77` (from `project(PIPBONG VERSION 0.8.77)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.78` (from `project(PIPBONG VERSION 0.8.78)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1012,6 +1012,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.78] - 2026-07-10
+
+### Fixed
+
+- Mouse jumping outside the game client after ImageFind: client-sized TargetWindow captures (ClientOnly / PrintWindow fallback) were mapped with DWM frame origin, pushing **직전 매칭** clicks into the title bar / outside the window. Mapping now uses `ClientToScreen` when haystack size matches the client; client clicks clamp to client bounds (`ScreenCapture::haystackTopLeftToPhysical`, `ImageFindBlock`, `ClickBlock`, `InputSimulator::clickAtClient`).
 
 ## [0.8.77] - 2026-07-10
 
@@ -3410,4 +3416,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.77._
+_Last consolidated: 2026-07-10. Current application version: 0.8.78._

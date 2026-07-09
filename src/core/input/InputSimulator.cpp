@@ -6,6 +6,7 @@
 #include <windows.h>
 #endif
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <thread>
@@ -820,6 +821,23 @@ void InputSimulator::clickAtClient(HWND hwnd,
                                    KeyModifiers mods) {
     if (!hwnd || !IsWindow(hwnd)) {
         return;
+    }
+
+    // Keep clicks inside the client area so the cursor does not jump outside the game.
+    RECT client{};
+    if (GetClientRect(hwnd, &client)) {
+        const int maxX = (client.right > 0) ? (client.right - 1) : 0;
+        const int maxY = (client.bottom > 0) ? (client.bottom - 1) : 0;
+        if (clientX < 0) {
+            clientX = 0;
+        } else if (clientX > maxX) {
+            clientX = maxX;
+        }
+        if (clientY < 0) {
+            clientY = 0;
+        } else if (clientY > maxY) {
+            clientY = maxY;
+        }
     }
 
     if (action == ClickAction::MoveOnly) {

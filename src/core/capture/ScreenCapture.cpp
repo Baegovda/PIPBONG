@@ -11,6 +11,7 @@
 #endif
 
 #include <algorithm>
+#include <cstdlib>
 
 #ifdef _WIN32
 namespace {
@@ -495,10 +496,38 @@ cv::Mat ScreenCapture::captureSearchAreaForImageFind(SearchArea area,
 cv::Point ScreenCapture::haystackTopLeftToPhysical(SearchArea area,
                                                    const CaptureRegion& custom,
                                                    const PercentRegion& percent,
-                                                   const cv::Point& haystackTopLeft) {
+                                                   const cv::Point& haystackTopLeft,
+                                                   int haystackWidth,
+                                                   int haystackHeight) {
 #ifdef _WIN32
     switch (area) {
     case SearchArea::TargetWindow: {
+        HWND hwnd = targetWindow();
+        if (!hwnd || !IsWindow(hwnd)) {
+            hwnd = findTargetWindow();
+        }
+        // Client-sized haystack (ClientOnly / PrintWindow fallback): origin is client (0,0).
+        // DWM frame origin + client pixels pushes clicks into the title bar / outside the game.
+        if (hwnd && haystackWidth > 0 && haystackHeight > 0) {
+            RECT client{};
+            if (GetClientRect(hwnd, &client)) {
+                const int clientW = client.right - client.left;
+                const int clientH = client.bottom - client.top;
+                const ScreenRect dwm = getTargetWindowScreenRect();
+                const bool looksLikeClient =
+                    clientW > 0 && clientH > 0
+                    && std::abs(haystackWidth - clientW) <= 2
+                    && std::abs(haystackHeight - clientH) <= 2
+                    && (!dwm.valid || std::abs(haystackWidth - dwm.width) > 2
+                        || std::abs(haystackHeight - dwm.height) > 2);
+                if (looksLikeClient) {
+                    POINT pt{haystackTopLeft.x, haystackTopLeft.y};
+                    if (ClientToScreen(hwnd, &pt)) {
+                        return cv::Point(pt.x, pt.y);
+                    }
+                }
+            }
+        }
         const ScreenRect target = getTargetWindowScreenRect();
         if (target.valid) {
             return cv::Point(target.x + haystackTopLeft.x, target.y + haystackTopLeft.y);
@@ -521,6 +550,8 @@ cv::Point ScreenCapture::haystackTopLeftToPhysical(SearchArea area,
     (void)area;
     (void)custom;
     (void)percent;
+    (void)haystackWidth;
+    (void)haystackHeight;
 #endif
     return haystackTopLeft;
 }

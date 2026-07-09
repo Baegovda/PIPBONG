@@ -284,7 +284,15 @@ BlockResult ClickBlock::execute(ExecutionContext& ctx) {
             haveScreen = true;
         }
         if (haveScreen) {
-            InputSimulator::clickAtMatchScreen(screenX, screenY, button, action, count, modifiers);
+            // Prefer client path so out-of-bounds screen points from bad mapping are clamped.
+            HWND hwnd = ctx.targetWindow();
+            int clientX = 0;
+            int clientY = 0;
+            if (hwnd && InputSimulator::screenToClient(hwnd, screenX, screenY, clientX, clientY)) {
+                InputSimulator::clickAtClient(hwnd, clientX, clientY, button, action, count, modifiers);
+            } else {
+                InputSimulator::clickAtMatchScreen(screenX, screenY, button, action, count, modifiers);
+            }
         } else {
             InputSimulator::clickAt(clickX, clickY, button, action, count, modifiers);
         }

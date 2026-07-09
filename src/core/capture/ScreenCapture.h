@@ -69,10 +69,14 @@ public:
                                                  const PercentRegion& percent = {});
 
     /// Maps haystack-relative match top-left to physical screen pixels for the given search ROI.
+    /// For TargetWindow, pass haystack width/height so client-sized captures (PrintWindow /
+    /// ClientOnly) map via ClientToScreen instead of DWM frame origin (avoids clicks outside the game).
     static cv::Point haystackTopLeftToPhysical(SearchArea area,
                                              const CaptureRegion& custom,
                                              const PercentRegion& percent,
-                                             const cv::Point& haystackTopLeft);
+                                             const cv::Point& haystackTopLeft,
+                                             int haystackWidth = 0,
+                                             int haystackHeight = 0);
 
     /// Physical screen rectangle for the search ROI (Win32 pixel coordinates).
     static bool searchAreaPhysicalRect(SearchArea area,
