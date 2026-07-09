@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.79` (from `project(PIPBONG VERSION 0.8.79)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.80` (from `project(PIPBONG VERSION 0.8.80)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1012,6 +1012,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.80] - 2026-07-10
+
+### Fixed
+
+- Profile list icons no longer reset to the PIPBONG default after settings saves or restarts: `saveActiveProfileSettings` / `ProfileManager::saveSettings` preserve `linkedTargetProcessPath`; window-pick path updates keep an existing exe path when lookup fails; live target-window details re-persist the process path when missing (`MainWindow`, `ProfileManager`).
 
 ## [0.8.79] - 2026-07-10
 
@@ -3425,4 +3431,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.79._
+_Last consolidated: 2026-07-10. Current application version: 0.8.80._

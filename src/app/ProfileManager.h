@@ -46,7 +46,12 @@ public:
     bool isDefaultProfile(const QString& id) const { return id == m_defaultProfileId; }
 
     ProgramSettings::ProfileSettings loadSettings(const QString& id) const;
-    bool saveSettings(const QString& id, const ProgramSettings::ProfileSettings& settings) const;
+    /// When @p replaceLinkedProcessPath is false (default), an empty
+    /// linkedTargetProcessPath in @p settings keeps any previously saved path
+    /// (QSettings snapshots omit that field). Pass true to clear or overwrite.
+    bool saveSettings(const QString& id,
+                      const ProgramSettings::ProfileSettings& settings,
+                      bool replaceLinkedProcessPath = false) const;
 
     /// Resolves the profile whose linked target-window title best matches the foreground title.
     /// Returns the default profile when nothing matches or the title is empty.

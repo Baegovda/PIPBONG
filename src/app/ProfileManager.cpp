@@ -141,7 +141,7 @@ bool ProfileManager::setTargetWindowTitle(const QString& id, const QString& titl
     if (effectiveTitle.isEmpty() && id != m_defaultProfileId) {
         ProgramSettings::ProfileSettings settings = loadSettings(id);
         settings.linkedTargetProcessPath.clear();
-        saveSettings(id, settings);
+        saveSettings(id, settings, true);
     }
     return true;
 }
@@ -164,8 +164,17 @@ bool ProfileManager::updateProfileTargetBinding(const QString& id,
     }
     profile->targetWindowTitle = title.trimmed();
     ProgramSettings::ProfileSettings settings = loadSettings(id);
-    settings.linkedTargetProcessPath = processPath;
-    return saveSettings(id, settings);
+    const QString trimmedPath = processPath.trimmed();
+    if (!trimmedPath.isEmpty()) {
+        settings.linkedTargetProcessPath = trimmedPath;
+        return saveSettings(id, settings, true);
+    }
+    if (profile->targetWindowTitle.isEmpty()) {
+        settings.linkedTargetProcessPath.clear();
+        return saveSettings(id, settings, true);
+    }
+    // Title still set but path lookup failed — keep previously saved exe path.
+    return saveSettings(id, settings, false);
 }
 
 void ProfileManager::setProfileTargetWindowTitleInMemory(const QString& id, const QString& title) {
@@ -320,16 +329,24 @@ ProgramSettings::ProfileSettings ProfileManager::loadSettings(const QString& id)
 }
 
 bool ProfileManager::saveSettings(const QString& id,
-                                  const ProgramSettings::ProfileSettings& settings) const {
+                                  const ProgramSettings::ProfileSettings& settings,
+                                  bool replaceLinkedProcessPath) const {
     QDir().mkpath(profileDirectory(id));
+    ProgramSettings::ProfileSettings toWrite = settings;
+    // Callers that snapshot QSettings-backed options often omit the exe path.
+    // Preserve a previously saved linkedTargetProcessPath unless the caller
+    // explicitly replaces/clears it (window pick, clear target title).
+    if (!replaceLinkedProcessPath && toWrite.linkedTargetProcessPath.isEmpty()) {
+        toWrite.linkedTargetProcessPath = loadSettings(id).linkedTargetProcessPath;
+    }
     QJsonObject root;
     root.insert(QStringLiteral("version"), 1);
-    root.insert(QStringLiteral("autoSelectRunningFeature"), settings.autoSelectRunningFeature);
-    root.insert(QStringLiteral("pinTargetWindowToScreenCenter"), settings.pinTargetWindowToScreenCenter);
-    root.insert(QStringLiteral("imageFindCaptureMode"), static_cast<int>(settings.imageFindCaptureMode));
-    root.insert(QStringLiteral("runWithoutTargetWindow"), settings.runWithoutTargetWindow);
-    if (!settings.linkedTargetProcessPath.isEmpty()) {
-        root.insert(QStringLiteral("linkedTargetProcessPath"), settings.linkedTargetProcessPath);
+    root.insert(QStringLiteral("autoSelectRunningFeature"), toWrite.autoSelectRunningFeature);
+    root.insert(QStringLiteral("pinTargetWindowToScreenCenter"), toWrite.pinTargetWindowToScreenCenter);
+    root.insert(QStringLiteral("imageFindCaptureMode"), static_cast<int>(toWrite.imageFindCaptureMode));
+    root.insert(QStringLiteral("runWithoutTargetWindow"), toWrite.runWithoutTargetWindow);
+    if (!toWrite.linkedTargetProcessPath.isEmpty()) {
+        root.insert(QStringLiteral("linkedTargetProcessPath"), toWrite.linkedTargetProcessPath);
     }
     QFile file(QDir(profileDirectory(id)).filePath(QString::fromLatin1(kSettingsFileName)));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {

@@ -3948,8 +3948,12 @@ void MainWindow::saveActiveProfileSettings() {
     if (!m_profileManager) {
         return;
     }
-    m_profileManager->saveSettings(m_profileManager->activeProfileId(),
-                                   ProgramSettings::profileSettings());
+    // ProgramSettings::profileSettings() does not carry linkedTargetProcessPath
+    // (file-only). Preserve the stored exe path so profile icons do not reset.
+    const QString profileId = m_profileManager->activeProfileId();
+    ProgramSettings::ProfileSettings settings = ProgramSettings::profileSettings();
+    settings.linkedTargetProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
+    m_profileManager->saveSettings(profileId, settings);
 }
 
 void MainWindow::loadActiveProfile(bool quiet) {
@@ -4406,6 +4410,18 @@ void MainWindow::updateTargetWindowDetails() {
         }
     } else {
         monitorText = tr("알 수 없음");
+    }
+
+    // Persist exe path once resolved so profile list icons survive settings saves
+    // and restarts (even if an earlier save wiped linkedTargetProcessPath).
+    if (m_profileManager && !processPath.isEmpty() && !isActiveDefaultProfile()) {
+        const QString profileId = m_profileManager->activeProfileId();
+        const QString storedPath = m_profileManager->linkedTargetProcessPath(profileId);
+        if (storedPath.compare(processPath, Qt::CaseInsensitive) != 0) {
+            m_profileManager->updateProfileTargetBinding(profileId, savedTitle.isEmpty() ? title : savedTitle,
+                                                         processPath);
+            refreshProfileList();
+        }
     }
 
     TargetWindowDetailData data;
