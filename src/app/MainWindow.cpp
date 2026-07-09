@@ -2667,10 +2667,7 @@ void MainWindow::onPickTargetWindow() {
         }
 
         const QString title = QString::fromStdWString(result.title);
-        ScreenCapture::setTargetWindowTitle(result.title);
-        ScreenCapture::setTargetWindow(result.hwnd);
-        m_project->setTargetWindowTitle(title.toStdString());
-        scheduleAutoSave();
+        commitActiveProfileTargetWindow(result.hwnd, title);
         appendLog(tr("창 지정: %1").arg(title.isEmpty() ? tr("(제목 없음)") : title));
         showTransientStatus(tr("대상 창을 지정했습니다."), 3000);
         updateTargetWindowDetails();
@@ -2797,10 +2794,7 @@ void MainWindow::onPickTargetWindowFromList() {
 
     const QString title = currentItem->data(Qt::UserRole + 1).toString();
     const HWND selectedHwnd = hwnd;
-    ScreenCapture::setTargetWindowTitle(title.toStdWString());
-    ScreenCapture::setTargetWindow(selectedHwnd);
-    m_project->setTargetWindowTitle(title.toStdString());
-    scheduleAutoSave();
+    commitActiveProfileTargetWindow(selectedHwnd, title);
     appendLog(tr("창 지정: %1").arg(title.isEmpty() ? tr("(제목 없음)") : title));
     showTransientStatus(tr("대상 창을 목록에서 지정했습니다."), 3000);
     updateTargetWindowDetails();
@@ -3158,13 +3152,23 @@ void MainWindow::refreshProfileList() {
 #ifdef _WIN32
     const QVector<WindowListEntry> windows = collectWindowListEntries();
     const auto resolveProfileIcon = [this, &defaultId, &windows](const ProfileManager::Profile& profile) {
-        const QString targetTitle = profile.id == defaultId ? QString() : profile.targetWindowTitle;
+        if (profile.id == defaultId) {
+            return windowIcon();
+        }
+        const QString targetTitle = profile.targetWindowTitle;
         if (!targetTitle.isEmpty()) {
             for (const WindowListEntry& entry : windows) {
                 if (QString::fromStdWString(entry.title).contains(targetTitle, Qt::CaseInsensitive)
                     && !entry.icon.isNull()) {
                     return entry.icon;
                 }
+            }
+        }
+        const QString storedProcessPath = m_profileManager->linkedTargetProcessPath(profile.id);
+        if (!storedProcessPath.isEmpty()) {
+            const QIcon storedIcon = iconForProcessPath(storedProcessPath.toStdWString());
+            if (!storedIcon.isNull()) {
+                return storedIcon;
             }
         }
         return windowIcon();
@@ -3181,9 +3185,17 @@ void MainWindow::refreshProfileList() {
 #endif
         item->setData(Qt::UserRole, profile.id);
         const QString targetTitle = profile.id == defaultId ? QString() : profile.targetWindowTitle;
-        const QString targetTooltip = targetTitle.isEmpty()
-                                          ? tr("대상 창 없음")
-                                          : tr("대상 창: %1").arg(targetTitle);
+        QString targetTooltip;
+        if (targetTitle.isEmpty()) {
+            targetTooltip = tr("대상 창 없음");
+        } else {
+            const QString storedProcessPath = m_profileManager->linkedTargetProcessPath(profile.id);
+            const QString processName =
+                storedProcessPath.isEmpty() ? QString() : QFileInfo(storedProcessPath).fileName();
+            targetTooltip = processName.isEmpty()
+                                ? tr("대상 창: %1").arg(targetTitle)
+                                : tr("대상 창: %1\n프로세스: %2").arg(targetTitle, processName);
+        }
         item->setToolTip(profile.id == defaultId
                              ? tr("전역 기본 프로필\n대상 창 미지정 · 연결된 프로그램이 없을 때 자동 선택")
                              : targetTooltip);
@@ -3327,6 +3339,11 @@ void MainWindow::loadProjectFromFile(const QString& path) {
     syncHotkeys();
     updateTargetWindowDetails();
     updateTargetWindowControlsForActiveProfile();
+    if (m_profileManager) {
+        m_profileManager->setProfileTargetWindowTitleInMemory(
+            m_profileManager->activeProfileId(),
+            QString::fromStdString(m_project->targetWindowTitle()));
+    }
 
     QSettings settings;
     settings.setValue(QStringLiteral("project/lastFile"), m_projectFilePath);
@@ -3361,6 +3378,30 @@ bool MainWindow::isActiveDefaultProfile() const {
     return m_profileManager
            && m_profileManager->activeProfileId() == m_profileManager->defaultProfileId();
 }
+
+#ifdef _WIN32
+void MainWindow::commitActiveProfileTargetWindow(HWND hwnd, const QString& title) {
+    if (!m_profileManager || !m_project || isActiveDefaultProfile()) {
+        return;
+    }
+
+    QString processPath;
+    if (hwnd && IsWindow(hwnd)) {
+        ScreenCapture::TargetWindowInfo info;
+        if (ScreenCapture::queryWindowInfo(hwnd, info)) {
+            processPath = QString::fromStdWString(info.processPath);
+        }
+    }
+
+    ScreenCapture::setTargetWindowTitle(title.toStdWString());
+    ScreenCapture::setTargetWindow(hwnd);
+    m_project->setTargetWindowTitle(title.toStdString());
+    m_profileManager->updateProfileTargetBinding(m_profileManager->activeProfileId(),
+                                                 title,
+                                                 processPath);
+    scheduleAutoSave();
+}
+#endif
 
 void MainWindow::updateTargetWindowControlsForActiveProfile() {
     const bool lockedDefault = isActiveDefaultProfile();
@@ -3423,7 +3464,13 @@ void MainWindow::updateTargetWindowDetails() {
         if (savedTitle.isEmpty()) {
             m_targetWindowDetailPanel->showMessage(tr("'창 지정'으로 대상 창을 선택하세요."));
         } else {
-            m_targetWindowDetailPanel->showMessage(tr("감지된 창 없음 — '창 지정'으로 다시 선택하세요."));
+            QString processPath;
+            if (m_profileManager) {
+                processPath = m_profileManager->linkedTargetProcessPath(m_profileManager->activeProfileId());
+            }
+            const QString processName =
+                processPath.isEmpty() ? QString() : QFileInfo(processPath).fileName();
+            m_targetWindowDetailPanel->showStoredTargetBinding(savedTitle, processName, processPath);
         }
         return;
     }

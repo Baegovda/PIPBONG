@@ -31,6 +31,9 @@ public:
     void showMessage(const QString& message);
     void showDetails(const TargetWindowDetailData& data);
     void showGlobalDefaultProfile();
+    void showStoredTargetBinding(const QString& title,
+                                 const QString& processName,
+                                 const QString& processPath);
 
 protected:
     void changeEvent(QEvent* event) override;
@@ -38,6 +41,9 @@ protected:
 private:
     void refreshDetailText();
     void refreshGlobalDefaultProfileText();
+    void refreshStoredTargetBindingText(const QString& title,
+                                        const QString& processName,
+                                        const QString& processPath);
     void updateThemeColors();
     void setLabelTextColor(QLabel* label, const QColor& color, int fontSizePx, bool bold) const;
     QColor stateColorFor(const TargetWindowDetailData& data) const;
@@ -52,7 +58,11 @@ private:
     QLabel* m_tertiaryLine = nullptr;
     QToolButton* m_moreButton = nullptr;
     TargetWindowDetailData m_lastDetailData;
+    QString m_storedBindingTitle;
+    QString m_storedBindingProcessName;
+    QString m_storedBindingProcessPath;
     bool m_updatingTheme = false;
     bool m_expandedDetails = false;
     bool m_globalDefaultProfileMode = false;
+    bool m_storedTargetBindingMode = false;
 };

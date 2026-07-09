@@ -258,6 +258,10 @@ void TargetWindowDetailPanel::updateThemeColors() {
 
     if (m_detailsPage->isVisible() && m_globalDefaultProfileMode) {
         refreshGlobalDefaultProfileText();
+    } else if (m_detailsPage->isVisible() && m_storedTargetBindingMode) {
+        refreshStoredTargetBindingText(m_storedBindingTitle,
+                                       m_storedBindingProcessName,
+                                       m_storedBindingProcessPath);
     } else if (m_detailsPage->isVisible() && !m_lastDetailData.hwnd.isEmpty()) {
         refreshDetailText();
     }
@@ -279,6 +283,7 @@ void TargetWindowDetailPanel::changeEvent(QEvent* event) {
 
 void TargetWindowDetailPanel::showMessage(const QString& message) {
     m_globalDefaultProfileMode = false;
+    m_storedTargetBindingMode = false;
     m_messageLabel->setText(message);
     setToolTip({});
     if (auto* stackHost = m_messagePage->parentWidget()) {
@@ -291,6 +296,7 @@ void TargetWindowDetailPanel::showMessage(const QString& message) {
 
 void TargetWindowDetailPanel::showDetails(const TargetWindowDetailData& data) {
     m_globalDefaultProfileMode = false;
+    m_storedTargetBindingMode = false;
     m_lastDetailData = data;
 
     if (auto* stackHost = m_messagePage->parentWidget()) {
@@ -315,6 +321,7 @@ void TargetWindowDetailPanel::showDetails(const TargetWindowDetailData& data) {
 
 void TargetWindowDetailPanel::showGlobalDefaultProfile() {
     m_globalDefaultProfileMode = true;
+    m_storedTargetBindingMode = false;
     m_lastDetailData = {};
 
     if (auto* stackHost = m_messagePage->parentWidget()) {
@@ -359,4 +366,70 @@ void TargetWindowDetailPanel::refreshGlobalDefaultProfileText() {
         + valueSpan(tr("전역"), text));
 
     m_secondaryLine->setText(valueSpan(tr("모든 프로그램에서 동작하며, 대상 창 설정은 변경할 수 없습니다."), muted));
+}
+
+void TargetWindowDetailPanel::showStoredTargetBinding(const QString& title,
+                                                      const QString& processName,
+                                                      const QString& processPath) {
+    m_globalDefaultProfileMode = false;
+    m_storedTargetBindingMode = true;
+    m_lastDetailData = {};
+    m_storedBindingTitle = title;
+    m_storedBindingProcessName = processName;
+    m_storedBindingProcessPath = processPath;
+
+    if (auto* stackHost = m_messagePage->parentWidget()) {
+        if (auto* stackedLayout = qobject_cast<QStackedLayout*>(stackHost->layout())) {
+            stackedLayout->setCurrentWidget(m_detailsPage);
+        }
+    }
+
+    if (m_moreButton) {
+        m_moreButton->setVisible(false);
+        m_moreButton->setChecked(false);
+    }
+    if (m_tertiaryLine) {
+        m_tertiaryLine->setVisible(false);
+    }
+
+    refreshStoredTargetBindingText(title, processName, processPath);
+    updateThemeColors();
+
+    QString panelTooltip = tr("저장된 연결 프로그램입니다. 현재 실행 중인 창이 감지되지 않습니다.");
+    if (!processPath.isEmpty()) {
+        panelTooltip += QStringLiteral("\n") + tr("프로세스 경로: %1").arg(processPath);
+    }
+    setToolTip(panelTooltip);
+}
+
+void TargetWindowDetailPanel::refreshStoredTargetBindingText(const QString& title,
+                                                             const QString& processName,
+                                                             const QString& processPath) {
+    const QPalette pal = palette();
+    const QColor text = pal.color(QPalette::WindowText);
+    const QColor muted = secondaryHintTextColor(pal);
+    const QColor stateColor = text.lightness() < 128 ? QColor(0xff, 0xc1, 0x07) : QColor(0xb8, 0x86, 0x0b);
+
+    const QString displayTitle = title.isEmpty() ? tr("(제목 없음)") : title;
+    const QString displayProcess =
+        processName.isEmpty() ? tr("알 수 없음") : processName;
+
+    m_titleLabel->setText(displayTitle);
+    m_statusLabel->setText(tr("● 미실행"));
+
+    const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
+    m_statusLabel->setStyleSheet(QStringLiteral(
+        "padding: 3px 10px; border-radius: 999px; font-weight: 600; background-color: %1; color: %2;")
+                                     .arg(stateColor.name(), badgeText.name()));
+
+    m_primaryLine->setText(
+        captionSpan(tr("프로세스"), muted) + QLatin1Char(' ')
+        + valueSpan(displayProcess, text) + QStringLiteral(" &nbsp;&middot;&nbsp; ")
+        + captionSpan(tr("연결 제목"), muted) + QLatin1Char(' ')
+        + valueSpan(displayTitle, text));
+
+    m_secondaryLine->setText(
+        valueSpan(tr("현재 실행 중인 창이 감지되지 않습니다. 프로그램을 실행하면 자동으로 연결됩니다."),
+                  muted));
+    Q_UNUSED(processPath);
 }

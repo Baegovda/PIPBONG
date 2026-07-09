@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QString>
+
 /// Program-wide preferences persisted in QSettings (not project JSON).
 class ProgramSettings {
 public:
@@ -13,6 +15,7 @@ public:
         bool pinTargetWindowToScreenCenter = false;
         ImageFindCaptureMode imageFindCaptureMode = ImageFindCaptureMode::Hybrid;
         bool runWithoutTargetWindow = false;
+        QString linkedTargetProcessPath;
     };
 
     static bool autoSelectRunningFeature();

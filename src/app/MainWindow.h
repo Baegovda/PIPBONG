@@ -15,6 +15,10 @@
 #include <memory>
 #include <string>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 class Feature;
 
 class QPixmap;
@@ -194,6 +198,9 @@ private:
                                   BlockListWidget::ExecutionHighlight highlight);
     void updateTargetWindowDetails();
     void updateTargetWindowControlsForActiveProfile();
+#ifdef _WIN32
+    void commitActiveProfileTargetWindow(HWND hwnd, const QString& title);
+#endif
     bool isActiveDefaultProfile() const;
     std::wstring currentTargetWindowTitleW() const;
     void syncTargetWindowTitleToCapture();

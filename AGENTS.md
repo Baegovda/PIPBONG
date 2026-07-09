@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.33` (from `project(PIPBONG VERSION 0.8.33)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.34` (from `project(PIPBONG VERSION 0.8.34)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -352,7 +352,7 @@ Sbm1.0/                        # repo root (local workspace)
 |------|----------|
 | Active profile manifest | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/manifest.json` (`activeProfileId`, `defaultProfileId`, unlimited profile list) |
 | Profile project file | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/project.json` via `ProfileManager` |
-| Profile settings file | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`) |
+| Profile settings file | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`, `linkedTargetProcessPath` for persisted target-program icon when the window is not running) |
 | Templates | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/templates/*.png` |
 | Manual save/open | File menu; last path in `QSettings` key `project/lastFile` |
 | Debounce | 800 ms after edits; also on window close |
@@ -862,6 +862,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.34] - 2026-07-09
+
+### Changed
+
+- Per-profile target-window binding persists across restarts and when the linked program is not running: `linkedTargetProcessPath` in `profile-settings.json` keeps the program icon in the profile list; the target-window panel shows saved title/process with **● 미실행** instead of a blank pick prompt; window pick updates in-memory profile binding immediately (`ProfileManager`, `MainWindow`, `TargetWindowDetailPanel`).
 
 ## [0.8.33] - 2026-07-09
 
