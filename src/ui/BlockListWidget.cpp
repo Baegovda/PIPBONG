@@ -176,7 +176,7 @@ void applyBlockListHeaderResizeModes(QHeaderView* header) {
 void initBlockListColumnHeader(BlockListWidget* table) {
     table->setColumnCount(kColumnCount);
     table->setHorizontalHeaderLabels({QStringLiteral("#"),
-                                    BlockListWidget::tr("미리보기"),
+                                    QStringLiteral("◻"),
                                     BlockListWidget::tr("동작"),
                                     QStringLiteral("요약"),
                                     BlockListWidget::tr("동작 시간"),
@@ -187,6 +187,11 @@ void initBlockListColumnHeader(BlockListWidget* table) {
                                     BlockListWidget::tr("기준/감지"),
                                     BlockListWidget::tr("ROI 보정"),
                                     BlockListWidget::tr("매칭")});
+
+    if (QTableWidgetItem* previewHeader = table->horizontalHeaderItem(kColPreview)) {
+        previewHeader->setToolTip(
+            BlockListWidget::tr("블록 아이콘·썸네일 (클릭하여 편집)"));
+    }
 
     applyBlockListHeaderResizeModes(table->horizontalHeader());
     applyDefaultBlockListColumnWidths(table);

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.44` (from `project(PIPBONG VERSION 0.8.44)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.45` (from `project(PIPBONG VERSION 0.8.45)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -878,6 +878,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.45] - 2026-07-09
+
+### Changed
+
+- Workflow block list preview column header renamed from **미리보기** to minimal **◻** with tooltip **블록 아이콘·썸네일 (클릭하여 편집)** (`BlockListWidget`).
 
 ## [0.8.44] - 2026-07-09
 
