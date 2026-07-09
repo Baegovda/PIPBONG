@@ -3921,10 +3921,28 @@ void MainWindow::refreshProfileList() {
     const QString defaultId = m_profileManager->defaultProfileId();
     const auto& profiles = m_profileManager->profiles();
 #ifdef _WIN32
-    const QVector<WindowListEntry> windows = collectWindowListEntries();
+    bool needsLiveWindowIcons = false;
+    for (const ProfileManager::Profile& profile : profiles) {
+        if (profile.id == defaultId || profile.targetWindowTitle.isEmpty()) {
+            continue;
+        }
+        if (m_profileManager->linkedTargetProcessPath(profile.id).isEmpty()) {
+            needsLiveWindowIcons = true;
+            break;
+        }
+    }
+    const QVector<WindowListEntry> windows =
+        needsLiveWindowIcons ? collectWindowListEntries() : QVector<WindowListEntry>{};
     const auto resolveProfileIcon = [this, &defaultId, &windows](const ProfileManager::Profile& profile) {
         if (profile.id == defaultId) {
             return windowIcon();
+        }
+        const QString storedProcessPath = m_profileManager->linkedTargetProcessPath(profile.id);
+        if (!storedProcessPath.isEmpty()) {
+            const QIcon storedIcon = iconForProcessPath(storedProcessPath.toStdWString());
+            if (!storedIcon.isNull()) {
+                return storedIcon;
+            }
         }
         const QString targetTitle = profile.targetWindowTitle;
         if (!targetTitle.isEmpty()) {
@@ -3933,13 +3951,6 @@ void MainWindow::refreshProfileList() {
                     && !entry.icon.isNull()) {
                     return entry.icon;
                 }
-            }
-        }
-        const QString storedProcessPath = m_profileManager->linkedTargetProcessPath(profile.id);
-        if (!storedProcessPath.isEmpty()) {
-            const QIcon storedIcon = iconForProcessPath(storedProcessPath.toStdWString());
-            if (!storedIcon.isNull()) {
-                return storedIcon;
             }
         }
         return windowIcon();
