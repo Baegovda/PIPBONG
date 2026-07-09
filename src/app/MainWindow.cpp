@@ -2121,7 +2121,7 @@ bool MainWindow::saveFeatureToLibraryFromDrag(const QString& featureId, const QS
     return true;
 }
 
-bool MainWindow::moveFeatureBetweenProfiles(const QString& featureId,
+bool MainWindow::copyFeatureBetweenProfiles(const QString& featureId,
                                             const QString& sourceProfileId,
                                             const QString& targetProfileId,
                                             int insertIndex) {
@@ -2157,8 +2157,8 @@ bool MainWindow::moveFeatureBetweenProfiles(const QString& featureId,
         return false;
     }
 
-    std::unique_ptr<Feature> movedFeature = sourceFeature->duplicateAsNewInstance();
-    if (!movedFeature) {
+    std::unique_ptr<Feature> copiedFeature = sourceFeature->duplicateAsNewInstance();
+    if (!copiedFeature) {
         return false;
     }
 
@@ -2168,19 +2168,19 @@ bool MainWindow::moveFeatureBetweenProfiles(const QString& featureId,
                                                                      sourceProjectDir,
                                                                      targetProjectDir);
     if (!missingTemplates.empty()) {
-        appendLog(tr("프로필 이동 시 템플릿 일부를 복사하지 못했습니다: %1")
+        appendLog(tr("프로필 복사 시 템플릿 일부를 복사하지 못했습니다: %1")
                       .arg(missingTemplates.join(QStringLiteral(", "))),
                   LogLineKind::Warning);
     }
 
-    const QString newFeatureId = QString::fromStdString(movedFeature->id());
+    const QString newFeatureId = QString::fromStdString(copiedFeature->id());
     if (targetProfileId == m_profileManager->activeProfileId()) {
         if (!m_project || !m_featureList) {
             return false;
         }
         const int count = static_cast<int>(m_project->features().size());
         const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
-        m_project->insertFeature(idx, std::move(movedFeature));
+        m_project->insertFeature(idx, std::move(copiedFeature));
         m_featureList->refresh();
         m_featureList->selectFeatureById(newFeatureId);
         syncHotkeys();
@@ -2194,14 +2194,10 @@ bool MainWindow::moveFeatureBetweenProfiles(const QString& featureId,
         }
         const int count = static_cast<int>(targetProject->features().size());
         const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
-        targetProject->insertFeature(idx, std::move(movedFeature));
+        targetProject->insertFeature(idx, std::move(copiedFeature));
         if (!JsonSerializer::saveToFile(*targetProject, targetPath, loadedProjectDir)) {
             return false;
         }
-    }
-
-    if (!removeFeatureFromProfile(sourceProfileId, featureId)) {
-        return false;
     }
 
     return true;
@@ -2317,14 +2313,14 @@ void MainWindow::onFeatureDroppedOnProfile(const QString& targetProfileId, const
     }
     const QString featureName = sourceFeature ? QString::fromStdString(sourceFeature->name()) : payload.id;
 
-    if (!moveFeatureBetweenProfiles(payload.id, payload.profileId, targetProfileId, -1)) {
+    if (!copyFeatureBetweenProfiles(payload.id, payload.profileId, targetProfileId, -1)) {
         QMessageBox::critical(this,
-                              tr("기능 이동 실패"),
-                              tr("기능을 다른 프로필로 옮기지 못했습니다."));
+                              tr("기능 복사 실패"),
+                              tr("기능을 다른 프로필로 복사하지 못했습니다."));
         return;
     }
 
-    showTransientStatus(tr("프로필 '%1'로 기능을 이동했습니다: %2")
+    showTransientStatus(tr("프로필 '%1'로 기능을 복사했습니다: %2")
                             .arg(profileName, featureName),
                         2500);
 }

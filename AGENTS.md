@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.47` (from `project(PIPBONG VERSION 0.8.47)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.48` (from `project(PIPBONG VERSION 0.8.48)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -890,6 +890,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.48] - 2026-07-09
+
+### Changed
+
+- Feature drag from one profile's feature list onto another profile now **copies** the feature into the target profile (with template copy) instead of moving it out of the source; library → profile drag also copies (`MainWindow::copyFeatureBetweenProfiles`, `onFeatureDroppedOnProfile`).
 
 ## [0.8.47] - 2026-07-09
 

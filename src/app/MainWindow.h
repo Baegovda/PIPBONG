@@ -170,7 +170,7 @@ private:
                                      bool refreshListUi = true,
                                      QString* insertedFeatureId = nullptr);
     bool saveFeatureToLibraryFromDrag(const QString& featureId, const QString& profileId);
-    bool moveFeatureBetweenProfiles(const QString& featureId,
+    bool copyFeatureBetweenProfiles(const QString& featureId,
                                     const QString& sourceProfileId,
                                     const QString& targetProfileId,
                                     int insertIndex);
