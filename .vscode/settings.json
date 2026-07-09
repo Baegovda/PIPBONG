@@ -4,8 +4,16 @@
 
     "cmake.enabled": false,
     "cmake.configureOnOpen": false,
+    "cmake.configureOnEdit": false,
+    "cmake.configureWhileEditing": false,
     "cmake.automaticReconfigure": false,
+    "cmake.ignoreCMakeListsChanged": true,
+    "cmake.useCMakePresets": "never",
+    "cmake.buildBeforeRun": false,
+    "cmake.ctest.enabled": false,
+    "cmake.showConfigureWithDebuggerNotification": false,
     "cmake.options.statusBarVisibility": "hidden",
+    "cmake.buildDirectory": "${workspaceFolder}/build",
 
     "files.exclude": {
         "**/build-clangd": true

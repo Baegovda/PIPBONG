@@ -19,7 +19,7 @@ alwaysApply: true
 ## After Every Completed Task
 
 1. Append entries under `[Unreleased]` in **AGENTS.md** section **11. Changelog and Version History** as you implement.
-2. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip build for docs/rules-only tasks. **Then mandatory backup + GitHub release** per **AGENTS.md** §3.6: `git commit` / `git push origin main` and `scripts/create-github-release.ps1`. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
+2. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed (never `cmake --preset` if `build/CMakeCache.txt` exists); skip build for docs/rules-only tasks. **Then mandatory backup + GitHub release** per **AGENTS.md** §3.6: `git commit` / `git push origin main` and `scripts/create-github-release.ps1`. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
 3. Keep diffs minimal; match existing C++ / Qt conventions in surrounding code.
 
 ## References
@@ -28,4 +28,5 @@ alwaysApply: true
 - Changelog + version bump + backup/release: `.cursor/rules/changelog-versioning.mdc`
 - Incremental / release build: `.cursor/rules/build-policy.mdc`
 - IDE build workflow (Ctrl+Shift+B, F5, `.vscode/`, CMake Tools off): `.cursor/rules/ide-build-workflow.mdc`
+- **No full rebuild / vcpkg lock prevention:** `.cursor/rules/no-full-rebuild.mdc`
 - Screen capture overlay (Win32 — do not regress): `.cursor/rules/screen-capture-overlay.mdc`

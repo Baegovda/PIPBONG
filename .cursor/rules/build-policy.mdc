@@ -5,27 +5,29 @@ alwaysApply: true
 
 # Build Policy — Incremental Close-Out Build
 
-**Status:** Project policy (2026-07). At the **end of every completed task** that touched compile inputs, run an **incremental** Release build. CMake/MSVC recompiles **only changed** `.cpp` / headers / touched units — not a full clean rebuild.
+**Status:** Project policy (2026-07). At the **end of every completed task** that touched compile inputs, run an **incremental** Release build. CMake/MSVC recompiles **only changed** `.cpp` / headers / touched units — not a full clean rebuild or vcpkg/qtbase reinstall.
+
+See also: `.cursor/rules/no-full-rebuild.mdc` (hard bans on `cmake --preset` when `build/` exists).
 
 ## Task close (default — required when code changed)
 
 | Do | Don't |
 |----|-------|
-| `cmake --build build --config Release` after version bump / changelog | `cmake --build` mid-implementation unless compile check is needed |
-| Re-use existing `build/` — changed sources only recompile | `cmake --preset default` on every task |
-| Kill `PIPBONG.exe` before link (`LNK1104`) — `scripts/build-release.ps1` does this | Assume exe is fresh without a build |
-| Run `cmake --preset default` only when `build/` is missing, then `--build` | Full clean rebuild unless user asks |
-| Skip close-out build when the task changed **only** docs / `.cursor/rules` / changelog with **no** C++ or `CMakeLists.txt` sources | Run incremental build when code changed |
+| `.\scripts\build-release.ps1` at task close (only path for AI) | `cmake --preset default` when `build/CMakeCache.txt` exists |
+| Re-use existing `build/` — changed sources only recompile | Raw `cmake --build` without `build-release.ps1` (skips lock recovery) |
+| Kill `PIPBONG.exe` before link — `build-release.ps1` does this | Parallel cmake configure (IDE + script) |
+| Run `cmake --preset default` **only** when `build/` is missing | Full clean rebuild unless user explicitly asks |
+| Skip close-out build when task changed **only** docs / `.cursor/rules` / changelog with **no** C++/headers/`CMakeLists.txt` | Run build mid-implementation unless user asks or compile check needed |
 
-**Command (preferred):** `.\scripts\build-release.ps1` from repo root (auto-configure if needed, kill exe, incremental `--build`).
+**Command (mandatory for AI):** `.\scripts\build-release.ps1` from repo root.
 
-**IDE / F5 (mandatory):** Ctrl+Shift+B and F5 use tracked `.vscode/` + `cmake.enabled: false` — see `.cursor/rules/ide-build-workflow.mdc` and AGENTS.md §3.1. **Do not** fix IDE issues by re-enabling CMake Tools configure-on-open.
+**IDE / F5 (mandatory):** Ctrl+Shift+B and F5 use tracked `.vscode/` + CMake Tools off — see `.cursor/rules/ide-build-workflow.mdc` and `no-full-rebuild.mdc`.
 
-Equivalent: `Stop-Process -Name PIPBONG -ErrorAction SilentlyContinue; cmake --build build --config Release`
+**Recovery if build hangs on vcpkg lock:** `.\scripts\recover-ide-build.ps1`
 
 **Dev preset:** `PIPBONG_SKIP_WINDEPLOY=ON` — incremental links skip `windeployqt` (~3 s no-change / ~5–15 s single-file edits). Run `.\scripts\deploy-qt.ps1` once when DLLs beside the exe are missing.
 
-A `CMakeLists.txt` **version bump** reconfigures CMake and regenerates `PipbongVersion.h` — only `Application.cpp` and `UpdateChecker.cpp` recompile (not the whole target).
+A `CMakeLists.txt` **version bump** triggers CMake reconfigure and regenerates `PipbongVersion.h` — expect **only** `Application.cpp` + `UpdateChecker.cpp` to recompile (~seconds–1 min), **not** vcpkg/qtbase rebuild or every translation unit.
 
 ## Version bump close — mandatory backup + GitHub release
 
@@ -34,9 +36,7 @@ A `CMakeLists.txt` **version bump** reconfigures CMake and regenerates `PipbongV
 | Step | Command |
 |------|---------|
 | Backup | `git add` (tracked files; not `build/`) → `git commit` → `git push origin main` on **`Baegovda/PIPBONG`** |
-| Release | `.\scripts\create-github-release.ps1` — runs `package-release.ps1`, uploads `dist/PIPBONG-win64.zip`, tag `vX.Y.Z`, deletes older releases |
-
-Prerequisites: `gh auth login` once. Full procedure: [AGENTS.md §3.6](../../AGENTS.md#36-github-backup-and-release).
+| Release | `.\scripts\create-github-release.ps1` — runs `package-release.ps1` → `build-release.ps1` (incremental) |
 
 **Do not** finish a version-bump task with only local commits or without publishing the matching GitHub Release.
 
@@ -53,6 +53,6 @@ Ship the **ZIP** (exe + `PIPBONGUpdater.exe` + Qt/OpenCV DLLs). Users extract an
 
 | Preset | Purpose |
 |--------|---------|
-| **`default`** | `x64-windows`, `build/`, dynamic DLL linking — **task close and daily dev** |
+| **`default`** | `x64-windows`, `build/`, dynamic DLL linking — **first configure only** |
 
-Full build docs: [AGENTS.md](../../AGENTS.md) — **§3 Build and Run**, **§3.1 IDE workflow**.
+Full build docs: [AGENTS.md](../../AGENTS.md) — **§3 Build and Run**, **§3.1**, **§3.2**.

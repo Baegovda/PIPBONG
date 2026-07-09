@@ -1,0 +1,51 @@
+---
+description: Never trigger full configure/vcpkg rebuild or CMake Tools configure — incremental build only
+alwaysApply: true
+---
+
+# No Full Rebuild (Mandatory — Humans and AI)
+
+**Status:** Policy strengthened 2026-07 after CMake Tools configure + vcpkg lock caused 10–30 minute “full rebuild” waits on small edits.
+
+## Canonical commands (only these)
+
+| Who | Build | First configure (once per machine) | Recovery |
+|-----|-------|-----------------------------------|----------|
+| Human | **Ctrl+Shift+B**, `빌드.bat`, `.\scripts\build-release.ps1` | Automatic inside `build-release.ps1` when `build/CMakeCache.txt` is missing | `.\scripts\recover-ide-build.ps1` |
+| AI task close | `.\scripts\build-release.ps1` only | Same — **never** run `--preset` if `build/` exists | Same recovery script |
+
+**Never** use CMake Tools status-bar **[Configure]** / **[Build]** or F5 with `type: "cmake"`.
+
+## AI agent — hard bans
+
+| Do not | Why |
+|--------|-----|
+| `cmake --preset default` when `build/CMakeCache.txt` exists | Re-runs vcpkg manifest + can block on `vcpkg-running.lock` for 10–30 min |
+| Raw `cmake --build` without `build-release.ps1` | Skips stale-lock recovery; may race CMake Tools |
+| Enable `cmake.enabled` or add CMake Tools tasks/launch configs | Hijacks F5 / open → configure + vcpkg |
+| `cmake --preset` at every task close / version bump | Version bump needs **incremental** `--build` only (~3–15 s) |
+| Parallel `cmake` configure (IDE + terminal + agent) | vcpkg lock deadlock |
+| Create `build-clangd/` or second CMake build trees | Wrong IntelliSense + duplicate configure |
+| “Fix” slow IDE by re-enabling CMake Tools | Restores the failure mode |
+
+## Expected timings (Release, `build/` present)
+
+| Change | Time |
+|--------|------|
+| No source changes | ~3 s |
+| One `.cpp` | ~5–15 s |
+| `CMakeLists.txt` version bump only | CMake reconfigure + `Application.cpp` + `UpdateChecker.cpp` (~seconds–1 min) — **not** full vcpkg/qtbase rebuild |
+
+If a build takes **>2 minutes** with no new vcpkg dependency, **stop** — run `.\scripts\recover-ide-build.ps1`, reload window, use Ctrl+Shift+B only.
+
+## `.vscode/settings.json` invariants
+
+`cmake.enabled: false` plus `configureOnOpen` / `configureOnEdit` / `automaticReconfigure` / `ignoreCMakeListsChanged` / `useCMakePresets: never` / hidden status bar — see tracked `.vscode/settings.json`. **Do not** weaken.
+
+## Key files
+
+- `scripts/build-common.ps1` — stale vcpkg lock + stuck cmake/vcpkg cleanup
+- `scripts/build-release.ps1` — incremental `--target PIPBONG` only
+- `scripts/recover-ide-build.ps1` — human/AI recovery
+- `.cursor/rules/ide-build-workflow.mdc`, `build-policy.mdc`
+- [AGENTS.md](../../AGENTS.md) §3.1, §3.2

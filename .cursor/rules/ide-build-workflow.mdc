@@ -5,7 +5,7 @@ alwaysApply: true
 
 # IDE Build Workflow (Mandatory — Do Not Regress)
 
-**Status:** Verified working on Windows (2026-06). Daily dev and F5 **must** use `scripts/build-release.ps1` via tracked `.vscode/` config — **not** CMake Tools configure/build/launch.
+**Status:** Verified working on Windows (2026-06). Strengthened 2026-07 after CMake Tools + vcpkg lock caused 10–30 min waits. Daily dev and F5 **must** use `scripts/build-release.ps1` via tracked `.vscode/` config — **not** CMake Tools configure/build/launch.
 
 ## Canonical dev path
 
@@ -14,8 +14,9 @@ alwaysApply: true
 | **Build** | **Ctrl+Shift+B**, repo-root `빌드.bat`, or `.\scripts\build-release.ps1` |
 | **Run (F5)** | Launch config **`Run PIPBONG (Release)`** → `preLaunchTask`: **`Build Release`** |
 | **Output** | `build/Release/PIPBONG.exe` (cwd `build/Release/`) |
-| **First configure** | `build-release.ps1` runs `cmake --preset default` only when `build/CMakeCache.txt` is missing |
+| **First configure** | `build-release.ps1` runs `cmake --preset default` **only** when `build/CMakeCache.txt` is missing |
 | **Qt DLLs** | `.\scripts\deploy-qt.ps1` once when runtime DLLs missing — not every incremental link |
+| **Recovery** | `.\scripts\recover-ide-build.ps1` then **Developer: Reload Window** |
 
 ## Required git-tracked files
 
@@ -25,8 +26,8 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 |------|------|
 | `.vscode/tasks.json` | Default build task **`Build Release`** → `scripts/build-release.ps1` |
 | `.vscode/launch.json` | **`Run PIPBONG (Release)`** — `cppvsdbg`, Release exe, `preLaunchTask`: `Build Release` |
-| `.vscode/settings.json` | **`cmake.enabled`: `false`**; block C#/CMake Tools interference |
-| `.vscode/extensions.json` | `unwantedRecommendations`: `ms-vscode.cmake-tools`, C# Dev Kit |
+| `.vscode/settings.json` | **CMake Tools fully off** — see required keys below |
+| `.vscode/extensions.json` | `unwantedRecommendations`: `ms-vscode.cmake-tools`, C# Dev Kit, `twxs.cmake` |
 
 ## `.vscode/settings.json` (required keys)
 
@@ -35,9 +36,17 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
     "dotnet.defaultSolution": "disable",
     "dotnet.autoDetect": "off",
     "cmake.enabled": false,
-    "files.exclude": {
-        "**/build-clangd": true
-    }
+    "cmake.configureOnOpen": false,
+    "cmake.configureOnEdit": false,
+    "cmake.configureWhileEditing": false,
+    "cmake.automaticReconfigure": false,
+    "cmake.ignoreCMakeListsChanged": true,
+    "cmake.useCMakePresets": "never",
+    "cmake.buildBeforeRun": false,
+    "cmake.ctest.enabled": false,
+    "cmake.showConfigureWithDebuggerNotification": false,
+    "cmake.options.statusBarVisibility": "hidden",
+    "files.exclude": { "**/build-clangd": true }
 }
 ```
 
@@ -54,25 +63,29 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 | Symptom | Cause |
 |---------|--------|
 | F5 starts **vcpkg install** / qtbase build (10–30 min) | CMake Tools **configure** on open/F5; `cmake.configureOnOpen` / `type: "cmake"` launch |
+| **`vcpkg-running.lock` waiting…** in output | Parallel CMake Tools configure + `cmake --build`; stale lock |
 | **"A CMake task is already running"** / build exit **-1** | Parallel CMake Tools tasks; status-bar **[Build]** / **[Configure]** clicked while another runs |
 | **549+ Problems** / bogus IntelliSense | Separate **`build-clangd/`** tree — keep excluded; use **`build/`** only |
 | F5 fails / wrong exe | `launch.json` placeholder or Debug path without deploy |
 | Slow every link | Re-enabling per-link `windeployqt` — dev preset uses `PIPBONG_SKIP_WINDEPLOY=ON` |
+| AI runs `cmake --preset` every task | Full reconfigure + vcpkg manifest pass — use incremental `build-release.ps1` only |
 
 ## Recovery procedure (when IDE build breaks)
 
-1. **Restore `.vscode/`** from git: `git checkout -- .vscode/` (or recreate from this rule + [AGENTS.md](../../AGENTS.md) §3.1).
-2. Confirm **`cmake.enabled`: `false`** in `.vscode/settings.json`.
-3. **Developer: Reload Window** in Cursor (clears stuck CMake Tools state).
-4. Kill stuck processes if needed: `Stop-Process -Name cmake,msbuild -Force -ErrorAction SilentlyContinue`.
-5. **Do not** click CMake status-bar **[Configure]** — run `.\scripts\build-release.ps1` instead.
-6. Verify: incremental build OK; launch **Run PIPBONG (Release)**; exe runs from `build/Release/`.
-7. If DLL missing at runtime: `.\scripts\deploy-qt.ps1` once.
+1. `.\scripts\recover-ide-build.ps1` (kills stuck cmake/vcpkg/msbuild, clears stale lock, restores `.vscode/` from git).
+2. **Developer: Reload Window** in Cursor.
+3. Confirm **`cmake.enabled`: `false`** and full CMake-off keys in `.vscode/settings.json`.
+4. **Do not** click CMake status-bar **[Configure]** — run `.\scripts\build-release.ps1` or Ctrl+Shift+B.
+5. Verify: incremental build ~3–15 s; F5 **Run PIPBONG (Release)**; exe runs from `build/Release/`.
+6. If DLL missing at runtime: `.\scripts\deploy-qt.ps1` once.
+
+Manual equivalent: `git checkout -- .vscode/` + kill cmake/vcpkg + reload window.
 
 ## AI / agent rules
 
 - **Do not** “fix” IDE issues by re-enabling CMake Tools configure-on-open or adding `CMake: *` launch configs.
 - **Do not** remove `.vscode` from git tracking or overwrite `tasks.json` with CMake-generated build tasks.
-- When user reports CMake Tools popups or exit -1: restore this workflow first; see recovery procedure above.
+- **Do not** run `cmake --preset default` when `build/CMakeCache.txt` exists — see `.cursor/rules/no-full-rebuild.mdc`.
+- When user reports CMake Tools popups, vcpkg lock, or 10–30 min builds: run recovery script first.
 
-Full handover: [AGENTS.md](../../AGENTS.md) — **§3.1 IDE / Cursor build workflow** and **§8.8**.
+Full handover: [AGENTS.md](../../AGENTS.md) — **§3.1**, **§3.2**, **§8.8**, `.cursor/rules/no-full-rebuild.mdc`.

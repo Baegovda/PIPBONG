@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.67` (from `project(PIPBONG VERSION 0.8.67)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.68` (from `project(PIPBONG VERSION 0.8.68)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -14,6 +14,7 @@ This is the **only development document** — AI handover, user quick start, dev
 2. [Stack and Dependencies](#2-stack-and-dependencies)
 3. [Build and Run](#3-build-and-run)
    - [3.1 IDE / Cursor build workflow](#31-ide--cursor-build-workflow-mandatory--do-not-regress)
+   - [3.2 No full rebuild / vcpkg lock prevention](#32-no-full-rebuild--vcpkg-lock-prevention-mandatory)
    - [3.6 GitHub backup and release](#36-github-backup-and-release)
 4. [Repository Map](#4-repository-map)
 5. [Architecture and Key Subsystems](#5-architecture-and-key-subsystems)
@@ -91,18 +92,18 @@ Run **`deploy-qt` once** after the first successful build (or when Qt/OpenCV DLL
 #### Everyday incremental (default)
 
 ```powershell
-cmake --build build --config Release
+.\scripts\build-release.ps1
 ```
 
-Or **Ctrl+Shift+B** / `빌드.bat` → `scripts/build-release.ps1` (same command; kills running exe before link).
+Or **Ctrl+Shift+B** / `빌드.bat` (same script; kills running exe before link; clears stale vcpkg lock).
 
 | Situation                                        | Typical time |
 | ------------------------------------------------ | ------------ |
 | One `.cpp` changed                               | ~5–15 s      |
 | No source changes                                | ~3 s         |
-| `CMakeLists.txt` / version bump (full recompile) | ~2–3 min     |
+| `CMakeLists.txt` version bump only               | ~seconds–1 min (`Application.cpp` + `UpdateChecker.cpp` only) |
 
-Only re-run `cmake --preset default` when `build/` does not exist yet, or after changing `CMakeLists.txt` (new sources), `CMakePresets.json`, or `vcpkg.json`. CMake re-configures automatically on the next `--build` when `CMakeLists.txt` changes — **do not** run `--preset` again just for a version number change.
+Only run `cmake --preset default` when `build/CMakeCache.txt` is **missing** (first configure on a machine). CMake re-configures automatically on the next `--build` when `CMakeLists.txt` changes — **do not** run `--preset` again for version bumps or routine task close.
 
 **Output:** `build/Release/PIPBONG.exe` — run from `build/Release/` (DLLs deployed via `deploy-qt`, not every build).
 
@@ -118,12 +119,13 @@ Equivalent: `cmake --build build --config Release --target deploy-qt`
 
 | When                                                  | Build?                                                | Command                                                                                                        |
 | ----------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Task close** — C++/headers/`CMakeLists.txt` changed | **Yes** — incremental only (changed `.cpp` recompile) | `cmake --build build --config Release` or `scripts/build-release.ps1`                                          |
+| **Task close** — C++/headers/`CMakeLists.txt` changed | **Yes** — incremental only (changed `.cpp` recompile) | **`.\scripts\build-release.ps1` only** (AI mandatory)                                                         |
 | Task close — docs / rules / changelog only            | **No**                                                | —                                                                                                              |
 | Mid-implementation (unless compile check needed)      | **No**                                                | —                                                                                                              |
-| User explicitly asks mid-task (e.g. “빌드해줘”)       | **Yes**                                               | same incremental command                                                                                       |
-| `build/` missing at close                             | Configure once, then build                            | `cmake --preset default` then `--build`                                                                        |
+| User explicitly asks mid-task (e.g. “빌드해줘”)       | **Yes**                                               | `.\scripts\build-release.ps1`                                                                                  |
+| `build/` missing at close                             | Configure once inside script, then build              | `.\scripts\build-release.ps1` (runs `--preset` only when no `CMakeCache.txt`)                                  |
 | **Version bump at task close**                        | **Yes** — backup + GitHub release (mandatory)         | `git commit` / `git push` then `scripts/create-github-release.ps1` — see [§3.6](#36-github-backup-and-release) |
+| Build stuck >2 min / vcpkg lock                       | Recovery                                              | `.\scripts\recover-ide-build.ps1` then Reload Window                                                           |
 | Ad-hoc distribution only (no version bump)            | Package ZIP                                           | `scripts/package-release.ps1`                                                                                  |
 
 Before link, kill a running `PIPBONG.exe` only when a build is actually run (`LNK1104`).
@@ -154,14 +156,15 @@ Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static e
 
 ### Build pitfalls
 
-- **LNK1104:** Kill any running `PIPBONG.exe` before linking (only when building).
-- **Slow builds:** Do not run `cmake --preset default` on every task — use incremental `--build` only. A version bump regenerates `PipbongVersion.h` and recompiles only `Application.cpp` + `UpdateChecker.cpp` (not every `.cpp`).
-- **Missing DLLs at runtime:** Run `.\scripts\deploy-qt.ps1` once — dev builds no longer call `windeployqt` every link.
+- **LNK1104:** Kill any running `PIPBONG.exe` before linking (`build-release.ps1` does this).
+- **10–30 min “full rebuild” / vcpkg lock:** CMake Tools configure ran in parallel with terminal build — see [§3.2](#32-no-full-rebuild--vcpkg-lock-prevention-mandatory). Run `.\scripts\recover-ide-build.ps1`, reload window, use Ctrl+Shift+B only.
+- **Slow builds:** Do **not** run `cmake --preset default` when `build/CMakeCache.txt` exists. Version bump regenerates `PipbongVersion.h` and recompiles only `Application.cpp` + `UpdateChecker.cpp`.
+- **Missing DLLs at runtime:** Run `.\scripts\deploy-qt.ps1` once — dev builds skip `windeployqt` every link.
 - **vcpkg path:** `CMakePresets.json` may reference a machine-specific `CMAKE_TOOLCHAIN_FILE`; adjust if vcpkg is installed elsewhere.
 
 ### 3.1 IDE / Cursor build workflow (mandatory — do not regress)
 
-**Status:** Verified working on Windows (2026-06). This is the **canonical daily dev path** for humans and AI. If the IDE “breaks” (CMake configure loops, vcpkg rebuilds, F5 failures, exit code -1), **restore this section** — not CMake Tools defaults.
+**Status:** Verified working on Windows (2026-06). Strengthened 2026-07 after CMake Tools + vcpkg lock caused 10–30 min waits. This is the **canonical daily dev path** for humans and AI. If the IDE “breaks”, run **`.\scripts\recover-ide-build.ps1`** — not CMake Tools defaults.
 
 #### What to use
 
@@ -170,9 +173,10 @@ Build and ship a **folder layout** (exe + Qt/OpenCV DLLs), not a single static e
 | **Build**           | **Ctrl+Shift+B**, `빌드.bat`, or `.\scripts\build-release.ps1`   |
 | **Run**             | Run and Debug → **`Run PIPBONG (Release)`** → **F5**             |
 | **Binary**          | `build/Release/PIPBONG.exe` (working directory `build/Release/`) |
-| **Task close (AI)** | Same script when C++/headers/`CMakeLists.txt` changed            |
+| **Task close (AI)** | `.\scripts\build-release.ps1` only                               |
+| **Recovery**        | `.\scripts\recover-ide-build.ps1` then **Developer: Reload Window** |
 
-`build-release.ps1` kills a running `PIPBONG.exe`, auto-runs `cmake --preset default` only if `build/CMakeCache.txt` is missing, then `cmake --build build --config Release`.
+`build-release.ps1` (via `build-common.ps1`): clears stale `vcpkg-running.lock`, kills stuck cmake/vcpkg when needed, runs `cmake --preset default` **only** if `build/CMakeCache.txt` is missing, then `cmake --build build --config Release --target PIPBONG`.
 
 #### Required tracked `.vscode/` files (recovery source of truth)
 
@@ -182,10 +186,10 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 | ------------------------- | ------------------------------------------------------------------------------- |
 | `.vscode/tasks.json`      | Default build task **`Build Release`** → `scripts/build-release.ps1`            |
 | `.vscode/launch.json`     | **`Run PIPBONG (Release)`** — Release exe + `preLaunchTask`: `Build Release`    |
-| `.vscode/settings.json`   | **`cmake.enabled`: `false`** — prevents CMake Tools from hijacking F5/configure |
-| `.vscode/extensions.json` | Discourage `ms-vscode.cmake-tools` and C# Dev Kit in this workspace             |
+| `.vscode/settings.json`   | **CMake Tools fully off** — `cmake.enabled: false`, `configureOnOpen`/`configureOnEdit`/`automaticReconfigure` false, `ignoreCMakeListsChanged: true`, `useCMakePresets: never`, status bar hidden |
+| `.vscode/extensions.json` | Discourage `ms-vscode.cmake-tools`, C# Dev Kit, `twxs.cmake`; recommend `ms-vscode.cpptools` |
 
-**Critical setting:** `"cmake.enabled": false` in workspace `settings.json`. Without it, CMake Tools may run **configure → vcpkg → qtbase** on F5 or open (10–30 minutes) and show **“A CMake task is already running”** (exit -1).
+**Critical:** Without full CMake-off settings, CMake Tools may run **configure → vcpkg → qtbase** on F5 or open (10–30 minutes) and show **“A CMake task is already running”** (exit -1) or **`vcpkg-running.lock` waiting…**.
 
 #### Do not use for daily dev
 
@@ -197,14 +201,53 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 
 #### Recovery checklist (IDE build broken)
 
-1. `git checkout -- .vscode/` (or restore from this doc / `.cursor/rules/ide-build-workflow.mdc`).
-2. Confirm `cmake.enabled` is `false` in `.vscode/settings.json`.
-3. **Developer: Reload Window** in Cursor.
-4. `Stop-Process -Name cmake,msbuild -Force -ErrorAction SilentlyContinue` if a task is stuck.
+1. `.\scripts\recover-ide-build.ps1` (kills stuck cmake/vcpkg/msbuild, clears stale lock, restores `.vscode/` from git).
+2. **Developer: Reload Window** in Cursor.
+3. Confirm full CMake-off keys in `.vscode/settings.json` (see `.cursor/rules/ide-build-workflow.mdc`).
+4. **Do not** click CMake status-bar **[Configure]** / **[Build]**.
 5. `.\scripts\build-release.ps1` — expect ~3 s (no changes) or ~5–15 s (one `.cpp`).
 6. F5 with **Run PIPBONG (Release)**; if Qt DLL error, run `.\scripts\deploy-qt.ps1` once.
 
-Cursor rule: `.cursor/rules/ide-build-workflow.mdc` (always applied).
+Cursor rules: `.cursor/rules/ide-build-workflow.mdc`, `.cursor/rules/no-full-rebuild.mdc` (always applied).
+
+### 3.2 No full rebuild / vcpkg lock prevention (mandatory)
+
+**Status:** Policy added 2026-07 after a small code edit triggered CMake Tools configure + `vcpkg-running.lock` wait (~30 minutes).
+
+#### Root cause
+
+| Failure | Mechanism |
+|---------|-----------|
+| 10–30 min “build” | CMake Tools **configure** re-runs vcpkg manifest (qtbase) while another cmake holds `vcpkg-running.lock` |
+| Exit -1 / “task already running” | Parallel CMake Tools **[Configure]** + terminal `cmake --build` or AI `cmake --preset` |
+| AI runs `--preset` every task | Unnecessary reconfigure when `build/CMakeCache.txt` already exists |
+
+#### Mandatory commands
+
+| Who | Build | First configure | Recovery |
+|-----|-------|-----------------|----------|
+| Human | Ctrl+Shift+B / `빌드.bat` / `.\scripts\build-release.ps1` | Automatic in script when `build/CMakeCache.txt` missing | `.\scripts\recover-ide-build.ps1` |
+| AI | `.\scripts\build-release.ps1` **only** | Same — **never** `cmake --preset` if `build/` exists | Same |
+
+#### Script roles
+
+| Script | Role |
+|--------|------|
+| `scripts/build-common.ps1` | `Clear-StaleVcpkgLock`, `Stop-StuckConfigureProcesses`, `Prepare-IncrementalBuildEnvironment`, `Ensure-BuildTreeConfigured` |
+| `scripts/build-release.ps1` | Canonical incremental build; `--target PIPBONG`; no windeployqt per link |
+| `scripts/recover-ide-build.ps1` | One-click recovery for humans and AI |
+
+#### AI hard bans
+
+- `cmake --preset default` when `build/CMakeCache.txt` exists
+- Raw `cmake --build` without `build-release.ps1` (skips lock recovery)
+- Re-enabling CMake Tools or adding `CMake: *` tasks/launch configs
+- Parallel cmake configure (IDE + terminal + agent)
+- Second CMake tree (`build-clangd/`)
+
+If a build exceeds **~2 minutes** with no new vcpkg dependency: **stop**, run recovery, reload window.
+
+Cursor rule: `.cursor/rules/no-full-rebuild.mdc`.
 
 ### 3.6 GitHub backup and release
 
@@ -217,7 +260,7 @@ Whenever an AI task closes with a **version bump** (`CMakeLists.txt` `project(PI
 | Step | Action                                                                                                                                                                |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1    | Finish code/docs, changelog, and version bump ([§10](#10-versioning-policy))                                                                                          |
-| 2    | Incremental Release build when C++/headers/`CMakeLists.txt` changed (`scripts/build-release.ps1` or `cmake --build build --config Release`); skip for docs/rules-only |
+| 2    | Incremental Release build when C++/headers/`CMakeLists.txt` changed (`.\scripts\build-release.ps1` only); skip for docs/rules-only |
 | 3    | **Backup:** `git add` (tracked sources only — not `build/`), `git commit`, `git push origin main` on **`Baegovda/PIPBONG`**                                           |
 | 4    | **Release:** `.\scripts\create-github-release.ps1` (runs `package-release.ps1`, uploads `dist/PIPBONG-win64.zip`, tag `vX.Y.Z`, deletes older releases)               |
 
@@ -251,7 +294,9 @@ Sbm1.0/                        # repo root (local workspace)
 ├── vcpkg.json                 # dependency manifest
 ├── 빌드.bat                   # one-click Release build → scripts/build-release.ps1
 ├── scripts/
+│   ├── build-common.ps1       # stale vcpkg lock + stuck cmake/vcpkg helpers (sourced by build-release)
 │   ├── build-release.ps1      # canonical incremental Release build (IDE + AI task close)
+│   ├── recover-ide-build.ps1  # one-click IDE build recovery (lock, processes, .vscode restore)
 │   ├── deploy-qt.ps1          # Qt + vcpkg runtime DLLs beside build/Release
 │   ├── package-release.ps1    # build + deploy + dist/PIPBONG-win64.zip
 │   ├── create-github-release.ps1
@@ -781,17 +826,19 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 ### 8.8 IDE / Cursor build workflow (mandatory — do not regress)
 
-**Status:** Verified working on Windows (2026-06). IDE build and F5 **must not** trigger CMake Tools configure or vcpkg reinstall. Use tracked `.vscode/` + `scripts/build-release.ps1` only.
+**Status:** Verified working on Windows (2026-06). Strengthened 2026-07. IDE build and F5 **must not** trigger CMake Tools configure or vcpkg reinstall. Use tracked `.vscode/` + `scripts/build-release.ps1` only.
 
 | Layer       | Rule                                                                                         |
 | ----------- | -------------------------------------------------------------------------------------------- |
-| Build       | **Ctrl+Shift+B** / `빌드.bat` / `build-release.ps1` → `cmake --build build --config Release` |
+| Build       | **Ctrl+Shift+B** / `빌드.bat` / `.\scripts\build-release.ps1` only                           |
 | Run         | `launch.json` **`Run PIPBONG (Release)`** with `preLaunchTask` **`Build Release`**           |
-| CMake Tools | **`cmake.enabled`: `false`** in `.vscode/settings.json` — workspace only                     |
+| CMake Tools | Fully off in `.vscode/settings.json` — see §3.1                                              |
+| Recovery    | `.\scripts\recover-ide-build.ps1` + Reload Window                                            |
 | Git         | Four `.vscode/*` files whitelisted in `.gitignore` — never delete from repo                  |
 | Exclude     | `build-clangd/` — do not use as CMake build dir                                              |
+| AI          | **Never** `cmake --preset` when `build/CMakeCache.txt` exists — see §3.2, `no-full-rebuild.mdc` |
 
-**Recovery:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) checklist + `.cursor/rules/ide-build-workflow.mdc`.
+**Recovery:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress), [§3.2](#32-no-full-rebuild--vcpkg-lock-prevention-mandatory), `.cursor/rules/ide-build-workflow.mdc`, `.cursor/rules/no-full-rebuild.mdc`.
 
 ### 8.9 Column divider and resize grab zones (mandatory default)
 
@@ -826,7 +873,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 ### After every completed task
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
-2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **incremental** `cmake --build build --config Release` (or `scripts/build-release.ps1`) when C++/headers/`CMakeLists.txt` sources changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release): `git commit` / `git push origin main` and `scripts/create-github-release.ps1`. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
+2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed (never `cmake --preset` if `build/CMakeCache.txt` exists); skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release): `git commit` / `git push origin main` and `scripts/create-github-release.ps1`. **Never** finish with changelog-only `[Unreleased]` entries and the same version number.
 3. Keep diffs minimal; match existing C++ / Qt conventions.
 4. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
 5. **Do not regress IDE build workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files and `cmake.enabled: false`; never replace F5 with CMake Tools configure-on-open.
@@ -855,7 +902,7 @@ When the user’s request is **done** (code merged, changelog written, version b
 | 2    | Move all `[Unreleased]` bullets into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history)                                                                                                    |
 | 3    | Leave empty `[Unreleased]` (`### Added` / `Changed` / `Fixed` / `Removed` headers only, or blank)                                                                                                             |
 | 4    | Update **Current version** at the top of this file                                                                                                                                                            |
-| 5    | **Incremental build at task close** when compile inputs changed — `cmake --build build --config Release` (or `scripts/build-release.ps1`; `--preset default` only if `build/` missing). Skip docs/rules-only. |
+| 5    | **Incremental build at task close** when compile inputs changed — **`.\scripts\build-release.ps1` only** (never `cmake --preset` if `build/CMakeCache.txt` exists). Skip docs/rules-only. |
 | 6    | **Backup:** `git add` / `git commit` / `git push origin main` on **`Baegovda/PIPBONG`** ([§3.6](#36-github-backup-and-release))                                                                               |
 | 7    | **Release:** `.\scripts\create-github-release.ps1` (package + publish `vX.Y.Z` ZIP) — **mandatory on every version bump**                                                                                     |
 
@@ -876,7 +923,7 @@ When in doubt, **patch bump**.
 1. Update `project(PIPBONG VERSION ...)` in `CMakeLists.txt`.
 2. Move `[Unreleased]` items into `## [x.y.z] - YYYY-MM-DD` in [§11](#11-changelog-and-version-history).
 3. Leave empty `[Unreleased]` section.
-4. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `cmake --build build --config Release` (kill running exe before link). Skip docs/rules-only.
+4. **Incremental build at task close** when C++/headers/`CMakeLists.txt` changed: `.\scripts\build-release.ps1` only. Skip docs/rules-only.
 5. **Backup + release** (mandatory): `git commit` / `git push origin main`, then `scripts/create-github-release.ps1` ([§3.6](#36-github-backup-and-release)).
 
 ### Changelog format
@@ -898,6 +945,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.68] - 2026-07-09
+
+### Added
+
+- Anti–full-rebuild policy: `scripts/build-common.ps1` (stale `vcpkg-running.lock` + stuck cmake/vcpkg cleanup), `scripts/recover-ide-build.ps1` (one-click IDE recovery), always-applied `.cursor/rules/no-full-rebuild.mdc`; AGENTS.md §3.2 documents root cause and AI hard bans.
+
+### Changed
+
+- `scripts/build-release.ps1` sources `build-common.ps1`, builds `--target PIPBONG` only, never runs `cmake --preset` when `build/CMakeCache.txt` exists.
+- Workspace `.vscode/settings.json`: full CMake Tools off (`configureOnEdit`, `ignoreCMakeListsChanged`, `useCMakePresets: never`, etc.); `.vscode/extensions.json` discourages `twxs.cmake`.
+- Build policy rules (`build-policy.mdc`, `ide-build-workflow.mdc`, `ai-governance.mdc`, `changelog-versioning.mdc`) and AGENTS.md §3/§8.8/§13: AI task close uses `build-release.ps1` only — no raw `cmake --preset` / `cmake --build`.
 
 ## [0.8.67] - 2026-07-09
 
@@ -3196,16 +3255,21 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ### `build-policy.mdc`
 
-- **Task close:** incremental `cmake --build build --config Release` when C++/headers/`CMakeLists.txt` changed (changed `.cpp` only); skip docs/rules-only.
+- **Task close:** `.\scripts\build-release.ps1` only when C++/headers/`CMakeLists.txt` changed; skip docs/rules-only.
 - **Version bump close:** mandatory `git push` + `create-github-release.ps1` ([§3.6](#36-github-backup-and-release)).
-- Full policy in [§3](#3-build-and-run). **IDE/F5 path:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) + `ide-build-workflow.mdc`.
+- Full policy in [§3](#3-build-and-run), [§3.2](#32-no-full-rebuild--vcpkg-lock-prevention-mandatory). **IDE/F5:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) + `ide-build-workflow.mdc` + `no-full-rebuild.mdc`.
 
 ### `ide-build-workflow.mdc`
 
-- **Mandatory** Cursor/VS Code workflow: `scripts/build-release.ps1`, tracked `.vscode/tasks.json` + `launch.json`, **`cmake.enabled`: `false`**.
+- **Mandatory** Cursor/VS Code workflow: `scripts/build-release.ps1`, tracked `.vscode/tasks.json` + `launch.json`, CMake Tools fully off.
 - Full rules and recovery in [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) and [§8.8](#88-ide--cursor-build-workflow-mandatory--do-not-regress).
 - Never re-enable CMake Tools configure-on-F5 or remove `.vscode` from git.
 
+### `no-full-rebuild.mdc`
+
+- **Hard bans** on `cmake --preset` when `build/` exists, parallel configure, CMake Tools tasks.
+- Recovery: `.\scripts\recover-ide-build.ps1`. Full rules in [§3.2](#32-no-full-rebuild--vcpkg-lock-prevention-mandatory).
+
 ---
 
-_Last consolidated: 2026-07-05. Current application version: 0.8.5._
+_Last consolidated: 2026-07-09. Current application version: 0.8.68._

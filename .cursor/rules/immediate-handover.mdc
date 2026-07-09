@@ -23,7 +23,7 @@ Do **not** defer handover to a follow-up chat or assume the user will ask “doc
 | `gh`, CI, signing, hosting, credentials one-time setup | §3.6 (human steps + AI steps) |
 | User phrase → AI action (“백업해줘”, “릴리즈 해줘”) | §3.6 table |
 | **Version bump at task close** → backup + GitHub release | §3.6 mandatory table + `.cursor/rules/build-policy.mdc` |
-| New mandatory build preset or close-out policy | §3 + `.cursor/rules/build-policy.mdc` |
+| New mandatory build preset or close-out policy | §3.1 / §3.2 + `.cursor/rules/build-policy.mdc` + `no-full-rebuild.mdc` |
 | New subsystem / critical pattern (overlay, input, etc.) | §8 + dedicated `.cursor/rules/*.mdc` if always-applied |
 | New scripts in `scripts/` that agents must run | §3 or §4 path table |
 
