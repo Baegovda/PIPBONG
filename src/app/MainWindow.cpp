@@ -38,6 +38,7 @@
 #include "ui/widgets/ReorderableListWidget.h"
 #include "ui/FeatureDragMime.h"
 #include "ui/CustomTitleBar.h"
+#include "ui/UiResizeHandle.h"
 #include "ui/ProfileEditDialog.h"
 #include "ui/UiStateManager.h"
 #include "ui/editors/MatchTestOverlay.h"
@@ -1265,7 +1266,7 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
     if (eventType == "windows_generic_MSG") {
         auto* msg = static_cast<MSG*>(message);
         if (msg->message == WM_NCHITTEST && !isMaximized()) {
-            const int border = 8;
+            const int border = UiResizeHandle::kWindowResizeBorderPx;
             const POINT pt = {GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam)};
             RECT rect{};
             GetWindowRect(msg->hwnd, &rect);

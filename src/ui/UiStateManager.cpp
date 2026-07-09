@@ -1,4 +1,5 @@
 #include "ui/UiStateManager.h"
+#include "ui/UiResizeHandle.h"
 
 #include <QEvent>
 #include <QHeaderView>
@@ -31,6 +32,7 @@ void UiStateManager::registerSplitter(QSplitter* splitter, const QString& id) {
     if (!splitter) {
         return;
     }
+    splitter->setHandleWidth(UiResizeHandle::kSplitterHandleWidthPx);
     m_splitters.append({splitter, id});
     connect(splitter, &QSplitter::splitterMoved, this, &UiStateManager::scheduleSave);
 }

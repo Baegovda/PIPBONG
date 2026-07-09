@@ -1,5 +1,7 @@
 #include "ui/BlockListWidget.h"
 
+#include "ui/UiResizeHandle.h"
+
 #include "core/workflow/Block.h"
 #include "core/workflow/LoopExitCondition.h"
 #include "ui/UiStrings.h"
@@ -57,7 +59,6 @@ constexpr int kColScore = 9;
 constexpr int kColRoiCorrection = 10;
 constexpr int kColMatch = 11;
 constexpr int kColumnCount = 12;
-constexpr int kHeaderResizeHandleHalfWidth = 10;
 
 class BlockListHeaderView : public QHeaderView {
 public:
@@ -69,7 +70,7 @@ public:
 protected:
     int resizeHandleSectionAt(int x) const {
         int bestSection = -1;
-        int bestDistance = kHeaderResizeHandleHalfWidth + 1;
+        int bestDistance = UiResizeHandle::kDividerHalfWidthPx + 1;
         for (int visual = 0; visual < count(); ++visual) {
             const int logical = logicalIndex(visual);
             if (isSectionHidden(logical)) {
@@ -80,7 +81,7 @@ protected:
             }
             const int handleX = sectionViewportPosition(logical) + sectionSize(logical);
             const int distance = qAbs(x - handleX);
-            if (distance <= kHeaderResizeHandleHalfWidth && distance < bestDistance) {
+            if (distance <= UiResizeHandle::kDividerHalfWidthPx && distance < bestDistance) {
                 bestDistance = distance;
                 bestSection = logical;
             }
@@ -1320,7 +1321,7 @@ bool BlockListWidget::imageFindScoreColumnAt(const QPoint& viewportPos, int& blo
         return false;
     }
 
-    constexpr int kHorizontalSlack = 10;
+    constexpr int kHorizontalSlack = UiResizeHandle::kDividerHalfWidthPx;
     const QModelIndex scoreIndex = model()->index(tableRow, kColScore);
     if (!scoreIndex.isValid()) {
         return false;

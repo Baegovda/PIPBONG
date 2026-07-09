@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.45` (from `project(PIPBONG VERSION 0.8.45)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.46` (from `project(PIPBONG VERSION 0.8.46)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -785,6 +785,18 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 **Recovery:** [§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress) checklist + `.cursor/rules/ide-build-workflow.mdc`.
 
+### 8.9 Column divider and resize grab zones (mandatory default)
+
+**Status:** Program-wide policy (2026-07). All custom column-divider hit tests, horizontal threshold-drag slack, splitter bars, and frameless window resize borders use shared constants in `src/ui/UiResizeHandle.h` — do not hardcode narrow 4–5 px zones.
+
+| Surface | Constant / rule |
+|---------|-----------------|
+| Column divider cursor + drag | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `BlockListHeaderView`, `FeatureListHeaderWidget` |
+| In-cell horizontal drag slack | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
+| Row-height divider (feature list header bottom) | `kDividerHalfHeightPx` (bottom 10 px) |
+| `QSplitter` handles | `kSplitterHandleWidthPx` (12 px) via `UiStateManager::registerSplitter` |
+| Frameless main window edges | `kWindowResizeBorderPx` (10 px) — `MainWindow::nativeEvent` |
+
 ---
 
 ## 9. Development Governance
@@ -878,6 +890,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.46] - 2026-07-09
+
+### Changed
+
+- Unified resize/divider grab zones program-wide via `UiResizeHandle.h`: column dividers and in-cell horizontal drags use ±10 px; feature list header dividers widened from ±5 px; all registered `QSplitter` handles use 12 px width; frameless window resize border uses 10 px (`FeatureListPanel`, `BlockListWidget`, `UiStateManager`, `MainWindow`).
 
 ## [0.8.45] - 2026-07-09
 

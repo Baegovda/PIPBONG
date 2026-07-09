@@ -1,6 +1,7 @@
 #include "ui/FeatureListPanel.h"
 #include "ui/FeatureListWidget.h"
 #include "ui/FeatureLibraryListWidget.h"
+#include "ui/UiResizeHandle.h"
 #include "ui/HotkeyBindingIcon.h"
 #include "model/Feature.h"
 #include "model/FeatureRunMode.h"
@@ -51,7 +52,6 @@ constexpr int kMinHotkeyColumnWidth = 36;
 constexpr int kMaxHotkeyColumnWidth = 180;
 constexpr int kMinRowHeight = 20;
 constexpr int kMaxRowHeight = 48;
-constexpr int kResizeHandlePixels = 5;
 constexpr int kRunButtonColumnWidth = 24;
 constexpr int kEnableColumnWidth = 26;
 struct FeatureListColumnRects {
@@ -534,7 +534,7 @@ private:
         if (!m_panel) {
             return FeatureListResizeHandle::None;
         }
-        if (pos.y() >= height() - kResizeHandlePixels) {
+        if (UiResizeHandle::isWithinBottomGrab(pos.y(), height())) {
             return FeatureListResizeHandle::RowHeight;
         }
 
@@ -543,10 +543,11 @@ private:
         const int modeDist = qAbs(pos.x() - edges.modeDividerX);
         const int hotkeyDist = qAbs(pos.x() - edges.hotkeyDividerX);
 
-        if (modeDist <= kResizeHandlePixels && modeDist <= hotkeyDist) {
+        if (UiResizeHandle::isWithinHorizontalGrab(pos.x(), edges.modeDividerX)
+            && modeDist <= hotkeyDist) {
             return FeatureListResizeHandle::ModeColumnWidth;
         }
-        if (hotkeyDist <= kResizeHandlePixels) {
+        if (UiResizeHandle::isWithinHorizontalGrab(pos.x(), edges.hotkeyDividerX)) {
             return FeatureListResizeHandle::HotkeyColumnWidth;
         }
         return FeatureListResizeHandle::None;
