@@ -31,11 +31,11 @@ Write-Host "Done. Next steps:" -ForegroundColor Green
 Write-Host "  1. Cursor: Developer -> Reload Window"
 Write-Host "  2. Do NOT click CMake Tools [Configure] / [Build] in the status bar"
 Write-Host "  3. Build with Ctrl+Shift+B or .\scripts\build-release.ps1"
-Write-Host "  4. Run with F5 -> task Build and Run PIPBONG (Release) (no debugger)"
-Write-Host "  5. Optional breakpoints: Run and Debug -> Debug PIPBONG (Release)"
+Write-Host "  4. Run with F5 -> task Build and Run (terminal must show Started PIPBONG.exe)"
+Write-Host "  5. Do NOT use Run and Debug play for daily runs (launch.json has no debug configs)"
 Write-Host ""
-Write-Host "If F5 runs CMake / Qt platform plugin error on Debug, or F5 hangs after build:" -ForegroundColor Yellow
+Write-Host "If F5 still opens a blank CodeLLDB terminal after build:" -ForegroundColor Yellow
 Write-Host "  .\scripts\fix-pipbong-cursor-f5.ps1"
-Write-Host "  Then Developer -> Reload Window"
+Write-Host "  Then Developer -> Reload Window (required once so F5 leaves the debugger)"
 Write-Host ""
 Write-Host "If DLLs are missing at runtime: .\scripts\deploy-qt.ps1 (once)"

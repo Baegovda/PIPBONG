@@ -38,5 +38,10 @@
     "terminal.integrated.cwd": "${workspaceFolder}",
 
     "task.allowAutomaticTasks": "on",
-    "task.quickOpen.detail": false
+    "task.quickOpen.detail": false,
+
+    "debug.openDebug": "neverOpen",
+    "debug.internalConsoleOptions": "neverOpen",
+
+    "pipbong.f5BuildAndRun": true
 }

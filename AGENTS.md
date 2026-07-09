@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.81` (from `project(PIPBONG VERSION 0.8.81)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.82` (from `project(PIPBONG VERSION 0.8.82)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -194,7 +194,7 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 | File                      | Purpose                                                                         |
 | ------------------------- | ------------------------------------------------------------------------------- |
 | `.vscode/tasks.json`      | **`Build Release`**, **`Build and Run PIPBONG (Release)`** (F5 target) |
-| `.vscode/launch.json`     | Optional **`Debug PIPBONG (Release)`** (CodeLLDB) — breakpoints only; daily F5 uses the task |
+| `.vscode/launch.json`     | Empty `configurations` — daily F5 must not attach a debugger; use tasks only |
 | `.vscode/settings.json`   | **CMake Tools fully off** for daily workflow; `C_Cpp.default.compileCommands`; Python analysis scoped to open files |
 | `.vscode/c_cpp_properties.json` | MSVC C++17 IntelliSense (`compile_commands.json` when generated) |
 | `.vscode/extensions.json` | Recommend **C/C++** + **CMake Tools** (optional); discourage C# Dev Kit, `twxs.cmake` |
@@ -220,16 +220,15 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 
 #### F5 hangs after Build Release / blank terminal (CodeLLDB)
 
-**Symptom:** Build finishes quickly (`OK: build\Release\PIPBONG.exe`), then the terminal stays blank for many seconds before the window appears. Running `dist/PIPBONG/PIPBONG.exe` or `build/Release/PIPBONG.exe` directly is fast.
+**Symptom:** Build finishes quickly (`OK: build\Release\PIPBONG.exe`), then the terminal stays blank for many seconds (CodeLLDB pane / “Debug PIPBONG”). Running `dist/` or `build/Release/PIPBONG.exe` directly is fast.
 
-**Cause:** F5 used **Debug: Start Debugging** with CodeLLDB (`lldb` launch) — debugger attach/symbol load after the build, not a slow app.
+**Cause:** F5 still ran **Debug: Start Debugging** (CodeLLDB). Gating F5 with `when: workspaceFolder =~ /Sbm1\.0/i` often **does not match** in Cursor, so unbind/rebind were ignored.
 
-**Fix:**
+**Fix (required once after pull):**
 
-1. `.\scripts\fix-pipbong-cursor-f5.ps1` — F5 runs task **Build and Run PIPBONG (Release)** (`Start-Process`, no debugger) for workspace `Sbm1.0` only.
-2. **Developer: Reload Window**.
-3. F5 should print `Started PIPBONG.exe` and open immediately after the build.
-4. Breakpoints: Run and Debug → **Debug PIPBONG (Release)** (optional; slower).
+1. `.\scripts\fix-pipbong-cursor-f5.ps1` — unconditional F5 → `workbench.action.tasks.test` (**Build and Run**); empties debug launch configs.
+2. **Developer: Reload Window** (keybindings do not apply until reload).
+3. F5 success check: terminal prints **`Started PIPBONG.exe`** — not a blank CodeLLDB pane.
 
 #### F5 shows “CMake: Run Without Debugging” / Qt platform plugin error (dual Cursor)
 
@@ -907,7 +906,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 | ----------- | -------------------------------------------------------------------------------------------- |
 | Build       | **Ctrl+Shift+B** / `빌드.bat` / `.\scripts\build-release.ps1` only                           |
 | Run         | F5 → task **`Build and Run PIPBONG (Release)`** (`build-and-run.ps1`, no debugger)           |
-| Optional debug | `launch.json` **`Debug PIPBONG (Release)`** (CodeLLDB) — not daily F5                     |
+| Debug       | Not on F5 — `launch.json` configurations empty; do not use CodeLLDB for daily run            |
 | CMake Tools | Fully off in `.vscode/settings.json` — see §3.1                                              |
 | Recovery    | `.\scripts\recover-ide-build.ps1` + Reload Window                                            |
 | Git         | Four `.vscode/*` files whitelisted in `.gitignore` — never delete from repo                  |
@@ -1025,6 +1024,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.82] - 2026-07-10
+
+### Fixed
+
+- F5 still launched CodeLLDB (blank terminal hang) because `when: workspaceFolder =~ /Sbm1\.0/i` often fails in Cursor so unbind/rebind were ignored. F5 is now **unconditional** `workbench.action.tasks.test` (Build and Run); `launch.json` has **no** debug configurations; workspace setting `pipbong.f5BuildAndRun` gates secondary bindings (`fix-pipbong-cursor-f5.ps1`, `.vscode/settings.json`).
 
 ## [0.8.81] - 2026-07-10
 
@@ -3450,4 +3455,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.81._
+_Last consolidated: 2026-07-10. Current application version: 0.8.82._

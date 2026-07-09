@@ -1,8 +1,10 @@
-# PIPBONG workspace: F5 = build+run task (no debugger). Ctrl+Shift+B = build only.
-# CodeLLDB attach on F5 was multi-second delay after Build Release finished; dist exe is fast.
+# PIPBONG: F5 must run Build and Run task (Start-Process) — never CodeLLDB.
+#
+# Root cause of blank-terminal hang: F5 fell through to Debug: Start Debugging
+# because when-clauses like `workspaceFolder =~ /Sbm1\.0/i` often do NOT match in
+# Cursor, so unbind+rebind were ignored. Fix: unconditional F5 -> tasks.test, plus
+# config.pipbong.f5BuildAndRun gated bindings as a second layer.
 $ErrorActionPreference = "Stop"
-
-$whenWorkspace = "workspaceFolder =~ /Sbm1\.0/i"
 
 $cursorUser = Join-Path $env:APPDATA "Cursor\User"
 $keybindingsPath = Join-Path $cursorUser "keybindings.json"
@@ -11,19 +13,6 @@ if (-not (Test-Path $cursorUser)) {
     Write-Host "Cursor user folder not found: $cursorUser" -ForegroundColor Yellow
     exit 1
 }
-
-$desired = @(
-  @{ key = "f5"; command = "-workbench.action.debug.start"; when = $whenWorkspace },
-  @{ key = "f5"; command = "-workbench.action.debug.selectandstart"; when = $whenWorkspace },
-  @{
-    key     = "f5"
-    command = "workbench.action.tasks.runTask"
-    when    = $whenWorkspace
-    args    = "Build and Run PIPBONG (Release)"
-  },
-  @{ key = "ctrl+shift+b"; command = "-glass.openBrowserTab"; when = $whenWorkspace },
-  @{ key = "ctrl+shift+b"; command = "workbench.action.tasks.build"; when = $whenWorkspace }
-)
 
 function Read-KeybindingsArray {
     param([string]$Path)
@@ -41,41 +30,64 @@ function Read-KeybindingsArray {
     return @((ConvertFrom-Json $json))
 }
 
-function Binding-Exists {
-    param($List, $Key, $Command, $When)
-    foreach ($b in $List) {
-        if ($b.key -eq $Key -and $b.command -eq $Command -and $b.when -eq $When) {
-            return $true
+$existing = @(Read-KeybindingsArray -Path $keybindingsPath)
+
+$kept = @($existing | Where-Object {
+    $k = [string]$_.key
+    if ($k -in @('f5', 'ctrl+f5')) { return $false }
+    if ($k -eq 'ctrl+shift+b') {
+        $w = if ($null -eq $_.when) { '' } else { [string]$_.when }
+        $c = [string]$_.command
+        if ($w -like '*Sbm1*' -or $w -like '*pipbong*' -or
+            $c -eq '-glass.openBrowserTab' -or $c -eq 'workbench.action.tasks.build') {
+            return $false
         }
     }
-    return $false
-}
-
-$existing = @(Read-KeybindingsArray -Path $keybindingsPath)
-# Remove old PIPBONG F5/Ctrl+F5/Ctrl+Shift+B overrides for this workspace only.
-$existing = @($existing | Where-Object {
-    -not (($_.key -in @('f5', 'ctrl+f5', 'ctrl+shift+b')) -and ($null -ne $_.when -and $_.when -like "*Sbm1.0*"))
+    return $true
 })
 
-foreach ($entry in $desired) {
-    if (-not (Binding-Exists -List $existing -Key $entry.key -Command $entry.command -When $entry.when)) {
-        $obj = [ordered]@{
-            key     = $entry.key
-            command = $entry.command
-            when    = $entry.when
-        }
-        if ($entry.ContainsKey('args') -and $null -ne $entry.args) {
-            $obj.args = $entry.args
-        }
-        $existing += [pscustomobject]$obj
+# Layer 1: unconditional (always wins over default F5 debug).
+# Layer 2: config.pipbong.f5BuildAndRun (set in .vscode/settings.json) for clarity.
+$pipbong = @(
+    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.start' },
+    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.selectandstart' },
+    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.run' },
+    [pscustomobject]@{ key = 'ctrl+f5'; command = '-workbench.action.debug.run' },
+    [pscustomobject]@{ key = 'f5'; command = 'workbench.action.tasks.test' },
+    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.start'; when = 'config.pipbong.f5BuildAndRun' },
+    [pscustomobject]@{ key = 'f5'; command = 'workbench.action.tasks.test'; when = 'config.pipbong.f5BuildAndRun' },
+    [pscustomobject]@{ key = 'ctrl+shift+b'; command = '-glass.openBrowserTab'; when = 'config.pipbong.f5BuildAndRun' },
+    [pscustomobject]@{ key = 'ctrl+shift+b'; command = 'workbench.action.tasks.build'; when = 'config.pipbong.f5BuildAndRun' }
+)
+
+$merged = @($kept) + @($pipbong)
+
+$sb = [System.Text.StringBuilder]::new()
+[void]$sb.AppendLine('[')
+for ($i = 0; $i -lt $merged.Count; $i++) {
+    $b = $merged[$i]
+    [void]$sb.AppendLine('  {')
+    [void]$sb.AppendLine(('    "key": "{0}",' -f $b.key))
+    $cmdEsc = ([string]$b.command).Replace('\', '\\').Replace('"', '\"')
+    if ($null -ne $b.when -and [string]$b.when -ne '') {
+        [void]$sb.AppendLine(('    "command": "{0}",' -f $cmdEsc))
+        $whenJson = ([string]$b.when).Replace('\', '\\').Replace('"', '\"')
+        [void]$sb.AppendLine(('    "when": "{0}"' -f $whenJson))
+    } else {
+        [void]$sb.AppendLine(('    "command": "{0}"' -f $cmdEsc))
+    }
+    if ($i -lt $merged.Count - 1) {
+        [void]$sb.AppendLine('  },')
+    } else {
+        [void]$sb.AppendLine('  }')
     }
 }
+[void]$sb.AppendLine(']')
 
-$out = ($existing | ConvertTo-Json -Depth 4)
-Set-Content -Path $keybindingsPath -Value $out -Encoding UTF8
+[System.IO.File]::WriteAllText($keybindingsPath, $sb.ToString(), [System.Text.UTF8Encoding]::new($false))
 
 Write-Host "Updated Cursor keybindings ($keybindingsPath)" -ForegroundColor Green
-Write-Host "  F5 -> task Build and Run PIPBONG (Release) (no debugger; Start-Process)" -ForegroundColor Cyan
-Write-Host "  Ctrl+Shift+B -> Build Release (glass browser disabled in Sbm1.0)" -ForegroundColor Cyan
-Write-Host "  Optional debug: Run and Debug -> Debug PIPBONG (Release) (CodeLLDB)" -ForegroundColor Cyan
-Write-Host "  Reload Window, then F5." -ForegroundColor Cyan
+Write-Host "  F5 -> workbench.action.tasks.test (NO debugger, unconditional)" -ForegroundColor Cyan
+Write-Host "  launch.json has no debug configs — F5 cannot attach CodeLLDB" -ForegroundColor Cyan
+Write-Host "REQUIRED once: Command Palette -> Developer: Reload Window" -ForegroundColor Yellow
+Write-Host "Then F5: terminal must print 'Started PIPBONG.exe' (not a blank pane)." -ForegroundColor Yellow

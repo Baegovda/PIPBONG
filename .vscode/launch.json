@@ -1,13 +1,4 @@
 {
     "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Debug PIPBONG (Release)",
-            "type": "lldb",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/Release/PIPBONG.exe",
-            "cwd": "${workspaceFolder}/build/Release",
-            "preLaunchTask": "Build Release"
-        }
-    ]
+    "configurations": []
 }

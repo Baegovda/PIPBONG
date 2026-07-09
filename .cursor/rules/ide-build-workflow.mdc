@@ -25,7 +25,7 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 | File | Role |
 |------|------|
 | `.vscode/tasks.json` | Default build task **`Build Release`** → `scripts/build-release.ps1` |
-| `.vscode/launch.json` | Optional **`Debug PIPBONG (Release)`** (CodeLLDB) — breakpoints only; daily F5 uses the task |
+| `.vscode/launch.json` | Empty configurations — F5 must not attach CodeLLDB |
 | `.vscode/settings.json` | **CMake Tools fully off** — see required keys below |
 | `.vscode/extensions.json` | `unwantedRecommendations`: `ms-vscode.cmake-tools`, C# Dev Kit, `twxs.cmake` |
 
@@ -53,8 +53,8 @@ These four files **must** stay in the repo (`.gitignore` whitelists them). **Do 
 ## `tasks.json` / `launch.json` invariants
 
 - Default build task: **`Build Release`** → `scripts/build-release.ps1`.
-- Daily F5: keybinding runs task **`Build and Run PIPBONG (Release)`** (`build-and-run.ps1` → `Start-Process`) — **not** CodeLLDB / `Debug: Start Debugging` (debugger attach after build is multi-second delay).
-- Optional debug: `launch.json` **`Debug PIPBONG (Release)`** (`lldb`, `preLaunchTask`: **Build Release**).
+- Daily F5: **unconditional** keybinding → `workbench.action.tasks.test` (**Build and Run**). Do **not** gate F5 on `workspaceFolder =~` (often fails in Cursor → F5 still opens CodeLLDB).
+- `launch.json` must keep **empty** `configurations` so F5 cannot attach a debugger by accident.
 - **Never** use launch `type: "cmake"` or `preLaunchTask: "CMake: build …"`.
 - **Never** use placeholder `program` paths (`<your program>`) or make debugger the only F5 path for daily work.
 
