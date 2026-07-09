@@ -42,6 +42,9 @@ public:
     ImportResult importEntryToProfile(const QString& entryId,
                                        const QString& targetProjectDirectory);
 
+    /// Permanently deletes a library entry (feature JSON + copied templates).
+    bool removeEntry(const QString& entryId);
+
 private:
     QString m_libraryRootDir;
     QString m_entriesDir;

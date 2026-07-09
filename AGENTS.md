@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.34` (from `project(PIPBONG VERSION 0.8.34)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.35` (from `project(PIPBONG VERSION 0.8.35)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -862,6 +862,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.35] - 2026-07-09
+
+### Added
+
+- Feature library drawer: collapsible **라이브러리 (N)** section at the bottom of the feature list panel lists saved library entries inline; double-click or context menu **현재 프로필로 가져오기** imports an entry, context menu **라이브러리에서 삭제** removes it (with confirmation); expand state persists in `QSettings` (`FeatureListPanel`, `FeatureLibraryManager::removeEntry`, `MainWindow::refreshFeatureLibraryPanel`).
 
 ## [0.8.34] - 2026-07-09
 

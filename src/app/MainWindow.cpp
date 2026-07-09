@@ -243,6 +243,7 @@ MainWindow::MainWindow(QWidget* parent)
         m_profileManager->loadSettings(m_profileManager->activeProfileId()));
     refreshProfileList();
     loadActiveProfile();
+    refreshFeatureLibraryPanel();
 
     updateWindowTitle();
     syncHotkeys();
@@ -537,6 +538,14 @@ void MainWindow::connectSignals() {
             &FeatureListPanel::importFeatureFromLibraryRequested,
             this,
             &MainWindow::onImportFeatureFromLibraryRequested);
+    connect(m_featureList,
+            &FeatureListPanel::importLibraryEntryRequested,
+            this,
+            &MainWindow::onImportLibraryEntryRequested);
+    connect(m_featureList,
+            &FeatureListPanel::deleteLibraryEntryRequested,
+            this,
+            &MainWindow::onDeleteLibraryEntryRequested);
     connect(m_featureList,
             &FeatureListPanel::featureRunRequested,
             this,
@@ -1735,6 +1744,7 @@ void MainWindow::onSaveFeatureToLibraryRequested(const QString& featureId) {
     }
 
     showTransientStatus(tr("라이브러리에 저장됨: %1").arg(entryName), 2500);
+    refreshFeatureLibraryPanel();
 }
 
 void MainWindow::onImportFeatureFromLibraryRequested() {
@@ -1769,6 +1779,44 @@ void MainWindow::onImportFeatureFromLibraryRequested() {
     if (entryId.isEmpty()) {
         return;
     }
+    importLibraryEntry(entryId);
+}
+
+void MainWindow::onImportLibraryEntryRequested(const QString& entryId) {
+    importLibraryEntry(entryId);
+}
+
+void MainWindow::onDeleteLibraryEntryRequested(const QString& entryId) {
+    if (!m_featureLibraryManager || entryId.isEmpty()) {
+        return;
+    }
+    QString entryName = entryId;
+    for (const auto& e : m_featureLibraryManager->listEntries()) {
+        if (e.id == entryId) {
+            entryName = e.name;
+            break;
+        }
+    }
+    const auto reply = QMessageBox::question(this,
+                                             tr("라이브러리에서 삭제"),
+                                             tr("'%1' 항목을 라이브러리에서 삭제하시겠습니까?\n"
+                                                "이미 가져온 기능에는 영향이 없습니다.")
+                                                 .arg(entryName),
+                                             QMessageBox::Yes | QMessageBox::No,
+                                             QMessageBox::No);
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+    if (m_featureLibraryManager->removeEntry(entryId)) {
+        showTransientStatus(tr("라이브러리에서 삭제됨: %1").arg(entryName), 2500);
+    }
+    refreshFeatureLibraryPanel();
+}
+
+bool MainWindow::importLibraryEntry(const QString& entryId) {
+    if (!m_project || !m_featureLibraryManager || !m_featureList || entryId.isEmpty()) {
+        return false;
+    }
 
     const QString targetProjectDir = Application::instance()->projectDirectory();
     FeatureLibraryManager::ImportResult res =
@@ -1777,7 +1825,7 @@ void MainWindow::onImportFeatureFromLibraryRequested() {
         QMessageBox::critical(this,
                               tr("라이브러리 가져오기 실패"),
                               tr("라이브러리 항목을 불러오지 못했습니다."));
-        return;
+        return false;
     }
 
     const QString newFeatureId = QString::fromStdString(res.feature->id());
@@ -1789,11 +1837,30 @@ void MainWindow::onImportFeatureFromLibraryRequested() {
     m_featureList->selectFeatureById(newFeatureId);
     syncHotkeys();
     scheduleAutoSave();
+    showTransientStatus(tr("라이브러리에서 가져옴: %1").arg(res.importedName), 2500);
 
     if (!res.missingTemplatePaths.empty()) {
         appendLog(tr("라이브러리 가져오기: 템플릿 일부를 복사하지 못했습니다: %1")
                        .arg(res.missingTemplatePaths.join(QStringLiteral(", "))));
     }
+    return true;
+}
+
+void MainWindow::refreshFeatureLibraryPanel() {
+    if (!m_featureLibraryManager || !m_featureList) {
+        return;
+    }
+    const std::vector<FeatureLibraryManager::Entry> entries = m_featureLibraryManager->listEntries();
+    std::vector<FeatureListPanel::LibraryEntryUi> uiEntries;
+    uiEntries.reserve(entries.size());
+    for (const auto& e : entries) {
+        FeatureListPanel::LibraryEntryUi ue;
+        ue.id = e.id;
+        ue.name = e.name;
+        ue.templateCount = e.templateCount;
+        uiEntries.push_back(std::move(ue));
+    }
+    m_featureList->setLibraryEntries(uiEntries);
 }
 
 void MainWindow::selectRunningFeatureForDisplay(Feature* feature) {

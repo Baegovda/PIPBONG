@@ -74,6 +74,8 @@ private slots:
     void onFeatureEnabledChanged(const QString& featureId, bool enabled);
     void onSaveFeatureToLibraryRequested(const QString& featureId);
     void onImportFeatureFromLibraryRequested();
+    void onImportLibraryEntryRequested(const QString& entryId);
+    void onDeleteLibraryEntryRequested(const QString& entryId);
     void onStopWorkflow();
     void onExitRequested();
     void onCheckForUpdates();
@@ -154,6 +156,8 @@ private:
     void loadProjectFromFile(const QString& path);
     void loadActiveProfile();
     void refreshProfileList();
+    void refreshFeatureLibraryPanel();
+    bool importLibraryEntry(const QString& entryId);
     void syncProfileListSelection();
     bool switchToProfile(const QString& profileId, bool automatic = false);
     void saveActiveProfileSettings();

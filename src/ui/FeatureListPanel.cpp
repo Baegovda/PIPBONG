@@ -22,6 +22,7 @@
 #include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QDialog>
 #include <QEvent>
@@ -760,9 +761,70 @@ void FeatureListPanel::setupUi() {
     tableLayout->addWidget(m_headerRow);
     tableLayout->addWidget(m_list, 1);
 
+    m_libraryToggle = new QToolButton(group);
+    m_libraryToggle->setObjectName(QStringLiteral("featureLibraryToggle"));
+    m_libraryToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_libraryToggle->setArrowType(Qt::RightArrow);
+    m_libraryToggle->setCheckable(true);
+    m_libraryToggle->setAutoRaise(true);
+    m_libraryToggle->setCursor(Qt::PointingHandCursor);
+    m_libraryToggle->setFocusPolicy(Qt::NoFocus);
+    m_libraryToggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_libraryToggle->setToolTip(
+        tr("전역 기능 라이브러리입니다. 항목을 더블클릭하면 현재 프로필로 가져옵니다.\n"
+           "기능 우클릭 → '라이브러리에 저장'으로 항목을 추가할 수 있습니다."));
+    m_libraryToggle->setStyleSheet(QStringLiteral(
+        "QToolButton#featureLibraryToggle {"
+        "  border: none;"
+        "  padding: 3px 4px;"
+        "  text-align: left;"
+        "  font-weight: 600;"
+        "}"));
+
+    m_libraryList = new QListWidget(group);
+    m_libraryList->setObjectName(QStringLiteral("featureLibraryList"));
+    m_libraryList->setFrameShape(QFrame::NoFrame);
+    m_libraryList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_libraryList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_libraryList->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_libraryList->setUniformItemSizes(true);
+    m_libraryList->setStyleSheet(QStringLiteral(
+        "QListWidget#featureLibraryList {"
+        "  border: none;"
+        "  background: transparent;"
+        "  outline: none;"
+        "}"
+        "QListWidget#featureLibraryList::item {"
+        "  padding: 3px 6px;"
+        "}"));
+    m_libraryList->setVisible(false);
+
+    connect(m_libraryToggle, &QToolButton::toggled, this, [this](bool checked) {
+        setLibraryDrawerExpanded(checked, true);
+    });
+    connect(m_libraryList, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
+        if (item && m_editControlsEnabled) {
+            emit importLibraryEntryRequested(item->data(Qt::UserRole).toString());
+        }
+    });
+    connect(m_libraryList,
+            &QListWidget::customContextMenuRequested,
+            this,
+            &FeatureListPanel::onLibraryContextMenu);
+
     groupLayout->addLayout(buttonRow);
-    groupLayout->addWidget(tableFrame, 1);
+    groupLayout->addWidget(tableFrame, 3);
+    groupLayout->addWidget(m_libraryToggle);
+    groupLayout->addWidget(m_libraryList, 1);
     outerLayout->addWidget(group);
+
+    {
+        QSettings settings;
+        const bool expanded =
+            settings.value(QStringLiteral("ui/state/featureList/libraryDrawerExpanded"), false).toBool();
+        setLibraryDrawerExpanded(expanded, false);
+    }
+    updateLibraryToggleText();
 
     m_animTimer = new QTimer(this);
     m_animTimer->setInterval(55);
@@ -776,6 +838,75 @@ void FeatureListPanel::setupUi() {
     });
     connect(m_list, &QListWidget::customContextMenuRequested, this, &FeatureListPanel::onContextMenu);
     updateReorderEnabled();
+}
+
+void FeatureListPanel::setLibraryDrawerExpanded(bool expanded, bool persist) {
+    m_libraryExpanded = expanded;
+    if (m_libraryToggle) {
+        const QSignalBlocker blocker(m_libraryToggle);
+        m_libraryToggle->setChecked(expanded);
+        m_libraryToggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+    }
+    if (m_libraryList) {
+        m_libraryList->setVisible(expanded);
+    }
+    if (persist) {
+        QSettings settings;
+        settings.setValue(QStringLiteral("ui/state/featureList/libraryDrawerExpanded"), expanded);
+    }
+}
+
+void FeatureListPanel::updateLibraryToggleText() {
+    if (!m_libraryToggle) {
+        return;
+    }
+    m_libraryToggle->setText(tr("라이브러리 (%1)").arg(m_libraryEntryCount));
+}
+
+void FeatureListPanel::setLibraryEntries(const std::vector<LibraryEntryUi>& entries) {
+    if (!m_libraryList) {
+        return;
+    }
+    const QString selectedId = m_libraryList->currentItem()
+                                   ? m_libraryList->currentItem()->data(Qt::UserRole).toString()
+                                   : QString();
+    m_libraryList->clear();
+    for (const LibraryEntryUi& entry : entries) {
+        const QString label = entry.templateCount > 0
+                                  ? tr("%1  ·  템플릿 %2").arg(entry.name).arg(entry.templateCount)
+                                  : entry.name;
+        auto* item = new QListWidgetItem(label, m_libraryList);
+        item->setData(Qt::UserRole, entry.id);
+        item->setToolTip(tr("%1\n더블클릭: 현재 프로필로 가져오기").arg(entry.name));
+        if (entry.id == selectedId) {
+            m_libraryList->setCurrentItem(item);
+        }
+    }
+    m_libraryEntryCount = static_cast<int>(entries.size());
+    updateLibraryToggleText();
+}
+
+void FeatureListPanel::onLibraryContextMenu(const QPoint& pos) {
+    if (!m_libraryList) {
+        return;
+    }
+    QListWidgetItem* item = m_libraryList->itemAt(pos);
+    if (!item) {
+        return;
+    }
+    m_libraryList->setCurrentItem(item);
+    const QString entryId = item->data(Qt::UserRole).toString();
+
+    QMenu menu(this);
+    menu.addAction(tr("현재 프로필로 가져오기"), this, [this, entryId]() {
+        emit importLibraryEntryRequested(entryId);
+    })
+        ->setEnabled(m_editControlsEnabled);
+    menu.addSeparator();
+    menu.addAction(tr("라이브러리에서 삭제"), this, [this, entryId]() {
+        emit deleteLibraryEntryRequested(entryId);
+    });
+    menu.exec(m_libraryList->mapToGlobal(pos));
 }
 
 void FeatureListPanel::setColumnLayout(const FeatureListColumnLayout& layout, bool persist) {

@@ -7,6 +7,8 @@
 
 class QListWidgetItem;
 class QPushButton;
+class QListWidget;
+class QToolButton;
 class QSettings;
 class QTimer;
 class Project;
@@ -32,6 +34,12 @@ class FeatureListPanel : public QWidget {
     Q_OBJECT
 
 public:
+
+    struct LibraryEntryUi {
+        QString id;
+        QString name;
+        int templateCount = 0;
+    };
 
     explicit FeatureListPanel(QWidget* parent = nullptr);
     ~FeatureListPanel() override;
@@ -76,6 +84,9 @@ public:
 
     void restoreColumnLayout(const QSettings& settings, const QString& settingsKey);
 
+    /// Replaces the library drawer contents with the given entries.
+    void setLibraryEntries(const std::vector<LibraryEntryUi>& entries);
+
 
 
 signals:
@@ -96,6 +107,10 @@ signals:
     void saveFeatureToLibraryRequested(const QString& featureId);
     /// Open the library picker and import a feature into the current profile.
     void importFeatureFromLibraryRequested();
+    /// Import a specific library entry (double-click / context menu on the drawer).
+    void importLibraryEntryRequested(const QString& entryId);
+    /// Delete a library entry from the drawer context menu.
+    void deleteLibraryEntryRequested(const QString& entryId);
 
 
 
@@ -148,6 +163,10 @@ private:
 
     void requestFeatureRun(int row);
 
+    void setLibraryDrawerExpanded(bool expanded, bool persist);
+    void updateLibraryToggleText();
+    void onLibraryContextMenu(const QPoint& pos);
+
 
 
     Project* m_project = nullptr;
@@ -175,6 +194,14 @@ private:
     bool m_editControlsEnabled = true;
 
     bool m_restoringColumnLayout = false;
+
+    QToolButton* m_libraryToggle = nullptr;
+
+    QListWidget* m_libraryList = nullptr;
+
+    int m_libraryEntryCount = 0;
+
+    bool m_libraryExpanded = false;
 
     std::unique_ptr<Feature> m_clipboardFeature;
 };

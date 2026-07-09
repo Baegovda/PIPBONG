@@ -286,3 +286,14 @@ FeatureLibraryManager::ImportResult FeatureLibraryManager::importEntryToProfile(
     return res;
 }
 
+bool FeatureLibraryManager::removeEntry(const QString& entryId) {
+    if (entryId.isEmpty()) {
+        return false;
+    }
+    QDir dir(entryDir(entryId));
+    if (!dir.exists()) {
+        return false;
+    }
+    return dir.removeRecursively();
+}
+
