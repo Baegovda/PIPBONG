@@ -28,6 +28,7 @@
 #include <QItemSelectionModel>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLinearGradient>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
@@ -253,42 +254,61 @@ QPixmap keyPressPreviewIcon(int virtualKey,
     pixmap.fill(Qt::transparent);
 
     QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setRenderHint(QPainter::TextAntialiasing);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-    const QRectF cap(3.0, 5.0, 26.0, 22.0);
-    painter.setPen(QPen(QColor(100, 100, 100), 1.1));
-    painter.setBrush(QColor(248, 248, 248));
-    painter.drawRoundedRect(cap, 3.0, 3.0);
+    const QColor accent(56, 132, 214);
+    const QColor ink(28, 36, 48);
+    const QRectF shadow(3.5, 6.5, 25.0, 21.0);
+    const QRectF cap(3.0, 4.5, 25.0, 21.0);
+
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(20, 28, 40, 36));
+    painter.drawRoundedRect(shadow, 5.0, 5.0);
+
+    QLinearGradient face(cap.topLeft(), cap.bottomLeft());
+    face.setColorAt(0.0, QColor(255, 255, 255));
+    face.setColorAt(1.0, QColor(232, 238, 246));
+    painter.setBrush(face);
+    painter.setPen(QPen(QColor(120, 138, 162), 1.15));
+    painter.drawRoundedRect(cap, 5.0, 5.0);
+
+    // Soft top bevel highlight
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(255, 255, 255, 170));
+    painter.drawRoundedRect(QRectF(cap.left() + 1.2, cap.top() + 1.0, cap.width() - 2.4, 4.5), 3.0, 3.0);
 
     const QString modText = modifierPrefix(modifierActions);
     const QString keyText = useMainKey ? compactKeyLabel(virtualKey) : QString();
+    const bool hasBoth = !modText.isEmpty() && !keyText.isEmpty();
 
     if (!modText.isEmpty()) {
-        QFont modFont = painter.font();
-        modFont.setPointSize(useMainKey && !keyText.isEmpty() ? 6 : 8);
+        QFont modFont(QStringLiteral("Segoe UI"));
+        modFont.setPixelSize(hasBoth ? 7 : 10);
         modFont.setBold(true);
         painter.setFont(modFont);
-        painter.setPen(QColor(90, 120, 160));
-        if (useMainKey && !keyText.isEmpty()) {
-            painter.drawText(QRectF(cap.left(), cap.top() + 1.0, cap.width(), 8.0),
-                             Qt::AlignHCenter | Qt::AlignTop,
+        painter.setPen(accent);
+        if (hasBoth) {
+            painter.drawText(QRectF(cap.left() + 1.0, cap.top() + 1.5, cap.width() - 2.0, 8.0),
+                             Qt::AlignHCenter | Qt::AlignVCenter,
                              modText);
         } else {
-            painter.drawText(cap, Qt::AlignCenter, modText);
+            painter.drawText(cap.adjusted(1.0, 0.0, -1.0, 0.0), Qt::AlignCenter, modText);
         }
     }
 
     if (!keyText.isEmpty()) {
-        QFont keyFont = painter.font();
-        keyFont.setPointSize(keyText.size() > 2 ? 7 : 10);
+        QFont keyFont(QStringLiteral("Segoe UI"));
+        const int len = keyText.size();
+        keyFont.setPixelSize(len >= 5 ? 8 : (len >= 3 ? 9 : 12));
         keyFont.setBold(true);
         painter.setFont(keyFont);
-        painter.setPen(QColor(50, 50, 50));
-        const qreal textTop = modText.isEmpty() ? cap.top() : cap.top() + 8.0;
-        painter.drawText(QRectF(cap.left(), textTop, cap.width(), cap.bottom() - textTop),
-                         Qt::AlignCenter,
-                         keyText);
+        painter.setPen(ink);
+        const QRectF keyRect = hasBoth
+                                   ? QRectF(cap.left() + 1.0, cap.top() + 8.5, cap.width() - 2.0, cap.height() - 10.0)
+                                   : cap.adjusted(1.0, 0.5, -1.0, -0.5);
+        painter.drawText(keyRect, Qt::AlignCenter, keyText);
     }
 
     return pixmap;
@@ -299,35 +319,53 @@ QPixmap waitBlockPreviewIcon() {
     pixmap.fill(Qt::transparent);
 
     QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-    const QRectF face(6.0, 4.0, 20.0, 20.0);
-    const QPointF center = face.center();
-    const QColor accent(74, 144, 217);
-
-    painter.setPen(QPen(QColor(90, 90, 90), 1.2));
-    painter.setBrush(QColor(248, 248, 248));
-    painter.drawEllipse(face);
-
-    painter.setPen(QPen(QColor(180, 180, 180), 1.0));
-    for (int i = 0; i < 12; ++i) {
-        const qreal angleDeg = i * 30.0 - 90.0;
-        const qreal angleRad = qDegreesToRadians(angleDeg);
-        const qreal innerR = face.width() * 0.38;
-        const qreal outerR = face.width() * 0.46;
-        const QPointF inner(center.x() + innerR * qCos(angleRad), center.y() + innerR * qSin(angleRad));
-        const QPointF outer(center.x() + outerR * qCos(angleRad), center.y() + outerR * qSin(angleRad));
-        painter.drawLine(inner, outer);
-    }
-
-    painter.setPen(QPen(accent, 2.0, Qt::SolidLine, Qt::RoundCap));
-    painter.drawLine(center, QPointF(center.x(), center.y() - face.height() * 0.22));
-    painter.setPen(QPen(accent, 1.6, Qt::SolidLine, Qt::RoundCap));
-    painter.drawLine(center, QPointF(center.x() + face.width() * 0.28, center.y()));
+    const QColor accent(56, 132, 214);
+    const QColor ring(120, 138, 162);
+    const QRectF outer(4.5, 3.5, 23.0, 23.0);
+    const QPointF center = outer.center();
 
     painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(20, 28, 40, 30));
+    painter.drawEllipse(outer.translated(0.6, 1.0));
+
+    QLinearGradient face(outer.topLeft(), outer.bottomLeft());
+    face.setColorAt(0.0, QColor(255, 255, 255));
+    face.setColorAt(1.0, QColor(230, 237, 246));
+    painter.setBrush(face);
+    painter.setPen(QPen(ring, 1.2));
+    painter.drawEllipse(outer);
+
+    // Progress arc (delay cue)
+    const QRectF arcRect = outer.adjusted(2.4, 2.4, -2.4, -2.4);
+    painter.setBrush(Qt::NoBrush);
+    painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 55), 2.4, Qt::SolidLine, Qt::RoundCap));
+    painter.drawArc(arcRect, 90 * 16, -270 * 16);
+    painter.setPen(QPen(accent, 2.4, Qt::SolidLine, Qt::RoundCap));
+    painter.drawArc(arcRect, 90 * 16, -210 * 16);
+
+    // Hour / minute marks (cardinal only — cleaner)
+    painter.setPen(QPen(QColor(150, 164, 184), 1.35, Qt::SolidLine, Qt::RoundCap));
+    for (int i = 0; i < 4; ++i) {
+        const qreal angleRad = qDegreesToRadians(i * 90.0 - 90.0);
+        const qreal innerR = outer.width() * 0.30;
+        const qreal outerR = outer.width() * 0.38;
+        painter.drawLine(QPointF(center.x() + innerR * qCos(angleRad), center.y() + innerR * qSin(angleRad)),
+                         QPointF(center.x() + outerR * qCos(angleRad), center.y() + outerR * qSin(angleRad)));
+    }
+
+    painter.setPen(QPen(accent, 2.15, Qt::SolidLine, Qt::RoundCap));
+    painter.drawLine(center, QPointF(center.x(), center.y() - outer.height() * 0.18));
+    painter.setPen(QPen(accent, 1.75, Qt::SolidLine, Qt::RoundCap));
+    painter.drawLine(center, QPointF(center.x() + outer.width() * 0.22, center.y() + outer.height() * 0.04));
+
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(255, 255, 255));
+    painter.drawEllipse(center, 2.4, 2.4);
     painter.setBrush(accent);
-    painter.drawEllipse(center, 1.8, 1.8);
+    painter.drawEllipse(center, 1.55, 1.55);
 
     return pixmap;
 }
