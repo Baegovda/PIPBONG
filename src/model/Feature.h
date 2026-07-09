@@ -76,7 +76,8 @@ public:
     void setHotkeyAllowExtraModifiers(bool allow) { m_hotkeyAllowExtraModifiers = allow; }
 
     std::unique_ptr<Feature> clone() const;
-    std::unique_ptr<Feature> duplicateAsNewInstance() const;
+    /// New feature id; clears hotkey by default (paste / profile copy). Library import passes preserveHotkey.
+    std::unique_ptr<Feature> duplicateAsNewInstance(bool preserveHotkey = false) const;
 
 private:
     static std::string generateId();

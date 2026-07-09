@@ -56,7 +56,7 @@ std::unique_ptr<Feature> Feature::clone() const {
     return copy;
 }
 
-std::unique_ptr<Feature> Feature::duplicateAsNewInstance() const {
+std::unique_ptr<Feature> Feature::duplicateAsNewInstance(bool preserveHotkey) const {
     auto copy = std::make_unique<Feature>();
     copy->m_id = generateId();
     copy->m_name = m_name;
@@ -74,7 +74,7 @@ std::unique_ptr<Feature> Feature::duplicateAsNewInstance() const {
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
     copy->m_triggerCooldownMs = m_triggerCooldownMs;
     copy->m_hotkeyAllowExtraModifiers = m_hotkeyAllowExtraModifiers;
-    copy->m_hotkey = {};
+    copy->m_hotkey = preserveHotkey ? m_hotkey : HotkeyBinding{};
     copy->m_workflow.assignFrom(m_workflow);
     return copy;
 }

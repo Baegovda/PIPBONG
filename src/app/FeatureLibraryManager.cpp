@@ -346,6 +346,7 @@ bool FeatureLibraryManager::saveFeatureToLibrary(const Feature& feature,
         missingTemplatePaths->clear();
     }
 
+    // Full feature snapshot: hotkey, run options, workflow blocks, and loop regions.
     nlohmann::json featureJson = JsonSerializer::featureToJson(feature);
     featureJson["id"] = entryId.toStdString();
     if (!entryNameOverride.trimmed().isEmpty()) {
@@ -407,8 +408,8 @@ FeatureLibraryManager::ImportResult FeatureLibraryManager::importEntryToProfile(
     auto temp = std::make_unique<Feature>();
     JsonSerializer::featureFromJson(featureJson, *temp);
 
-    // Duplicate to ensure new id + hotkey is cleared.
-    res.feature = temp->duplicateAsNewInstance();
+    // New profile feature id; preserve hotkey and all options stored in the library entry.
+    res.feature = temp->duplicateAsNewInstance(/*preserveHotkey=*/true);
     res.importedName = QString::fromStdString(featureJson.value("name", std::string{}));
     if (res.feature) {
         res.feature->setName(res.importedName.toStdString());
