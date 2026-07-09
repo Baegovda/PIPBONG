@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.40` (from `project(PIPBONG VERSION 0.8.40)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.41` (from `project(PIPBONG VERSION 0.8.41)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -625,6 +625,20 @@ If POE runs **as administrator**, a non-elevated PIPBONG process may not receive
 - Disable `Qt::ItemIsDropEnabled` on row items so drops target between rows.
 - Disable reorder while workflow is running.
 
+### 8.2.1 Reorderable sidebar lists (feature / library / profile)
+
+**Status:** Verified working on Windows (2026-07). Sidebar `QListWidget` reorder and cross-panel drops share `ReorderableListWidget` — do not reimplement per-list drag logic.
+
+| Layer | Responsibility |
+|-------|----------------|
+| `ReorderableListWidget` | Insertion-line indicator, `startDrag` / `dropEvent`, `rowsReordered` + `externalItemDropped` signals |
+| Subclass hooks | `buildDragMimeData`, `acceptsExternalMime`, `canStartDragFromRow`, `minimumDropInsertionIndex` |
+| Persistence | Parent connects `rowsReordered` → model save → `refresh()` (feature `Project::moveFeature`, library `manifest.json`, profile `ProfileManager::reorderProfiles`) |
+
+Subclasses: `FeatureListWidget`, `FeatureLibraryListWidget`, `ProfileListWidget` (default profile row 0: no drag, min insertion index 1). Cross-panel MIME: `FeatureDragMime`. Disable via `setReorderEnabled(false)` / `setTransferEnabled(false)` while workflows run.
+
+Key files: `src/ui/widgets/ReorderableListWidget.*`, `src/ui/FeatureDragMime.*`.
+
 ### 8.3 Code conventions
 
 - Match surrounding C++/Qt style; minimal diffs.
@@ -862,6 +876,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.41] - 2026-07-09
+
+### Added
+
+- Shared `ReorderableListWidget` base for list drag-reorder (insertion-line indicator, internal reorder signal, external drop hook) used by feature list, library drawer, and profile list (`src/ui/widgets/ReorderableListWidget.*`).
+
+### Changed
+
+- Feature library drawer supports drag-reorder; order persists in `featureLibrary/manifest.json` (`FeatureLibraryListWidget`, `FeatureLibraryManager::reorderEntries`, `MainWindow::onLibraryEntriesReordered`).
+- Profile list internal reorder uses the same `ReorderableListWidget` policy instead of Qt `InternalMove` (`ProfileListWidget`, `MainWindow`).
 
 ## [0.8.40] - 2026-07-09
 

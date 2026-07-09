@@ -1,13 +1,10 @@
 #pragma once
 
-#include <QListWidget>
+#include "ui/widgets/ReorderableListWidget.h"
 
-class QDragEnterEvent;
-class QDragMoveEvent;
-class QDropEvent;
 class QMimeData;
 
-class FeatureLibraryListWidget : public QListWidget {
+class FeatureLibraryListWidget : public ReorderableListWidget {
     Q_OBJECT
 public:
     explicit FeatureLibraryListWidget(QWidget* parent = nullptr);
@@ -17,13 +14,12 @@ public:
 
 signals:
     void featureDroppedOnLibrary(const QMimeData* mime);
+    void libraryRowsReordered(int fromRow, int toRow);
 
 protected:
-    void startDrag(Qt::DropActions supportedActions) override;
-    void dragEnterEvent(QDragEnterEvent* event) override;
-    void dragMoveEvent(QDragMoveEvent* event) override;
-    void dragLeaveEvent(QDragLeaveEvent* event) override;
-    void dropEvent(QDropEvent* event) override;
+    QMimeData* buildDragMimeData(int row) const override;
+    bool acceptsExternalMime(const QMimeData* mime) const override;
+    Qt::DropAction preferredExternalDropAction(const QMimeData* mime) const override;
 
 private:
     bool m_transferEnabled = true;

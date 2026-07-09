@@ -7,6 +7,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QSet>
 #include <QUuid>
 
 #include <set>
@@ -123,37 +125,153 @@ QString FeatureLibraryManager::entryDir(const QString& entryId) const {
     return QDir(m_entriesDir).filePath(entryId);
 }
 
-std::vector<FeatureLibraryManager::Entry> FeatureLibraryManager::listEntries() const {
-    std::vector<Entry> out;
-    const QDir entriesDir(m_entriesDir);
-    if (!entriesDir.exists()) {
+QString FeatureLibraryManager::manifestPath() const {
+    return QDir(m_libraryRootDir).filePath(QStringLiteral("manifest.json"));
+}
+
+QStringList FeatureLibraryManager::loadEntryOrder() const {
+    QFile file(manifestPath());
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    try {
+        const nlohmann::json j = nlohmann::json::parse(file.readAll().constData());
+        QStringList out;
+        const auto idsIt = j.find("entryIds");
+        if (idsIt == j.end() || !idsIt->is_array()) {
+            return {};
+        }
+        for (const auto& item : *idsIt) {
+            if (item.is_string()) {
+                out.push_back(QString::fromStdString(item.get<std::string>()));
+            }
+        }
         return out;
+    } catch (...) {
+        return {};
     }
+}
 
-    const QFileInfoList dirs = entriesDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
-    for (const QFileInfo& dirInfo : dirs) {
-        const QString entryId = dirInfo.fileName();
-        const QString featurePath = featureJsonPath(entryId);
-        QFile file(featurePath);
-        if (!file.open(QIODevice::ReadOnly)) {
-            continue;
-        }
-        const QByteArray raw = file.readAll();
-        file.close();
-
-        try {
-            const nlohmann::json j = nlohmann::json::parse(raw.constData());
-            Entry e;
-            e.id = entryId;
-            e.name = QString::fromStdString(j.value("name", std::string{}));
-            e.templateCount = countTemplatesRecursive(j);
-            out.push_back(std::move(e));
-        } catch (...) {
-            continue;
+bool FeatureLibraryManager::saveEntryOrder(const QStringList& orderedIds) const {
+    QDir().mkpath(m_libraryRootDir);
+    nlohmann::json j;
+    j["version"] = 1;
+    nlohmann::json ids = nlohmann::json::array();
+    for (const QString& id : orderedIds) {
+        if (!id.isEmpty()) {
+            ids.push_back(id.toStdString());
         }
     }
+    j["entryIds"] = std::move(ids);
 
-    std::sort(out.begin(), out.end(), [](const Entry& a, const Entry& b) { return a.name < b.name; });
+    QFile file(manifestPath());
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return false;
+    }
+    file.write(QString::fromStdString(j.dump(2)).toUtf8());
+    return true;
+}
+
+void FeatureLibraryManager::appendEntryToOrder(const QString& entryId) const {
+    if (entryId.isEmpty()) {
+        return;
+    }
+    QStringList order = loadEntryOrder();
+    if (!order.contains(entryId)) {
+        order.push_back(entryId);
+        saveEntryOrder(order);
+    }
+}
+
+void FeatureLibraryManager::removeEntryFromOrder(const QString& entryId) const {
+    if (entryId.isEmpty()) {
+        return;
+    }
+    QStringList order = loadEntryOrder();
+    if (order.removeAll(entryId) > 0) {
+        saveEntryOrder(order);
+    }
+}
+
+bool FeatureLibraryManager::reorderEntries(const QStringList& orderedIds) {
+    if (orderedIds.isEmpty()) {
+        return false;
+    }
+    return saveEntryOrder(orderedIds);
+}
+
+std::vector<FeatureLibraryManager::Entry> FeatureLibraryManager::listEntries() const {
+    QHash<QString, Entry> byId;
+    const QDir entriesDir(m_entriesDir);
+    if (entriesDir.exists()) {
+        const QFileInfoList dirs = entriesDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QFileInfo& dirInfo : dirs) {
+            const QString entryId = dirInfo.fileName();
+            const QString featurePath = featureJsonPath(entryId);
+            QFile file(featurePath);
+            if (!file.open(QIODevice::ReadOnly)) {
+                continue;
+            }
+            const QByteArray raw = file.readAll();
+            file.close();
+
+            try {
+                const nlohmann::json j = nlohmann::json::parse(raw.constData());
+                Entry e;
+                e.id = entryId;
+                e.name = QString::fromStdString(j.value("name", std::string{}));
+                e.templateCount = countTemplatesRecursive(j);
+                byId.insert(entryId, std::move(e));
+            } catch (...) {
+                continue;
+            }
+        }
+    }
+
+    if (byId.isEmpty()) {
+        return {};
+    }
+
+    QStringList order = loadEntryOrder();
+    std::vector<Entry> out;
+    out.reserve(byId.size());
+    QSet<QString> used;
+    for (const QString& id : order) {
+        const auto it = byId.constFind(id);
+        if (it != byId.constEnd()) {
+            out.push_back(it.value());
+            used.insert(id);
+        }
+    }
+
+    std::vector<Entry> orphans;
+    orphans.reserve(byId.size() - used.size());
+    for (auto it = byId.constBegin(); it != byId.constEnd(); ++it) {
+        if (!used.contains(it.key())) {
+            orphans.push_back(it.value());
+        }
+    }
+    std::sort(orphans.begin(), orphans.end(), [](const Entry& a, const Entry& b) {
+        return a.name < b.name;
+    });
+    out.insert(out.end(), orphans.begin(), orphans.end());
+
+    if (order.isEmpty() && !out.empty()) {
+        QStringList initialOrder;
+        initialOrder.reserve(static_cast<int>(out.size()));
+        for (const Entry& e : out) {
+            initialOrder.push_back(e.id);
+        }
+        saveEntryOrder(initialOrder);
+    } else if (!orphans.empty()) {
+        QStringList mergedOrder;
+        mergedOrder.reserve(static_cast<int>(out.size()));
+        for (const Entry& e : out) {
+            mergedOrder.push_back(e.id);
+        }
+        saveEntryOrder(mergedOrder);
+    }
+
     return out;
 }
 
@@ -235,6 +353,7 @@ bool FeatureLibraryManager::saveFeatureToLibrary(const Feature& feature,
     if (outEntryId) {
         *outEntryId = entryId;
     }
+    appendEntryToOrder(entryId);
     return true;
 }
 
@@ -316,6 +435,10 @@ bool FeatureLibraryManager::removeEntry(const QString& entryId) {
     if (!dir.exists()) {
         return false;
     }
-    return dir.removeRecursively();
+    const bool removed = dir.removeRecursively();
+    if (removed) {
+        removeEntryFromOrder(entryId);
+    }
+    return removed;
 }
 

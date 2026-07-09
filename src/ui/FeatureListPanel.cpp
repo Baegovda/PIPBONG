@@ -825,6 +825,10 @@ void FeatureListPanel::setupUi() {
             this,
             &FeatureListPanel::featureDroppedOnLibrary);
     connect(m_libraryList,
+            &FeatureLibraryListWidget::libraryRowsReordered,
+            this,
+            &FeatureListPanel::onLibraryRowsReordered);
+    connect(m_libraryList,
             &QListWidget::customContextMenuRequested,
             this,
             &FeatureListPanel::onLibraryContextMenu);
@@ -1287,6 +1291,16 @@ void FeatureListPanel::onFeatureRowsReordered(int fromRow, int toRow) {
         m_list->setCurrentRow(toRow);
     } else if (fromRow >= 0 && fromRow < m_list->count()) {
         m_list->setCurrentRow(fromRow);
+    }
+}
+
+void FeatureListPanel::onLibraryRowsReordered(int fromRow, int toRow) {
+    if (!m_libraryList || fromRow == toRow || !m_editControlsEnabled) {
+        return;
+    }
+    emit libraryEntriesReordered(fromRow, toRow);
+    if (fromRow >= 0 && fromRow < m_libraryList->count()) {
+        m_libraryList->setCurrentRow(toRow);
     }
 }
 void FeatureListPanel::onAnimationTick() {

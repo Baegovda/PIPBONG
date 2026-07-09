@@ -172,6 +172,7 @@ private:
     bool canTransferFeatures() const;
     void onFeatureDroppedOnFeatureList(const QMimeData* mime, int insertIndex);
     void onFeatureDroppedOnLibrary(const QMimeData* mime);
+    void onLibraryEntriesReordered(int fromRow, int toRow);
     void onFeatureDroppedOnProfile(const QString& targetProfileId, const QMimeData* mime);
     void syncProfileListSelection();
     bool switchToProfile(const QString& profileId, bool automatic = false);

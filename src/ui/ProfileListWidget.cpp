@@ -119,7 +119,7 @@ public:
 } // namespace
 
 ProfileListWidget::ProfileListWidget(QWidget* parent)
-    : QListWidget(parent) {
+    : ReorderableListWidget(parent) {
     m_itemDelegate = new ProfileListItemDelegate(this);
     setItemDelegate(m_itemDelegate);
 }
@@ -140,55 +140,56 @@ bool ProfileListWidget::isDefaultProfileItem(QListWidgetItem* item) const {
     return item && item->data(kDefaultProfileRole).toBool();
 }
 
+bool ProfileListWidget::canStartDragFromRow(int row) const {
+    return !isDefaultProfileItem(item(row));
+}
+
+int ProfileListWidget::minimumDropInsertionIndex() const {
+    return count() > 0 && isDefaultProfileItem(item(0)) ? 1 : 0;
+}
+
 void ProfileListWidget::mousePressEvent(QMouseEvent* event) {
     if (event && event->button() == Qt::LeftButton) {
         if (QListWidgetItem* hit = itemAt(event->position().toPoint())) {
             setCurrentItem(hit);
         }
     }
-    QListWidget::mousePressEvent(event);
-}
-
-void ProfileListWidget::startDrag(Qt::DropActions supportedActions) {
-    if (isDefaultProfileItem(currentItem())) {
-        return;
-    }
-    QListWidget::startDrag(supportedActions);
+    ReorderableListWidget::mousePressEvent(event);
 }
 
 void ProfileListWidget::dragEnterEvent(QDragEnterEvent* event) {
-    if (m_featureDropEnabled && FeatureDragMime::accepts(event->mimeData())) {
-        const int highlightRow = this->row(itemAt(event->position().toPoint()));
+    if (m_featureDropEnabled && FeatureDragMime::accepts(event->mimeData()) && event->source() != this) {
+        const int highlightRow = row(itemAt(event->position().toPoint()));
         updateFeatureDropHighlight(highlightRow);
         event->acceptProposedAction();
         return;
     }
     updateFeatureDropHighlight(-1);
-    QListWidget::dragEnterEvent(event);
+    ReorderableListWidget::dragEnterEvent(event);
 }
 
 void ProfileListWidget::dragMoveEvent(QDragMoveEvent* event) {
-    if (m_featureDropEnabled && FeatureDragMime::accepts(event->mimeData())) {
-        const int highlightRow = this->row(itemAt(event->position().toPoint()));
+    if (m_featureDropEnabled && FeatureDragMime::accepts(event->mimeData()) && event->source() != this) {
+        const int highlightRow = row(itemAt(event->position().toPoint()));
         updateFeatureDropHighlight(highlightRow);
         event->acceptProposedAction();
         return;
     }
     updateFeatureDropHighlight(-1);
-    QListWidget::dragMoveEvent(event);
+    ReorderableListWidget::dragMoveEvent(event);
 }
 
 void ProfileListWidget::dragLeaveEvent(QDragLeaveEvent* event) {
     updateFeatureDropHighlight(-1);
-    QListWidget::dragLeaveEvent(event);
+    ReorderableListWidget::dragLeaveEvent(event);
 }
 
 QString ProfileListWidget::profileIdAt(const QPoint& pos) const {
-    QListWidgetItem* item = itemAt(pos);
-    if (!item) {
+    QListWidgetItem* hit = itemAt(pos);
+    if (!hit) {
         return {};
     }
-    return item->data(Qt::UserRole).toString();
+    return hit->data(Qt::UserRole).toString();
 }
 
 void ProfileListWidget::updateFeatureDropHighlight(int row) {
@@ -212,7 +213,7 @@ void ProfileListWidget::updateFeatureDropHighlight(int row) {
 void ProfileListWidget::dropEvent(QDropEvent* event) {
     updateFeatureDropHighlight(-1);
 
-    if (m_featureDropEnabled && FeatureDragMime::accepts(event->mimeData())) {
+    if (m_featureDropEnabled && FeatureDragMime::accepts(event->mimeData()) && event->source() != this) {
         const QString profileId = profileIdAt(event->position().toPoint());
         if (profileId.isEmpty()) {
             event->ignore();
@@ -238,5 +239,5 @@ void ProfileListWidget::dropEvent(QDropEvent* event) {
         return;
     }
 
-    QListWidget::dropEvent(event);
+    ReorderableListWidget::dropEvent(event);
 }

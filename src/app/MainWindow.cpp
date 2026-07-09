@@ -35,6 +35,7 @@
 #include "app/UpdateChecker.h"
 #include "ui/AppHelpDialog.h"
 #include "ui/ProfileListWidget.h"
+#include "ui/widgets/ReorderableListWidget.h"
 #include "ui/FeatureDragMime.h"
 #include "ui/CustomTitleBar.h"
 #include "ui/ProfileEditDialog.h"
@@ -352,11 +353,6 @@ void MainWindow::setupUi() {
     m_profileList = new ProfileListWidget(profileGroup);
     m_profileList->setObjectName(QStringLiteral("profileListView"));
     m_profileList->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_profileList->setDragEnabled(true);
-    m_profileList->setAcceptDrops(true);
-    m_profileList->setDropIndicatorShown(true);
-    m_profileList->setDragDropMode(QAbstractItemView::InternalMove);
-    m_profileList->setDefaultDropAction(Qt::MoveAction);
     m_profileList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_profileList->setIconSize(QSize(20, 20));
     m_profileList->setMinimumWidth(0);
@@ -648,6 +644,10 @@ void MainWindow::connectSignals() {
             &FeatureListPanel::featureDroppedOnLibrary,
             this,
             &MainWindow::onFeatureDroppedOnLibrary);
+    connect(m_featureList,
+            &FeatureListPanel::libraryEntriesReordered,
+            this,
+            &MainWindow::onLibraryEntriesReordered);
     connect(m_profileList,
             &ProfileListWidget::featureDroppedOnProfile,
             this,
@@ -660,11 +660,11 @@ void MainWindow::connectSignals() {
             &QListWidget::itemDoubleClicked,
             this,
             [this](QListWidgetItem*) { onRenameProfile(); });
-    connect(m_profileList->model(),
-            &QAbstractItemModel::rowsMoved,
+    connect(m_profileList,
+            &ReorderableListWidget::rowsReordered,
             this,
-            [this]() {
-                if (!m_profileManager || !m_profileList || m_refreshingProfileList) {
+            [this](int fromRow, int toRow) {
+                if (!m_profileManager || !m_profileList || m_refreshingProfileList || fromRow == toRow) {
                     return;
                 }
                 QStringList orderedIds;
@@ -676,6 +676,11 @@ void MainWindow::connectSignals() {
                     }
                     orderedIds.push_back(item->data(Qt::UserRole).toString());
                 }
+                if (fromRow < 0 || toRow < 0 || fromRow >= orderedIds.size() || toRow >= orderedIds.size()) {
+                    return;
+                }
+                const QString movedId = orderedIds.takeAt(fromRow);
+                orderedIds.insert(toRow, movedId);
                 if (m_profileManager->reorderProfiles(orderedIds)) {
                     showTransientStatus(tr("프로필 순서를 저장했습니다."), 1500);
                     refreshProfileList();
@@ -2187,6 +2192,30 @@ void MainWindow::onFeatureDroppedOnLibrary(const QMimeData* mime) {
     }
 
     showTransientStatus(tr("라이브러리에 저장됨: %1").arg(featureName), 2500);
+}
+
+void MainWindow::onLibraryEntriesReordered(int fromRow, int toRow) {
+    if (!m_featureLibraryManager || fromRow == toRow) {
+        return;
+    }
+
+    const std::vector<FeatureLibraryManager::Entry> entries = m_featureLibraryManager->listEntries();
+    if (fromRow < 0 || toRow < 0 || fromRow >= static_cast<int>(entries.size())
+        || toRow >= static_cast<int>(entries.size())) {
+        return;
+    }
+
+    QStringList orderedIds;
+    orderedIds.reserve(static_cast<int>(entries.size()));
+    for (const FeatureLibraryManager::Entry& entry : entries) {
+        orderedIds.push_back(entry.id);
+    }
+    const QString movedId = orderedIds.takeAt(fromRow);
+    orderedIds.insert(toRow, movedId);
+    if (m_featureLibraryManager->reorderEntries(orderedIds)) {
+        refreshFeatureLibraryPanel();
+        showTransientStatus(tr("라이브러리 순서를 저장했습니다."), 1500);
+    }
 }
 
 void MainWindow::onFeatureDroppedOnProfile(const QString& targetProfileId, const QMimeData* mime) {

@@ -120,6 +120,8 @@ signals:
     void featureDropped(const QMimeData* mime, int insertIndex);
     /// Active-profile feature dropped onto the library drawer.
     void featureDroppedOnLibrary(const QMimeData* mime);
+    /// Library drawer entry order changed by drag.
+    void libraryEntriesReordered(int fromRow, int toRow);
 
 
 
@@ -148,6 +150,7 @@ private slots:
     void onAnimationTick();
 
     void onFeatureRowsReordered(int fromRow, int toRow);
+    void onLibraryRowsReordered(int fromRow, int toRow);
 
 
 

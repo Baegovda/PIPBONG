@@ -27,6 +27,9 @@ public:
 
     std::vector<Entry> listEntries() const;
 
+    /// Persists manifest entry order (must include every existing entry id).
+    bool reorderEntries(const QStringList& orderedIds);
+
     /// Saves the given feature + referenced templates into the global feature library.
     /// @param entryNameOverride when provided, stored feature name is overridden (source feature unchanged).
     /// @param outEntryId optional output for the newly created library entry id.
@@ -53,6 +56,12 @@ public:
 private:
     QString m_libraryRootDir;
     QString m_entriesDir;
+
+    QString manifestPath() const;
+    QStringList loadEntryOrder() const;
+    bool saveEntryOrder(const QStringList& orderedIds) const;
+    void appendEntryToOrder(const QString& entryId) const;
+    void removeEntryFromOrder(const QString& entryId) const;
 
     QString featureJsonPath(const QString& entryId) const;
     QString entryDir(const QString& entryId) const;

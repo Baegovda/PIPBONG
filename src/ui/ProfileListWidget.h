@@ -1,15 +1,12 @@
 #pragma once
 
-#include <QListWidget>
+#include "ui/widgets/ReorderableListWidget.h"
 
-class QDragEnterEvent;
-class QDragMoveEvent;
-class QDropEvent;
 class QMimeData;
 class QMouseEvent;
 class QStyledItemDelegate;
 
-class ProfileListWidget : public QListWidget {
+class ProfileListWidget : public ReorderableListWidget {
     Q_OBJECT
 public:
     explicit ProfileListWidget(QWidget* parent = nullptr);
@@ -23,7 +20,8 @@ signals:
 
 protected:
     void mousePressEvent(QMouseEvent* event) override;
-    void startDrag(Qt::DropActions supportedActions) override;
+    bool canStartDragFromRow(int row) const override;
+    int minimumDropInsertionIndex() const override;
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragMoveEvent(QDragMoveEvent* event) override;
     void dragLeaveEvent(QDragLeaveEvent* event) override;
