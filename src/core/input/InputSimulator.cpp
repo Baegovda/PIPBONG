@@ -172,12 +172,15 @@ void pulseHeldKeyGapUntracked(int virtualKey) {
     if (!isAsyncKeyDown(virtualKey)) {
         return;
     }
-    // Must re-DOWN after the gap: leaving the key UP after a synthetic KEYUP means
-    // Windows often never delivers a physical KEYUP when the finger finally releases,
-    // so Hold mode stays latched forever.
+    // Brief UP so the game feels the gap. Re-DOWN only when async state dropped after
+    // the pulse — if the finger is still down, physical hold already restored async state
+    // and an extra synthetic DOWN would leave a stale ref count so GetAsyncKeyState stays
+    // true after release and Hold never ends.
     sendKeyboardVk(virtualKey, false, false);
     std::this_thread::sleep_for(kKeyPulseGapDelay);
-    sendKeyboardVk(virtualKey, true, false);
+    if (!isAsyncKeyDown(virtualKey)) {
+        sendKeyboardVk(virtualKey, true, false);
+    }
 }
 
 void sendKeyboardTap(int virtualKey) {

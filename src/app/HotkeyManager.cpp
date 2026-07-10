@@ -446,45 +446,59 @@ void HotkeyManager::emitHotkeyHoldEnded(const std::string& featureId) {
 }
 
 #ifdef _WIN32
-void HotkeyManager::scheduleHoldReleaseRecheck(const std::string& featureId, int vkCode) {
-    const quint64 generation = ++m_holdReleaseRecheckGeneration[featureId];
-    QTimer::singleShot(32, this, [this, featureId, vkCode, generation]() {
+void HotkeyManager::scheduleHoldReleaseRecheck(const std::string& featureId,
+                                               int vkCode,
+                                               int attempt) {
+    static constexpr int kMaxAttempts = 8;
+    static constexpr int kRecheckDelayMs = 32;
+
+    if (attempt == 0) {
+        ++m_holdReleaseRecheckGeneration[featureId];
+    }
+    const quint64 generation = m_holdReleaseRecheckGeneration[featureId];
+    QTimer::singleShot(kRecheckDelayMs, this, [this, featureId, vkCode, generation, attempt]() {
         if (m_holdReleaseRecheckGeneration[featureId] != generation) {
             return;
         }
-        finalizeHoldReleaseIfPhysicallyUp(featureId, vkCode);
+        if (finalizeHoldReleaseIfPhysicallyUp(featureId, vkCode)) {
+            return;
+        }
+        if (attempt + 1 < kMaxAttempts) {
+            scheduleHoldReleaseRecheck(featureId, vkCode, attempt + 1);
+        }
     });
 }
 
-void HotkeyManager::finalizeHoldReleaseIfPhysicallyUp(const std::string& featureId, int vkCode) {
+bool HotkeyManager::finalizeHoldReleaseIfPhysicallyUp(const std::string& featureId, int vkCode) {
     for (HoldBindingEntry& entry : m_holdBindings) {
         if (entry.featureId != featureId || !entry.binding.matchesVirtualKey(vkCode)) {
             continue;
         }
         if (!entry.keyDown) {
-            return;
+            return true;
         }
         if ((GetAsyncKeyState(vkCode) & 0x8000) != 0) {
-            return;
+            return false;
         }
         entry.keyDown = false;
         emitHotkeyHoldEnded(entry.featureId);
-        return;
+        return true;
     }
     for (MouseBindingEntry& entry : m_mouseBindings) {
         if (!entry.holdMode || entry.featureId != featureId || !entry.binding.matchesVirtualKey(vkCode)) {
             continue;
         }
         if (!entry.buttonDown) {
-            return;
+            return true;
         }
         if ((GetAsyncKeyState(vkCode) & 0x8000) != 0) {
-            return;
+            return false;
         }
         entry.buttonDown = false;
         emitHotkeyHoldEnded(entry.featureId);
-        return;
+        return true;
     }
+    return true;
 }
 #endif
 

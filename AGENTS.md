@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.84` (from `project(PIPBONG VERSION 0.8.84)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.85` (from `project(PIPBONG VERSION 0.8.85)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1051,6 +1051,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.85] - 2026-07-10
+
+### Fixed
+
+- Hold mode (**누를 동안**) sometimes kept running after the hotkey was released when the workflow used same-key KeyPress Tap (e.g. Hold **Q** + **Q 탭**): `pulseHeldKeyGap` no longer sends an extra synthetic KEYDOWN when the key is still physically down after the pulse (stale `GetAsyncKeyState` blocked hold-end recheck); hold release recheck retries up to 8×32 ms (`InputSimulator`, `HotkeyManager`).
 
 ## [0.8.84] - 2026-07-10
 
@@ -3503,4 +3509,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.84._
+_Last consolidated: 2026-07-10. Current application version: 0.8.85._
