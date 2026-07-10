@@ -877,6 +877,40 @@ void InputSimulator::ensureKeyReleased(int virtualKey) {
 #endif
 }
 
+void InputSimulator::forceKeyUp(int virtualKey) {
+#ifdef _WIN32
+    sendKeyboardVk(virtualKey, false, false);
+#else
+    (void)virtualKey;
+#endif
+}
+
+void InputSimulator::forceHotkeyMouseButtonUp(int virtualKey) {
+#ifdef _WIN32
+    switch (virtualKey) {
+    case VK_LBUTTON:
+        sendStandardButtonUp(MouseButton::Left, false);
+        break;
+    case VK_RBUTTON:
+        sendStandardButtonUp(MouseButton::Right, false);
+        break;
+    case VK_MBUTTON:
+        sendStandardButtonUp(MouseButton::Middle, false);
+        break;
+    case VK_XBUTTON1:
+        sendXButtonUp(MouseButton::Back, false);
+        break;
+    case VK_XBUTTON2:
+        sendXButtonUp(MouseButton::Forward, false);
+        break;
+    default:
+        break;
+    }
+#else
+    (void)virtualKey;
+#endif
+}
+
 void InputSimulator::pulseHeldKeyGap(int virtualKey) {
 #ifdef _WIN32
     pulseHeldKeyGapUntracked(virtualKey);
@@ -1002,7 +1036,7 @@ void InputSimulator::restoreTrackedKeyboard(std::unordered_set<int>& heldKeys,
                                             const SessionModifierSnapshot& /*sessionStart*/) {
     const auto keysToRelease = heldKeys;
     for (int virtualKey : keysToRelease) {
-        sendKeyboardVk(normalizeModifierVirtualKey(virtualKey), true);
+        sendKeyboardVk(normalizeModifierVirtualKey(virtualKey), false, false);
         heldKeys.erase(virtualKey);
     }
 }

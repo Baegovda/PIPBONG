@@ -161,6 +161,18 @@ void restoreRunStartCursorPosition(const FeatureRunSession& session) {
     InputSimulator::moveMouse(session.runStartCursorScreenX, session.runStartCursorScreenY);
 }
 
+void releaseHoldHotkeyInputToTarget(const Feature* feature) {
+    if (!feature || feature->hotkey().isEmpty()) {
+        return;
+    }
+    const int vk = feature->hotkey().virtualKey;
+    if (HotkeyBinding::isMouseVirtualKey(vk)) {
+        InputSimulator::forceHotkeyMouseButtonUp(vk);
+    } else {
+        InputSimulator::forceKeyUp(vk);
+    }
+}
+
 QVector<WindowListEntry> collectWindowListEntries() {
     QVector<WindowListEntry> entries;
     EnumWindows(
@@ -1843,6 +1855,10 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     session->holdRunActive = false;
     ++session->holdRepeatGeneration;
     ++session->triggerCooldownGeneration;
+    Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
+    if (session->runningMode == FeatureRunMode::Hold) {
+        releaseHoldHotkeyInputToTarget(feature);
+    }
     session->engine->stop();
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
     appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
@@ -3292,6 +3308,11 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
                             3000);
     }
 
+    if (session && session->runningMode == FeatureRunMode::Hold) {
+        Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
+        releaseHoldHotkeyInputToTarget(feature);
+    }
+
     if (session && session->sessionContext) {
         session->sessionContext->endRunInputSession();
     }
@@ -3390,6 +3411,9 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
 
     session->holdRunActive = false;
     session->repeatSession = false;
+
+    Feature* feature = m_project ? m_project->featureById(id) : nullptr;
+    releaseHoldHotkeyInputToTarget(feature);
 
     if (session->engine && session->engine->isRunning()) {
         session->userStopRequested = true;

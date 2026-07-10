@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.86` (from `project(PIPBONG VERSION 0.8.86)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.87` (from `project(PIPBONG VERSION 0.8.87)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1064,6 +1064,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.87] - 2026-07-10
+
+### Fixed
+
+- Hold mode (**누를 동안**): releasing the feature hotkey now immediately sends an untracked KEYUP (or mouse button UP) to the target app so same-key KeyPress Tap pulses do not leave the key stuck down after the swallowed physical release; `restoreTrackedKeyboard` now sends KEYUP instead of KEYDOWN for session-held keys (`InputSimulator`, `MainWindow::onHotkeyHoldEnded`, `finishRunSession`).
 
 ## [0.8.86] - 2026-07-10
 
@@ -3528,4 +3534,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.86._
+_Last consolidated: 2026-07-10. Current application version: 0.8.87._
