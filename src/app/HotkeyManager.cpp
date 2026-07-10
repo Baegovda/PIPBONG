@@ -445,63 +445,6 @@ void HotkeyManager::emitHotkeyHoldEnded(const std::string& featureId) {
         Qt::QueuedConnection);
 }
 
-#ifdef _WIN32
-void HotkeyManager::scheduleHoldReleaseRecheck(const std::string& featureId,
-                                               int vkCode,
-                                               int attempt) {
-    static constexpr int kMaxAttempts = 8;
-    static constexpr int kRecheckDelayMs = 32;
-
-    if (attempt == 0) {
-        ++m_holdReleaseRecheckGeneration[featureId];
-    }
-    const quint64 generation = m_holdReleaseRecheckGeneration[featureId];
-    QTimer::singleShot(kRecheckDelayMs, this, [this, featureId, vkCode, generation, attempt]() {
-        if (m_holdReleaseRecheckGeneration[featureId] != generation) {
-            return;
-        }
-        if (finalizeHoldReleaseIfPhysicallyUp(featureId, vkCode)) {
-            return;
-        }
-        if (attempt + 1 < kMaxAttempts) {
-            scheduleHoldReleaseRecheck(featureId, vkCode, attempt + 1);
-        }
-    });
-}
-
-bool HotkeyManager::finalizeHoldReleaseIfPhysicallyUp(const std::string& featureId, int vkCode) {
-    for (HoldBindingEntry& entry : m_holdBindings) {
-        if (entry.featureId != featureId || !entry.binding.matchesVirtualKey(vkCode)) {
-            continue;
-        }
-        if (!entry.keyDown) {
-            return true;
-        }
-        if ((GetAsyncKeyState(vkCode) & 0x8000) != 0) {
-            return false;
-        }
-        entry.keyDown = false;
-        emitHotkeyHoldEnded(entry.featureId);
-        return true;
-    }
-    for (MouseBindingEntry& entry : m_mouseBindings) {
-        if (!entry.holdMode || entry.featureId != featureId || !entry.binding.matchesVirtualKey(vkCode)) {
-            continue;
-        }
-        if (!entry.buttonDown) {
-            return true;
-        }
-        if ((GetAsyncKeyState(vkCode) & 0x8000) != 0) {
-            return false;
-        }
-        entry.buttonDown = false;
-        emitHotkeyHoldEnded(entry.featureId);
-        return true;
-    }
-    return true;
-}
-#endif
-
 void HotkeyManager::dispatchWin32Hotkey(int hotkeyId) {
     handleHotkey(hotkeyId);
 }
@@ -598,13 +541,6 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
             if (!entry.keyDown) {
                 continue;
             }
-            // Rollover can deliver a ghost key-up while the key is still held; async state can
-            // also lag behind a real release — recheck shortly instead of dropping the event.
-            if ((GetAsyncKeyState(vkCode) & 0x8000) != 0) {
-                scheduleHoldReleaseRecheck(entry.featureId, vkCode);
-                swallow = true;
-                continue;
-            }
             entry.keyDown = false;
             emitHotkeyHoldEnded(entry.featureId);
             swallow = true;
@@ -660,11 +596,6 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
                 swallow = true;
             } else {
                 if (!entry.buttonDown) {
-                    continue;
-                }
-                if ((GetAsyncKeyState(vkCode) & 0x8000) != 0) {
-                    scheduleHoldReleaseRecheck(entry.featureId, vkCode);
-                    swallow = true;
                     continue;
                 }
                 entry.buttonDown = false;

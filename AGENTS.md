@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.87` (from `project(PIPBONG VERSION 0.8.87)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.88` (from `project(PIPBONG VERSION 0.8.88)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1064,6 +1064,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.88] - 2026-07-10
+
+### Fixed
+
+- Hold mode (**누를 동안**) stops immediately when the binding key is released: hook KEYUP ends the session without waiting on `GetAsyncKeyState` recheck timers (up to ~256 ms); removed blocking loop-interval `pulseHeldKeyGap` on the UI thread; run UI updates on hold end; workflow interruptible sleep uses 10 ms steps (`HotkeyManager`, `MainWindow`, `ExecutionContext`).
 
 ## [0.8.87] - 2026-07-10
 
@@ -3534,4 +3540,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.87._
+_Last consolidated: 2026-07-10. Current application version: 0.8.88._

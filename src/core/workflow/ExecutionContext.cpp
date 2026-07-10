@@ -105,7 +105,7 @@ void ExecutionContext::togglePaused() {
 }
 
 bool ExecutionContext::interruptibleSleepMs(int delayMs) {
-    const auto step = std::chrono::milliseconds(50);
+    const auto step = std::chrono::milliseconds(10);
     auto remaining = std::chrono::milliseconds(delayMs);
     while (remaining.count() > 0) {
         if (shouldStop()) {

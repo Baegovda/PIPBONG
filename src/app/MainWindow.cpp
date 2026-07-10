@@ -3022,15 +3022,6 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
 
     const int delayMs = feature ? feature->resolvedLoopIntervalMs() : 0;
     if (delayMs > 0) {
-#ifdef _WIN32
-        // Hold + same-key KeyPress: brief UP/DOWN pulse so the game feels the gap, then
-        // leave the key down again so a later physical KEYUP can end Hold mode.
-        if (feature && feature->runMode() == FeatureRunMode::Hold
-            && !feature->hotkey().isEmpty()
-            && !HotkeyBinding::isMouseVirtualKey(feature->hotkey().virtualKey)) {
-            InputSimulator::pulseHeldKeyGap(feature->hotkey().virtualKey);
-        }
-#endif
         appendSessionLog(session,
                          tr("루프 간격 %1ms 대기").arg(delayMs),
                          LogLineKind::Info);
@@ -3418,11 +3409,13 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     if (session->engine && session->engine->isRunning()) {
         session->userStopRequested = true;
         session->engine->stop();
+        updateRunUiState();
         return;
     }
 
     session->userStopRequested = false;
     finishRunSession(id, true, QString());
+    updateRunUiState();
 }
 
 bool MainWindow::shouldSuppressFeatureHotkeyExecution() const {

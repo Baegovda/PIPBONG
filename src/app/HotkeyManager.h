@@ -85,10 +85,6 @@ private:
     void emitHotkeyHoldStarted(const std::string& featureId);
     void emitHotkeyHoldEnded(const std::string& featureId);
 #ifdef _WIN32
-    void scheduleHoldReleaseRecheck(const std::string& featureId, int vkCode, int attempt = 0);
-    bool finalizeHoldReleaseIfPhysicallyUp(const std::string& featureId, int vkCode);
-#endif
-#ifdef _WIN32
     void installKeyboardHook();
     void uninstallKeyboardHook();
     void installMouseHook();
@@ -109,6 +105,5 @@ private:
     void* m_mouseHook = nullptr;
     bool m_keyboardHookInstalled = false;
     bool m_mouseHookInstalled = false;
-    std::unordered_map<std::string, quint64> m_holdReleaseRecheckGeneration;
 #endif
 };
