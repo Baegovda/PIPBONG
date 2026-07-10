@@ -25,9 +25,10 @@ void ExecutionContext::setLogCallback(LogCallback callback) {
 }
 
 void ExecutionContext::log(const std::string& message) const {
-    if (m_logCallback) {
-        m_logCallback(message);
+    if (m_suppressRepeatUi || !m_logCallback) {
+        return;
     }
+    m_logCallback(message);
 }
 
 void ExecutionContext::setProgressCallback(ProgressCallback callback) {
@@ -65,6 +66,14 @@ void ExecutionContext::reportPointerFeedback(int clientX, int clientY) const {
         return;
     }
     m_pointerFeedbackCallback(clientX, clientY);
+}
+
+void ExecutionContext::setSuppressRepeatUi(bool suppress) {
+    m_suppressRepeatUi = suppress;
+}
+
+bool ExecutionContext::suppressRepeatUi() const {
+    return m_suppressRepeatUi;
 }
 
 void ExecutionContext::requestStop() {

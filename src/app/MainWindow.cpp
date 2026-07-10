@@ -2874,6 +2874,11 @@ void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, con
     if (!success && !message.isEmpty()) {
         line += QStringLiteral(" · ") + message;
     }
+    const bool suppressRepeatUi =
+        session.sessionContext && session.sessionContext->suppressRepeatUi();
+    if (suppressRepeatUi && session.completedLoopCount % 10 != 0) {
+        return;
+    }
     appendSessionLog(session, line, success ? LogLineKind::Success : LogLineKind::Warning);
     if (isDisplayedRunningFeature(&session)) {
         syncLoopTimingToWorkflowEditor(&session);
@@ -2962,6 +2967,14 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
     }
     syncUserInputInterruptForSession(session, feature);
 
+    const bool suppressRepeatUi =
+        repeatIteration
+        && (session.runningMode == FeatureRunMode::Hold
+            || session.runningMode == FeatureRunMode::RepeatInfinite);
+    if (session.sessionContext) {
+        session.sessionContext->setSuppressRepeatUi(suppressRepeatUi);
+    }
+
     const std::wstring targetTitle = currentTargetWindowTitleW();
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
     const bool skipTargetActivation = session.hotkeyLaunchedSession && !repeatIteration;
@@ -2975,9 +2988,6 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
             run.workflow = session.sessionWorkflow;
             run.context = session.sessionContext;
             run.context->resetStop();
-#ifdef _WIN32
-            ScreenCapture::activateTargetWindow();
-#endif
             return run;
         });
         return;
@@ -3061,6 +3071,10 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
         appendSessionLog(session,
                          tr("루프 간격 %1ms 대기").arg(delayMs),
                          LogLineKind::Info);
+    }
+    if (delayMs <= 0) {
+        continueRepeatSession(session, feature, success, message);
+        return;
     }
     const quint64 generation = ++session.holdRepeatGeneration;
     const std::string featureId = session.featureId;

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.93` (from `project(PIPBONG VERSION 0.8.93)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.94` (from `project(PIPBONG VERSION 0.8.94)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1064,6 +1064,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.94] - 2026-07-11
+
+### Fixed
+
+- Hold **현재 위치** click loop (e.g. **무한클릭**) mouse stutter with pointer feedback off: stop injecting `WM_MOUSEMOVE` before client clicks; always use target-window `PostMessage` taps when HWND is available (not only when the button is already down); suppress per-block UI/log signals on Hold/infinite repeat iterations; continue zero-delay repeats immediately without `QTimer::singleShot(0)`; skip repeat-iteration `activateTargetWindow` (`InputSimulator`, `ClickBlock`, `ExecutionContext`, `WorkflowEngine`, `MainWindow`).
 
 ## [0.8.93] - 2026-07-11
 
@@ -3571,4 +3577,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-11. Current application version: 0.8.93._
+_Last consolidated: 2026-07-11. Current application version: 0.8.94._

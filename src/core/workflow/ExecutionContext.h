@@ -42,6 +42,10 @@ public:
     bool pointerVisualFeedback() const;
     void reportPointerFeedback(int clientX, int clientY) const;
 
+    /// When true, workflow run log + block UI hooks are suppressed (fast Hold / infinite repeat).
+    void setSuppressRepeatUi(bool suppress);
+    bool suppressRepeatUi() const;
+
     void requestStop();
     bool shouldStop() const;
     void resetStop();
@@ -166,6 +170,7 @@ private:
     ProgressCallback m_progressCallback;
     PointerFeedbackCallback m_pointerFeedbackCallback;
     bool m_pointerVisualFeedback = true;
+    bool m_suppressRepeatUi = false;
     std::atomic<bool> m_stopRequested{false};
     std::atomic<bool> m_paused{false};
     int m_imageFindMaxMissAttempts = 0;

@@ -95,8 +95,7 @@ public:
                               int count = 1,
                               KeyModifiers mods = {});
 #ifdef _WIN32
-    /// Post client WM_*BUTTON* at the current cursor without global SendInput — used when the
-    /// same mouse button is already held physically (e.g. Hold hotkey = LMB + 현재 위치 click).
+    /// Post client WM_*BUTTON* at the current cursor without global SendInput when a target HWND exists.
     static void clickAtCursorOnTarget(HWND hwnd,
                                       MouseButton button,
                                       ClickAction action,

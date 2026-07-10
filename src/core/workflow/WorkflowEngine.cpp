@@ -93,7 +93,10 @@ protected:
 
             emit m_engine->started();
             context->resetStop();
-            context->setLogCallback([this](const std::string& message) {
+            context->setLogCallback([this, context](const std::string& message) {
+                if (context->suppressRepeatUi()) {
+                    return;
+                }
                 emit m_engine->logMessage(QString::fromStdString(message));
             });
 
@@ -104,11 +107,21 @@ protected:
             QString finalMessage = QStringLiteral("완료");
 
             WorkflowRunHooks hooks;
-            hooks.onBlockStarted = [this](int i, const std::string& summary) {
+            hooks.onBlockStarted = [this, context](int i, const std::string& summary) {
+                if (context->suppressRepeatUi()) {
+                    return;
+                }
                 emit m_engine->blockStarted(i, QString::fromStdString(summary));
             };
-            hooks.onBlockFinished = [this](int i, bool success, const std::string& message, qint64 durationMs,
-                                           int64_t imageFindMatchDurationMs, int imageFindPollAttempts) {
+            hooks.onBlockFinished = [this, context](int i,
+                                                     bool success,
+                                                     const std::string& message,
+                                                     qint64 durationMs,
+                                                     int64_t imageFindMatchDurationMs,
+                                                     int imageFindPollAttempts) {
+                if (context->suppressRepeatUi()) {
+                    return;
+                }
                 emit m_engine->blockFinished(i,
                                              success,
                                              QString::fromStdString(message),

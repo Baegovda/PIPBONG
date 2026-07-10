@@ -479,7 +479,6 @@ void postClientButtonTap(HWND hwnd,
 
     const LPARAM lParam = MAKELPARAM(static_cast<WORD>(clientX & 0xFFFF),
                                      static_cast<WORD>(clientY & 0xFFFF));
-    PostMessage(hwnd, WM_MOUSEMOVE, physicalMouseMoveWParam(), lParam);
     PostMessage(hwnd, msgs.downMsg, clientButtonDownWParam(button, mods), lParam);
     PostMessage(hwnd, msgs.upMsg, clientButtonUpWParam(button, mods), lParam);
 }
@@ -915,10 +914,7 @@ bool InputSimulator::shouldUseClientCursorClick(HWND hwnd, MouseButton button, C
     if (isWheelScrollButton(button)) {
         return false;
     }
-    if (!isStandardClickButton(button) && button != MouseButton::Back && button != MouseButton::Forward) {
-        return false;
-    }
-    return isMouseButtonPhysicallyDown(button);
+    return isStandardClickButton(button);
 #else
     (void)hwnd;
     (void)button;
@@ -965,7 +961,6 @@ void InputSimulator::clickAtCursorOnTarget(HWND hwnd,
             }
             const LPARAM lParam = MAKELPARAM(static_cast<WORD>(clientX & 0xFFFF),
                                              static_cast<WORD>(clientY & 0xFFFF));
-            PostMessage(hwnd, WM_MOUSEMOVE, physicalMouseMoveWParam(), lParam);
             PostMessage(hwnd, msgs.downMsg, clientButtonDownWParam(button, mods), lParam);
             trackSyntheticMouse(button, true);
             break;
