@@ -184,9 +184,13 @@ void pulseHeldKeyGapUntracked(int virtualKey) {
 }
 
 void sendKeyboardTap(int virtualKey) {
-    // Hold hotkey + same-key Tap: finger keeps the VK down. Pulse UP → gap → DOWN and
-    // leave DOWN so OS key state still matches the finger (physical KEYUP can end Hold).
-    if (isAsyncKeyDown(virtualKey)) {
+    // Hold hotkey + same-key Tap: pulse only when PIPBONG left a synthetic DOWN in the game.
+    // Swallowed physical hold keys are down in GetAsyncKeyState but not tracked — use a
+    // normal tap so the first block fires immediately.
+    const bool physicallyDown = isAsyncKeyDown(virtualKey);
+    const bool pipbongDown = g_activeExecutionContext
+                             && g_activeExecutionContext->hasPipbongSyntheticKeyDown(virtualKey);
+    if (physicallyDown && pipbongDown) {
         pulseHeldKeyGapUntracked(virtualKey);
         return;
     }

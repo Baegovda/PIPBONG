@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.91` (from `project(PIPBONG VERSION 0.8.91)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.92` (from `project(PIPBONG VERSION 0.8.92)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1064,6 +1064,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.92] - 2026-07-10
+
+### Fixed
+
+- Hold hotkey first loop: same-key KeyPress Tap (e.g. Hold **Q** + **Q 탭**) no longer waits on a leading pulse gap when the physical key was swallowed — tap fires immediately; hold start uses `DirectConnection`, defers non-critical UI/log work, and pre-clones workflow before the worker runs (`InputSimulator`, `ExecutionContext`, `MainWindow`).
 
 ## [0.8.91] - 2026-07-10
 
@@ -3558,4 +3564,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.91._
+_Last consolidated: 2026-07-10. Current application version: 0.8.92._

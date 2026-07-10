@@ -477,6 +477,10 @@ void ExecutionContext::noteSyntheticKeyUp(int virtualKey) {
     m_pipbongHeldVirtualKeys.erase(virtualKey);
 }
 
+bool ExecutionContext::hasPipbongSyntheticKeyDown(int virtualKey) const {
+    return m_pipbongHeldVirtualKeys.find(virtualKey) != m_pipbongHeldVirtualKeys.end();
+}
+
 void ExecutionContext::noteSyntheticMouseDown(MouseButton button) {
     m_pipbongHeldMouseButtons.insert(static_cast<int>(button));
 }

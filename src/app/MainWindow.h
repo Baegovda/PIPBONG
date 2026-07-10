@@ -207,6 +207,7 @@ private:
     bool tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Feature* feature);
     void selectRunningFeatureForDisplay(Feature* feature);
     void launchWorkflowRun(FeatureRunSession& session, Feature* feature, bool repeatIteration = false);
+    void deferHoldSessionUiAfterStart(const std::string& featureId);
     void ensureRunSessionResources(FeatureRunSession& session, Feature* feature, bool refreshWorkflow = false);
     void syncRunSessionContext(FeatureRunSession& session);
     void applyFeatureRunPoliciesToContext(FeatureRunSession& session, Feature* feature);

@@ -147,6 +147,7 @@ public:
     void beginRunKeyboardSessionIfNeeded();
     void noteSyntheticKeyDown(int virtualKey);
     void noteSyntheticKeyUp(int virtualKey);
+    bool hasPipbongSyntheticKeyDown(int virtualKey) const;
     void noteSyntheticMouseDown(MouseButton button);
     void noteSyntheticMouseUp(MouseButton button);
     void restoreRunHeldInput();

@@ -752,12 +752,12 @@ void MainWindow::connectSignals() {
             &HotkeyManager::hotkeyHoldStarted,
             this,
             &MainWindow::onHotkeyHoldStarted,
-            Qt::QueuedConnection);
+            Qt::DirectConnection);
     connect(m_hotkeyManager,
             &HotkeyManager::hotkeyHoldEnded,
             this,
             &MainWindow::onHotkeyHoldEnded,
-            Qt::QueuedConnection);
+            Qt::DirectConnection);
 
     connect(m_workflowEditor, &WorkflowEditorPanel::workflowModified, this, &MainWindow::onProjectModified);
 
@@ -2679,8 +2679,11 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
 
     connectSessionEngine(session);
     m_runSessions.emplace(featureId, std::move(session));
-    selectRunningFeatureForDisplay(feature);
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
+    const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
+    if (!hotkeyHoldStart) {
+        selectRunningFeatureForDisplay(feature);
+    }
     if (tryBeginFirstTemplateRoiEdit(activeSession, feature)) {
         return;
     }
@@ -2914,6 +2917,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         return;
     }
 
+    const bool hotkeyHoldFirstStart = !repeatIteration && session.hotkeyLaunchedSession
+                                      && session.runningMode == FeatureRunMode::Hold;
+
     if (!repeatIteration) {
         syncTargetWindowTitleToCapture();
         session.sessionIteration = 0;
@@ -2924,17 +2930,22 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         captureRunStartCursorPosition(session);
         captureFeatureMouseLockPosition(session);
         engageFeatureMouseLock(session);
-        if (isDisplayedRunningFeature(&session)) {
-            syncLoopTimingToWorkflowEditor(&session);
-            m_workflowEditor->clearBlockMatchResults();
-            m_workflowEditor->clearExecutionHighlight();
-            m_workflowEditor->persistRunFeedbackForCurrentFeature();
-        }
+        if (!hotkeyHoldFirstStart) {
+            if (isDisplayedRunningFeature(&session)) {
+                syncLoopTimingToWorkflowEditor(&session);
+                m_workflowEditor->clearBlockMatchResults();
+                m_workflowEditor->clearExecutionHighlight();
+                m_workflowEditor->persistRunFeedbackForCurrentFeature();
+            }
 
-        if (shouldLogRunDetails(session)) {
-            appendSessionLog(session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
+            if (shouldLogRunDetails(session)) {
+                appendSessionLog(session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
+            }
+            updateRunUiState();
+        } else {
+            const std::string featureId = session.featureId;
+            QTimer::singleShot(0, this, [this, featureId]() { deferHoldSessionUiAfterStart(featureId); });
         }
-        updateRunUiState();
         session.runningBlockIndex = -1;
         session.runningBlockHighlight = BlockListWidget::ExecutionHighlight::None;
     } else {
@@ -2956,8 +2967,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
     const bool skipTargetActivation = session.hotkeyLaunchedSession && !repeatIteration;
     WorkflowEngine* engine = session.engine.get();
 
+    ensureRunSessionResources(session, feature, repeatIteration);
+
     if (repeatIteration) {
-        ensureRunSessionResources(session, feature, false);
         engine->runPrepared([&session]() {
             PreparedWorkflowRun run;
             run.workflow = session.sessionWorkflow;
@@ -2972,9 +2984,12 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
     }
 
     Feature* featurePtr = feature;
-    engine->runPrepared([this, featurePtr, &session, targetTitle, projectDir, skipTargetActivation]() {
+    engine->runPrepared([featurePtr, &session, targetTitle, projectDir, skipTargetActivation]() {
         PreparedWorkflowRun run;
-        run.workflow = std::shared_ptr<Workflow>(featurePtr->workflow().clone());
+        run.workflow = session.sessionWorkflow;
+        if (!run.workflow) {
+            run.workflow = std::shared_ptr<Workflow>(featurePtr->workflow().clone());
+        }
         run.context = session.sessionContext;
         run.context->setTargetWindowTitle(targetTitle);
         run.context->setProjectDirectory(projectDir);
@@ -2987,6 +3002,27 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
 #endif
         return run;
     });
+}
+
+void MainWindow::deferHoldSessionUiAfterStart(const std::string& featureId) {
+    FeatureRunSession* session = sessionFor(featureId);
+    if (!session) {
+        return;
+    }
+    Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
+    if (feature) {
+        selectRunningFeatureForDisplay(feature);
+    }
+    if (isDisplayedRunningFeature(session)) {
+        syncLoopTimingToWorkflowEditor(session);
+        m_workflowEditor->clearBlockMatchResults();
+        m_workflowEditor->clearExecutionHighlight();
+        m_workflowEditor->persistRunFeedbackForCurrentFeature();
+    }
+    if (shouldLogRunDetails(*session)) {
+        appendSessionLog(*session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
+    }
+    updateRunUiState();
 }
 
 bool MainWindow::shouldContinueRunSession(const FeatureRunSession& session, Feature* feature) const {
