@@ -518,6 +518,7 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
         return false;
     }
 
+    const bool hotkeysBlocked = FeatureHotkeyGate::isFeatureHotkeysBlocked();
     bool swallow = false;
 
     for (HoldBindingEntry& entry : m_holdBindings) {
@@ -528,16 +529,19 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
             if (!entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
                 continue;
             }
-            swallow = true;
-            if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
+            if (hotkeysBlocked) {
                 continue;
             }
+            swallow = true;
             if (!entry.keyDown) {
                 entry.keyDown = true;
                 emitHotkeyHoldStarted(entry.featureId);
             }
         } else {
             if (!entry.keyDown) {
+                continue;
+            }
+            if (hotkeysBlocked) {
                 continue;
             }
             swallow = true;
@@ -552,7 +556,7 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
         }
         if (keyDown) {
             if (!entry.armed) {
-                if (entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
+                if (!hotkeysBlocked && entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
                     swallow = true;
                 }
                 continue;
@@ -560,14 +564,14 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
             if (!entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
                 continue;
             }
-            if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
+            if (hotkeysBlocked) {
                 continue;
             }
             entry.armed = false;
             emitHotkeyTriggered(entry.featureId);
             swallow = true;
         } else {
-            if (!entry.armed) {
+            if (!entry.armed && !hotkeysBlocked) {
                 swallow = true;
             }
             entry.armed = true;
@@ -578,6 +582,7 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
 }
 
 bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
+    const bool hotkeysBlocked = FeatureHotkeyGate::isFeatureHotkeysBlocked();
     bool swallow = false;
     for (MouseBindingEntry& entry : m_mouseBindings) {
         if (!entry.binding.matchesVirtualKey(vkCode)) {
@@ -594,10 +599,10 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
                 if (!entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
                     continue;
                 }
-                swallow = true;
-                if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
+                if (hotkeysBlocked) {
                     continue;
                 }
+                swallow = true;
                 if (entry.buttonDown) {
                     continue;
                 }
@@ -605,6 +610,9 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
                 emitHotkeyHoldStarted(entry.featureId);
             } else {
                 if (!entry.buttonDown) {
+                    continue;
+                }
+                if (hotkeysBlocked) {
                     continue;
                 }
                 swallow = true;
@@ -619,17 +627,19 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
                 if (!entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
                     continue;
                 }
-                if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
+                if (hotkeysBlocked) {
                     continue;
                 }
                 entry.buttonDown = true;
                 emitHotkeyTriggered(entry.featureId);
                 swallow = true;
-            } else if (entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
+            } else if (!hotkeysBlocked && entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
                 swallow = true;
             }
         } else if (entry.buttonDown) {
-            swallow = true;
+            if (!hotkeysBlocked) {
+                swallow = true;
+            }
             entry.buttonDown = false;
         }
     }
