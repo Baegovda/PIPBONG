@@ -25,11 +25,45 @@ POINT g_lockPoint{};
 LockAnchor g_anchor = LockAnchor::None;
 int g_windowOffsetX = 0;
 int g_windowOffsetY = 0;
+bool g_appliedOurClip = false;
+bool g_savedPreLockClip = false;
+RECT g_preLockClipRect{};
+
+// ClipCursor is process-wide. Games (e.g. MOBAs) clip the cursor to the client area;
+// calling ClipCursor(nullptr) from PIPBONG clears that clip even when we never engaged
+// our own lock. Save the active clip on first engage and restore it on last release.
+void savePreLockClipRectIfNeeded() {
+    if (g_savedPreLockClip) {
+        return;
+    }
+    RECT rect{};
+    if (GetClipCursor(&rect)) {
+        g_preLockClipRect = rect;
+        g_savedPreLockClip = true;
+    }
+}
+
+void restorePreLockClipRect() {
+    if (!g_appliedOurClip) {
+        return;
+    }
+    if (g_savedPreLockClip) {
+        ClipCursor(&g_preLockClipRect);
+    } else {
+        ClipCursor(nullptr);
+    }
+    g_appliedOurClip = false;
+    g_savedPreLockClip = false;
+}
 
 void applyPointClip(const POINT& point, bool moveCursor) {
+    if (!g_appliedOurClip) {
+        savePreLockClipRectIfNeeded();
+    }
     g_lockPoint = point;
     RECT clipRect{g_lockPoint.x, g_lockPoint.y, g_lockPoint.x + 1, g_lockPoint.y + 1};
     ClipCursor(&clipRect);
+    g_appliedOurClip = true;
     if (moveCursor) {
         SetCursorPos(g_lockPoint.x, g_lockPoint.y);
     }
@@ -169,17 +203,22 @@ void MouseCenterLock::release() {
     if (--g_refCount == 0) {
         g_anchor = LockAnchor::None;
         uninstallMouseHook();
-        ClipCursor(nullptr);
+        restorePreLockClipRect();
     }
 #endif
 }
 
 void MouseCenterLock::releaseAll() {
 #ifdef _WIN32
+    if (g_refCount <= 0 && !g_appliedOurClip) {
+        g_refCount = 0;
+        g_anchor = LockAnchor::None;
+        return;
+    }
     g_refCount = 0;
     g_anchor = LockAnchor::None;
     uninstallMouseHook();
-    ClipCursor(nullptr);
+    restorePreLockClipRect();
 #endif
 }
 

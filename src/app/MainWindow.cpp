@@ -938,7 +938,9 @@ void MainWindow::engageFeatureMouseLock(FeatureRunSession& session) {
 
 void MainWindow::reconcileMouseLocksFromRunningSessions() {
 #ifdef _WIN32
-    MouseCenterLock::releaseAll();
+    if (MouseCenterLock::isActive()) {
+        MouseCenterLock::releaseAll();
+    }
     for (const auto& entry : m_runSessions) {
         const FeatureRunSession& session = entry.second;
         if (!isFeatureSessionActive(session) || !hasFeatureMouseLock(session)) {

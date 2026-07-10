@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.85` (from `project(PIPBONG VERSION 0.8.85)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.86` (from `project(PIPBONG VERSION 0.8.86)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -954,6 +954,19 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 | `QSplitter` handles                                                   | `kSplitterHandleWidthPx` (12 px) via `UiStateManager::registerSplitter`                                              |
 | Frameless main window edges                                           | `kWindowResizeBorderPx` (10 px) — `MainWindow::nativeEvent`                                                          |
 
+### 8.10 ClipCursor and foreign game mouse confinement (mandatory — do not regress)
+
+**Status:** Fixed 2026-07-10 (v0.8.86). Games that confine the cursor with Win32 `ClipCursor` (e.g. MOBAs) lose confinement when PIPBONG calls `ClipCursor(nullptr)` without having applied its own lock.
+
+| Rule | Detail |
+| ---- | ------ |
+| Scope | `ClipCursor` is **system-wide** — not per-process |
+| `MouseCenterLock` | On first engage: `GetClipCursor` → save rect; apply PIPBONG clip. On last release: restore saved rect (or `nullptr` only if we applied and had no saved rect) |
+| No-op release | `releaseAll()` when PIPBONG never engaged a lock must **not** call `ClipCursor` |
+| Reconcile | `reconcileMouseLocksFromRunningSessions()` calls `releaseAll()` only when `MouseCenterLock::isActive()` |
+
+Key files: `src/app/MouseCenterLock.cpp`, `MainWindow::reconcileMouseLocksFromRunningSessions`.
+
 ---
 
 ## 9. Development Governance
@@ -1051,6 +1064,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.86] - 2026-07-10
+
+### Fixed
+
+- Feature runs no longer clear a target game's own `ClipCursor` mouse confinement (e.g. League of Legends): `MouseCenterLock::releaseAll()` skipped `ClipCursor(nullptr)` when PIPBONG never engaged its lock; engage/release now saves and restores the pre-lock clip rect via `GetClipCursor`; `reconcileMouseLocksFromRunningSessions` only releases when a PIPBONG lock is active (`MouseCenterLock`, `MainWindow`).
 
 ## [0.8.85] - 2026-07-10
 
@@ -3509,4 +3528,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.85._
+_Last consolidated: 2026-07-10. Current application version: 0.8.86._
