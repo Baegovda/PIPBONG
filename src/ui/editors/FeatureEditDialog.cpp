@@ -182,7 +182,7 @@ void FeatureEditDialog::setupUi() {
 
     m_modeCombo = new QComboBox(this);
     m_modeCombo->addItem(tr("N회 반복"), static_cast<int>(FeatureRunMode::RepeatCount));
-    m_modeCombo->addItem(tr("누를 동안"), static_cast<int>(FeatureRunMode::Hold));
+    m_modeCombo->addItem(tr("홀드"), static_cast<int>(FeatureRunMode::Hold));
     m_modeCombo->addItem(tr("무한 반복"), static_cast<int>(FeatureRunMode::RepeatInfinite));
     m_modeCombo->addItem(tr("트리거 모드"), static_cast<int>(FeatureRunMode::Trigger));
     m_modeCombo->setItemData(1,
@@ -202,7 +202,7 @@ void FeatureEditDialog::setupUi() {
 
     m_infiniteExitCheck = new QCheckBox(tr("연속 감지 실패 시 종료"), this);
     m_infiniteExitCheck->setToolTip(
-        tr("무한 반복·누를 동안 실행에서 템플릿 매칭 감지에 연속으로 실패하면 자동으로 중지합니다."));
+        tr("무한 반복·홀드 실행에서 템플릿 매칭 감지에 연속으로 실패하면 자동으로 중지합니다."));
     form->addRow(QString(), m_infiniteExitCheck);
 
     m_infiniteExitSpin = new DragAdjustSpinBox(this);
@@ -265,7 +265,7 @@ void FeatureEditDialog::setupUi() {
         tr("한 루프(워크플로 전체 1회)가 끝난 뒤, 다음 루프를 시작하기 전에 대기합니다. "
            "블록 사이 대기가 아니라 사이클 사이 대기입니다. "
            "고정/랜덤, 0ms면 즉시 다음 루프. "
-           "무한 반복·N회 반복(2회 이상)·누를 동안에서 사용합니다."));
+           "무한 반복·N회 반복(2회 이상)·홀드에서 사용합니다."));
 
     m_triggerCooldownSpin = new DragAdjustSpinBox(this);
     m_triggerCooldownSpin->setRange(0, 600000);

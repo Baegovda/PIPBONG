@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.90` (from `project(PIPBONG VERSION 0.8.90)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.91` (from `project(PIPBONG VERSION 0.8.91)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1064,6 +1064,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.91] - 2026-07-10
+
+### Changed
+
+- Feature **기능 편집** run mode label **누를 동안** → **홀드** in **동작 방식** combo; matching tooltips and feature list **방식** column (`FeatureEditDialog`, `FeatureListPanel`, `MainWindow`).
 
 ## [0.8.90] - 2026-07-10
 
@@ -3552,4 +3558,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.90._
+_Last consolidated: 2026-07-10. Current application version: 0.8.91._

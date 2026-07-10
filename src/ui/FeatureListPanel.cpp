@@ -92,7 +92,7 @@ FeatureListColumnRects featureListColumnRects(const QRect& itemRect, const Featu
 QString featureRunModeLabel(FeatureRunMode mode) {
     switch (mode) {
     case FeatureRunMode::Hold:
-        return QObject::tr("누를 동안");
+        return QObject::tr("홀드");
     case FeatureRunMode::RepeatInfinite:
         return QObject::tr("무한");
     case FeatureRunMode::Trigger:

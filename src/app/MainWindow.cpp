@@ -1898,7 +1898,7 @@ void MainWindow::onFeatureRunRequested(const QString& featureId) {
     }
     if (feature->runMode() == FeatureRunMode::Hold) {
         QMessageBox::information(this, tr("실행"),
-                                 tr("누를 동안 방식은 단축키를 누르고 있는 동안 워크플로가 무한 반복됩니다. 키를 떼면 중지됩니다."));
+                                 tr("홀드 방식은 단축키를 누르고 있는 동안 워크플로가 무한 반복됩니다. 키를 떼면 중지됩니다."));
         return;
     }
     if (isFeatureRunning(feature->id())) {
