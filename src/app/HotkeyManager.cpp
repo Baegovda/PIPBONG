@@ -524,26 +524,25 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
         if (!entry.binding.matchesVirtualKey(vkCode)) {
             continue;
         }
-        if (!entry.binding.modifiersMatch(entry.allowExtraModifiers) && keyDown) {
-            continue;
-        }
         if (keyDown) {
+            if (!entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
+                continue;
+            }
+            swallow = true;
             if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
                 continue;
             }
-            if (entry.keyDown) {
-                continue;
+            if (!entry.keyDown) {
+                entry.keyDown = true;
+                emitHotkeyHoldStarted(entry.featureId);
             }
-            entry.keyDown = true;
-            emitHotkeyHoldStarted(entry.featureId);
-            swallow = true;
         } else {
             if (!entry.keyDown) {
                 continue;
             }
+            swallow = true;
             entry.keyDown = false;
             emitHotkeyHoldEnded(entry.featureId);
-            swallow = true;
         }
     }
 
@@ -553,6 +552,9 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
         }
         if (keyDown) {
             if (!entry.armed) {
+                if (entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
+                    swallow = true;
+                }
                 continue;
             }
             if (!entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
@@ -563,7 +565,11 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
             }
             entry.armed = false;
             emitHotkeyTriggered(entry.featureId);
+            swallow = true;
         } else {
+            if (!entry.armed) {
+                swallow = true;
+            }
             entry.armed = true;
         }
     }
@@ -585,6 +591,10 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
 
         if (entry.holdMode) {
             if (buttonDown) {
+                if (!entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
+                    continue;
+                }
+                swallow = true;
                 if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
                     continue;
                 }
@@ -593,31 +603,34 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
                 }
                 entry.buttonDown = true;
                 emitHotkeyHoldStarted(entry.featureId);
-                swallow = true;
             } else {
                 if (!entry.buttonDown) {
                     continue;
                 }
+                swallow = true;
                 entry.buttonDown = false;
                 emitHotkeyHoldEnded(entry.featureId);
-                swallow = true;
             }
             continue;
         }
 
         if (buttonDown) {
-            if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
-                continue;
+            if (!entry.buttonDown) {
+                if (!entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
+                    continue;
+                }
+                if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
+                    continue;
+                }
+                entry.buttonDown = true;
+                emitHotkeyTriggered(entry.featureId);
+                swallow = true;
+            } else if (entry.binding.modifiersMatch(entry.allowExtraModifiers)) {
+                swallow = true;
             }
-            if (entry.buttonDown) {
-                continue;
-            }
-            entry.buttonDown = true;
-            emitHotkeyTriggered(entry.featureId);
-            swallow = true;
         } else if (entry.buttonDown) {
-            entry.buttonDown = false;
             swallow = true;
+            entry.buttonDown = false;
         }
     }
     return swallow;

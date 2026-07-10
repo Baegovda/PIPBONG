@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.88` (from `project(PIPBONG VERSION 0.8.88)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.89` (from `project(PIPBONG VERSION 0.8.89)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -878,7 +878,7 @@ User holds **Shift** (run/walk in games) while a feature runs — often **click-
 
 1. **`holdKeyboardHookProc` / `mouseHookProc`**: When `handleHoldKeyEvent` / `handleMouseButtonEvent` returns true, return **`1`** so the event is **not** forwarded to other apps (`CallNextHookEx` must not run for swallowed events).
 2. **Injected input**: Ignore events with `LLKHF_INJECTED` (keyboard) or `LLMHF_INJECTED` (mouse) so PIPBONG's own `SendInput` does not re-enter hotkey handling.
-3. **Hold mode bindings**: Swallow both DOWN and UP for the bound key or mouse button so the target app never sees the feature hotkey as a click/keypress when starting or stopping the loop.
+3. **Hold mode bindings**: Swallow every matching physical DOWN (including Windows auto-repeat while held) and the paired UP for the bound key or mouse button so the target app never sees the feature hotkey as input; workflow `SendInput` taps still use `LLKHF_INJECTED` and reach the game.
 4. **Foreground**: Before emitting hold/trigger signals, restore previous foreground with the same `restoreForegroundWindow` helper (no `AttachThreadInput`).
 5. **Modifier match**: Default strict — `HotkeyBinding::modifiersMatch(false)` requires Ctrl/Alt/Shift to match the binding exactly (e.g. plain **F4** does not fire on **Alt+F4**). Per-feature `hotkeyAllowExtraModifiers` opts in to loose match: required modifiers must be down; extra held modifiers are ignored (`Feature`, `FeatureEditDialog`, `HotkeyManager`).
 
@@ -1064,6 +1064,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.89] - 2026-07-10
+
+### Fixed
+
+- Feature hotkey keys no longer reach the target app while bound: low-level hook now swallows every matching physical key-down (including Windows auto-repeat) and the paired release for **누를 동안** / toggle keyboard and mouse bindings (`HotkeyManager`).
 
 ## [0.8.88] - 2026-07-10
 
@@ -3540,4 +3546,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.88._
+_Last consolidated: 2026-07-10. Current application version: 0.8.89._
