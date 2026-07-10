@@ -3,8 +3,11 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileIconProvider>
 #include <QFileInfo>
+#include <QIcon>
 #include <QJsonArray>
+#include <QPixmap>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUuid>
@@ -16,6 +19,17 @@ namespace {
 constexpr const char* kManifestFileName = "manifest.json";
 constexpr const char* kProjectFileName = "project.json";
 constexpr const char* kSettingsFileName = "profile-settings.json";
+constexpr const char* kLinkedTargetIconFileName = "linked-target-icon.png";
+constexpr int kLinkedTargetIconCachePx = 32;
+
+QIcon iconFromExecutablePath(const QString& processPath) {
+    static QFileIconProvider iconProvider;
+    if (processPath.isEmpty()) {
+        return {};
+    }
+    const QIcon icon = iconProvider.icon(QFileInfo(processPath));
+    return icon.isNull() ? QIcon{} : icon;
+}
 
 bool copyFileIfMissing(const QString& from, const QString& to) {
     if (!QFileInfo::exists(from) || QFileInfo::exists(to)) {
@@ -105,6 +119,38 @@ QString ProfileManager::linkedTargetProcessPath(const QString& id) const {
     return loadSettings(id).linkedTargetProcessPath;
 }
 
+QIcon ProfileManager::linkedTargetIcon(const QString& id) const {
+    if (id.isEmpty() || id == m_defaultProfileId) {
+        return {};
+    }
+    const QString path = QDir(profileDirectory(id)).filePath(QString::fromLatin1(kLinkedTargetIconFileName));
+    if (!QFileInfo::exists(path)) {
+        return {};
+    }
+    const QPixmap pixmap(path);
+    return pixmap.isNull() ? QIcon{} : QIcon(pixmap);
+}
+
+bool ProfileManager::cacheLinkedTargetIcon(const QString& id, const QIcon& icon) const {
+    if (id.isEmpty() || id == m_defaultProfileId || icon.isNull()) {
+        return false;
+    }
+    QDir().mkpath(profileDirectory(id));
+    const QString path = QDir(profileDirectory(id)).filePath(QString::fromLatin1(kLinkedTargetIconFileName));
+    const QPixmap pixmap = icon.pixmap(kLinkedTargetIconCachePx, kLinkedTargetIconCachePx);
+    if (pixmap.isNull()) {
+        return false;
+    }
+    return pixmap.save(path, "PNG");
+}
+
+void ProfileManager::clearLinkedTargetIcon(const QString& id) const {
+    if (id.isEmpty()) {
+        return;
+    }
+    QFile::remove(QDir(profileDirectory(id)).filePath(QString::fromLatin1(kLinkedTargetIconFileName)));
+}
+
 bool ProfileManager::setTargetWindowTitle(const QString& id, const QString& title) {
     Profile* profile = nullptr;
     for (Profile& candidate : m_profiles) {
@@ -142,6 +188,7 @@ bool ProfileManager::setTargetWindowTitle(const QString& id, const QString& titl
         ProgramSettings::ProfileSettings settings = loadSettings(id);
         settings.linkedTargetProcessPath.clear();
         saveSettings(id, settings, true);
+        clearLinkedTargetIcon(id);
     }
     return true;
 }
@@ -167,11 +214,22 @@ bool ProfileManager::updateProfileTargetBinding(const QString& id,
     const QString trimmedPath = processPath.trimmed();
     if (!trimmedPath.isEmpty()) {
         settings.linkedTargetProcessPath = trimmedPath;
-        return saveSettings(id, settings, true);
+        if (!saveSettings(id, settings, true)) {
+            return false;
+        }
+        const QIcon icon = iconFromExecutablePath(trimmedPath);
+        if (!icon.isNull()) {
+            cacheLinkedTargetIcon(id, icon);
+        }
+        return true;
     }
     if (profile->targetWindowTitle.isEmpty()) {
         settings.linkedTargetProcessPath.clear();
-        return saveSettings(id, settings, true);
+        if (!saveSettings(id, settings, true)) {
+            return false;
+        }
+        clearLinkedTargetIcon(id);
+        return true;
     }
     // Title still set but path lookup failed — keep previously saved exe path.
     return saveSettings(id, settings, false);

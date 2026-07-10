@@ -4079,9 +4079,16 @@ void MainWindow::refreshProfileList() {
         }
         const QString storedProcessPath = m_profileManager->linkedTargetProcessPath(profile.id);
         if (!storedProcessPath.isEmpty()) {
-            const QIcon storedIcon = iconForProcessPath(storedProcessPath.toStdWString());
-            if (!storedIcon.isNull()) {
-                return storedIcon;
+            if (QFileInfo::exists(storedProcessPath)) {
+                const QIcon liveIcon = iconForProcessPath(storedProcessPath.toStdWString());
+                if (!liveIcon.isNull()) {
+                    m_profileManager->cacheLinkedTargetIcon(profile.id, liveIcon);
+                    return liveIcon;
+                }
+            }
+            const QIcon cachedIcon = m_profileManager->linkedTargetIcon(profile.id);
+            if (!cachedIcon.isNull()) {
+                return cachedIcon;
             }
         }
         const QString targetTitle = profile.targetWindowTitle;

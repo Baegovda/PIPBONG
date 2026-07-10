@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <vector>
 
+class QIcon;
+
 class ProfileManager {
 public:
     struct Profile {
@@ -31,6 +33,10 @@ public:
     QString activeProjectDirectory() const { return projectDirectory(m_activeProfileId); }
     QString targetWindowTitle(const QString& id) const;
     QString linkedTargetProcessPath(const QString& id) const;
+    /// Cached exe icon PNG under the profile folder (survives app uninstall).
+    QIcon linkedTargetIcon(const QString& id) const;
+    bool cacheLinkedTargetIcon(const QString& id, const QIcon& icon) const;
+    void clearLinkedTargetIcon(const QString& id) const;
     bool setTargetWindowTitle(const QString& id, const QString& title);
     bool updateProfileTargetBinding(const QString& id,
                                     const QString& title,

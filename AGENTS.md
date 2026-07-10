@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.94` (from `project(PIPBONG VERSION 0.8.94)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.95` (from `project(PIPBONG VERSION 0.8.95)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -497,6 +497,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Active profile manifest | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/manifest.json` (`activeProfileId`, `defaultProfileId`, unlimited profile list)                                                                                                                                                                                                      |
 | Profile project file    | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/project.json` via `ProfileManager`                                                                                                                                                                                                                                      |
 | Profile settings file   | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`, `linkedTargetProcessPath` for persisted target-program icon when the window is not running) |
+| Linked target icon      | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/linked-target-icon.png` — cached exe icon when the linked program is uninstalled or not running (`ProfileManager::cacheLinkedTargetIcon`) |
 | Templates               | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/templates/*.png`                                                                                                                                                                                                                                                        |
 | Manual save/open        | File menu; last path in `QSettings` key `project/lastFile`                                                                                                                                                                                                                                                                   |
 | Debounce                | 800 ms after edits; also on window close                                                                                                                                                                                                                                                                                     |
@@ -1064,6 +1065,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.95] - 2026-07-11
+
+### Fixed
+
+- Profile list keeps the linked program icon after the app is uninstalled or the exe is missing: cache `linked-target-icon.png` in the profile folder on window pick / live exe resolution; `refreshProfileList` falls back to the cached PNG when `linkedTargetProcessPath` no longer exists on disk (`ProfileManager`, `MainWindow`).
 
 ## [0.8.94] - 2026-07-11
 
@@ -3577,4 +3584,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-11. Current application version: 0.8.94._
+_Last consolidated: 2026-07-11. Current application version: 0.8.95._
