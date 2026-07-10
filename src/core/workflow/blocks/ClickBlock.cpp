@@ -262,7 +262,12 @@ BlockResult ClickBlock::execute(ExecutionContext& ctx) {
         result.message = "현재 위치 클릭은 Windows에서만 지원됩니다";
         return result;
 #else
-        InputSimulator::clickAtCursor(button, action, count, modifiers);
+        HWND hwnd = ctx.targetWindow();
+        if (InputSimulator::shouldUseClientCursorClick(hwnd, button, action)) {
+            InputSimulator::clickAtCursorOnTarget(hwnd, button, action, count, modifiers);
+        } else {
+            InputSimulator::clickAtCursor(button, action, count, modifiers);
+        }
 #endif
     } else if (target == ClickTarget::LastMatch) {
         int screenX = 0;

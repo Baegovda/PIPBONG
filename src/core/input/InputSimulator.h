@@ -94,6 +94,16 @@ public:
                               ClickAction action,
                               int count = 1,
                               KeyModifiers mods = {});
+#ifdef _WIN32
+    /// Post client WM_*BUTTON* at the current cursor without global SendInput — used when the
+    /// same mouse button is already held physically (e.g. Hold hotkey = LMB + 현재 위치 click).
+    static void clickAtCursorOnTarget(HWND hwnd,
+                                      MouseButton button,
+                                      ClickAction action,
+                                      int count = 1,
+                                      KeyModifiers mods = {});
+    static bool shouldUseClientCursorClick(HWND hwnd, MouseButton button, ClickAction action);
+#endif
     static void clickAtMatchScreen(int screenX,
                                    int screenY,
                                    MouseButton button,

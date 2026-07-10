@@ -203,16 +203,89 @@ void renderClickPulse(uint32_t* pixels,
                                     PointerFeedbackSettings::click());
 }
 
+int pulseRenderMarginPx(const Pulse& pulse) {
+    if (pulse.kind == RunPointerFeedbackKind::Click) {
+        const auto& settings = PointerFeedbackSettings::click();
+        return settings.maxExpandRadius + settings.coreSize + settings.ringThickness + 12;
+    }
+    return 40;
+}
+
+QRect computeActivePulseClientRegion() {
+    if (!g_state || g_state->pulses.empty()) {
+        return {};
+    }
+
+    const int windowW = g_state->physicalBounds.width();
+    const int windowH = g_state->physicalBounds.height();
+    if (windowW <= 0 || windowH <= 0) {
+        return {};
+    }
+
+    const ULONGLONG currentMs = nowMs();
+    int minX = windowW;
+    int minY = windowH;
+    int maxX = 0;
+    int maxY = 0;
+    bool any = false;
+
+    for (const Pulse& pulse : g_state->pulses) {
+        const ULONGLONG lifetime = pulseLifetimeMs(pulse.kind);
+        const ULONGLONG age = currentMs - pulse.startMs;
+        if (age > lifetime) {
+            continue;
+        }
+
+        const int margin = pulseRenderMarginPx(pulse);
+        minX = std::min(minX, pulse.clientX - margin);
+        minY = std::min(minY, pulse.clientY - margin);
+        maxX = std::max(maxX, pulse.clientX + margin);
+        maxY = std::max(maxY, pulse.clientY + margin);
+        any = true;
+    }
+
+    if (!any) {
+        return {};
+    }
+
+    minX = std::max(0, minX);
+    minY = std::max(0, minY);
+    maxX = std::min(windowW - 1, maxX);
+    maxY = std::min(windowH - 1, maxY);
+    if (maxX < minX || maxY < minY) {
+        return {};
+    }
+
+    return QRect(minX, minY, maxX - minX + 1, maxY - minY + 1);
+}
+
 void renderOverlayFrame() {
     if (!g_state || !g_state->hwnd) {
         return;
     }
 
-    const int width = g_state->physicalBounds.width();
-    const int height = g_state->physicalBounds.height();
+    const QRect clientRegion = computeActivePulseClientRegion();
+    if (clientRegion.isEmpty()) {
+        return;
+    }
+
+    const int width = clientRegion.width();
+    const int height = clientRegion.height();
     if (width <= 0 || height <= 0) {
         return;
     }
+
+    const int regionOffsetX = clientRegion.x();
+    const int regionOffsetY = clientRegion.y();
+    const QRect screenRegion = clientRegion.translated(g_state->physicalBounds.topLeft());
+
+    SetWindowPos(g_state->hwnd,
+                 HWND_TOPMOST,
+                 screenRegion.x(),
+                 screenRegion.y(),
+                 screenRegion.width(),
+                 screenRegion.height(),
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
 
     BITMAPINFO bmi{};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -245,14 +318,18 @@ void renderOverlayFrame() {
             continue;
         }
 
+        Pulse localPulse = pulse;
+        localPulse.clientX -= regionOffsetX;
+        localPulse.clientY -= regionOffsetY;
+
         if (pulse.kind == RunPointerFeedbackKind::Click) {
-            renderClickPulse(pixels, width, height, pulse, age, lifetime);
+            renderClickPulse(pixels, width, height, localPulse, age, lifetime);
         } else {
-            renderMatchPulse(pixels, width, height, pulse, age, lifetime);
+            renderMatchPulse(pixels, width, height, localPulse, age, lifetime);
         }
     }
 
-    POINT ptDst{g_state->physicalBounds.x(), g_state->physicalBounds.y()};
+    POINT ptDst{screenRegion.x(), screenRegion.y()};
     SIZE size{width, height};
     POINT ptSrc{0, 0};
     BLENDFUNCTION blend{};
@@ -349,8 +426,8 @@ bool ensureOverlayWindow() {
                                     WS_POPUP,
                                     physicalBounds.x(),
                                     physicalBounds.y(),
-                                    physicalBounds.width(),
-                                    physicalBounds.height(),
+                                    1,
+                                    1,
                                     nullptr,
                                     nullptr,
                                     GetModuleHandleW(nullptr),
@@ -365,8 +442,8 @@ bool ensureOverlayWindow() {
                  HWND_TOPMOST,
                  physicalBounds.x(),
                  physicalBounds.y(),
-                 physicalBounds.width(),
-                 physicalBounds.height(),
+                 1,
+                 1,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
     SetTimer(g_state->hwnd, kTimerId, kTimerMs, nullptr);
     return true;
@@ -394,6 +471,17 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
         return;
     }
 
+    if (kind == RunPointerFeedbackKind::Click) {
+        for (Pulse& existing : g_state->pulses) {
+            if (existing.kind == RunPointerFeedbackKind::Click) {
+                existing.clientX = clientX;
+                existing.clientY = clientY;
+                renderOverlayFrame();
+                return;
+            }
+        }
+    }
+
     Pulse pulse;
     pulse.clientX = clientX;
     pulse.clientY = clientY;
@@ -405,6 +493,7 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
                               g_state->pulses.begin()
                                   + static_cast<std::ptrdiff_t>(g_state->pulses.size() - kMaxActivePulses));
     }
+    renderOverlayFrame();
 #else
     (void)clientX;
     (void)clientY;

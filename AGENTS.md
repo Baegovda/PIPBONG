@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.92` (from `project(PIPBONG VERSION 0.8.92)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.93` (from `project(PIPBONG VERSION 0.8.93)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1064,6 +1064,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.93] - 2026-07-11
+
+### Fixed
+
+- Hold + **현재 위치** same mouse-button loop (e.g. **무한클릭** with Hold LMB): rapid `SendInput` LMB pulses no longer fight physical button hold while moving the cursor — when the button is already down, taps post `WM_*BUTTON*` to the target client at the live cursor (`InputSimulator::clickAtCursorOnTarget`, `ClickBlock`).
+- Click pointer-feedback overlay during fast **현재 위치** loops no longer repaints the full 4K target window every 33 ms — coalesces to one moving click pulse and renders only a small region around active pulses (`WorkflowMatchFeedbackOverlay`).
 
 ## [0.8.92] - 2026-07-10
 
@@ -3564,4 +3571,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-10. Current application version: 0.8.92._
+_Last consolidated: 2026-07-11. Current application version: 0.8.93._

@@ -332,6 +332,172 @@ void sendXButtonTapAtCursor(MouseButton button) {
     trackSyntheticMouse(button, false);
 }
 
+bool isMouseButtonPhysicallyDown(MouseButton button) {
+    switch (button) {
+    case MouseButton::Left:
+        return isAsyncKeyDown(VK_LBUTTON);
+    case MouseButton::Right:
+        return isAsyncKeyDown(VK_RBUTTON);
+    case MouseButton::Middle:
+        return isAsyncKeyDown(VK_MBUTTON);
+    case MouseButton::Back:
+        return isAsyncKeyDown(VK_XBUTTON1);
+    case MouseButton::Forward:
+        return isAsyncKeyDown(VK_XBUTTON2);
+    case MouseButton::WheelUp:
+    case MouseButton::WheelDown:
+        break;
+    }
+    return false;
+}
+
+void clampClientPoint(HWND hwnd, int& clientX, int& clientY) {
+    RECT client{};
+    if (!GetClientRect(hwnd, &client)) {
+        return;
+    }
+    const int maxX = (client.right > 0) ? (client.right - 1) : 0;
+    const int maxY = (client.bottom > 0) ? (client.bottom - 1) : 0;
+    if (clientX < 0) {
+        clientX = 0;
+    } else if (clientX > maxX) {
+        clientX = maxX;
+    }
+    if (clientY < 0) {
+        clientY = 0;
+    } else if (clientY > maxY) {
+        clientY = maxY;
+    }
+}
+
+bool getCursorClientPoint(HWND hwnd, int& clientX, int& clientY) {
+    POINT pt{};
+    if (!GetCursorPos(&pt)) {
+        return false;
+    }
+    if (!ScreenToClient(hwnd, &pt)) {
+        return false;
+    }
+    clientX = pt.x;
+    clientY = pt.y;
+    clampClientPoint(hwnd, clientX, clientY);
+    return true;
+}
+
+WPARAM clientButtonDownWParam(MouseButton button, const KeyModifiers& mods) {
+    WPARAM wParam = 0;
+    if (mods.shift) {
+        wParam |= MK_SHIFT;
+    }
+    if (mods.ctrl) {
+        wParam |= MK_CONTROL;
+    }
+    if (button != MouseButton::Left && isAsyncKeyDown(VK_LBUTTON)) {
+        wParam |= MK_LBUTTON;
+    }
+    if (button != MouseButton::Right && isAsyncKeyDown(VK_RBUTTON)) {
+        wParam |= MK_RBUTTON;
+    }
+    if (button != MouseButton::Middle && isAsyncKeyDown(VK_MBUTTON)) {
+        wParam |= MK_MBUTTON;
+    }
+    switch (button) {
+    case MouseButton::Left:
+        wParam |= MK_LBUTTON;
+        break;
+    case MouseButton::Right:
+        wParam |= MK_RBUTTON;
+        break;
+    case MouseButton::Middle:
+        wParam |= MK_MBUTTON;
+        break;
+    case MouseButton::Back:
+    case MouseButton::Forward:
+    case MouseButton::WheelUp:
+    case MouseButton::WheelDown:
+        break;
+    }
+    return wParam;
+}
+
+WPARAM clientButtonUpWParam(MouseButton button, const KeyModifiers& mods) {
+    WPARAM wParam = clientButtonDownWParam(button, mods);
+    switch (button) {
+    case MouseButton::Left:
+        wParam &= ~static_cast<WPARAM>(MK_LBUTTON);
+        break;
+    case MouseButton::Right:
+        wParam &= ~static_cast<WPARAM>(MK_RBUTTON);
+        break;
+    case MouseButton::Middle:
+        wParam &= ~static_cast<WPARAM>(MK_MBUTTON);
+        break;
+    case MouseButton::Back:
+    case MouseButton::Forward:
+    case MouseButton::WheelUp:
+    case MouseButton::WheelDown:
+        break;
+    }
+    return wParam;
+}
+
+struct ClientMouseMessages {
+    UINT downMsg = 0;
+    UINT upMsg = 0;
+};
+
+bool clientMouseMessages(MouseButton button, ClientMouseMessages& out) {
+    switch (button) {
+    case MouseButton::Left:
+        out.downMsg = WM_LBUTTONDOWN;
+        out.upMsg = WM_LBUTTONUP;
+        return true;
+    case MouseButton::Right:
+        out.downMsg = WM_RBUTTONDOWN;
+        out.upMsg = WM_RBUTTONUP;
+        return true;
+    case MouseButton::Middle:
+        out.downMsg = WM_MBUTTONDOWN;
+        out.upMsg = WM_MBUTTONUP;
+        return true;
+    default:
+        return false;
+    }
+}
+
+WPARAM physicalMouseMoveWParam();
+
+void postClientButtonTap(HWND hwnd,
+                         int clientX,
+                         int clientY,
+                         MouseButton button,
+                         const KeyModifiers& mods) {
+    ClientMouseMessages msgs{};
+    if (!clientMouseMessages(button, msgs)) {
+        return;
+    }
+
+    const LPARAM lParam = MAKELPARAM(static_cast<WORD>(clientX & 0xFFFF),
+                                     static_cast<WORD>(clientY & 0xFFFF));
+    PostMessage(hwnd, WM_MOUSEMOVE, physicalMouseMoveWParam(), lParam);
+    PostMessage(hwnd, msgs.downMsg, clientButtonDownWParam(button, mods), lParam);
+    PostMessage(hwnd, msgs.upMsg, clientButtonUpWParam(button, mods), lParam);
+}
+
+void performClientCursorTap(HWND hwnd, MouseButton button, int count, const KeyModifiers& mods) {
+    for (int i = 0; i < count; ++i) {
+        int clientX = 0;
+        int clientY = 0;
+        if (!getCursorClientPoint(hwnd, clientX, clientY)) {
+            return;
+        }
+        postClientButtonTap(hwnd, clientX, clientY, button, mods);
+        if (i + 1 < count) {
+            std::this_thread::sleep_for(kCursorMultiClickGap);
+        }
+    }
+}
+
 void performStandardButtonActionAtCursor(MouseButton button, ClickAction action, int count) {
     switch (action) {
     case ClickAction::Down:
@@ -738,6 +904,104 @@ void InputSimulator::clickAtCursor(MouseButton button,
     if (needsModifiers && action == ClickAction::Tap) {
         releaseAppliedModifiers(appliedMods, beforeBlock);
     }
+#endif
+}
+
+bool InputSimulator::shouldUseClientCursorClick(HWND hwnd, MouseButton button, ClickAction action) {
+#ifdef _WIN32
+    if (!hwnd || !IsWindow(hwnd) || action != ClickAction::Tap) {
+        return false;
+    }
+    if (isWheelScrollButton(button)) {
+        return false;
+    }
+    if (!isStandardClickButton(button) && button != MouseButton::Back && button != MouseButton::Forward) {
+        return false;
+    }
+    return isMouseButtonPhysicallyDown(button);
+#else
+    (void)hwnd;
+    (void)button;
+    (void)action;
+    return false;
+#endif
+}
+
+void InputSimulator::clickAtCursorOnTarget(HWND hwnd,
+                                           MouseButton button,
+                                           ClickAction action,
+                                           int count,
+                                           KeyModifiers mods) {
+#ifdef _WIN32
+    if (!hwnd || !IsWindow(hwnd) || action == ClickAction::MoveOnly) {
+        return;
+    }
+
+    const bool needsModifiers = mods.any();
+    ModifierSnapshot beforeBlock{};
+    AppliedKeyModifiers appliedMods{};
+    if (needsModifiers) {
+        beforeBlock = captureModifierSnapshot();
+        if (action == ClickAction::Tap || action == ClickAction::Down) {
+            appliedMods = pressModifiersIfNeeded(mods, beforeBlock);
+        }
+    }
+
+    if (isWheelScrollButton(button)) {
+        sendWheelScroll(button, count);
+    } else if (button == MouseButton::Back || button == MouseButton::Forward) {
+        performXButtonActionAtCursor(button, action, count);
+    } else if (isStandardClickButton(button)) {
+        switch (action) {
+        case ClickAction::Down: {
+            int clientX = 0;
+            int clientY = 0;
+            if (!getCursorClientPoint(hwnd, clientX, clientY)) {
+                break;
+            }
+            ClientMouseMessages msgs{};
+            if (!clientMouseMessages(button, msgs)) {
+                break;
+            }
+            const LPARAM lParam = MAKELPARAM(static_cast<WORD>(clientX & 0xFFFF),
+                                             static_cast<WORD>(clientY & 0xFFFF));
+            PostMessage(hwnd, WM_MOUSEMOVE, physicalMouseMoveWParam(), lParam);
+            PostMessage(hwnd, msgs.downMsg, clientButtonDownWParam(button, mods), lParam);
+            trackSyntheticMouse(button, true);
+            break;
+        }
+        case ClickAction::Up: {
+            int clientX = 0;
+            int clientY = 0;
+            if (!getCursorClientPoint(hwnd, clientX, clientY)) {
+                break;
+            }
+            ClientMouseMessages msgs{};
+            if (!clientMouseMessages(button, msgs)) {
+                break;
+            }
+            const LPARAM lParam = MAKELPARAM(static_cast<WORD>(clientX & 0xFFFF),
+                                             static_cast<WORD>(clientY & 0xFFFF));
+            PostMessage(hwnd, msgs.upMsg, clientButtonUpWParam(button, mods), lParam);
+            trackSyntheticMouse(button, false);
+            break;
+        }
+        case ClickAction::Tap:
+        default:
+            performClientCursorTap(hwnd, button, count, mods);
+            break;
+        }
+    }
+
+    if (needsModifiers && action == ClickAction::Tap) {
+        releaseAppliedModifiers(appliedMods, beforeBlock);
+    }
+#else
+    (void)hwnd;
+    (void)button;
+    (void)action;
+    (void)count;
+    (void)mods;
 #endif
 }
 
