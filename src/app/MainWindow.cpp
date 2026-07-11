@@ -27,6 +27,7 @@
 #include "model/Feature.h"
 #include "model/Project.h"
 #include "storage/JsonSerializer.h"
+#include "storage/ProjectPackage.h"
 #include "ui/FeatureListPanel.h"
 #include "ui/BlockListWidget.h"
 #include "ui/FeatureLibraryDialog.h"
@@ -280,6 +281,11 @@ MainWindow::MainWindow(QWidget* parent)
     m_autoSaveTimer->setSingleShot(true);
     connect(m_autoSaveTimer, &QTimer::timeout, this, [this]() { autoSaveProject(); });
 
+    m_profilePackageSealTimer = new QTimer(this);
+    m_profilePackageSealTimer->setSingleShot(true);
+    m_profilePackageSealTimer->setInterval(5000);
+    connect(m_profilePackageSealTimer, &QTimer::timeout, this, &MainWindow::sealActiveProfilePackage);
+
     m_statusClearTimer = new QTimer(this);
     m_statusClearTimer->setSingleShot(true);
     connect(m_statusClearTimer, &QTimer::timeout, this, &MainWindow::clearStatusMessage);
@@ -317,6 +323,7 @@ MainWindow::MainWindow(QWidget* parent)
     refreshProfileList();
     loadActiveProfile();
     refreshFeatureLibraryPanel();
+    scheduleProfilePackageSeal();
 
     updateWindowTitle();
     syncHotkeys();
@@ -627,6 +634,9 @@ void MainWindow::setupMenus() {
     fileMenu->addAction(tr("프로젝트 열기(&O)..."), this, &MainWindow::onOpenProject);
     fileMenu->addAction(tr("프로젝트 저장(&S)"), this, &MainWindow::onSaveProject);
     fileMenu->addAction(tr("다른 이름으로 저장(&A)..."), this, &MainWindow::onSaveProjectAs);
+    fileMenu->addSeparator();
+    fileMenu->addAction(tr("PIPBONG 패키지 가져오기(&I)..."), this, &MainWindow::onImportProfilePackage);
+    fileMenu->addAction(tr("PIPBONG 패키지 내보내기(&E)..."), this, &MainWindow::onExportProfilePackage);
     fileMenu->addSeparator();
     fileMenu->addAction(tr("업데이트(&U)..."), this, &MainWindow::onCheckForUpdates);
     fileMenu->addSeparator();
@@ -1479,9 +1489,13 @@ void MainWindow::prepareForShutdown() {
     WindowPickerHoverOverlay::dismissAll();
     CursorPositionPicker::cancelPick();
     m_autoSaveTimer->stop();
+    if (m_profilePackageSealTimer) {
+        m_profilePackageSealTimer->stop();
+    }
     saveSelectedFeaturePreference();
     autoSaveProject();
     saveActiveProfileSettings();
+    sealActiveProfilePackage();
     if (m_uiState) {
         m_uiState->saveNow();
     }
@@ -1648,7 +1662,100 @@ void MainWindow::autoSaveProject(bool quiet) {
         if (!quiet) {
             showTransientStatus(tr("자동 저장됨"), 2000);
         }
+        scheduleProfilePackageSeal();
     }
+}
+
+void MainWindow::scheduleProfilePackageSeal() {
+    if (!m_profileManager || !m_profilePackageSealTimer) {
+        return;
+    }
+    m_profilePackageSealTimer->start();
+}
+
+void MainWindow::sealActiveProfilePackage() {
+    if (!m_profileManager) {
+        return;
+    }
+    saveActiveProfileSettings();
+    m_profileManager->sealProfilePackage(m_profileManager->activeProfileId());
+}
+
+void MainWindow::onImportProfilePackage() {
+    if (!m_profileManager) {
+        return;
+    }
+
+    const QString path = QFileDialog::getOpenFileName(
+        this,
+        tr("PIPBONG 패키지 가져오기"),
+        ProjectPackage::defaultExportDirectory(),
+        tr("PIPBONG 패키지 (*%1)").arg(QString::fromLatin1(ProjectPackage::kExtension)));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    const QString profileId = m_profileManager->importProfileFromPackage(path);
+    if (profileId.isEmpty()) {
+        QMessageBox::critical(this,
+                              tr("패키지 가져오기"),
+                              tr("PIPBONG 패키지를 불러오지 못했습니다."));
+        return;
+    }
+
+    refreshProfileList();
+    loadActiveProfile(false);
+    syncProfileListSelection();
+    appendLog(tr("PIPBONG 패키지를 새 프로필로 가져왔습니다: %1").arg(QFileInfo(path).fileName()),
+              LogLineKind::Success);
+}
+
+void MainWindow::onExportProfilePackage() {
+    if (!m_profileManager) {
+        return;
+    }
+
+    if (!maybeSave(true)) {
+        return;
+    }
+    saveActiveProfileSettings();
+    sealActiveProfilePackage();
+
+    const ProfileManager::Profile* profile = m_profileManager->activeProfile();
+    const QString defaultBaseName =
+        profile ? (m_profileManager->isDefaultProfile(profile->id) ? QStringLiteral("PIPBONG")
+                                                                   : profile->name)
+                : QStringLiteral("PIPBONG");
+    const QString defaultPath =
+        QDir(ProjectPackage::defaultExportDirectory())
+            .filePath(defaultBaseName + QString::fromLatin1(ProjectPackage::kExtension));
+
+    const QString path = QFileDialog::getSaveFileName(
+        this,
+        tr("PIPBONG 패키지 내보내기"),
+        defaultPath,
+        tr("PIPBONG 패키지 (*%1)").arg(QString::fromLatin1(ProjectPackage::kExtension)));
+    if (path.isEmpty()) {
+        return;
+    }
+
+    QString exportPath = path;
+    if (!exportPath.endsWith(QString::fromLatin1(ProjectPackage::kExtension), Qt::CaseInsensitive)) {
+        exportPath += QString::fromLatin1(ProjectPackage::kExtension);
+    }
+
+    if (!ProjectPackage::packDirectory(m_profileManager->activeProjectDirectory(), exportPath)) {
+        QMessageBox::critical(this,
+                              tr("패키지 내보내기"),
+                              tr("PIPBONG 패키지를 저장하지 못했습니다."));
+        return;
+    }
+
+    QSettings settings;
+    settings.setValue(QStringLiteral("project/lastExportDirectory"),
+                      QFileInfo(exportPath).absolutePath());
+    showTransientStatus(tr("패키지 내보냄: %1").arg(QFileInfo(exportPath).fileName()), 2500);
+    appendLog(tr("PIPBONG 패키지를 내보냈습니다: %1").arg(exportPath), LogLineKind::Success);
 }
 
 void MainWindow::refreshWorkflowEditor() {

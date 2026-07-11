@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.95` (from `project(PIPBONG VERSION 0.8.95)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.96` (from `project(PIPBONG VERSION 0.8.96)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -496,6 +496,7 @@ Sbm1.0/                        # repo root (local workspace)
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Active profile manifest | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/manifest.json` (`activeProfileId`, `defaultProfileId`, unlimited profile list)                                                                                                                                                                                                      |
 | Profile project file    | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/project.json` via `ProfileManager`                                                                                                                                                                                                                                      |
+| Profile package mirror  | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}.pipbong` — ZIP archive of the profile workspace (`project.json`, `templates/`, `profile-settings.json`, optional `linked-target-icon.png`); updated on debounced auto-save / shutdown; unpacked when workspace is missing (`ProjectPackage`, `ProfileManager`) |
 | Profile settings file   | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`, `linkedTargetProcessPath` for persisted target-program icon when the window is not running) |
 | Linked target icon      | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/linked-target-icon.png` — cached exe icon when the linked program is uninstalled or not running (`ProfileManager::cacheLinkedTargetIcon`) |
 | Templates               | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/templates/*.png`                                                                                                                                                                                                                                                        |
@@ -1065,6 +1066,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.96] - 2026-07-12
+
+### Added
+
+- **`.pipbong` profile package** (ZIP): bundles `project.json`, `templates/`, and profile settings; local mirror at `profiles/{profileId}.pipbong` sealed on debounced auto-save and shutdown while the hot workspace folder stays under `profiles/{profileId}/` for fast profile switches (`ProjectPackage`, `ProfileManager`, `MainWindow`).
+- **파일 → PIPBONG 패키지 가져오기 / 내보내기**: import unpacks a shared `.pipbong` into a new AppData profile; export defaults to `Documents/PIPBONG/Exports` (`MainWindow`).
 
 ## [0.8.95] - 2026-07-11
 
@@ -3584,4 +3592,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-11. Current application version: 0.8.95._
+_Last consolidated: 2026-07-12. Current application version: 0.8.96._

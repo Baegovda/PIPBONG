@@ -71,6 +71,8 @@ private slots:
     void onOpenProject();
     void onSaveProject();
     void onSaveProjectAs();
+    void onImportProfilePackage();
+    void onExportProfilePackage();
     void onFeatureSelectionChanged();
     void onProjectModified();
     void onFeatureRunRequested(const QString& featureId);
@@ -196,6 +198,8 @@ private:
     void refreshWorkflowEditor();
     void scheduleAutoSave();
     void autoSaveProject(bool quiet = false);
+    void scheduleProfilePackageSeal();
+    void sealActiveProfilePackage();
     bool ensureProjectFilePath();
     void prepareForShutdown();
     void setupTrayIcon();
@@ -305,6 +309,7 @@ private:
     std::unique_ptr<Feature> m_libraryPreviewFeature;
     QString m_libraryPreviewEntryId;
     QTimer* m_autoSaveTimer = nullptr;
+    QTimer* m_profilePackageSealTimer = nullptr;
     QTimer* m_statusClearTimer = nullptr;
     QTimer* m_updateCheckTimer = nullptr;
     QTimer* m_mouseLockSyncTimer = nullptr;

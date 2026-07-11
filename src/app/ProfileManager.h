@@ -29,8 +29,10 @@ public:
     QString profileDirectory(const QString& id) const;
     QString projectPath(const QString& id) const;
     QString projectDirectory(const QString& id) const;
+    QString profilePackagePath(const QString& id) const;
     QString activeProjectPath() const { return projectPath(m_activeProfileId); }
     QString activeProjectDirectory() const { return projectDirectory(m_activeProfileId); }
+    QString activeProfilePackagePath() const { return profilePackagePath(m_activeProfileId); }
     QString targetWindowTitle(const QString& id) const;
     QString linkedTargetProcessPath(const QString& id) const;
     /// Cached exe icon PNG under the profile folder (survives app uninstall).
@@ -50,6 +52,12 @@ public:
     bool renameProfile(const QString& id, const QString& name);
     bool removeProfile(const QString& id);
     bool isDefaultProfile(const QString& id) const { return id == m_defaultProfileId; }
+
+    /// Ensures workspace folder exists; unpacks the local @c .pipbong when @c project.json is missing.
+    bool ensureProfileWorkspace(const QString& id) const;
+    bool sealProfilePackage(const QString& id) const;
+    /// Imports a shared @c .pipbong as a new profile; returns new profile id or empty on failure.
+    QString importProfileFromPackage(const QString& packagePath, const QString& preferredName = {});
 
     ProgramSettings::ProfileSettings loadSettings(const QString& id) const;
     /// When @p replaceLinkedProcessPath is false (default), an empty

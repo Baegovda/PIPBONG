@@ -1,5 +1,7 @@
 #include "app/ProfileManager.h"
 
+#include "storage/ProjectPackage.h"
+
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -20,6 +22,7 @@ constexpr const char* kManifestFileName = "manifest.json";
 constexpr const char* kProjectFileName = "project.json";
 constexpr const char* kSettingsFileName = "profile-settings.json";
 constexpr const char* kLinkedTargetIconFileName = "linked-target-icon.png";
+constexpr const char* kProfilePackageSuffix = ".pipbong";
 constexpr int kLinkedTargetIconCachePx = 32;
 
 QIcon iconFromExecutablePath(const QString& processPath) {
@@ -71,6 +74,9 @@ bool ProfileManager::initialize() {
     if (profileById(m_defaultProfileId)) {
         m_activeProfileId = m_defaultProfileId;
     }
+    for (const Profile& profile : m_profiles) {
+        ensureProfileWorkspace(profile.id);
+    }
     saveManifest();
     return loaded || !m_profiles.empty();
 }
@@ -102,6 +108,86 @@ QString ProfileManager::projectPath(const QString& id) const {
 
 QString ProfileManager::projectDirectory(const QString& id) const {
     return profileDirectory(id);
+}
+
+QString ProfileManager::profilePackagePath(const QString& id) const {
+    if (id.isEmpty()) {
+        return {};
+    }
+    return QDir(profilesDirectory()).filePath(id + QString::fromLatin1(kProfilePackageSuffix));
+}
+
+bool ProfileManager::ensureProfileWorkspace(const QString& id) const {
+    if (id.isEmpty()) {
+        return false;
+    }
+    const QString directory = profileDirectory(id);
+    const QString projectFile = projectPath(id);
+    const QString packageFile = profilePackagePath(id);
+
+    if (QFileInfo::exists(projectFile)) {
+        QDir().mkpath(directory);
+        return true;
+    }
+
+    if (QFileInfo::exists(packageFile)) {
+        QDir().mkpath(directory);
+        return ProjectPackage::unpackToDirectory(packageFile, directory);
+    }
+
+    QDir().mkpath(directory);
+    return true;
+}
+
+bool ProfileManager::sealProfilePackage(const QString& id) const {
+    if (id.isEmpty() || !QFileInfo::exists(projectPath(id))) {
+        return false;
+    }
+    return ProjectPackage::packDirectory(profileDirectory(id), profilePackagePath(id));
+}
+
+QString ProfileManager::importProfileFromPackage(const QString& packagePath,
+                                                 const QString& preferredName) {
+    if (!ProjectPackage::isPackagePath(packagePath) || !QFileInfo::exists(packagePath)) {
+        return {};
+    }
+
+    QString profileName = preferredName.trimmed();
+    if (profileName.isEmpty()) {
+        profileName = QFileInfo(packagePath).completeBaseName();
+    }
+
+    const QString profileId = addProfile(profileName);
+    if (profileId.isEmpty()) {
+        return {};
+    }
+
+    const QString directory = profileDirectory(profileId);
+    QDir(directory).removeRecursively();
+    QDir().mkpath(directory);
+
+    if (!ProjectPackage::unpackToDirectory(packagePath, directory)) {
+        removeProfile(profileId);
+        return {};
+    }
+
+    for (Profile& profile : m_profiles) {
+        if (profile.id == profileId) {
+            profile.targetWindowTitle = loadProfileTargetWindowTitleFromProject(profileId);
+            break;
+        }
+    }
+    saveManifest();
+
+    const QString localPackage = profilePackagePath(profileId);
+    if (QFileInfo(packagePath).absoluteFilePath() != QFileInfo(localPackage).absoluteFilePath()) {
+        QFile::remove(localPackage);
+        QFile::copy(packagePath, localPackage);
+    } else {
+        sealProfilePackage(profileId);
+    }
+
+    return profileId;
 }
 
 QString ProfileManager::targetWindowTitle(const QString& id) const {
@@ -349,6 +435,7 @@ bool ProfileManager::removeProfile(const QString& id) {
         return false;
     }
     QDir(profileDirectory(id)).removeRecursively();
+    QFile::remove(profilePackagePath(id));
     if (m_activeProfileId == id) {
         m_activeProfileId = m_profiles.front().id;
     }
