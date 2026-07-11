@@ -125,19 +125,22 @@ bool applyNativeAlwaysOnTop(QWidget* window, bool enabled) {
 struct WindowListEntry {
     HWND hwnd = nullptr;
     std::wstring title;
+    QString processPath;
     QString displayText;
     QIcon icon;
 };
 
 QIcon iconForProcessPath(const std::wstring& processPath) {
-    static QFileIconProvider iconProvider;
-    if (!processPath.empty()) {
-        const QIcon icon = iconProvider.icon(QFileInfo(QString::fromStdWString(processPath)));
-        if (!icon.isNull()) {
-            return icon;
-        }
+    if (processPath.empty()) {
+        return {};
     }
-    return iconProvider.icon(QFileIconProvider::File);
+    const QString path = QString::fromStdWString(processPath);
+    if (!QFileInfo::exists(path)) {
+        return {};
+    }
+    static QFileIconProvider iconProvider;
+    const QIcon icon = iconProvider.icon(QFileInfo(path));
+    return icon.isNull() ? QIcon{} : icon;
 }
 
 void captureRunStartCursorPosition(FeatureRunSession& session) {
@@ -205,6 +208,7 @@ QVector<WindowListEntry> collectWindowListEntries() {
             WindowListEntry entry;
             entry.hwnd = hwnd;
             entry.title = title;
+            entry.processPath = QString::fromStdWString(processPath);
             entry.icon = iconForProcessPath(processPath);
             const QString titleText = QString::fromStdWString(title);
             const qulonglong hwndValue = reinterpret_cast<qulonglong>(hwnd);
@@ -4184,25 +4188,29 @@ void MainWindow::refreshProfileList() {
         if (profile.id == defaultId) {
             return windowIcon();
         }
+        const QIcon cachedIcon = m_profileManager->linkedTargetIcon(profile.id);
+        if (!cachedIcon.isNull()) {
+            return cachedIcon;
+        }
         const QString storedProcessPath = m_profileManager->linkedTargetProcessPath(profile.id);
-        if (!storedProcessPath.isEmpty()) {
-            if (QFileInfo::exists(storedProcessPath)) {
-                const QIcon liveIcon = iconForProcessPath(storedProcessPath.toStdWString());
-                if (!liveIcon.isNull()) {
-                    m_profileManager->cacheLinkedTargetIcon(profile.id, liveIcon);
-                    return liveIcon;
-                }
-            }
-            const QIcon cachedIcon = m_profileManager->linkedTargetIcon(profile.id);
-            if (!cachedIcon.isNull()) {
-                return cachedIcon;
+        if (!storedProcessPath.isEmpty() && QFileInfo::exists(storedProcessPath)) {
+            const QIcon liveIcon = iconForProcessPath(storedProcessPath.toStdWString());
+            if (!liveIcon.isNull()) {
+                m_profileManager->cacheLinkedTargetIcon(profile.id, liveIcon);
+                return liveIcon;
             }
         }
         const QString targetTitle = profile.targetWindowTitle;
         if (!targetTitle.isEmpty()) {
             for (const WindowListEntry& entry : windows) {
-                if (QString::fromStdWString(entry.title).contains(targetTitle, Qt::CaseInsensitive)
-                    && !entry.icon.isNull()) {
+                if (!QString::fromStdWString(entry.title).contains(targetTitle, Qt::CaseInsensitive)) {
+                    continue;
+                }
+                if (storedProcessPath.isEmpty() && !entry.processPath.isEmpty()) {
+                    m_profileManager->updateProfileTargetBinding(profile.id, targetTitle, entry.processPath);
+                }
+                if (!entry.icon.isNull()) {
+                    m_profileManager->cacheLinkedTargetIcon(profile.id, entry.icon);
                     return entry.icon;
                 }
             }
@@ -4471,9 +4479,18 @@ void MainWindow::commitActiveProfileTargetWindow(HWND hwnd, const QString& title
     ScreenCapture::setTargetWindowTitle(title.toStdWString());
     ScreenCapture::setTargetWindow(hwnd);
     m_project->setTargetWindowTitle(title.toStdString());
-    m_profileManager->updateProfileTargetBinding(m_profileManager->activeProfileId(),
-                                                 title,
-                                                 processPath);
+    const QString profileId = m_profileManager->activeProfileId();
+    m_profileManager->updateProfileTargetBinding(profileId, title, processPath);
+    QIcon bindIcon = iconForProcessPath(processPath.toStdWString());
+    if (bindIcon.isNull() && hwnd && IsWindow(hwnd)) {
+        ScreenCapture::TargetWindowInfo info;
+        if (ScreenCapture::queryWindowInfo(hwnd, info) && !info.processPath.empty()) {
+            bindIcon = iconForProcessPath(info.processPath);
+        }
+    }
+    if (!bindIcon.isNull()) {
+        m_profileManager->cacheLinkedTargetIcon(profileId, bindIcon);
+    }
     scheduleAutoSave();
 }
 #endif

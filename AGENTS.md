@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.96` (from `project(PIPBONG VERSION 0.8.96)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.97` (from `project(PIPBONG VERSION 0.8.97)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1066,6 +1066,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.97] - 2026-07-12
+
+### Fixed
+
+- Profile list linked-program icon no longer flickers between the PIPBONG default and a live window icon: prefer cached `linked-target-icon.png` first; stop returning a generic file icon when the exe path is missing; persist exe path and cache icon on first live window match; cache icon on **창 지정** even when path lookup is delayed (`MainWindow::refreshProfileList`, `iconForProcessPath`, `ProfileManager::iconFromExecutablePath`, `commitActiveProfileTargetWindow`).
 
 ## [0.8.96] - 2026-07-12
 
@@ -3592,4 +3598,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-12. Current application version: 0.8.96._
+_Last consolidated: 2026-07-12. Current application version: 0.8.97._

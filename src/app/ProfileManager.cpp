@@ -26,10 +26,10 @@ constexpr const char* kProfilePackageSuffix = ".pipbong";
 constexpr int kLinkedTargetIconCachePx = 32;
 
 QIcon iconFromExecutablePath(const QString& processPath) {
-    static QFileIconProvider iconProvider;
-    if (processPath.isEmpty()) {
+    if (processPath.isEmpty() || !QFileInfo::exists(processPath)) {
         return {};
     }
+    static QFileIconProvider iconProvider;
     const QIcon icon = iconProvider.icon(QFileInfo(processPath));
     return icon.isNull() ? QIcon{} : icon;
 }
