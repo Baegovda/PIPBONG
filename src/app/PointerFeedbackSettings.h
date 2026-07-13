@@ -22,9 +22,37 @@ struct ClickPointerFeedbackSettings {
     int maxAlpha = 220;
 };
 
+/// Global window-pick confirmation overlay animation (QSettings, not project JSON).
+enum class WindowSelectionFeedbackStyle {
+    LockOn = 0,
+    RadarPing,
+    BorderGlow,
+    ClassicFill,
+};
+
+struct WindowSelectionFeedbackSettings {
+    bool enabled = true;
+    int displayDurationMs = 1000;
+    double animationSpeed = 1.0;
+    WindowSelectionFeedbackStyle style = WindowSelectionFeedbackStyle::LockOn;
+    QColor color{56, 189, 248};
+    int maxAlpha = 220;
+    int pingRingWidth = 18;
+    int edgeGlowWidth = 16;
+    int bracketScalePercent = 100;
+    bool echoRing = true;
+    bool centerBloom = true;
+    bool edgeGlow = true;
+    bool cornerBrackets = true;
+};
+
 class PointerFeedbackSettings {
 public:
     static ClickPointerFeedbackSettings click();
     static void setClick(const ClickPointerFeedbackSettings& settings);
     static ClickPointerFeedbackSettings defaultClick();
+
+    static WindowSelectionFeedbackSettings windowSelection();
+    static void setWindowSelection(const WindowSelectionFeedbackSettings& settings);
+    static WindowSelectionFeedbackSettings defaultWindowSelection();
 };

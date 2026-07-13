@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.98 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.99 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -89,6 +89,8 @@ set(PIPBONG_SOURCES
     src/ui/ProgramSettingsDialog.cpp
     src/ui/ClickPointerFeedbackSettingsDialog.cpp
     src/ui/ClickPointerFeedbackRenderer.cpp
+    src/ui/WindowSelectionFeedbackSettingsDialog.cpp
+    src/ui/WindowSelectionFeedbackRenderer.cpp
     src/ui/editors/FeatureEditDialog.cpp
     src/ui/editors/FeatureEditPrefs.cpp
     src/ui/WorkflowEditorPanel.cpp
@@ -98,6 +100,7 @@ set(PIPBONG_SOURCES
     src/ui/widgets/DragAdjustDoubleSpinBox.cpp
     src/ui/widgets/HintLabel.cpp
     src/ui/widgets/ClickPointerFeedbackPreviewWidget.cpp
+    src/ui/widgets/WindowSelectionFeedbackPreviewWidget.cpp
     src/ui/editors/BlockEditorDialog.cpp
     src/ui/editors/ImageFindEditor.cpp
     src/ui/editors/ImageFindPollIntervalPrefs.cpp

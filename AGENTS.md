@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.98` (from `project(PIPBONG VERSION 0.8.98)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.99` (from `project(PIPBONG VERSION 0.8.99)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1066,6 +1066,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.99] - 2026-07-13
+
+### Added
+
+- **창 지정 애니메이션** program settings (parity with click pointer feedback): dedicated dialog with live preview, replay, reset-to-defaults, timing/speed/style/color/opacity/size/effect toggles; persisted in `QSettings` `program/windowSelectionFeedback/*`; shared `WindowSelectionFeedbackRenderer` drives overlay and preview (`WindowSelectionFeedbackSettingsDialog`, `WindowSelectionFeedbackPreviewWidget`, `PointerFeedbackSettings::windowSelection`, `ProgramSettingsDialog`, `TargetWindowHighlightOverlay`).
 
 ## [0.8.98] - 2026-07-13
 
@@ -3604,4 +3610,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-13. Current application version: 0.8.98._
+_Last consolidated: 2026-07-13. Current application version: 0.8.99._

@@ -4,6 +4,7 @@
 #include "app/ProgramSettings.h"
 #include "app/WindowsRunAsAdmin.h"
 #include "ui/ClickPointerFeedbackSettingsDialog.h"
+#include "ui/WindowSelectionFeedbackSettingsDialog.h"
 #include "ui/UiStrings.h"
 #include "ui/widgets/DragAdjustSpinBox.h"
 #include "ui/widgets/HintLabel.h"
@@ -21,7 +22,7 @@ ProgramSettingsDialog::ProgramSettingsDialog(QWidget* parent)
     : QDialog(parent) {
     setWindowTitle(tr("프로그램 설정"));
     setModal(true);
-    resize(500, 620);
+    resize(500, 680);
     setupUi();
 }
 
@@ -186,6 +187,31 @@ void ProgramSettingsDialog::setupUi() {
     clickLayout->addWidget(clickHint);
     layout->addWidget(clickGroup);
 
+    auto* windowSelectionGroup = new QGroupBox(tr("창 지정 애니메이션"), this);
+    auto* windowSelectionLayout = new QVBoxLayout(windowSelectionGroup);
+
+    m_windowSelectionFeedbackSummary = new QLabel(windowSelectionGroup);
+    m_windowSelectionFeedbackSummary->setWordWrap(true);
+    updateWindowSelectionFeedbackSummary();
+
+    auto* windowSelectionRow = new QHBoxLayout();
+    windowSelectionRow->addWidget(m_windowSelectionFeedbackSummary, 1);
+    m_windowSelectionFeedbackButton = new QPushButton(tr("설정…"), windowSelectionGroup);
+    m_windowSelectionFeedbackButton->setCursor(Qt::PointingHandCursor);
+    connect(m_windowSelectionFeedbackButton,
+            &QPushButton::clicked,
+            this,
+            &ProgramSettingsDialog::onOpenWindowSelectionFeedbackSettings);
+    windowSelectionRow->addWidget(m_windowSelectionFeedbackButton, 0, Qt::AlignTop);
+    windowSelectionLayout->addLayout(windowSelectionRow);
+
+    auto* windowSelectionHint = new HintLabel(
+        tr("창 지정 또는 창 목록에서 대상 창을 선택했을 때 대상 창 위에 재생되는 확인 애니메이션입니다."),
+        windowSelectionGroup);
+    windowSelectionHint->setWordWrap(true);
+    windowSelectionLayout->addWidget(windowSelectionHint);
+    layout->addWidget(windowSelectionGroup);
+
     layout->addStretch();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -236,5 +262,17 @@ void ProgramSettingsDialog::onOpenClickFeedbackSettings() {
     ClickPointerFeedbackSettingsDialog dialog(this);
     if (dialog.exec() == QDialog::Accepted) {
         updateClickFeedbackSummary();
+    }
+}
+
+void ProgramSettingsDialog::updateWindowSelectionFeedbackSummary() {
+    m_windowSelectionFeedbackSummary->setText(
+        WindowSelectionFeedbackSettingsDialog::settingsSummary(PointerFeedbackSettings::windowSelection()));
+}
+
+void ProgramSettingsDialog::onOpenWindowSelectionFeedbackSettings() {
+    WindowSelectionFeedbackSettingsDialog dialog(this);
+    if (dialog.exec() == QDialog::Accepted) {
+        updateWindowSelectionFeedbackSummary();
     }
 }

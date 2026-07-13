@@ -1,5 +1,6 @@
 #include "app/PointerFeedbackSettings.h"
 
+#include <QColor>
 #include <QSettings>
 
 #include <algorithm>
@@ -114,4 +115,118 @@ void PointerFeedbackSettings::setClick(const ClickPointerFeedbackSettings& setti
     qsettings.setValue(QString::fromLatin1("%1ringCount").arg(kClickPrefix), clamped.ringCount);
     qsettings.setValue(QString::fromLatin1("%1ringThickness").arg(kClickPrefix), clamped.ringThickness);
     qsettings.setValue(QString::fromLatin1("%1maxAlpha").arg(kClickPrefix), clamped.maxAlpha);
+}
+
+namespace {
+
+constexpr const char* kWindowSelectionPrefix = "program/windowSelectionFeedback/";
+
+int clampIntWs(int value, int minValue, int maxValue) {
+    return std::clamp(value, minValue, maxValue);
+}
+
+double clampDoubleWs(double value, double minValue, double maxValue) {
+    return std::clamp(value, minValue, maxValue);
+}
+
+WindowSelectionFeedbackStyle clampWindowSelectionStyle(int value) {
+    const int maxStyle = static_cast<int>(WindowSelectionFeedbackStyle::ClassicFill);
+    return static_cast<WindowSelectionFeedbackStyle>(clampIntWs(value, 0, maxStyle));
+}
+
+WindowSelectionFeedbackSettings clampWindowSelection(const WindowSelectionFeedbackSettings& input) {
+    WindowSelectionFeedbackSettings s = input;
+    s.displayDurationMs = clampIntWs(s.displayDurationMs, 400, 3000);
+    s.animationSpeed = clampDoubleWs(s.animationSpeed, 0.25, 4.0);
+    s.style = clampWindowSelectionStyle(static_cast<int>(s.style));
+    if (!s.color.isValid()) {
+        s.color = QColor(56, 189, 248);
+    }
+    s.maxAlpha = clampIntWs(s.maxAlpha, 40, 255);
+    s.pingRingWidth = clampIntWs(s.pingRingWidth, 8, 48);
+    s.edgeGlowWidth = clampIntWs(s.edgeGlowWidth, 8, 32);
+    s.bracketScalePercent = clampIntWs(s.bracketScalePercent, 50, 150);
+    return s;
+}
+
+} // namespace
+
+WindowSelectionFeedbackSettings PointerFeedbackSettings::defaultWindowSelection() {
+    return WindowSelectionFeedbackSettings{};
+}
+
+WindowSelectionFeedbackSettings PointerFeedbackSettings::windowSelection() {
+    const WindowSelectionFeedbackSettings defaults = defaultWindowSelection();
+    QSettings settings;
+
+    WindowSelectionFeedbackSettings result = defaults;
+    result.enabled = settings.value(QString::fromLatin1("%1enabled").arg(kWindowSelectionPrefix), defaults.enabled)
+                         .toBool();
+    result.displayDurationMs =
+        clampIntWs(settings.value(QString::fromLatin1("%1displayDurationMs").arg(kWindowSelectionPrefix),
+                                  defaults.displayDurationMs)
+                       .toInt(),
+                   400, 3000);
+    result.animationSpeed =
+        clampDoubleWs(settings.value(QString::fromLatin1("%1animationSpeed").arg(kWindowSelectionPrefix),
+                                     defaults.animationSpeed)
+                          .toDouble(),
+                      0.25, 4.0);
+    result.style = clampWindowSelectionStyle(
+        settings.value(QString::fromLatin1("%1style").arg(kWindowSelectionPrefix),
+                       static_cast<int>(defaults.style))
+            .toInt());
+    result.color = readColor(settings, QString::fromLatin1("%1color").arg(kWindowSelectionPrefix), defaults.color);
+    result.maxAlpha = clampIntWs(settings.value(QString::fromLatin1("%1maxAlpha").arg(kWindowSelectionPrefix),
+                                                defaults.maxAlpha)
+                                     .toInt(),
+                                 40, 255);
+    result.pingRingWidth =
+        clampIntWs(settings.value(QString::fromLatin1("%1pingRingWidth").arg(kWindowSelectionPrefix),
+                                  defaults.pingRingWidth)
+                       .toInt(),
+                   8, 48);
+    result.edgeGlowWidth =
+        clampIntWs(settings.value(QString::fromLatin1("%1edgeGlowWidth").arg(kWindowSelectionPrefix),
+                                  defaults.edgeGlowWidth)
+                       .toInt(),
+                   8, 32);
+    result.bracketScalePercent =
+        clampIntWs(settings.value(QString::fromLatin1("%1bracketScalePercent").arg(kWindowSelectionPrefix),
+                                  defaults.bracketScalePercent)
+                       .toInt(),
+                   50, 150);
+    result.echoRing = settings.value(QString::fromLatin1("%1echoRing").arg(kWindowSelectionPrefix), defaults.echoRing)
+                          .toBool();
+    result.centerBloom =
+        settings.value(QString::fromLatin1("%1centerBloom").arg(kWindowSelectionPrefix), defaults.centerBloom)
+            .toBool();
+    result.edgeGlow = settings.value(QString::fromLatin1("%1edgeGlow").arg(kWindowSelectionPrefix), defaults.edgeGlow)
+                          .toBool();
+    result.cornerBrackets =
+        settings.value(QString::fromLatin1("%1cornerBrackets").arg(kWindowSelectionPrefix), defaults.cornerBrackets)
+            .toBool();
+    return result;
+}
+
+void PointerFeedbackSettings::setWindowSelection(const WindowSelectionFeedbackSettings& settings) {
+    const WindowSelectionFeedbackSettings clamped = clampWindowSelection(settings);
+
+    QSettings qsettings;
+    qsettings.setValue(QString::fromLatin1("%1enabled").arg(kWindowSelectionPrefix), clamped.enabled);
+    qsettings.setValue(QString::fromLatin1("%1displayDurationMs").arg(kWindowSelectionPrefix),
+                       clamped.displayDurationMs);
+    qsettings.setValue(QString::fromLatin1("%1animationSpeed").arg(kWindowSelectionPrefix), clamped.animationSpeed);
+    qsettings.setValue(QString::fromLatin1("%1style").arg(kWindowSelectionPrefix), static_cast<int>(clamped.style));
+    qsettings.setValue(QString::fromLatin1("%1color").arg(kWindowSelectionPrefix),
+                       clamped.color.name(QColor::HexRgb));
+    qsettings.setValue(QString::fromLatin1("%1maxAlpha").arg(kWindowSelectionPrefix), clamped.maxAlpha);
+    qsettings.setValue(QString::fromLatin1("%1pingRingWidth").arg(kWindowSelectionPrefix), clamped.pingRingWidth);
+    qsettings.setValue(QString::fromLatin1("%1edgeGlowWidth").arg(kWindowSelectionPrefix), clamped.edgeGlowWidth);
+    qsettings.setValue(QString::fromLatin1("%1bracketScalePercent").arg(kWindowSelectionPrefix),
+                       clamped.bracketScalePercent);
+    qsettings.setValue(QString::fromLatin1("%1echoRing").arg(kWindowSelectionPrefix), clamped.echoRing);
+    qsettings.setValue(QString::fromLatin1("%1centerBloom").arg(kWindowSelectionPrefix), clamped.centerBloom);
+    qsettings.setValue(QString::fromLatin1("%1edgeGlow").arg(kWindowSelectionPrefix), clamped.edgeGlow);
+    qsettings.setValue(QString::fromLatin1("%1cornerBrackets").arg(kWindowSelectionPrefix), clamped.cornerBrackets);
 }
