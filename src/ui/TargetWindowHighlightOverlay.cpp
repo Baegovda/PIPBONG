@@ -23,9 +23,9 @@ namespace {
 #ifdef _WIN32
 constexpr wchar_t kOverlayClassName[] = L"PipbongTargetWindowHighlightOverlay";
 constexpr UINT_PTR kTimerId = 1;
-constexpr UINT kTimerMs = 33;
+constexpr UINT kTimerMs = 16;
 constexpr ULONGLONG kFlashDurationMs = 2400;
-constexpr ULONGLONG kSelectionWaveDurationMs = 1350;
+constexpr ULONGLONG kSelectionWaveDurationMs = 1000;
 constexpr int kBorderThickness = 5;
 
 enum class HighlightMode {
@@ -110,47 +110,180 @@ void drawBorderFrame(uint32_t* pixels,
     }
 }
 
-void drawCircleFill(uint32_t* pixels,
-                    int width,
-                    int height,
-                    float radius,
-                    float edgeWidth,
-                    uint8_t fillAlpha,
-                    uint8_t edgeAlpha,
-                    uint8_t r,
-                    uint8_t g,
-                    uint8_t b) {
+float easeOutExpo(float t) {
+    return t >= 1.0f ? 1.0f : 1.0f - std::pow(2.0f, -10.0f * t);
+}
+
+float easeOutBack(float t) {
+    constexpr float c1 = 1.70158f;
+    constexpr float c3 = c1 + 1.0f;
+    const float u = t - 1.0f;
+    return 1.0f + c3 * u * u * u + c1 * u * u;
+}
+
+float smoothstepf(float edge0, float edge1, float x) {
+    const float v = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+    return v * v * (3.0f - 2.0f * v);
+}
+
+// Expanding luminous ring with gaussian-soft profile (radar ping look):
+// bright near-white core at the wavefront, colored halo trailing behind.
+void drawSoftRing(uint32_t* pixels,
+                  int width,
+                  int height,
+                  float radius,
+                  float sigma,
+                  float maxAlpha,
+                  uint8_t r,
+                  uint8_t g,
+                  uint8_t b) {
+    if (maxAlpha <= 1.0f || radius <= 0.0f) {
+        return;
+    }
     const float cx = (static_cast<float>(width) - 1.0f) * 0.5f;
     const float cy = (static_cast<float>(height) - 1.0f) * 0.5f;
-    const int top = std::max(0, static_cast<int>(std::floor(cy - radius - edgeWidth)));
-    const int bottom = std::min(height - 1, static_cast<int>(std::ceil(cy + radius + edgeWidth)));
+    const float reach = sigma * 3.0f;
+    const float outerR = radius + reach;
+    const float innerR = std::max(0.0f, radius - reach);
+    const float outerSq = outerR * outerR;
+    const float innerSq = innerR * innerR;
+    const float invTwoSigmaSq = 1.0f / (2.0f * sigma * sigma);
 
-    const float outerRadius = radius + edgeWidth;
-    const float outerSq = outerRadius * outerRadius;
-    const float innerEdgeStart = std::max(0.0f, radius - edgeWidth);
-    const float innerEdgeSq = innerEdgeStart * innerEdgeStart;
-    const float radiusSq = radius * radius;
+    const int top = std::max(0, static_cast<int>(std::floor(cy - outerR)));
+    const int bottom = std::min(height - 1, static_cast<int>(std::ceil(cy + outerR)));
 
     for (int y = top; y <= bottom; ++y) {
         const float dy = static_cast<float>(y) - cy;
-        const float maxDxSq = outerSq - dy * dy;
-        if (maxDxSq < 0.0f) {
+        const float outerDxSq = outerSq - dy * dy;
+        if (outerDxSq < 0.0f) {
             continue;
         }
-        const int left = std::max(0, static_cast<int>(std::floor(cx - std::sqrt(maxDxSq))));
-        const int right = std::min(width - 1, static_cast<int>(std::ceil(cx + std::sqrt(maxDxSq))));
-        for (int x = left; x <= right; ++x) {
-            const float dx = static_cast<float>(x) - cx;
-            const float distSq = dx * dx + dy * dy;
-            uint8_t alpha = 0;
-            if (distSq <= radiusSq) {
-                alpha = fillAlpha;
+        const float outerDx = std::sqrt(outerDxSq);
+        const float innerDxSq = innerSq - dy * dy;
+        const float innerDx = innerDxSq > 0.0f ? std::sqrt(innerDxSq) : -1.0f;
+
+        // Left and right ring-band spans on this row; hole in the middle skipped.
+        const auto drawSpan = [&](int fromX, int toX) {
+            fromX = std::max(0, fromX);
+            toX = std::min(width - 1, toX);
+            for (int x = fromX; x <= toX; ++x) {
+                const float dx = static_cast<float>(x) - cx;
+                const float dist = std::sqrt(dx * dx + dy * dy);
+                const float d = dist - radius;
+                const float falloff = std::exp(-d * d * invTwoSigmaSq);
+                const float a = maxAlpha * falloff;
+                if (a < 1.5f) {
+                    continue;
+                }
+                // Blend toward white at the wavefront core for a luminous look.
+                const float core = std::clamp(falloff * falloff, 0.0f, 1.0f) * 0.75f;
+                const uint8_t cr = static_cast<uint8_t>(r + (255 - r) * core);
+                const uint8_t cg = static_cast<uint8_t>(g + (255 - g) * core);
+                const uint8_t cb = static_cast<uint8_t>(b + (255 - b) * core);
+                setPixelArgb(pixels, width, height, x, y, static_cast<uint8_t>(a), cr, cg, cb);
             }
-            if (distSq >= innerEdgeSq && distSq <= outerSq) {
-                alpha = std::max(alpha, edgeAlpha);
-            }
-            if (alpha > 0) {
+        };
+        if (innerDx >= 0.0f) {
+            drawSpan(static_cast<int>(std::floor(cx - outerDx)), static_cast<int>(std::ceil(cx - innerDx)));
+            drawSpan(static_cast<int>(std::floor(cx + innerDx)), static_cast<int>(std::ceil(cx + outerDx)));
+        } else {
+            drawSpan(static_cast<int>(std::floor(cx - outerDx)), static_cast<int>(std::ceil(cx + outerDx)));
+        }
+    }
+}
+
+// Four L-shaped corner brackets sliding in from outside (lock-on look).
+void drawCornerBrackets(uint32_t* pixels,
+                        int width,
+                        int height,
+                        float slideOffset,
+                        uint8_t alpha,
+                        uint8_t r,
+                        uint8_t g,
+                        uint8_t b) {
+    if (alpha == 0) {
+        return;
+    }
+    const int armLength = std::clamp(static_cast<int>(std::min(width, height) * 0.075f), 24, 140);
+    const int thickness = std::clamp(static_cast<int>(std::min(width, height) * 0.008f), 4, 10);
+    const int inset = std::clamp(static_cast<int>(std::min(width, height) * 0.02f), 10, 48);
+
+    const auto fillRect = [&](int x0, int y0, int x1, int y1) {
+        x0 = std::max(0, x0);
+        y0 = std::max(0, y0);
+        x1 = std::min(width - 1, x1);
+        y1 = std::min(height - 1, y1);
+        for (int y = y0; y <= y1; ++y) {
+            for (int x = x0; x <= x1; ++x) {
                 setPixelArgb(pixels, width, height, x, y, alpha, r, g, b);
+            }
+        }
+    };
+
+    const int slide = static_cast<int>(slideOffset);
+    // Each bracket slides diagonally outward by `slide` px until it settles.
+    const int lx = inset - slide;
+    const int ty = inset - slide;
+    const int rx = width - 1 - inset + slide;
+    const int by = height - 1 - inset + slide;
+
+    // Top-left
+    fillRect(lx, ty, lx + armLength, ty + thickness - 1);
+    fillRect(lx, ty, lx + thickness - 1, ty + armLength);
+    // Top-right
+    fillRect(rx - armLength, ty, rx, ty + thickness - 1);
+    fillRect(rx - thickness + 1, ty, rx, ty + armLength);
+    // Bottom-left
+    fillRect(lx, by - thickness + 1, lx + armLength, by);
+    fillRect(lx, by - armLength, lx + thickness - 1, by);
+    // Bottom-right
+    fillRect(rx - armLength, by - thickness + 1, rx, by);
+    fillRect(rx - thickness + 1, by - armLength, rx, by);
+}
+
+// Crisp 2px frame line + soft inward glow gradient along all edges.
+void drawEdgeGlow(uint32_t* pixels,
+                  int width,
+                  int height,
+                  float coreAlpha,
+                  float glowAlpha,
+                  int glowWidth,
+                  uint8_t r,
+                  uint8_t g,
+                  uint8_t b) {
+    if (coreAlpha < 1.0f && glowAlpha < 1.0f) {
+        return;
+    }
+    glowWidth = std::max(4, glowWidth);
+    const auto alphaForDepth = [&](int d) -> uint8_t {
+        if (d < 2) {
+            return static_cast<uint8_t>(std::clamp(coreAlpha, 0.0f, 255.0f));
+        }
+        const float f = 1.0f - static_cast<float>(d - 2) / static_cast<float>(glowWidth);
+        if (f <= 0.0f) {
+            return 0;
+        }
+        return static_cast<uint8_t>(std::clamp(glowAlpha * f * f, 0.0f, 255.0f));
+    };
+
+    const int band = glowWidth + 2;
+    for (int y = 0; y < height; ++y) {
+        const int edgeDistY = std::min(y, height - 1 - y);
+        if (edgeDistY < band) {
+            for (int x = 0; x < width; ++x) {
+                const int d = std::min(edgeDistY, std::min(x, width - 1 - x));
+                const uint8_t a = alphaForDepth(d);
+                if (a > 0) {
+                    setPixelArgb(pixels, width, height, x, y, a, r, g, b);
+                }
+            }
+        } else {
+            for (int x = 0; x < band && x < width; ++x) {
+                const uint8_t a = alphaForDepth(x);
+                if (a > 0) {
+                    setPixelArgb(pixels, width, height, x, y, a, r, g, b);
+                    setPixelArgb(pixels, width, height, width - 1 - x, y, a, r, g, b);
+                }
             }
         }
     }
@@ -204,23 +337,60 @@ void renderOverlayFrame(const QRect& physicalBounds, float pulse) {
 
     const float clampedPulse = std::clamp(pulse, 0.0f, 1.0f);
     if (g_state->mode == HighlightMode::SelectionWave) {
+        // Modern lock-on confirmation: luminous radar ping expanding from center,
+        // edge glow frame breathing in behind it, corner brackets settling with
+        // a springy overshoot, then a clean fade.
+        const float t = clampedPulse;
+        const float minDim = static_cast<float>(std::min(width, height));
         const float maxRadius =
-            std::sqrt(static_cast<float>(width * width + height * height)) * 0.5f;
-        const float radius = maxRadius * clampedPulse;
-        const float lateFade = clampedPulse > 0.72f ? (1.0f - clampedPulse) / 0.28f : 1.0f;
-        const float fade = std::clamp(lateFade, 0.0f, 1.0f);
-        const uint8_t fillAlpha = static_cast<uint8_t>(std::clamp(92.0f * fade, 0.0f, 255.0f));
-        const uint8_t edgeAlpha = static_cast<uint8_t>(std::clamp(210.0f * fade, 0.0f, 255.0f));
-        const float edgeWidth = std::max(18.0f, std::min(width, height) * 0.035f);
-        drawCircleFill(pixels, width, height, radius, edgeWidth, fillAlpha, edgeAlpha, 56, 189, 248);
-        drawBorderFrame(pixels,
-                        width,
-                        height,
-                        kBorderThickness,
-                        static_cast<uint8_t>(std::clamp(130.0f * fade, 0.0f, 255.0f)),
-                        56,
-                        189,
-                        248);
+            std::sqrt(static_cast<float>(width) * width + static_cast<float>(height) * height) * 0.5f;
+
+        // Global fade-out over the last 18%.
+        const float fadeOut = 1.0f - smoothstepf(0.82f, 1.0f, t);
+
+        // Primary ping ring: fast start, gliding finish.
+        const float ringT = std::clamp(t / 0.62f, 0.0f, 1.0f);
+        const float ringRadius = maxRadius * easeOutExpo(ringT);
+        const float ringSigma = std::max(10.0f, minDim * 0.018f) * (0.7f + 0.9f * ringT);
+        const float ringFade = (1.0f - smoothstepf(0.72f, 1.0f, ringT)) * fadeOut;
+        drawSoftRing(pixels, width, height, ringRadius, ringSigma, 205.0f * ringFade, 56, 189, 248);
+
+        // Trailing echo ring: thinner, dimmer, slightly behind.
+        const float echoT = std::clamp((t - 0.10f) / 0.62f, 0.0f, 1.0f);
+        if (echoT > 0.0f) {
+            const float echoRadius = maxRadius * easeOutExpo(echoT) * 0.82f;
+            const float echoFade = (1.0f - smoothstepf(0.65f, 1.0f, echoT)) * fadeOut;
+            drawSoftRing(pixels, width, height, echoRadius,
+                         std::max(6.0f, minDim * 0.009f), 90.0f * echoFade, 125, 211, 252);
+        }
+
+        // Center flash at the very beginning (quick bloom that dissolves).
+        const float flashFade = 1.0f - smoothstepf(0.0f, 0.22f, t);
+        if (flashFade > 0.0f) {
+            const float flashRadius = minDim * 0.05f * (1.0f + 2.4f * smoothstepf(0.0f, 0.22f, t));
+            drawSoftRing(pixels, width, height, flashRadius * 0.5f, flashRadius * 0.6f,
+                         170.0f * flashFade * fadeOut, 186, 230, 253);
+        }
+
+        // Edge glow frame: rises as the ping reaches the borders.
+        const float frameIn = smoothstepf(0.30f, 0.58f, t);
+        if (frameIn > 0.0f) {
+            const int glowWidth = std::clamp(static_cast<int>(minDim * 0.018f), 8, 26);
+            drawEdgeGlow(pixels, width, height,
+                         185.0f * frameIn * fadeOut,
+                         70.0f * frameIn * fadeOut,
+                         glowWidth, 56, 189, 248);
+        }
+
+        // Corner brackets: slide in from outside with a spring overshoot.
+        const float bracketT = std::clamp((t - 0.42f) / 0.34f, 0.0f, 1.0f);
+        if (bracketT > 0.0f) {
+            const float slideMax = minDim * 0.05f;
+            const float slide = slideMax * (1.0f - easeOutBack(bracketT));
+            const uint8_t bracketAlpha = static_cast<uint8_t>(
+                std::clamp(235.0f * smoothstepf(0.0f, 0.4f, bracketT) * fadeOut, 0.0f, 255.0f));
+            drawCornerBrackets(pixels, width, height, slide, bracketAlpha, 224, 242, 254);
+        }
     } else {
         const uint8_t alpha = static_cast<uint8_t>(std::clamp(80.0f + clampedPulse * 175.0f, 0.0f, 255.0f));
         drawBorderFrame(pixels, width, height, kBorderThickness, alpha, 96, 165, 250);
@@ -254,11 +424,10 @@ float pulseStrength(ULONGLONG elapsedMs) {
 }
 
 float selectionWaveProgress(ULONGLONG elapsedMs) {
-    const float t = std::clamp(static_cast<float>(elapsedMs) / static_cast<float>(kSelectionWaveDurationMs),
-                               0.0f,
-                               1.0f);
-    const float inv = 1.0f - t;
-    return 1.0f - inv * inv * inv;
+    // Linear timeline; per-element easing happens inside renderOverlayFrame.
+    return std::clamp(static_cast<float>(elapsedMs) / static_cast<float>(kSelectionWaveDurationMs),
+                      0.0f,
+                      1.0f);
 }
 
 LRESULT CALLBACK overlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {

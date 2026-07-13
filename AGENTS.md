@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.97` (from `project(PIPBONG VERSION 0.8.97)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.98` (from `project(PIPBONG VERSION 0.8.98)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1066,6 +1066,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.98] - 2026-07-13
+
+### Changed
+
+- Target-window selection animation redesigned as a modern lock-on confirmation: luminous radar ping ring (gaussian-soft, white-hot wavefront) expanding with exponential ease-out, trailing echo ring, brief center bloom, edge glow frame rising as the ping reaches the borders, and corner brackets sliding in with a spring overshoot; 60 fps timer (16 ms) and 1.0 s duration replace the flat circle fill (`TargetWindowHighlightOverlay`).
 
 ## [0.8.97] - 2026-07-12
 
@@ -3598,4 +3604,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-12. Current application version: 0.8.97._
+_Last consolidated: 2026-07-13. Current application version: 0.8.98._
