@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.106` (from `project(PIPBONG VERSION 0.8.106)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.107` (from `project(PIPBONG VERSION 0.8.107)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -623,8 +623,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `lockMouseToScreenCenterDuringRun`        | `false` (omitted)  | When `true`, clips the physical cursor to the target window center (DWM bounds) for the feature run session; follows window moves (`MouseCenterLock`, mouse block editor)                                                                       |
 | `lockMouseToCurrentPositionDuringRun`     | `false` (omitted)  | When `true`, clips the physical cursor to its feature-start screen position for the run session (configured in mouse block editor; mutually exclusive with center lock in UI)                                                                   |
 | `lockMouseDuringFirstLoopCount`           | `0` (omitted)      | When `> 0` with multi-loop run modes, clips the cursor to the last template-match screen point for the first N workflow loops; updates on each match success                                                                                    |
-| `unlockMouseOnBlockFailureBlock`          | `0` (omitted)      | 1-based workflow `#` block index; when that block fails during the early-lock window, failure count accumulates toward unlock (requires `lockMouseDuringFirstLoopCount` > 0)                                                                     |
-| `unlockMouseOnBlockFailureCount`          | `1` (omitted)      | Consecutive block-finish failures on `unlockMouseOnBlockFailureBlock` that release the early-loop mouse lock early                                                                                                                              |
+| `unlockMouseOnBlockFailureCount`          | `1` (omitted)      | During the early-lock window, cumulative block-finish failures from **any** block that release the early-loop mouse lock early                                                                                                                  |
 | `roiCorrection`                           | `false` (omitted)  | When `true` with **무한 반복** or **N회 반복** (≥2), applies ROI correction to **all** ImageFind blocks in the feature. When `false`, enable per block via workflow **ROI 보정** column or ImageFind block editor (`ImageFind` `roiCorrection`) |
 | `roiCorrectionExpandPercent`              | `110` (omitted)    | Template-relative corrected search ROI size on loop 2+ when feature `roiCorrection` is on (see ImageFind `roiCorrectionExpandPercent`)                                                                                                          |
 | `editFirstTemplateRoiOnStart`             | `false` (omitted)  | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run                     |
@@ -1091,11 +1090,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Removed
 
+## [0.8.107] - 2026-07-15
+
+### Changed
+
+- Early-loop mouse lock unlock: any block failure during the first N loops counts toward `unlockMouseOnBlockFailureCount` — removed per-block `#` selector (`unlockMouseOnBlockFailureBlock` JSON dropped; legacy key ignored on load); `FeatureEditDialog` shows **실패 시 해제** only.
+
 ## [0.8.106] - 2026-07-15
 
 ### Added
 
-- Feature **기능 편집** **초기 루프 마우스 잠금**: optional first-N-loop cursor clip to last template-match screen point (`lockMouseDuringFirstLoopCount` JSON); **블록 #** / **실패 N회** early unlock on block finish failure (`unlockMouseOnBlockFailureBlock`, `unlockMouseOnBlockFailureCount`, `MouseCenterLock::updateFixedLockPoint`, `MainWindow`, `FeatureEditDialog`).
+- Feature **기능 편집** **초기 루프 마우스 잠금**: optional first-N-loop cursor clip to last template-match screen point (`lockMouseDuringFirstLoopCount` JSON); **실패 N회** early unlock on any block finish failure during the lock window (`unlockMouseOnBlockFailureCount`, `MouseCenterLock::updateFixedLockPoint`, `MainWindow`, `FeatureEditDialog`).
 
 ## [0.8.105] - 2026-07-14
 

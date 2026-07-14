@@ -43,7 +43,6 @@ struct FeatureRunSession {
     bool lockMouseToScreenCenterDuringRun = false;
     bool lockMouseToCurrentPositionDuringRun = false;
     int lockMouseDuringFirstLoopCount = 0;
-    int unlockMouseOnBlockFailureBlock = 0;
     int unlockMouseOnBlockFailureCount = 1;
     bool earlyLoopMouseLockEngaged = false;
     bool earlyLoopMouseLockReleased = false;

@@ -42,9 +42,6 @@ void applySettingsJson(const nlohmann::json& json, Feature& feature) {
     if (json.contains("lockMouseDuringFirstLoopCount")) {
         feature.setLockMouseDuringFirstLoopCount(json.value("lockMouseDuringFirstLoopCount", 0));
     }
-    if (json.contains("unlockMouseOnBlockFailureBlock")) {
-        feature.setUnlockMouseOnBlockFailureBlock(json.value("unlockMouseOnBlockFailureBlock", 0));
-    }
     if (json.contains("unlockMouseOnBlockFailureCount")) {
         feature.setUnlockMouseOnBlockFailureCount(json.value("unlockMouseOnBlockFailureCount", 1));
     }
@@ -94,7 +91,6 @@ nlohmann::json featureSettingsToJson(const Feature& feature) {
     json["pointerVisualFeedback"] = feature.pointerVisualFeedback();
     json["restoreMousePositionOnEnd"] = feature.restoreMousePositionOnEnd();
     json["lockMouseDuringFirstLoopCount"] = feature.lockMouseDuringFirstLoopCount();
-    json["unlockMouseOnBlockFailureBlock"] = feature.unlockMouseOnBlockFailureBlock();
     json["unlockMouseOnBlockFailureCount"] = feature.unlockMouseOnBlockFailureCount();
     json["roiCorrection"] = feature.roiCorrection();
     json["roiCorrectionExpandPercent"] = feature.roiCorrectionExpandPercent();

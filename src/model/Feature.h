@@ -54,11 +54,6 @@ public:
     int lockMouseDuringFirstLoopCount() const { return m_lockMouseDuringFirstLoopCount; }
     void setLockMouseDuringFirstLoopCount(int count) { m_lockMouseDuringFirstLoopCount = count < 0 ? 0 : count; }
 
-    int unlockMouseOnBlockFailureBlock() const { return m_unlockMouseOnBlockFailureBlock; }
-    void setUnlockMouseOnBlockFailureBlock(int blockNumber) {
-        m_unlockMouseOnBlockFailureBlock = blockNumber < 0 ? 0 : blockNumber;
-    }
-
     int unlockMouseOnBlockFailureCount() const { return m_unlockMouseOnBlockFailureCount; }
     void setUnlockMouseOnBlockFailureCount(int count) {
         m_unlockMouseOnBlockFailureCount = count < 1 ? 1 : count;
@@ -125,7 +120,6 @@ private:
     bool m_lockMouseToScreenCenterDuringRun = false;
     bool m_lockMouseToCurrentPositionDuringRun = false;
     int m_lockMouseDuringFirstLoopCount = 0;
-    int m_unlockMouseOnBlockFailureBlock = 0;
     int m_unlockMouseOnBlockFailureCount = 1;
     bool m_roiCorrection = false;
     int m_roiCorrectionExpandPercent = 110;

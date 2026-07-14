@@ -36,7 +36,6 @@ public:
                       bool pointerVisualFeedback,
                       bool restoreMousePositionOnEnd,
                       int lockMouseDuringFirstLoopCount,
-                      int unlockMouseOnBlockFailureBlock,
                       int unlockMouseOnBlockFailureCount,
                       bool roiCorrection,
                       int roiCorrectionExpandPercent,
@@ -61,7 +60,6 @@ public:
     bool pointerVisualFeedback() const;
     bool restoreMousePositionOnEnd() const;
     int lockMouseDuringFirstLoopCount() const;
-    int unlockMouseOnBlockFailureBlock() const;
     int unlockMouseOnBlockFailureCount() const;
     bool roiCorrection() const;
     int roiCorrectionExpandPercent() const;
@@ -115,7 +113,6 @@ private:
     QCheckBox* m_earlyLoopMouseLockCheck = nullptr;
     QWidget* m_earlyLoopMouseLockDetailsRow = nullptr;
     DragAdjustSpinBox* m_earlyLoopMouseLockLoopSpin = nullptr;
-    DragAdjustSpinBox* m_earlyLoopMouseUnlockBlockSpin = nullptr;
     DragAdjustSpinBox* m_earlyLoopMouseUnlockFailureSpin = nullptr;
     QCheckBox* m_roiCorrectionCheck = nullptr;
     QWidget* m_roiCorrectionExpandRow = nullptr;

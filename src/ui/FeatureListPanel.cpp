@@ -1711,7 +1711,6 @@ bool FeatureListPanel::editFeatureAt(int index) {
                              feature->pointerVisualFeedback(),
                              feature->restoreMousePositionOnEnd(),
                              feature->lockMouseDuringFirstLoopCount(),
-                             feature->unlockMouseOnBlockFailureBlock(),
                              feature->unlockMouseOnBlockFailureCount(),
                              feature->roiCorrection(),
                              feature->roiCorrectionExpandPercent(),
@@ -1739,7 +1738,6 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setPointerVisualFeedback(dialog.pointerVisualFeedback());
     feature->setRestoreMousePositionOnEnd(dialog.restoreMousePositionOnEnd());
     feature->setLockMouseDuringFirstLoopCount(dialog.lockMouseDuringFirstLoopCount());
-    feature->setUnlockMouseOnBlockFailureBlock(dialog.unlockMouseOnBlockFailureBlock());
     feature->setUnlockMouseOnBlockFailureCount(dialog.unlockMouseOnBlockFailureCount());
     feature->setRoiCorrection(dialog.roiCorrection());
     feature->setRoiCorrectionExpandPercent(dialog.roiCorrectionExpandPercent());

@@ -1118,12 +1118,8 @@ void MainWindow::syncEarlyLoopMouseLock(FeatureRunSession& session) {
 }
 
 void MainWindow::handleEarlyLoopMouseLockBlockFailure(FeatureRunSession& session, int blockIndex) {
-    if (!isEarlyLoopMouseLockWindow(session) || session.unlockMouseOnBlockFailureBlock <= 0) {
-        return;
-    }
-
-    const int blockNumber = blockIndex + 1;
-    if (blockNumber != session.unlockMouseOnBlockFailureBlock) {
+    Q_UNUSED(blockIndex);
+    if (!isEarlyLoopMouseLockWindow(session)) {
         return;
     }
 
@@ -1136,8 +1132,7 @@ void MainWindow::handleEarlyLoopMouseLockBlockFailure(FeatureRunSession& session
     releaseEarlyLoopMouseLockIfEngaged(session);
     if (shouldLogRunDetails(session)) {
         appendSessionLog(session,
-                         tr("초기 루프 마우스 잠금 해제: 블록 %1 실패 %2회")
-                             .arg(blockNumber)
+                         tr("초기 루프 마우스 잠금 해제: 블록 실패 %1회")
                              .arg(session.earlyLoopMouseLockFailureCount),
                          LogLineKind::Warning);
     }
@@ -3056,7 +3051,6 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     session.lockMouseToScreenCenterDuringRun = feature->lockMouseToScreenCenterDuringRun();
     session.lockMouseToCurrentPositionDuringRun = feature->lockMouseToCurrentPositionDuringRun();
     session.lockMouseDuringFirstLoopCount = feature->lockMouseDuringFirstLoopCount();
-    session.unlockMouseOnBlockFailureBlock = feature->unlockMouseOnBlockFailureBlock();
     session.unlockMouseOnBlockFailureCount = feature->unlockMouseOnBlockFailureCount();
 
     connectSessionEngine(session);
@@ -3218,7 +3212,6 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
     session.lockMouseToScreenCenterDuringRun = feature->lockMouseToScreenCenterDuringRun();
     session.lockMouseToCurrentPositionDuringRun = feature->lockMouseToCurrentPositionDuringRun();
     session.lockMouseDuringFirstLoopCount = feature->lockMouseDuringFirstLoopCount();
-    session.unlockMouseOnBlockFailureBlock = feature->unlockMouseOnBlockFailureBlock();
     session.unlockMouseOnBlockFailureCount = feature->unlockMouseOnBlockFailureCount();
 
     const bool infiniteStyle = session.runningMode == FeatureRunMode::RepeatInfinite
