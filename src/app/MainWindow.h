@@ -274,7 +274,14 @@ private:
     void clearStatusMessage();
     void refreshTitleBarStatus();
     void logLoopCompletion(FeatureRunSession& session, bool success, const QString& message);
-    void accumulateLoopCompletionStats(FeatureRunSession& session, bool success);
+    void accumulateLoopCompletionStats(FeatureRunSession& session,
+                                         bool success,
+                                         std::int64_t elapsedOverrideMs = -1);
+    void configureWorkerFastRepeat(FeatureRunSession& session, Feature* feature);
+    void onWorkerFastRepeatIteration(const std::string& featureId,
+                                     bool success,
+                                     std::int64_t elapsedMs,
+                                     const QString& message);
     void publishLoopCompletionUi(FeatureRunSession& session, bool success, const QString& message);
     void     syncLoopTimingToWorkflowEditor(const FeatureRunSession* session);
 

@@ -3094,8 +3094,13 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
     session.sessionContext->setRunLoopNumber(session.sessionIteration + 1);
 }
 
-void MainWindow::accumulateLoopCompletionStats(FeatureRunSession& session, bool success) {
-    const qint64 elapsedMs = session.loopTimer.isValid() ? session.loopTimer.elapsed() : 0;
+void MainWindow::accumulateLoopCompletionStats(FeatureRunSession& session,
+                                               bool success,
+                                               std::int64_t elapsedOverrideMs) {
+    const qint64 elapsedMs =
+        elapsedOverrideMs >= 0
+            ? static_cast<qint64>(elapsedOverrideMs)
+            : (session.loopTimer.isValid() ? session.loopTimer.elapsed() : 0);
     session.loopTimer.invalidate();
 
     const int loopNumber = session.sessionIteration + 1;
@@ -3107,6 +3112,100 @@ void MainWindow::accumulateLoopCompletionStats(FeatureRunSession& session, bool 
     session.lastLoopAverageMs =
         session.completedLoopCount > 0 ? session.totalLoopElapsedMs / session.completedLoopCount : 0;
     session.lastLoopSuccess = success;
+}
+
+void MainWindow::onWorkerFastRepeatIteration(const std::string& featureId,
+                                             bool success,
+                                             std::int64_t elapsedMs,
+                                             const QString& message) {
+    FeatureRunSession* session = sessionFor(featureId);
+    if (!session) {
+        return;
+    }
+    accumulateLoopCompletionStats(*session, success, elapsedMs);
+    publishLoopCompletionUi(*session, success, message);
+    ++session->sessionIteration;
+    if (session->sessionContext) {
+        session->sessionContext->setRunLoopNumber(session->sessionIteration + 1);
+    }
+}
+
+void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* feature) {
+    if (!session.sessionContext || !feature) {
+        return;
+    }
+
+    const bool eligible = session.repeatSession
+                          && (session.runningMode == FeatureRunMode::Hold
+                              || session.runningMode == FeatureRunMode::RepeatInfinite
+                              || session.runningMode == FeatureRunMode::RepeatCount);
+    if (!eligible) {
+        session.sessionContext->clearWorkerFastRepeatCallbacks();
+        return;
+    }
+
+    const std::string featureId = session.featureId;
+    Feature* featurePtr = feature;
+    HotkeyManager* hotkeyMgr = m_hotkeyManager;
+
+    ExecutionContext::WorkerFastRepeatCallbacks callbacks;
+    callbacks.delayMs = [featurePtr]() { return featurePtr->resolvedLoopIntervalMs(); };
+    callbacks.onIterationComplete =
+        [this, featureId](bool success, std::int64_t elapsedMs, const std::string& message) {
+            const QString qMessage = QString::fromStdString(message);
+            QTimer::singleShot(0, this, [this, featureId, success, elapsedMs, qMessage]() {
+                onWorkerFastRepeatIteration(featureId, success, elapsedMs, qMessage);
+            });
+        };
+    callbacks.shouldContinue = [this, featureId, featurePtr, hotkeyMgr](bool success,
+                                                                         bool detectionFailed) {
+        FeatureRunSession* active = sessionFor(featureId);
+        if (!active || !featurePtr) {
+            return false;
+        }
+        if (active->userStopRequested) {
+            return false;
+        }
+
+        const bool infiniteExitEnabled =
+            featurePtr->infiniteExitAfterConsecutiveMisses() > 0
+            && (active->runningMode == FeatureRunMode::RepeatInfinite
+                || active->runningMode == FeatureRunMode::Hold);
+        if (infiniteExitEnabled) {
+            if (success) {
+                active->consecutiveDetectionFailLoops = 0;
+            } else if (detectionFailed) {
+                ++active->consecutiveDetectionFailLoops;
+                if (active->consecutiveDetectionFailLoops
+                    >= featurePtr->infiniteExitAfterConsecutiveMisses()) {
+                    return false;
+                }
+            } else if (!success) {
+                return false;
+            }
+        }
+
+        if (active->runningMode == FeatureRunMode::RepeatCount && !success) {
+            return false;
+        }
+        if (success && active->runningMode == FeatureRunMode::RepeatCount && active->repeatSession) {
+            --active->repeatRemaining;
+        }
+
+        switch (active->runningMode) {
+        case FeatureRunMode::Hold:
+            return active->repeatSession && active->holdRunActive && hotkeyMgr
+                   && hotkeyMgr->isHoldBindingDown(featureId);
+        case FeatureRunMode::RepeatInfinite:
+            return active->repeatSession;
+        case FeatureRunMode::RepeatCount:
+            return active->repeatSession && active->repeatRemaining > 0;
+        default:
+            return false;
+        }
+    };
+
+    session.sessionContext->setWorkerFastRepeatCallbacks(std::move(callbacks));
 }
 
 void MainWindow::publishLoopCompletionUi(FeatureRunSession& session,
@@ -3226,6 +3325,8 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
     if (session.sessionContext) {
         session.sessionContext->setSuppressRepeatUi(suppressRepeatUi);
     }
+
+    configureWorkerFastRepeat(session, feature);
 
     const std::wstring targetTitle = currentTargetWindowTitleW();
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
@@ -4052,66 +4153,34 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
         return;
     }
 
-    accumulateLoopCompletionStats(*session, success);
-
-    if (success && feature && session->runningMode == FeatureRunMode::RepeatCount && session->repeatSession) {
-        --session->repeatRemaining;
-    }
-
-    const bool infiniteExitEnabled =
-        feature && feature->infiniteExitAfterConsecutiveMisses() > 0
-        && (session->runningMode == FeatureRunMode::RepeatInfinite
-            || session->runningMode == FeatureRunMode::Hold);
-
-    if (infiniteExitEnabled) {
-        if (success) {
-            session->consecutiveDetectionFailLoops = 0;
-        } else if (session->sessionContext && session->sessionContext->detectionFailedThisRun()) {
-            ++session->consecutiveDetectionFailLoops;
-            if (session->consecutiveDetectionFailLoops >= feature->infiniteExitAfterConsecutiveMisses()) {
-                publishLoopCompletionUi(*session, success, message);
-                finishRunSession(session->featureId,
-                                 false,
-                                 tr("연속 감지 실패 %1회 — 실행 종료")
-                                     .arg(feature->infiniteExitAfterConsecutiveMisses()));
-                return;
-            }
-        } else if (!success) {
-            publishLoopCompletionUi(*session, success, message);
-            finishRunSession(session->featureId, success, message);
-            return;
-        }
-    }
-
-    if (session->runningMode == FeatureRunMode::Hold
+    const bool workerDrivenRepeat =
+        session->runningMode == FeatureRunMode::Hold
         || session->runningMode == FeatureRunMode::RepeatInfinite
-        || session->runningMode == FeatureRunMode::RepeatCount) {
-        if (session->runningMode == FeatureRunMode::RepeatCount && !success) {
-            publishLoopCompletionUi(*session, success, message);
-            finishRunSession(session->featureId, success, message);
-            return;
-        }
+        || session->runningMode == FeatureRunMode::RepeatCount;
 
-        const bool fastRepeat =
-            session->sessionContext && session->sessionContext->suppressRepeatUi();
-        const int delayMs = feature ? feature->resolvedLoopIntervalMs() : 0;
-        if (fastRepeat && delayMs <= 0) {
-            if (!shouldContinueRunSession(*session, feature)) {
-                publishLoopCompletionUi(*session, success, message);
-                finishRunSession(session->featureId, success, message);
-                return;
-            }
-            continueRepeatSession(*session, feature, success, message);
-            publishLoopCompletionUi(*session, success, message);
-            return;
-        }
-
-        publishLoopCompletionUi(*session, success, message);
-        scheduleRepeatIteration(*session, feature, success, message);
+    if (!workerDrivenRepeat) {
+        logLoopCompletion(*session, success, message);
+        finishRunSession(session->featureId, success, message);
         return;
     }
 
-    publishLoopCompletionUi(*session, success, message);
+    if (session->completedLoopCount == 0) {
+        logLoopCompletion(*session, success, message);
+    } else {
+        publishLoopCompletionUi(*session, success, message);
+    }
+
+    if (feature && feature->infiniteExitAfterConsecutiveMisses() > 0
+        && (session->runningMode == FeatureRunMode::RepeatInfinite
+            || session->runningMode == FeatureRunMode::Hold)
+        && session->consecutiveDetectionFailLoops >= feature->infiniteExitAfterConsecutiveMisses()) {
+        finishRunSession(session->featureId,
+                         false,
+                         tr("연속 감지 실패 %1회 — 실행 종료")
+                             .arg(feature->infiniteExitAfterConsecutiveMisses()));
+        return;
+    }
+
     finishRunSession(session->featureId, success, message);
 }
 

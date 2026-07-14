@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.101` (from `project(PIPBONG VERSION 0.8.101)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.102` (from `project(PIPBONG VERSION 0.8.102)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1068,6 +1068,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.102] - 2026-07-14
+
+### Fixed
+
+- Hold / **무한 반복** fast repeat no longer re-enters the UI thread between zero-delay loop iterations: `WorkflowEngine` worker runs consecutive loops in one job with `ExecutionContext::WorkerFastRepeatCallbacks`; loop stats/UI updates are queued asynchronously; all repeat UI hooks respect `suppressRepeatUi` (`WorkflowEngine`, `ExecutionContext`, `MainWindow`).
 
 ## [0.8.101] - 2026-07-14
 

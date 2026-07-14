@@ -2,6 +2,7 @@
 
 #include "core/input/InputSimulator.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <thread>
@@ -74,6 +75,44 @@ void ExecutionContext::setSuppressRepeatUi(bool suppress) {
 
 bool ExecutionContext::suppressRepeatUi() const {
     return m_suppressRepeatUi;
+}
+
+void ExecutionContext::setWorkerFastRepeatCallbacks(WorkerFastRepeatCallbacks callbacks) {
+    m_workerFastRepeat = std::move(callbacks);
+}
+
+void ExecutionContext::clearWorkerFastRepeatCallbacks() {
+    m_workerFastRepeat.reset();
+}
+
+bool ExecutionContext::hasWorkerFastRepeat() const {
+    return m_workerFastRepeat.has_value() && static_cast<bool>(m_workerFastRepeat->shouldContinue);
+}
+
+void ExecutionContext::notifyWorkerFastRepeatIteration(bool lastSuccess,
+                                                       std::int64_t elapsedMs,
+                                                       const std::string& message) const {
+    if (m_workerFastRepeat && m_workerFastRepeat->onIterationComplete) {
+        m_workerFastRepeat->onIterationComplete(lastSuccess, elapsedMs, message);
+    }
+}
+
+bool ExecutionContext::shouldContinueWorkerFastRepeat(bool lastSuccess) const {
+    if (!hasWorkerFastRepeat()) {
+        return false;
+    }
+    return m_workerFastRepeat->shouldContinue(lastSuccess, m_detectionFailedThisRun);
+}
+
+int ExecutionContext::workerFastRepeatDelayMs() const {
+    if (!m_workerFastRepeat || !m_workerFastRepeat->delayMs) {
+        return 0;
+    }
+    return std::max(0, m_workerFastRepeat->delayMs());
+}
+
+void ExecutionContext::prepareNextWorkerRepeatIteration() {
+    resetStop();
 }
 
 void ExecutionContext::requestStop() {

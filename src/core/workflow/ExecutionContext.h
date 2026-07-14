@@ -5,6 +5,7 @@
 #include "core/input/InputSimulator.h"
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <opencv2/core.hpp>
@@ -45,6 +46,19 @@ public:
     /// When true, workflow run log + block UI hooks are suppressed (fast Hold / infinite repeat).
     void setSuppressRepeatUi(bool suppress);
     bool suppressRepeatUi() const;
+
+    struct WorkerFastRepeatCallbacks {
+        std::function<bool(bool lastSuccess, bool detectionFailedThisRun)> shouldContinue;
+        std::function<int()> delayMs;
+        std::function<void(bool lastSuccess, std::int64_t elapsedMs, const std::string& message)> onIterationComplete;
+    };
+    void setWorkerFastRepeatCallbacks(WorkerFastRepeatCallbacks callbacks);
+    void clearWorkerFastRepeatCallbacks();
+    bool hasWorkerFastRepeat() const;
+    void notifyWorkerFastRepeatIteration(bool lastSuccess, qint64 elapsedMs, const std::string& message) const;
+    bool shouldContinueWorkerFastRepeat(bool lastSuccess) const;
+    int workerFastRepeatDelayMs() const;
+    void prepareNextWorkerRepeatIteration();
 
     void requestStop();
     bool shouldStop() const;
@@ -136,6 +150,19 @@ public:
     std::optional<PercentRegion> correctedRoi(int blockIndex) const;
     void clearCorrectedRois();
 
+    struct RememberedImageFindHit {
+        PercentRegion matchedWindowPercent{};
+        double confidence = 0.0;
+        std::string templatePath;
+    };
+
+    bool shouldRememberPositionsForBlock(bool blockEnabled) const;
+    bool hasRememberedPositions(int blockIndex) const;
+    int rememberedPositionCount(int blockIndex) const;
+    void setRememberedPositions(int blockIndex, std::vector<RememberedImageFindHit> hits);
+    std::optional<RememberedImageFindHit> rememberedPositionAt(int blockIndex, int zeroBasedIndex) const;
+    void clearRememberedPositions();
+
     void setTargetWindowTitle(const std::wstring& title);
     std::wstring targetWindowTitle() const;
 
@@ -154,6 +181,8 @@ public:
     bool hasPipbongSyntheticKeyDown(int virtualKey) const;
     void noteSyntheticMouseDown(MouseButton button);
     void noteSyntheticMouseUp(MouseButton button);
+    bool pipbongEverInjectedVirtualKey(int virtualKey) const;
+    bool pipbongEverInjectedMouseButton(MouseButton button) const;
     void restoreRunHeldInput();
     void restoreRunKeyboard();
     void endRunInputSession();
@@ -171,6 +200,7 @@ private:
     PointerFeedbackCallback m_pointerFeedbackCallback;
     bool m_pointerVisualFeedback = true;
     bool m_suppressRepeatUi = false;
+    std::optional<WorkerFastRepeatCallbacks> m_workerFastRepeat;
     std::atomic<bool> m_stopRequested{false};
     std::atomic<bool> m_paused{false};
     int m_imageFindMaxMissAttempts = 0;
@@ -201,6 +231,10 @@ private:
     int m_runLoopNumber = 1;
     int m_activeBlockIndex = -1;
     std::unordered_map<int, PercentRegion> m_correctedRoisByBlockIndex;
+    struct RememberedImageFindPositions {
+        std::vector<RememberedImageFindHit> hits;
+    };
+    std::unordered_map<int, RememberedImageFindPositions> m_rememberedPositionsByBlockIndex;
     std::wstring m_targetWindowTitle;
     std::string m_projectDirectory;
 #ifdef _WIN32
@@ -208,5 +242,7 @@ private:
     SessionModifierSnapshot m_runKeyboardSessionStart;
     std::unordered_set<int> m_pipbongHeldVirtualKeys;
     std::unordered_set<int> m_pipbongHeldMouseButtons;
+    std::unordered_set<int> m_pipbongEverInjectedVirtualKeys;
+    std::unordered_set<int> m_pipbongEverInjectedMouseButtons;
 #endif
 };

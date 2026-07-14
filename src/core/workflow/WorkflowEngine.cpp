@@ -6,6 +6,8 @@
 #include "core/workflow/WorkflowRunner.h"
 #include "ui/OpenCvQtUtil.h"
 
+#include <algorithm>
+#include <chrono>
 #include <QMetaType>
 #include <QMutexLocker>
 #include <QThread>
@@ -129,27 +131,39 @@ protected:
                                              static_cast<qint64>(imageFindMatchDurationMs),
                                              imageFindPollAttempts);
             };
-            hooks.onBlockImageFindAttempt = [this](int blockIndex,
+            hooks.onBlockImageFindAttempt = [this, context](int blockIndex,
                                                   int attemptCount,
                                                   double matchThreshold,
                                                   double detectedConfidence,
                                                   bool matched) {
+                if (context->suppressRepeatUi()) {
+                    return;
+                }
                 emit m_engine->blockImageFindAttempt(
                     blockIndex, attemptCount, matchThreshold, detectedConfidence, matched);
             };
-            hooks.onImageFindFailureHandling = [this](int blockIndex,
+            hooks.onImageFindFailureHandling = [this, context](int blockIndex,
                                                        int returnToPreviousCount,
                                                        int retryAfterNextCount) {
+                if (context->suppressRepeatUi()) {
+                    return;
+                }
                 emit m_engine->imageFindFailureHandling(
                     blockIndex, returnToPreviousCount, retryAfterNextCount);
             };
-            hooks.onImageFindReturnToPrevious = [this](int sourceBlockIndex, int targetBlockIndex) {
+            hooks.onImageFindReturnToPrevious = [this, context](int sourceBlockIndex, int targetBlockIndex) {
+                if (context->suppressRepeatUi()) {
+                    return;
+                }
                 emit m_engine->imageFindReturnToPrevious(sourceBlockIndex, targetBlockIndex);
             };
-            hooks.onBlockProgress = [this](int i, BlockProgressKind kind) {
+            hooks.onBlockProgress = [this, context](int i, BlockProgressKind kind) {
+                if (context->suppressRepeatUi()) {
+                    return;
+                }
                 emit m_engine->blockProgress(i, kind);
             };
-            hooks.onBlockMatchResult = [this](int i,
+            hooks.onBlockMatchResult = [this, context](int i,
                                               double matchThreshold,
                                               double confidence,
                                               const QPixmap& matchPreview,
@@ -157,18 +171,61 @@ protected:
                                               bool hasClientPoint,
                                               int clientX,
                                               int clientY) {
+                if (context->suppressRepeatUi()) {
+                    return;
+                }
                 emit m_engine->blockMatchResult(
                     i, matchThreshold, confidence, matchPreview, matched, hasClientPoint, clientX, clientY);
             };
-            hooks.onPointerFeedbackAtClientPoint = [this](int clientX, int clientY) {
+            hooks.onPointerFeedbackAtClientPoint = [this, context](int clientX, int clientY) {
+                if (context->suppressRepeatUi()) {
+                    return;
+                }
                 emit m_engine->pointerFeedbackAtClientPoint(clientX, clientY);
             };
 
-            const WorkflowRunResult runResult = WorkflowRunner::run(*workflow, *context, &hooks);
-            overallSuccess = runResult.success;
-            finalMessage = QString::fromStdString(runResult.message);
+            const bool workerFastRepeat = context->hasWorkerFastRepeat();
+            int workerFastRepeatPass = 0;
+            for (;;) {
+                if (workerFastRepeatPass > 0) {
+                    context->setSuppressRepeatUi(true);
+                }
 
-            context->restoreRunHeldInput();
+                const auto loopStart = std::chrono::steady_clock::now();
+                const WorkflowRunResult runResult = WorkflowRunner::run(*workflow, *context, &hooks);
+                const auto loopElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - loopStart);
+
+                overallSuccess = runResult.success;
+                finalMessage = QString::fromStdString(runResult.message);
+
+                context->restoreRunHeldInput();
+
+                if (workerFastRepeat) {
+                    context->notifyWorkerFastRepeatIteration(
+                        runResult.success,
+                        static_cast<std::int64_t>(loopElapsedMs.count()),
+                        runResult.message);
+                }
+
+                if (!workerFastRepeat || context->shouldStop()
+                    || !context->shouldContinueWorkerFastRepeat(runResult.success)) {
+                    break;
+                }
+
+                const int delayMs = context->workerFastRepeatDelayMs();
+                if (delayMs > 0 && !context->interruptibleSleepMs(delayMs)) {
+                    break;
+                }
+                if (context->shouldStop()) {
+                    break;
+                }
+
+                context->prepareNextWorkerRepeatIteration();
+                ++workerFastRepeatPass;
+            }
+
+            context->clearWorkerFastRepeatCallbacks();
             InputSimulator::setActiveExecutionContext(nullptr);
 
             bool emitFinished = false;
