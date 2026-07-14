@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.103` (from `project(PIPBONG VERSION 0.8.103)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.104` (from `project(PIPBONG VERSION 0.8.104)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1087,6 +1087,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.104] - 2026-07-14
+
+### Fixed
+
+- CPU spike watch **중지** now stops promptly: `requestStop()` is thread-safe atomic (no queued slot on a blocked worker thread), sleep is interruptible in 50 ms chunks, and process enumeration honors abort (`CpuMonitorWorker`, `SpikeWatchDialog`).
+
+### Changed
+
+- CPU spike watch Top N table shows process exe icons via `ProcessIconCache` and resolved `executablePath` from `QueryFullProcessImageNameW` (`ProcessCpuSampler`, `SpikeWatchDialog`).
 
 ## [0.8.103] - 2026-07-14
 

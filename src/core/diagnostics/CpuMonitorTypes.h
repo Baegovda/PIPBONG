@@ -8,6 +8,7 @@
 struct ProcessCpuEntry {
     quint32 pid = 0;
     QString name;
+    QString executablePath;
     double cpuPercent = 0.0;
     bool accessible = true;
 };

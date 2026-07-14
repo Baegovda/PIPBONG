@@ -26,16 +26,22 @@ void CpuMonitorWorker::startMonitoring(int intervalMs,
     runSampleLoop(intervalMs, topN);
 }
 
-void CpuMonitorWorker::stopMonitoring() {
-    requestStop();
-}
-
 void CpuMonitorWorker::requestStop() {
     m_stopRequested.store(true);
 }
 
+void CpuMonitorWorker::interruptibleSleep(int totalMs) {
+    int remaining = totalMs;
+    while (remaining > 0 && !m_stopRequested.load()) {
+        const int chunk = std::min(remaining, 50);
+        QThread::msleep(static_cast<unsigned long>(chunk));
+        remaining -= chunk;
+    }
+}
+
 void CpuMonitorWorker::runSampleLoop(int intervalMs, int topN) {
     const int sleepMs = std::max(200, intervalMs);
+    const auto shouldAbort = [this]() { return m_stopRequested.load(); };
 
     while (!m_stopRequested.load()) {
         CpuSampleSnapshot snapshot;
@@ -44,7 +50,11 @@ void CpuMonitorWorker::runSampleLoop(int intervalMs, int topN) {
         const double systemCpu = m_systemSampler.sampleCpuPercent();
         snapshot.systemReady = systemCpu >= 0.0;
         snapshot.systemCpuPercent = snapshot.systemReady ? systemCpu : 0.0;
-        snapshot.topProcesses = m_processSampler.sampleTopProcesses(topN);
+        snapshot.topProcesses = m_processSampler.sampleTopProcesses(topN, shouldAbort);
+
+        if (m_stopRequested.load()) {
+            break;
+        }
 
         emit sampleReady(snapshot);
 
@@ -56,9 +66,10 @@ void CpuMonitorWorker::runSampleLoop(int intervalMs, int topN) {
             }
         }
 
-        QThread::msleep(static_cast<unsigned long>(sleepMs));
+        interruptibleSleep(sleepMs);
     }
 
     m_running.store(false);
+    m_stopRequested.store(false);
     emit monitoringStopped();
 }

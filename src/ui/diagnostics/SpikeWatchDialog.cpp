@@ -163,6 +163,8 @@ void SpikeWatchDialog::setupUi() {
     m_processTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_processTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_processTable->setAlternatingRowColors(true);
+    m_processTable->setIconSize(QSize(16, 16));
+    m_processTable->verticalHeader()->setDefaultSectionSize(24);
     root->addWidget(m_processTable, 2);
 
     auto* logTitle = new QLabel(tr("스파이크 이벤트"), this);
@@ -242,12 +244,13 @@ void SpikeWatchDialog::stopMonitoringAndWait() {
         return;
     }
 
+    m_worker->requestStop();
+
     QEventLoop loop;
     QTimer timeout;
     timeout.setSingleShot(true);
     connect(m_worker, &CpuMonitorWorker::monitoringStopped, &loop, &QEventLoop::quit);
     connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
-    QMetaObject::invokeMethod(m_worker, "requestStop", Qt::QueuedConnection);
     timeout.start(2000);
     loop.exec();
     setMonitoringUiActive(false);
@@ -296,6 +299,10 @@ void SpikeWatchDialog::onCopyLogClicked() {
 }
 
 void SpikeWatchDialog::onSampleReady(CpuSampleSnapshot snapshot) {
+    if (!m_monitoringActive) {
+        return;
+    }
+
     if (!snapshot.systemReady) {
         m_summaryLabel->setText(tr("시스템 CPU: 준비 중… · 최고: —"));
         return;
@@ -318,7 +325,16 @@ void SpikeWatchDialog::onSampleReady(CpuSampleSnapshot snapshot) {
     for (int row = 0; row < snapshot.topProcesses.size(); ++row) {
         const ProcessCpuEntry& entry = snapshot.topProcesses.at(row);
         m_processTable->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-        m_processTable->setItem(row, 1, new QTableWidgetItem(entry.name));
+
+        auto* nameItem = new QTableWidgetItem(entry.name);
+        QIcon icon = m_iconCache.iconForExecutablePath(entry.executablePath);
+        if (icon.isNull()) {
+            icon = m_iconCache.iconForProcessName(entry.name);
+        }
+        if (!icon.isNull()) {
+            nameItem->setIcon(icon);
+        }
+        m_processTable->setItem(row, 1, nameItem);
         m_processTable->setItem(row, 2, new QTableWidgetItem(QString::number(entry.pid)));
         m_processTable->setItem(
             row,
@@ -399,6 +415,9 @@ void SpikeWatchDialog::appendSpikeLog(const CpuSpikeEvent& event) {
 }
 
 void SpikeWatchDialog::onSpikeDetected(CpuSpikeEvent event) {
+    if (!m_monitoringActive) {
+        return;
+    }
     appendSpikeLog(event);
 }
 

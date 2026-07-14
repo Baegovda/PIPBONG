@@ -17,10 +17,11 @@ public:
 
     void setFeatureRunningCallback(std::function<bool()> callback);
 
+    /// Thread-safe — sets the stop flag without waiting on the worker event loop.
+    void requestStop();
+
 public slots:
     void startMonitoring(int intervalMs, int topN, const CpuSpikeDetectorConfig& detectorConfig);
-    void stopMonitoring();
-    void requestStop();
 
 signals:
     void sampleReady(CpuSampleSnapshot snapshot);
@@ -29,6 +30,7 @@ signals:
 
 private:
     void runSampleLoop(int intervalMs, int topN);
+    void interruptibleSleep(int totalMs);
 
     SystemCpuSampler m_systemSampler;
     ProcessCpuSampler m_processSampler;

@@ -2,6 +2,8 @@
 
 #include "core/diagnostics/CpuMonitorTypes.h"
 
+#include "ui/diagnostics/ProcessIconCache.h"
+
 #include <QDialog>
 #include <functional>
 
@@ -67,6 +69,7 @@ private:
 
     QThread* m_workerThread = nullptr;
     CpuMonitorWorker* m_worker = nullptr;
+    ProcessIconCache m_iconCache;
 
     bool m_monitoringActive = false;
     QString m_eventLogPlainText;

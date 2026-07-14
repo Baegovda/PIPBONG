@@ -34,37 +34,61 @@ std::uint64_t ProcessCpuSampler::fileTimeToUInt64(const void* fileTime) {
 #endif
 }
 
-QString ProcessCpuSampler::resolveProcessName(quint32 pid, const wchar_t* snapshotExeFile) {
+void ProcessCpuSampler::resolveProcessIdentityFromHandle(void* processHandle,
+                                                        quint32 pid,
+                                                        const wchar_t* snapshotExeFile,
+                                                        QString& name,
+                                                        QString& executablePath) {
 #ifdef _WIN32
-    if (snapshotExeFile && snapshotExeFile[0] != L'\0') {
-        return QString::fromWCharArray(snapshotExeFile);
+    const HANDLE process = static_cast<HANDLE>(processHandle);
+    name.clear();
+    executablePath.clear();
+
+    if (process) {
+        wchar_t buffer[MAX_PATH]{};
+        DWORD size = MAX_PATH;
+        if (QueryFullProcessImageNameW(process, 0, buffer, &size)) {
+            executablePath = QString::fromWCharArray(buffer);
+            const int slash = executablePath.lastIndexOf(QLatin1Char('\\'));
+            name = slash >= 0 ? executablePath.mid(slash + 1) : executablePath;
+        }
     }
 
-    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(pid));
-    if (!process) {
-        return QStringLiteral("PID %1").arg(pid);
+    if (name.isEmpty() && snapshotExeFile && snapshotExeFile[0] != L'\0') {
+        name = QString::fromWCharArray(snapshotExeFile);
     }
-
-    wchar_t buffer[MAX_PATH]{};
-    DWORD size = MAX_PATH;
-    QString name;
-    if (QueryFullProcessImageNameW(process, 0, buffer, &size)) {
-        const QString fullPath = QString::fromWCharArray(buffer);
-        const int slash = fullPath.lastIndexOf(QLatin1Char('\\'));
-        name = slash >= 0 ? fullPath.mid(slash + 1) : fullPath;
-    } else {
+    if (name.isEmpty()) {
         name = QStringLiteral("PID %1").arg(pid);
     }
-    CloseHandle(process);
-    return name;
 #else
+    (void)processHandle;
     (void)pid;
     (void)snapshotExeFile;
-    return QString();
+    name = QStringLiteral("PID %1").arg(pid);
 #endif
 }
 
-QVector<ProcessCpuEntry> ProcessCpuSampler::sampleTopProcesses(int topN) {
+void ProcessCpuSampler::resolveProcessIdentity(quint32 pid,
+                                                const wchar_t* snapshotExeFile,
+                                                QString& name,
+                                                QString& executablePath) {
+#ifdef _WIN32
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(pid));
+    resolveProcessIdentityFromHandle(process, pid, snapshotExeFile, name, executablePath);
+    if (process) {
+        CloseHandle(process);
+    }
+#else
+    (void)pid;
+    (void)snapshotExeFile;
+    name = QStringLiteral("PID %1").arg(pid);
+    executablePath.clear();
+#endif
+}
+
+QVector<ProcessCpuEntry> ProcessCpuSampler::sampleTopProcesses(
+    int topN,
+    const std::function<bool()>& shouldAbort) {
     QVector<ProcessCpuEntry> result;
 #ifdef _WIN32
     if (topN <= 0) {
@@ -99,6 +123,10 @@ QVector<ProcessCpuEntry> ProcessCpuSampler::sampleTopProcesses(int topN) {
     pe.dwSize = sizeof(pe);
     if (Process32FirstW(snapshot, &pe)) {
         do {
+            if (shouldAbort && shouldAbort()) {
+                break;
+            }
+
             const quint32 pid = pe.th32ProcessID;
             if (pid == 0) {
                 continue;
@@ -117,13 +145,23 @@ QVector<ProcessCpuEntry> ProcessCpuSampler::sampleTopProcesses(int topN) {
                 CloseHandle(process);
                 continue;
             }
+
+            ProcessTimingState state = m_states.value(pid);
+            if (state.name.isEmpty() || state.executablePath.isEmpty()) {
+                QString resolvedName;
+                QString resolvedPath;
+                resolveProcessIdentityFromHandle(
+                    process, pid, pe.szExeFile, resolvedName, resolvedPath);
+                if (state.name.isEmpty()) {
+                    state.name = resolvedName;
+                }
+                if (state.executablePath.isEmpty()) {
+                    state.executablePath = resolvedPath;
+                }
+            }
             CloseHandle(process);
 
             const std::uint64_t procTime = fileTimeToUInt64(&kernelFt) + fileTimeToUInt64(&userFt);
-            ProcessTimingState state = m_states.value(pid);
-            if (state.name.isEmpty()) {
-                state.name = resolveProcessName(pid, pe.szExeFile);
-            }
 
             double cpuPercent = 0.0;
             if (m_states.contains(pid) && state.lastKernelUser > 0) {
@@ -140,6 +178,7 @@ QVector<ProcessCpuEntry> ProcessCpuSampler::sampleTopProcesses(int topN) {
                 ProcessCpuEntry entry;
                 entry.pid = pid;
                 entry.name = state.name;
+                entry.executablePath = state.executablePath;
                 entry.cpuPercent = cpuPercent;
                 entry.accessible = true;
                 entries.push_back(entry);
@@ -171,6 +210,7 @@ QVector<ProcessCpuEntry> ProcessCpuSampler::sampleTopProcesses(int topN) {
     }
 #else
     (void)topN;
+    (void)shouldAbort;
 #endif
     return result;
 }
