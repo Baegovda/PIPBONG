@@ -1,7 +1,8 @@
 #pragma once
 
-// Suppresses feature global hotkeys while modal UI (e.g. block editor) is open
-// or while a feature hotkey binding capture session is active.
+// Suppresses feature global hotkeys while:
+// - an explicit FeatureHotkeyGateScope is held (block editor, settings, capture), or
+// - any QDialog belonging to this process is visible (modal or modeless edit/tool windows).
 class FeatureHotkeyGate {
 public:
     static bool isFeatureHotkeysBlocked();

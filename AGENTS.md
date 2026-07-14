@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.111` (from `project(PIPBONG VERSION 0.8.111)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.112` (from `project(PIPBONG VERSION 0.8.112)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -903,7 +903,7 @@ User holds **Shift** (run/walk in games) while a feature runs — often **click-
 
 1. **`holdKeyboardHookProc` / `mouseHookProc`**: When `handleHoldKeyEvent` / `handleMouseButtonEvent` returns true, return **`1`** so the event is **not** forwarded to other apps (`CallNextHookEx` must not run for swallowed events).
 2. **Injected input**: Ignore events with `LLKHF_INJECTED` (keyboard) or `LLMHF_INJECTED` (mouse) so PIPBONG's own `SendInput` does not re-enter hotkey handling.
-3. **Hold mode bindings**: Swallow every matching physical DOWN (including Windows auto-repeat while held) and the paired UP for the bound key or mouse button so the target app never sees the feature hotkey as input; workflow `SendInput` taps still use `LLKHF_INJECTED` and reach the game. When `FeatureHotkeyGate` is active (block editor, hotkey capture, program settings), do **not** swallow — hotkey execution is already blocked and UI key capture must receive the event.
+3. **Hold mode bindings**: Swallow every matching physical DOWN (including Windows auto-repeat while held) and the paired UP for the bound key or mouse button so the target app never sees the feature hotkey as input; workflow `SendInput` taps still use `LLKHF_INJECTED` and reach the game. When `FeatureHotkeyGate` is active (explicit scope **or** any visible app `QDialog`), do **not** swallow — hotkey execution is already blocked and UI key capture must receive the event.
 4. **Foreground**: Before emitting hold/trigger signals, restore previous foreground with the same `restoreForegroundWindow` helper (no `AttachThreadInput`).
 5. **Modifier match**: Default strict — `HotkeyBinding::modifiersMatch(false)` requires Ctrl/Alt/Shift to match the binding exactly (e.g. plain **F4** does not fire on **Alt+F4**). Per-feature `hotkeyAllowExtraModifiers` opts in to loose match: required modifiers must be down; extra held modifiers are ignored (`Feature`, `FeatureEditDialog`, `HotkeyManager`).
 
@@ -1089,6 +1089,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.112] - 2026-07-15
+
+### Fixed
+
+- Feature binding hotkeys no longer start or stop other features while any in-app edit/tool dialog is open (modal or modeless): `FeatureHotkeyGate` treats every visible `QDialog` as a blocker (`FeatureHotkeyGate`, `HotkeyManager`).
 
 ## [0.8.111] - 2026-07-15
 
