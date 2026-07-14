@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.104` (from `project(PIPBONG VERSION 0.8.104)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.105` (from `project(PIPBONG VERSION 0.8.105)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -521,7 +521,7 @@ Sbm1.0/                        # repo root (local workspace)
 - **Entry:** bottom **CPU 감시** button (left of **계산기**); modeless `SpikeWatchDialog` — manual diagnostic session only (no background monitoring when closed).
 - **Sampling:** `CpuMonitorWorker` on a dedicated `QThread` uses Win32 `GetSystemTimes` (system CPU %) and `CreateToolhelp32Snapshot` + `GetProcessTimes` (per-process CPU %); no PDH / new vcpkg deps.
 - **Spike detection:** `CpuSpikeDetector` — absolute thresholds (system / single process), optional relative jump over rolling median (`deltaMargin`; 0 = off), cooldown debounce.
-- **UI:** live Top N process table, spike event log (clipboard copy), DragAdjust interval/threshold controls; marks events when a PIPBONG feature session is active.
+- **UI:** live Top N process table, **범인 추정** suspect ranking (`CpuCulpritAnalyzer` — weighted spike attribution, elevation during high system load, session baseline), spike event log (clipboard copy includes culprit report), DragAdjust interval/threshold controls; marks events when a PIPBONG feature session is active.
 - **Persistence:** `QSettings` keys `spikewatch/*` (geometry, interval, thresholds, top N, delta margin).
 
 ---
@@ -1087,6 +1087,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.105] - 2026-07-14
+
+### Added
+
+- CPU spike watch **범인 추정 (의심 순위)**: session `CpuCulpritAnalyzer` scores processes from spike top-1/trigger counts, weighted spike CPU, sample leadership, and elevation during high system load; live table + summary in `SpikeWatchDialog`; clipboard export appends culprit report.
 
 ## [0.8.104] - 2026-07-14
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/diagnostics/CpuCulpritAnalyzer.h"
 #include "core/diagnostics/CpuMonitorTypes.h"
 
 #include "ui/diagnostics/ProcessIconCache.h"
@@ -48,6 +49,9 @@ private:
     void appendSpikeLog(const CpuSpikeEvent& event);
     QString formatSpikeEventText(const CpuSpikeEvent& event) const;
     static QString triggerKindDisplayName(SpikeTriggerKind kind);
+    void refreshCulpritTable();
+    void updateCulpritSummary();
+    QString formatCulpritReportPlainText() const;
 
     std::function<bool()> m_featureRunningCallback;
 
@@ -64,8 +68,12 @@ private:
 
     QLabel* m_summaryLabel = nullptr;
     QTableWidget* m_processTable = nullptr;
+    QLabel* m_culpritSummaryLabel = nullptr;
+    QTableWidget* m_culpritTable = nullptr;
     QTextEdit* m_eventLog = nullptr;
     HintLabel* m_hintLabel = nullptr;
+
+    CpuCulpritAnalyzer m_culpritAnalyzer;
 
     QThread* m_workerThread = nullptr;
     CpuMonitorWorker* m_worker = nullptr;

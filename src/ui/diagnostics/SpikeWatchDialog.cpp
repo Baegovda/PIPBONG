@@ -53,7 +53,7 @@ SpikeWatchDialog::SpikeWatchDialog(QWidget* parent)
     qRegisterMetaType<CpuSpikeDetectorConfig>("CpuSpikeDetectorConfig");
 
     setWindowTitle(tr("CPU 스파이크 감시"));
-    setMinimumSize(720, 520);
+    setMinimumSize(720, 620);
     setupUi();
     loadPersistedState();
 
@@ -167,6 +167,28 @@ void SpikeWatchDialog::setupUi() {
     m_processTable->verticalHeader()->setDefaultSectionSize(24);
     root->addWidget(m_processTable, 2);
 
+    auto* culpritTitle = new QLabel(tr("범인 추정 (의심 순위)"), this);
+    root->addWidget(culpritTitle);
+
+    m_culpritSummaryLabel = new QLabel(tr("감시를 시작하면 스파이크·CPU 패턴을 분석해 의심 프로세스를 표시합니다."), this);
+    m_culpritSummaryLabel->setObjectName(QStringLiteral("spikeWatchCulpritSummary"));
+    root->addWidget(m_culpritSummaryLabel);
+
+    m_culpritTable = new QTableWidget(this);
+    m_culpritTable->setColumnCount(5);
+    m_culpritTable->setHorizontalHeaderLabels(
+        {tr("순위"), tr("프로세스"), tr("PID"), tr("의심도"), tr("근거")});
+    m_culpritTable->horizontalHeader()->setStretchLastSection(true);
+    m_culpritTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_culpritTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    m_culpritTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_culpritTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_culpritTable->setAlternatingRowColors(true);
+    m_culpritTable->setIconSize(QSize(16, 16));
+    m_culpritTable->verticalHeader()->setDefaultSectionSize(24);
+    m_culpritTable->setMinimumHeight(120);
+    root->addWidget(m_culpritTable, 1);
+
     auto* logTitle = new QLabel(tr("스파이크 이벤트"), this);
     root->addWidget(logTitle);
 
@@ -178,6 +200,8 @@ void SpikeWatchDialog::setupUi() {
 
     m_hintLabel = new HintLabel(
         tr("CPU 급증은 마우스 끊김의 원인 후보이며, DWM·입력 훅·디스크 등 다른 원인도 있습니다. "
+           "범인 추정은 스파이크 1위·직접 트리거·고부하 샘플을 가중 합산한 휴리스틱이며, "
+           "확정 진단이 아닙니다. "
            "관리자 권한이 없으면 일부 프로세스 CPU는 측정되지 않을 수 있습니다. "
            "감시 중에도 PIPBONG·감시 도구 자체 CPU가 포함됩니다."),
         this);
@@ -270,6 +294,10 @@ void SpikeWatchDialog::onStartClicked() {
         return;
     }
     persistState();
+    m_culpritAnalyzer.reset();
+    m_culpritTable->setRowCount(0);
+    m_culpritSummaryLabel->setText(
+        tr("분석 중… 스파이크·CPU 패턴을 누적하고 있습니다."));
     setMonitoringUiActive(true);
     m_worker->setFeatureRunningCallback(m_featureRunningCallback);
 
@@ -292,10 +320,22 @@ void SpikeWatchDialog::onStopClicked() {
 void SpikeWatchDialog::onClearLogClicked() {
     m_eventLogPlainText.clear();
     m_eventLog->clear();
+    m_culpritAnalyzer.reset();
+    m_culpritTable->setRowCount(0);
+    m_culpritSummaryLabel->setText(
+        tr("감시를 시작하면 스파이크·CPU 패턴을 분석해 의심 프로세스를 표시합니다."));
 }
 
 void SpikeWatchDialog::onCopyLogClicked() {
-    QApplication::clipboard()->setText(m_eventLogPlainText);
+    QString text = m_eventLogPlainText;
+    const QString culpritReport = formatCulpritReportPlainText();
+    if (!culpritReport.isEmpty()) {
+        if (!text.isEmpty() && !text.endsWith(QLatin1Char('\n'))) {
+            text += QLatin1Char('\n');
+        }
+        text += culpritReport;
+    }
+    QApplication::clipboard()->setText(text);
 }
 
 void SpikeWatchDialog::onSampleReady(CpuSampleSnapshot snapshot) {
@@ -341,6 +381,9 @@ void SpikeWatchDialog::onSampleReady(CpuSampleSnapshot snapshot) {
             3,
             new QTableWidgetItem(QString::number(entry.cpuPercent, 'f', 1)));
     }
+
+    m_culpritAnalyzer.recordSample(snapshot, m_processThresholdSpin->value());
+    refreshCulpritTable();
 }
 
 QString SpikeWatchDialog::triggerKindDisplayName(SpikeTriggerKind kind) {
@@ -419,8 +462,77 @@ void SpikeWatchDialog::onSpikeDetected(CpuSpikeEvent event) {
         return;
     }
     appendSpikeLog(event);
+    m_culpritAnalyzer.recordSpike(event);
+    refreshCulpritTable();
+}
+
+void SpikeWatchDialog::refreshCulpritTable() {
+    const QVector<CpuCulpritEntry> ranked = m_culpritAnalyzer.rankedCulprits(8);
+    m_culpritTable->setRowCount(ranked.size());
+
+    for (int row = 0; row < ranked.size(); ++row) {
+        const CpuCulpritEntry& entry = ranked.at(row);
+        m_culpritTable->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
+
+        auto* nameItem = new QTableWidgetItem(entry.name);
+        QIcon icon = m_iconCache.iconForExecutablePath(entry.executablePath);
+        if (icon.isNull()) {
+            icon = m_iconCache.iconForProcessName(entry.name);
+        }
+        if (!icon.isNull()) {
+            nameItem->setIcon(icon);
+        }
+        m_culpritTable->setItem(row, 1, nameItem);
+        m_culpritTable->setItem(row, 2, new QTableWidgetItem(QString::number(entry.pid)));
+        m_culpritTable->setItem(
+            row,
+            3,
+            new QTableWidgetItem(QStringLiteral("%1%").arg(QString::number(entry.suspicionScore, 'f', 0))));
+        m_culpritTable->setItem(row, 4, new QTableWidgetItem(entry.evidenceSummary));
+    }
+
+    updateCulpritSummary();
+}
+
+void SpikeWatchDialog::updateCulpritSummary() {
+    const QVector<CpuCulpritEntry> ranked = m_culpritAnalyzer.rankedCulprits(1);
+    if (ranked.isEmpty()) {
+        if (m_monitoringActive) {
+            m_culpritSummaryLabel->setText(tr("아직 의심 프로세스가 없습니다. 샘플을 더 수집 중…"));
+        }
+        return;
+    }
+
+    const CpuCulpritEntry& top = ranked.front();
+    m_culpritSummaryLabel->setText(
+        tr("1순위 의심: %1 (PID %2) · 의심도 %3% · %4")
+            .arg(top.name)
+            .arg(top.pid)
+            .arg(QString::number(top.suspicionScore, 'f', 0))
+            .arg(top.evidenceSummary));
+}
+
+QString SpikeWatchDialog::formatCulpritReportPlainText() const {
+    const QVector<CpuCulpritEntry> ranked = m_culpritAnalyzer.rankedCulprits(8);
+    if (ranked.isEmpty()) {
+        return QString();
+    }
+
+    QStringList lines;
+    lines << tr("--- 범인 추정 (의심 순위) ---");
+    for (int i = 0; i < ranked.size(); ++i) {
+        const CpuCulpritEntry& entry = ranked.at(i);
+        lines << QStringLiteral("%1. %2 (PID %3) · 의심도 %4% · %5")
+                     .arg(i + 1)
+                     .arg(entry.name)
+                     .arg(entry.pid)
+                     .arg(QString::number(entry.suspicionScore, 'f', 0))
+                     .arg(entry.evidenceSummary);
+    }
+    return lines.join(QLatin1Char('\n')) + QLatin1Char('\n');
 }
 
 void SpikeWatchDialog::onMonitoringStopped() {
     setMonitoringUiActive(false);
+    refreshCulpritTable();
 }
