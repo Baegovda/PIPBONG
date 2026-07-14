@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.99 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.100 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -27,6 +27,7 @@ set(PIPBONG_SOURCES
     src/app/TargetWindowCenterPin.cpp
     src/app/ProgramSettings.cpp
     src/app/ProfileManager.cpp
+    src/app/PerfTrace.cpp
     src/app/WindowsLaunchAtStartup.cpp
     src/app/WindowsRunAsAdmin.cpp
     src/app/PointerFeedbackSettings.cpp
@@ -44,6 +45,7 @@ set(PIPBONG_SOURCES
     src/core/input/InputSimulator.cpp
     src/core/input/HotkeyBinding.cpp
     src/core/vision/ImageMatcher.cpp
+    src/core/vision/TemplateCache.cpp
     src/core/workflow/BlockFactory.cpp
     src/core/workflow/Workflow.cpp
     src/core/workflow/WorkflowEngine.cpp

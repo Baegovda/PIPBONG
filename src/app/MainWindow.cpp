@@ -2,6 +2,7 @@
 
 #include "app/Application.h"
 #include "app/FeatureHotkeyGate.h"
+#include "app/PerfTrace.h"
 #include "app/ProgramSettings.h"
 #include "app/WindowsRunAsAdmin.h"
 #include "app/MouseCenterLock.h"
@@ -92,6 +93,8 @@
 #include <QVector>
 #include <QVBoxLayout>
 
+#include <optional>
+
 #include <memory>
 
 #include "model/FeatureRunMode.h"
@@ -102,6 +105,22 @@
 #include <dwmapi.h>
 
 namespace {
+
+constexpr UINT kForegroundProfileSyncMessage = WM_APP + 0x4A1;
+HWND g_foregroundProfileSyncReceiver = nullptr;
+
+void CALLBACK foregroundWindowEventProc(HWINEVENTHOOK,
+                                        DWORD event,
+                                        HWND,
+                                        LONG,
+                                        LONG,
+                                        DWORD,
+                                        DWORD) {
+    if (event == EVENT_SYSTEM_FOREGROUND && g_foregroundProfileSyncReceiver
+        && IsWindow(g_foregroundProfileSyncReceiver)) {
+        PostMessageW(g_foregroundProfileSyncReceiver, kForegroundProfileSyncMessage, 0, 0);
+    }
+}
 
 bool applyNativeAlwaysOnTop(QWidget* window, bool enabled) {
     if (!window || !window->internalWinId()) {
@@ -165,16 +184,58 @@ void restoreRunStartCursorPosition(const FeatureRunSession& session) {
     InputSimulator::moveMouse(session.runStartCursorScreenX, session.runStartCursorScreenY);
 }
 
-void releaseHoldHotkeyInputToTarget(const Feature* feature) {
+std::optional<MouseButton> mouseButtonFromVirtualKey(int virtualKey) {
+    switch (virtualKey) {
+    case VK_LBUTTON:
+        return MouseButton::Left;
+    case VK_RBUTTON:
+        return MouseButton::Right;
+    case VK_MBUTTON:
+        return MouseButton::Middle;
+    case VK_XBUTTON1:
+        return MouseButton::Back;
+    case VK_XBUTTON2:
+        return MouseButton::Forward;
+    default:
+        return std::nullopt;
+    }
+}
+
+bool shouldDeliverHoldHotkeyRelease(const FeatureRunSession& session, const Feature* feature) {
     if (!feature || feature->hotkey().isEmpty()) {
+        return false;
+    }
+    const int vk = feature->hotkey().virtualKey;
+    if (!session.sessionContext) {
+        return false;
+    }
+    if (HotkeyBinding::isMouseVirtualKey(vk)) {
+        const std::optional<MouseButton> button = mouseButtonFromVirtualKey(vk);
+        return button && session.sessionContext->pipbongEverInjectedMouseButton(*button);
+    }
+    return session.sessionContext->pipbongEverInjectedVirtualKey(vk);
+}
+
+void releaseHoldHotkeyInputToTarget(FeatureRunSession& session, const Feature* feature) {
+    if (session.holdHotkeyReleasedToTarget || !feature || feature->hotkey().isEmpty()) {
         return;
     }
+    if (!shouldDeliverHoldHotkeyRelease(session, feature)) {
+        session.holdHotkeyReleasedToTarget = true;
+        return;
+    }
+#ifdef _WIN32
+    HWND hwnd = ScreenCapture::findTargetWindow();
+    InputSimulator::releaseHoldHotkeyToTarget(hwnd, feature->hotkey().virtualKey);
+#else
     const int vk = feature->hotkey().virtualKey;
     if (HotkeyBinding::isMouseVirtualKey(vk)) {
         InputSimulator::forceHotkeyMouseButtonUp(vk);
     } else {
         InputSimulator::forceKeyUp(vk);
     }
+#endif
+    session.holdHotkeyReleasedToTarget = true;
 }
 
 QVector<WindowListEntry> collectWindowListEntries() {
@@ -308,7 +369,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_targetWindowCenterPinTimer, &QTimer::timeout, this, &MainWindow::syncTargetWindowCenterPin);
 
     m_profileAutoSwitchTimer = new QTimer(this);
-    m_profileAutoSwitchTimer->setInterval(250);
+    m_profileAutoSwitchTimer->setTimerType(Qt::PreciseTimer);
+    m_profileAutoSwitchTimer->setInterval(50);
     connect(m_profileAutoSwitchTimer, &QTimer::timeout, this, &MainWindow::syncProfileToForegroundWindow);
     m_profileAutoSwitchTimer->start();
     if (ProgramSettings::pinTargetWindowToScreenCenter()) {
@@ -329,6 +391,18 @@ MainWindow::MainWindow(QWidget* parent)
     refreshFeatureLibraryPanel();
     scheduleProfilePackageSeal();
 
+#ifdef _WIN32
+    g_foregroundProfileSyncReceiver = reinterpret_cast<HWND>(winId());
+    m_profileForegroundEventHook =
+        SetWinEventHook(EVENT_SYSTEM_FOREGROUND,
+                        EVENT_SYSTEM_FOREGROUND,
+                        nullptr,
+                        foregroundWindowEventProc,
+                        0,
+                        0,
+                        WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+#endif
+
     updateWindowTitle();
     syncHotkeys();
     updateTargetWindowDetails();
@@ -336,9 +410,27 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
+#ifdef _WIN32
+    if (m_profileForegroundEventHook) {
+        UnhookWinEvent(static_cast<HWINEVENTHOOK>(m_profileForegroundEventHook));
+        m_profileForegroundEventHook = nullptr;
+    }
+    if (g_foregroundProfileSyncReceiver == reinterpret_cast<HWND>(winId())) {
+        g_foregroundProfileSyncReceiver = nullptr;
+    }
+#endif
     stopAllSessions();
     clearGlobalUiUndoHistory();
     clearGlobalUiRedoHistory();
+}
+
+void MainWindow::ensureInitialWindowPlacement() {
+    if (!internalWinId()) {
+        winId();
+    }
+    if (m_uiState) {
+        m_uiState->restoreMainWindowGeometry();
+    }
 }
 
 void MainWindow::setupUi() {
@@ -848,6 +940,9 @@ void MainWindow::hideToTray() {
     if (m_calculatorDialog) {
         m_calculatorDialog->hide();
     }
+    if (m_uiState) {
+        m_uiState->saveNow();
+    }
     hide();
     if (!m_trayIcon) {
         return;
@@ -1344,6 +1439,11 @@ void MainWindow::showEvent(QShowEvent* event) {
 bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result) {
     if (eventType == "windows_generic_MSG") {
         auto* msg = static_cast<MSG*>(message);
+        if (msg->message == kForegroundProfileSyncMessage) {
+            syncProfileToForegroundWindow();
+            *result = 0;
+            return true;
+        }
         if (msg->message == WM_NCHITTEST && !isMaximized()) {
             const int border = UiResizeHandle::kWindowResizeBorderPx;
             const POINT pt = {GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam)};
@@ -1663,6 +1763,9 @@ void MainWindow::autoSaveProject(bool quiet) {
     if (JsonSerializer::saveToFile(*m_project, m_projectFilePath, Application::instance()->projectDirectory())) {
         m_modified = false;
         updateWindowTitle();
+        if (m_profileManager) {
+            m_profileManager->invalidateCachedProject(m_profileManager->activeProfileId());
+        }
         if (!quiet) {
             showTransientStatus(tr("자동 저장됨"), 2000);
         }
@@ -1763,6 +1866,7 @@ void MainWindow::onExportProfilePackage() {
 }
 
 void MainWindow::refreshWorkflowEditor() {
+    PIPBONG_PERF_SCOPE("refreshWorkflowEditor");
     if (m_libraryPreviewFeature && !m_libraryPreviewEntryId.isEmpty()) {
         m_workflowEditor->setProjectDirectory(m_featureLibraryManager
                                                   ? m_featureLibraryManager->entryProjectDirectory(m_libraryPreviewEntryId)
@@ -1968,7 +2072,7 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     ++session->triggerCooldownGeneration;
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
     if (session->runningMode == FeatureRunMode::Hold) {
-        releaseHoldHotkeyInputToTarget(feature);
+        releaseHoldHotkeyInputToTarget(*session, feature);
     }
     session->engine->stop();
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
@@ -1989,6 +2093,32 @@ void MainWindow::stopAllSessions() {
             ++entry.second.holdRepeatGeneration;
             ++entry.second.triggerCooldownGeneration;
             entry.second.engine->stopAndWait();
+        }
+        restoreRunStartCursorPosition(entry.second);
+    }
+    m_runSessions.clear();
+    updateRunUiState();
+}
+
+void MainWindow::stopAllSessionsForProfileSwitch() {
+    PIPBONG_PERF_SCOPE("stopAllSessionsForProfileSwitch");
+    UserInputInterruptMonitor::instance().unregisterAll();
+    MouseCenterLock::releaseAll();
+    for (auto& entry : m_runSessions) {
+        if (entry.second.sessionContext) {
+            entry.second.sessionContext->endRunInputSession();
+        }
+        if (entry.second.engine) {
+            entry.second.userStopRequested = true;
+            entry.second.repeatSession = false;
+            entry.second.holdRunActive = false;
+            ++entry.second.holdRepeatGeneration;
+            ++entry.second.triggerCooldownGeneration;
+            Feature* feature = m_project ? m_project->featureById(entry.first) : nullptr;
+            if (entry.second.runningMode == FeatureRunMode::Hold) {
+                releaseHoldHotkeyInputToTarget(entry.second, feature);
+            }
+            entry.second.engine->stopAndWait(250);
         }
         restoreRunStartCursorPosition(entry.second);
     }
@@ -2985,11 +3115,6 @@ void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, con
     if (!success && !message.isEmpty()) {
         line += QStringLiteral(" · ") + message;
     }
-    const bool suppressRepeatUi =
-        session.sessionContext && session.sessionContext->suppressRepeatUi();
-    if (suppressRepeatUi && session.completedLoopCount % 10 != 0) {
-        return;
-    }
     appendSessionLog(session, line, success ? LogLineKind::Success : LogLineKind::Warning);
     if (isDisplayedRunningFeature(&session)) {
         syncLoopTimingToWorkflowEditor(&session);
@@ -3075,6 +3200,7 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
     applyFeatureRunPoliciesToContext(session, feature);
     if (!repeatIteration && session.sessionContext) {
         session.sessionContext->clearCorrectedRois();
+        session.sessionContext->clearRememberedPositions();
     }
     syncUserInputInterruptForSession(session, feature);
 
@@ -3091,7 +3217,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
     const bool skipTargetActivation = session.hotkeyLaunchedSession && !repeatIteration;
     WorkflowEngine* engine = session.engine.get();
 
-    ensureRunSessionResources(session, feature, repeatIteration);
+    // The workflow cannot be edited while its session is running. Reuse the session
+    // clone instead of allocating a fresh block graph on every fast Hold/infinite loop.
+    ensureRunSessionResources(session, feature, false);
 
     if (repeatIteration) {
         engine->runPrepared([&session]() {
@@ -3462,7 +3590,7 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
 
     if (session && session->runningMode == FeatureRunMode::Hold) {
         Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
-        releaseHoldHotkeyInputToTarget(feature);
+        releaseHoldHotkeyInputToTarget(*session, feature);
     }
 
     if (session && session->sessionContext) {
@@ -3565,7 +3693,7 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     session->repeatSession = false;
 
     Feature* feature = m_project ? m_project->featureById(id) : nullptr;
-    releaseHoldHotkeyInputToTarget(feature);
+    releaseHoldHotkeyInputToTarget(*session, feature);
 
     if (session->engine && session->engine->isRunning()) {
         session->userStopRequested = true;
@@ -3597,6 +3725,7 @@ bool MainWindow::shouldSuppressFeatureHotkeyExecution() const {
 }
 
 void MainWindow::syncHotkeys() {
+    PIPBONG_PERF_SCOPE("syncHotkeys");
     if (!m_hotkeyManager || !m_project) {
         return;
     }
@@ -4106,21 +4235,43 @@ void MainWindow::saveActiveProfileSettings() {
     if (!m_profileManager) {
         return;
     }
-    // ProgramSettings::profileSettings() does not carry linkedTargetProcessPath
-    // (file-only). Preserve the stored exe path so profile icons do not reset.
     const QString profileId = m_profileManager->activeProfileId();
     ProgramSettings::ProfileSettings settings = ProgramSettings::profileSettings();
     settings.linkedTargetProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
-    m_profileManager->saveSettings(profileId, settings);
+    if (m_lastPersistedProfileSettingsValid && profileId == m_lastPersistedProfileSettingsProfileId
+        && profileSettingsEqual(settings, m_lastPersistedProfileSettings)) {
+        return;
+    }
+    if (!m_profileManager->saveSettings(profileId, settings)) {
+        return;
+    }
+    m_lastPersistedProfileSettings = settings;
+    m_lastPersistedProfileSettingsProfileId = profileId;
+    m_lastPersistedProfileSettingsValid = true;
+}
+
+bool MainWindow::profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
+                                      const ProgramSettings::ProfileSettings& b) const {
+    return a.autoSelectRunningFeature == b.autoSelectRunningFeature
+           && a.pinTargetWindowToScreenCenter == b.pinTargetWindowToScreenCenter
+           && a.imageFindCaptureMode == b.imageFindCaptureMode
+           && a.runWithoutTargetWindow == b.runWithoutTargetWindow
+           && a.linkedTargetProcessPath == b.linkedTargetProcessPath;
 }
 
 void MainWindow::loadActiveProfile(bool quiet) {
+    PIPBONG_PERF_SCOPE("loadActiveProfile");
     if (!m_profileManager) {
         return;
     }
 
     const QString profileId = m_profileManager->activeProfileId();
     ProgramSettings::applyProfileSettings(m_profileManager->loadSettings(profileId));
+    m_lastPersistedProfileSettings = ProgramSettings::profileSettings();
+    m_lastPersistedProfileSettings.linkedTargetProcessPath =
+        m_profileManager->linkedTargetProcessPath(profileId);
+    m_lastPersistedProfileSettingsProfileId = profileId;
+    m_lastPersistedProfileSettingsValid = true;
     if (profileId == m_profileManager->defaultProfileId() && m_project) {
         m_project->setTargetWindowTitle({});
         ScreenCapture::setTargetWindow(nullptr);
@@ -4151,12 +4302,15 @@ void MainWindow::loadActiveProfile(bool quiet) {
     if (m_profileManager) {
         m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
     }
-    m_featureList->refresh();
     onFeatureSelectionChanged();
     m_modified = false;
     updateWindowTitle();
     syncHotkeys();
-    updateTargetWindowDetails();
+    if (m_deferTargetDetailsProfileRefresh) {
+        QTimer::singleShot(0, this, &MainWindow::updateTargetWindowDetails);
+    } else {
+        updateTargetWindowDetails();
+    }
     updateTargetWindowControlsForActiveProfile();
     autoSaveProject(quiet);
 }
@@ -4291,6 +4445,7 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         return false;
     }
     m_switchingProfile = true;
+    m_deferTargetDetailsProfileRefresh = automatic;
     struct SwitchGuard {
         MainWindow* window = nullptr;
         ~SwitchGuard() {
@@ -4298,6 +4453,7 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
                 return;
             }
             window->m_switchingProfile = false;
+            window->m_deferTargetDetailsProfileRefresh = false;
             const QString deferred = window->m_deferredProfileSwitchId;
             if (!deferred.isEmpty()) {
                 window->m_deferredProfileSwitchId.clear();
@@ -4306,23 +4462,44 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         }
     } guard{this};
 
-    // Quiet flush: avoid "자동 저장됨" / load-log flicker on every profile switch.
-    if (!maybeSave(true)) {
-        syncProfileListSelection();
-        return false;
+    PIPBONG_PERF_SCOPE("switchToProfile");
+
+    if (m_profileList) {
+        for (int row = 0; row < m_profileList->count(); ++row) {
+            QListWidgetItem* item = m_profileList->item(row);
+            if (item && item->data(Qt::UserRole).toString() == profileId) {
+                const QSignalBlocker blocker(m_profileList);
+                m_profileList->setCurrentRow(row);
+                break;
+            }
+        }
     }
-    saveActiveProfileSettings();
-    stopAllSessions();
+
+    {
+        PIPBONG_PERF_SCOPE("switchToProfile.maybeSave");
+        if (!maybeSave(true)) {
+            syncProfileListSelection();
+            return false;
+        }
+    }
+    {
+        PIPBONG_PERF_SCOPE("switchToProfile.saveSettings");
+        saveActiveProfileSettings();
+    }
+    {
+        PIPBONG_PERF_SCOPE("switchToProfile.stopSessions");
+        stopAllSessionsForProfileSwitch();
+    }
     if (!m_profileManager->setActiveProfile(profileId)) {
         syncProfileListSelection();
         return false;
     }
-    loadActiveProfile(true);
+    {
+        PIPBONG_PERF_SCOPE("switchToProfile.loadActiveProfile");
+        loadActiveProfile(true);
+    }
     syncProfileListSelection();
-    // loadActiveProfile / loadProjectFromFile already call syncHotkeys once.
     scheduleRunWarmup();
-    m_pendingProfileSwitchId.clear();
-    m_pendingProfileSwitchPolls = 0;
     if (!automatic) {
         const ProfileManager::Profile* profile = m_profileManager->activeProfile();
         const QString name = profile
@@ -4348,8 +4525,6 @@ void MainWindow::syncProfileToForegroundWindow() {
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
     if (pid == GetCurrentProcessId()) {
-        m_pendingProfileSwitchId.clear();
-        m_pendingProfileSwitchPolls = 0;
         return;
     }
 
@@ -4363,33 +4538,43 @@ void MainWindow::syncProfileToForegroundWindow() {
     const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
     const QString targetProfileId = m_profileManager->profileIdForForegroundTitle(foregroundTitle);
     if (targetProfileId == m_profileManager->activeProfileId()) {
-        m_pendingProfileSwitchId.clear();
-        m_pendingProfileSwitchPolls = 0;
         return;
     }
 
-    if (targetProfileId == m_pendingProfileSwitchId) {
-        ++m_pendingProfileSwitchPolls;
-    } else {
-        m_pendingProfileSwitchId = targetProfileId;
-        m_pendingProfileSwitchPolls = 1;
-    }
+    ScreenCapture::setForegroundHintWindow(hwnd);
+    ScreenCapture::setTargetWindow(hwnd);
 
-    constexpr int kRequiredStablePolls = 2;
-    if (m_pendingProfileSwitchPolls >= kRequiredStablePolls) {
-        switchToProfile(targetProfileId, true);
-    }
+    switchToProfile(targetProfileId, true);
 #else
     Q_UNUSED(this);
 #endif
 }
 
 void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
+    PIPBONG_PERF_SCOPE("loadProjectFromFile");
     QString projectDirectory;
-    auto loaded = JsonSerializer::loadFromFile(path, &projectDirectory);
+    std::unique_ptr<Project> loaded;
+    if (m_profileManager) {
+        loaded = m_profileManager->cloneCachedProject(m_profileManager->activeProfileId(), path,
+                                                     &projectDirectory);
+    }
     if (!loaded) {
-        QMessageBox::critical(this, tr("프로젝트 열기"), tr("프로젝트를 불러오지 못했습니다."));
-        return;
+        loaded = JsonSerializer::loadFromFile(path, &projectDirectory);
+        if (!loaded) {
+            QMessageBox::critical(this, tr("프로젝트 열기"), tr("프로젝트를 불러오지 못했습니다."));
+            return;
+        }
+        if (m_profileManager) {
+            if (auto cacheClone = loaded->clone()) {
+                m_profileManager->storeCachedProject(m_profileManager->activeProfileId(),
+                                                     path,
+                                                     std::move(cacheClone),
+                                                     projectDirectory);
+            }
+        }
+    }
+    if (projectDirectory.isEmpty() && m_profileManager) {
+        projectDirectory = m_profileManager->activeProjectDirectory();
     }
 
     prepareProjectUnload();
@@ -4402,8 +4587,11 @@ void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
     ScreenCapture::setTargetWindow(nullptr);
     syncTargetWindowTitleToCapture();
 #ifdef _WIN32
-    if (HWND hwnd = ScreenCapture::findTargetWindow()) {
-        ScreenCapture::setTargetWindow(hwnd);
+    if (HWND hwnd = ScreenCapture::targetWindow(); !hwnd || !IsWindow(hwnd)) {
+        hwnd = ScreenCapture::findTargetWindow();
+        if (hwnd) {
+            ScreenCapture::setTargetWindow(hwnd);
+        }
     }
 #endif
 
@@ -4411,14 +4599,17 @@ void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
     if (m_profileManager) {
         m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
     }
-    m_featureList->refresh();
     restoreSelectedFeaturePreference();
-    onFeatureSelectionChanged();
+    refreshWorkflowEditor();
 
     m_modified = false;
     updateWindowTitle();
     syncHotkeys();
-    updateTargetWindowDetails();
+    if (m_deferTargetDetailsProfileRefresh) {
+        QTimer::singleShot(0, this, &MainWindow::updateTargetWindowDetails);
+    } else {
+        updateTargetWindowDetails();
+    }
     updateTargetWindowControlsForActiveProfile();
     if (m_profileManager) {
         m_profileManager->setProfileTargetWindowTitleInMemory(
@@ -4617,7 +4808,9 @@ void MainWindow::updateTargetWindowDetails() {
         if (storedPath.compare(processPath, Qt::CaseInsensitive) != 0) {
             m_profileManager->updateProfileTargetBinding(profileId, savedTitle.isEmpty() ? title : savedTitle,
                                                          processPath);
-            refreshProfileList();
+            if (!m_deferTargetDetailsProfileRefresh) {
+                refreshProfileList();
+            }
         }
     }
 
@@ -4643,11 +4836,12 @@ void MainWindow::updateTargetWindowDetails() {
 
 void MainWindow::syncUserInputInterruptForSession(FeatureRunSession& session, Feature* feature) {
     UserInputInterruptMonitor& monitor = UserInputInterruptMonitor::instance();
-    monitor.unregisterSession(session.featureId);
     if (!feature || !session.sessionContext) {
+        monitor.unregisterSession(session.featureId);
         return;
     }
     if (feature->userInputInterruptMode() == UserInputInterruptMode::None) {
+        monitor.unregisterSession(session.featureId);
         return;
     }
     monitor.registerSession(session.featureId,
@@ -4690,8 +4884,6 @@ void MainWindow::onUserInputInterrupt(const std::string& featureId) {
 }
 
 void MainWindow::scheduleRunWarmup() {
-    // Defer past the current event so profile-switch UI (list/hotkeys) paints first.
-    // Capture BitBlt warmup is one-shot inside RunWarmup; template prefetch stays light.
     QTimer::singleShot(0, this, [this]() {
         if (!m_project) {
             return;
@@ -4699,7 +4891,11 @@ void MainWindow::scheduleRunWarmup() {
         const Project* project = m_project.get();
         const std::string projectDirectory =
             Application::instance()->projectDirectory().toStdString();
-        RunWarmup::prefetch(project, projectDirectory);
+        std::string priorityFeatureId;
+        if (m_featureList) {
+            priorityFeatureId = m_featureList->selectedFeatureId().toStdString();
+        }
+        RunWarmup::prefetch(project, projectDirectory, priorityFeatureId);
     });
 }
 
@@ -4856,8 +5052,6 @@ bool MainWindow::restoreGlobalUiSnapshot(const GlobalUiHistorySnapshot& snapshot
     loadActiveProfile(true);
     refreshFeatureLibraryPanel();
     syncProfileListSelection();
-    m_pendingProfileSwitchId.clear();
-    m_pendingProfileSwitchPolls = 0;
     showTransientStatus(tr("실행 취소/다시 실행 적용됨"), 1200);
     return true;
 }

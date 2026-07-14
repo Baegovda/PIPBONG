@@ -42,6 +42,8 @@ public:
     static HWND findTargetWindow();
     static void setTargetWindow(HWND hwnd);
     static HWND targetWindow();
+    /// Reuse a foreground HWND from profile auto-switch for a short TTL (avoids EnumWindows).
+    static void setForegroundHintWindow(HWND hwnd);
     /// True when a picked HWND or a resolvable title-based target window exists.
     static bool hasResolvableTargetWindow();
     /// Program setting: allow workflow runs when no target window is designated.
@@ -157,5 +159,7 @@ private:
     static std::wstring s_targetTitle;
 #ifdef _WIN32
     static HWND s_targetWindow;
+    static HWND s_foregroundHintHwnd;
+    static unsigned long long s_foregroundHintMs;
 #endif
 };

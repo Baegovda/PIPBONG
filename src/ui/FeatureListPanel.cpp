@@ -1510,9 +1510,11 @@ void FeatureListPanel::setActiveProfileId(const QString& profileId) {
     }
 }
 
-void FeatureListPanel::setProject(Project* project) {
+void FeatureListPanel::setProject(Project* project, bool refreshList) {
     m_project = project;
-    refresh();
+    if (refreshList) {
+        refresh();
+    }
 }
 void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& feature) {
     const QString featureName = QString::fromStdString(feature.name());

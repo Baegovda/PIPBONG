@@ -1,5 +1,6 @@
 #include "app/ProfileManager.h"
 
+#include "model/Project.h"
 #include "storage/ProjectPackage.h"
 
 #include <QDateTime>
@@ -450,9 +451,21 @@ bool ProfileManager::removeProfile(const QString& id) {
 }
 
 ProgramSettings::ProfileSettings ProfileManager::loadSettings(const QString& id) const {
+    const QString settingsPath = QDir(profileDirectory(id)).filePath(QString::fromLatin1(kSettingsFileName));
+    const QFileInfo fileInfo(settingsPath);
+    const qint64 mtime = fileInfo.exists() ? fileInfo.lastModified().toMSecsSinceEpoch() : 0;
+    const auto cachedIt = m_settingsCache.find(id);
+    const auto mtimeIt = m_settingsFileMtime.find(id);
+    if (cachedIt != m_settingsCache.end() && mtimeIt != m_settingsFileMtime.end()
+        && mtimeIt->second == mtime) {
+        return cachedIt->second;
+    }
+
     ProgramSettings::ProfileSettings settings;
-    QFile file(QDir(profileDirectory(id)).filePath(QString::fromLatin1(kSettingsFileName)));
+    QFile file(settingsPath);
     if (!file.open(QIODevice::ReadOnly)) {
+        m_settingsCache[id] = settings;
+        m_settingsFileMtime[id] = mtime;
         return settings;
     }
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
@@ -470,6 +483,8 @@ ProgramSettings::ProfileSettings ProfileManager::loadSettings(const QString& id)
         root.value(QStringLiteral("runWithoutTargetWindow")).toBool(settings.runWithoutTargetWindow);
     settings.linkedTargetProcessPath =
         root.value(QStringLiteral("linkedTargetProcessPath")).toString(settings.linkedTargetProcessPath);
+    m_settingsCache[id] = settings;
+    m_settingsFileMtime[id] = mtime;
     return settings;
 }
 
@@ -498,6 +513,9 @@ bool ProfileManager::saveSettings(const QString& id,
         return false;
     }
     file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    const QFileInfo writtenInfo(file.fileName());
+    m_settingsCache[id] = toWrite;
+    m_settingsFileMtime[id] = writtenInfo.lastModified().toMSecsSinceEpoch();
     return true;
 }
 
@@ -660,4 +678,62 @@ QString ProfileManager::loadProfileTargetWindowTitleFromProject(const QString& i
         return {};
     }
     return QJsonDocument::fromJson(file.readAll()).object().value(QStringLiteral("targetWindowTitle")).toString();
+}
+
+qint64 ProfileManager::projectFileMtime(const QString& projectPath) const {
+    const QFileInfo info(projectPath);
+    return info.exists() ? info.lastModified().toMSecsSinceEpoch() : 0;
+}
+
+void ProfileManager::touchProjectCacheLru(const QString& id) const {
+    m_projectCacheLru.erase(std::remove(m_projectCacheLru.begin(), m_projectCacheLru.end(), id),
+                            m_projectCacheLru.end());
+    m_projectCacheLru.insert(m_projectCacheLru.begin(), id);
+}
+
+void ProfileManager::evictProjectCacheIfNeeded() const {
+    while (static_cast<int>(m_projectCache.size()) > kMaxCachedProjects && !m_projectCacheLru.empty()) {
+        const QString evictId = m_projectCacheLru.back();
+        m_projectCacheLru.pop_back();
+        m_projectCache.erase(evictId);
+    }
+}
+
+std::unique_ptr<Project> ProfileManager::cloneCachedProject(const QString& id,
+                                                            const QString& projectPath,
+                                                            QString* projectDirectoryOut) const {
+    const qint64 mtime = projectFileMtime(projectPath);
+    const auto it = m_projectCache.find(id);
+    if (it == m_projectCache.end() || it->second.fileMtime != mtime
+        || it->second.projectPath != projectPath || !it->second.project) {
+        return nullptr;
+    }
+    touchProjectCacheLru(id);
+    if (projectDirectoryOut) {
+        *projectDirectoryOut = it->second.projectDirectory;
+    }
+    return it->second.project->clone();
+}
+
+void ProfileManager::storeCachedProject(const QString& id,
+                                         const QString& projectPath,
+                                         std::unique_ptr<Project> project,
+                                         const QString& projectDirectory) {
+    if (!project) {
+        return;
+    }
+    CachedProjectEntry entry;
+    entry.project = std::move(project);
+    entry.projectDirectory = projectDirectory;
+    entry.projectPath = projectPath;
+    entry.fileMtime = projectFileMtime(projectPath);
+    m_projectCache[id] = std::move(entry);
+    touchProjectCacheLru(id);
+    evictProjectCacheIfNeeded();
+}
+
+void ProfileManager::invalidateCachedProject(const QString& id) {
+    m_projectCache.erase(id);
+    m_projectCacheLru.erase(std::remove(m_projectCacheLru.begin(), m_projectCacheLru.end(), id),
+                            m_projectCacheLru.end());
 }

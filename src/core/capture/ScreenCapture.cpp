@@ -185,6 +185,8 @@ bool runWithoutTargetWindowEnabled() {
 std::wstring ScreenCapture::s_targetTitle;
 #ifdef _WIN32
 HWND ScreenCapture::s_targetWindow = nullptr;
+HWND ScreenCapture::s_foregroundHintHwnd = nullptr;
+unsigned long long ScreenCapture::s_foregroundHintMs = 0;
 
 #ifndef PW_RENDERFULLCONTENT
 #define PW_RENDERFULLCONTENT 0x00000002
@@ -210,6 +212,17 @@ std::wstring ScreenCapture::targetWindowTitle() {
 HWND ScreenCapture::findTargetWindow() {
     if (s_targetWindow && IsWindow(s_targetWindow)) {
         return s_targetWindow;
+    }
+
+    if (s_foregroundHintHwnd && IsWindow(s_foregroundHintHwnd) && !s_targetTitle.empty()
+        && GetTickCount64() - s_foregroundHintMs < 500) {
+        wchar_t buffer[512]{};
+        GetWindowTextW(s_foregroundHintHwnd, buffer, 512);
+        const std::wstring title(buffer);
+        if (title.find(s_targetTitle) != std::wstring::npos) {
+            s_targetWindow = s_foregroundHintHwnd;
+            return s_targetWindow;
+        }
     }
 
     struct EnumData {
@@ -240,6 +253,11 @@ HWND ScreenCapture::findTargetWindow() {
 
 void ScreenCapture::setTargetWindow(HWND hwnd) {
     s_targetWindow = hwnd;
+}
+
+void ScreenCapture::setForegroundHintWindow(HWND hwnd) {
+    s_foregroundHintHwnd = hwnd;
+    s_foregroundHintMs = GetTickCount64();
 }
 
 HWND ScreenCapture::targetWindow() {

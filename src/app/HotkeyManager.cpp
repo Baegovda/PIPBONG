@@ -22,6 +22,31 @@ constexpr wchar_t kHotkeyHostClassName[] = L"PIPBONGHotkeyHost";
 
 HotkeyManager* g_hotkeyManager = nullptr;
 
+std::string buildProjectHotkeyFingerprint(const Project& project) {
+    std::string fingerprint;
+    fingerprint.reserve(project.features().size() * 24);
+    for (const auto& feature : project.features()) {
+        if (!feature || !feature->enabled()) {
+            continue;
+        }
+        const HotkeyBinding& binding = feature->hotkey();
+        if (binding.isEmpty()) {
+            continue;
+        }
+        fingerprint += feature->id();
+        fingerprint.push_back('|');
+        fingerprint += std::to_string(binding.virtualKey);
+        fingerprint.push_back(binding.ctrl ? 'C' : 'c');
+        fingerprint.push_back(binding.alt ? 'A' : 'a');
+        fingerprint.push_back(binding.shift ? 'S' : 's');
+        fingerprint.push_back(binding.isMouseButton() ? 'M' : 'K');
+        fingerprint.push_back(feature->hotkeyAllowExtraModifiers() ? '1' : '0');
+        fingerprint.push_back(static_cast<char>(feature->runMode()));
+        fingerprint.push_back(';');
+    }
+    return fingerprint;
+}
+
 LRESULT CALLBACK hotkeyHostWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_HOTKEY && g_hotkeyManager) {
         g_hotkeyManager->dispatchWin32Hotkey(static_cast<int>(wParam));
@@ -211,10 +236,17 @@ void HotkeyManager::unregisterAll() {
     m_toggleBindings.clear();
     m_mouseBindings.clear();
     m_nextId = 1;
+    m_lastProjectHotkeyFingerprint.clear();
 }
 
 std::vector<HotkeyManager::RegistrationFailure> HotkeyManager::syncFromProject(const Project& project) {
+    const std::string fingerprint = buildProjectHotkeyFingerprint(project);
+    if (fingerprint == m_lastProjectHotkeyFingerprint) {
+        return {};
+    }
+
     unregisterAll();
+    m_lastProjectHotkeyFingerprint = fingerprint;
 
     std::vector<RegistrationFailure> failures;
 

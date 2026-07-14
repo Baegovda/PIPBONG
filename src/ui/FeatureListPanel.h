@@ -49,7 +49,7 @@ public:
 
 
 
-    void setProject(Project* project);
+    void setProject(Project* project, bool refreshList = true);
 
     void setActiveProfileId(const QString& profileId);
 

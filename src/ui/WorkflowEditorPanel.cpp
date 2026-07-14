@@ -1,5 +1,6 @@
 #include "ui/WorkflowEditorPanel.h"
 
+#include "app/PerfTrace.h"
 #include "core/workflow/BlockFactory.h"
 #include "core/workflow/blocks/ClickBlock.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
@@ -44,6 +45,7 @@
 #include <QtMath>
 
 #include <algorithm>
+#include <list>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -55,8 +57,40 @@
 namespace {
 
 constexpr int kThumbnailSize = 32;
+constexpr int kMaxThumbnailCacheEntries = 128;
 constexpr const char* kLastBulkInsertWaitMsKey = "ui/state/workflowEditor/lastBulkInsertWaitMs";
 constexpr int kDefaultBulkInsertWaitMs = 500;
+
+QString thumbnailCacheKey(const QString& resolvedPath) {
+    const QFileInfo info(resolvedPath);
+    if (!info.exists()) {
+        return resolvedPath;
+    }
+    return resolvedPath + QLatin1Char('|') + QString::number(info.lastModified().toMSecsSinceEpoch());
+}
+
+QHash<QString, QPixmap> g_thumbnailCache;
+std::list<QString> g_thumbnailCacheLru;
+
+QPixmap cachedBlockThumbnail(const QString& resolvedPath, const QPixmap& pixmap) {
+    if (pixmap.isNull() || resolvedPath.isEmpty()) {
+        return pixmap;
+    }
+    const QString key = thumbnailCacheKey(resolvedPath);
+    if (g_thumbnailCache.contains(key)) {
+        g_thumbnailCacheLru.remove(key);
+        g_thumbnailCacheLru.push_front(key);
+        return g_thumbnailCache.value(key);
+    }
+    g_thumbnailCache.insert(key, pixmap);
+    g_thumbnailCacheLru.push_front(key);
+    while (g_thumbnailCacheLru.size() > kMaxThumbnailCacheEntries) {
+        const QString evictKey = g_thumbnailCacheLru.back();
+        g_thumbnailCacheLru.pop_back();
+        g_thumbnailCache.remove(evictKey);
+    }
+    return pixmap;
+}
 
 qreal workflowPreviewDevicePixelRatio() {
     qreal dpr = 2.0;
@@ -460,14 +494,22 @@ QPixmap loadBlockThumbnail(const Block& block, const QString& projectDirectory) 
                                      ? relativePath
                                      : QDir(projectDirectory).filePath(relativePath);
 
+    const QString cacheKey = thumbnailCacheKey(resolvedPath);
+    if (g_thumbnailCache.contains(cacheKey)) {
+        g_thumbnailCacheLru.remove(cacheKey);
+        g_thumbnailCacheLru.push_front(cacheKey);
+        return g_thumbnailCache.value(cacheKey);
+    }
+
     QPixmap pixmap(resolvedPath);
     if (pixmap.isNull()) {
         return {};
     }
-    return pixmap.scaled(kThumbnailSize,
-                         kThumbnailSize,
-                         Qt::KeepAspectRatio,
-                         Qt::SmoothTransformation);
+    const QPixmap scaled = pixmap.scaled(kThumbnailSize,
+                                       kThumbnailSize,
+                                       Qt::KeepAspectRatio,
+                                       Qt::SmoothTransformation);
+    return cachedBlockThumbnail(resolvedPath, scaled);
 }
 
 } // namespace
@@ -929,6 +971,7 @@ void WorkflowEditorPanel::setProjectDirectory(const QString& directory) {
 }
 
 void WorkflowEditorPanel::refresh() {
+    PIPBONG_PERF_SCOPE("WorkflowEditorPanel.refresh");
     m_blockList->setBlockCount(0);
     m_blockList->clearLoopRegionVisuals();
     if (!m_feature) {

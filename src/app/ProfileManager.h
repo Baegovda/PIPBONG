@@ -4,9 +4,13 @@
 
 #include <QString>
 #include <QStringList>
+
+#include <memory>
+#include <unordered_map>
 #include <vector>
 
 class QIcon;
+class Project;
 
 class ProfileManager {
 public:
@@ -71,7 +75,28 @@ public:
     /// Returns the default profile when nothing matches or the title is empty.
     QString profileIdForForegroundTitle(const QString& foregroundTitle) const;
 
+    /// Returns a clone of a cached project when the on-disk file mtime is unchanged.
+    std::unique_ptr<Project> cloneCachedProject(const QString& id,
+                                                const QString& projectPath,
+                                                QString* projectDirectoryOut = nullptr) const;
+    void storeCachedProject(const QString& id,
+                            const QString& projectPath,
+                            std::unique_ptr<Project> project,
+                            const QString& projectDirectory);
+    void invalidateCachedProject(const QString& id);
+
 private:
+    struct CachedProjectEntry {
+        std::unique_ptr<Project> project;
+        QString projectDirectory;
+        QString projectPath;
+        qint64 fileMtime = 0;
+    };
+
+    qint64 projectFileMtime(const QString& projectPath) const;
+    void touchProjectCacheLru(const QString& id) const;
+    void evictProjectCacheIfNeeded() const;
+
     bool loadManifest();
     bool saveManifest() const;
     void ensureAtLeastOneProfile();
@@ -86,4 +111,11 @@ private:
     std::vector<Profile> m_profiles;
     QString m_activeProfileId;
     QString m_defaultProfileId;
+
+    mutable std::unordered_map<QString, ProgramSettings::ProfileSettings> m_settingsCache;
+    mutable std::unordered_map<QString, qint64> m_settingsFileMtime;
+
+    mutable std::unordered_map<QString, CachedProjectEntry> m_projectCache;
+    mutable std::vector<QString> m_projectCacheLru;
+    static constexpr int kMaxCachedProjects = 4;
 };

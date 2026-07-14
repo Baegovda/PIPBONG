@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.99` (from `project(PIPBONG VERSION 0.8.99)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.100` (from `project(PIPBONG VERSION 0.8.100)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -484,7 +484,7 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.6 UI
 
-- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked target-window title per profile; **foreground-window auto-switch** (250 ms poll) activates the profile whose linked title best matches the focused top-level window (longest substring wins), falls back to the default profile when unmatched; PIPBONG foreground keeps the current profile (`MainWindow::syncProfileToForegroundWindow`, `ProfileManager::profileIdForForegroundTitle`).
+- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked target-window title per profile; **foreground-window auto-switch** reacts directly to Win32 `EVENT_SYSTEM_FOREGROUND` (50 ms precise poll remains as fallback), activates the profile whose linked title best matches the focused top-level window (longest substring wins), and falls back to the default profile when unmatched; PIPBONG foreground keeps the current profile (`MainWindow::syncProfileToForegroundWindow`, `ProfileManager::profileIdForForegroundTitle`).
 - **Feature list:** Create/delete/rename features; hotkey binding (button, double-click, context menu).
 - **Workflow editor:** Block list with drag-and-drop reorder; per-type **블록 추가** buttons (템플릿 매칭, 마우스, 키보드, 딜레이); template thumbnails (48×48); block editors in `BlockEditorDialog`.
 - **ImageFind editor:** ROI preview, match test, screen capture overlay, `CaptureConfirmDialog`.
@@ -632,7 +632,9 @@ Sbm1.0/                        # repo root (local workspace)
 | `roiCorrection`                       | `false` (omitted)         | Per-block ROI correction when feature `roiCorrection` is off; loop 2+ uses session-only matched template rect from loop 1, stored as window % and re-resolved each poll |
 | `roiCorrectionExpandPercent`          | `110` (omitted)           | Loop 2+ corrected search ROI size as % of matched template (100 = same size, 110 = 10% wider/taller per axis); feature JSON uses same field for global correction       |
 | `returnToPreviousImageFindOnFailure`  | `false` (omitted)         | On detection failure (miss limit), jump workflow execution to the previous `ImageFind` block in the list                                                                |
+| `returnToPreviousMissLimit`           | `1` (omitted)             | Consecutive ImageFind poll misses before return-to-previous triggers; only used when `returnToPreviousImageFindOnFailure` is true                                      |
 | `retryAfterNextActionOnFailure`       | `false` (omitted)         | On first detection failure: run the next block once, then retry this block; on second failure jump to the next `ImageFind` block                                        |
+| `rememberMultiMatchPositions`         | `false` (omitted)         | Loop 1: remember all threshold hits in the search ROI (top-to-bottom, left-to-right). Loop round `N` replays stored hit `N` without capture/matching (fails when `N` exceeds stored count) |
 
 #### `Click`
 
@@ -1064,6 +1066,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Changed
 
 ### Fixed
+
+### Removed
+
+## [0.8.100] - 2026-07-14
+
+### Added
+
+- ImageFind **첫 루프 위치 기억 (루프마다 순서대로 제공)**: loop 1 captures all threshold hits in the search ROI (top-to-bottom, left-to-right) on first detection; each workflow loop round `N` replays stored hit `N` without capture/matching (`rememberMultiMatchPositions` JSON, `ExecutionContext`, `ImageFindBlock`, `ImageFindEditor`); shown only when the feature supports multi-loop sessions.
+- Program-wide performance tracing: scoped `PerfTrace` timers on profile switch, project load, hotkey sync, and workflow refresh (`pipbong.perf.trace` logging category; `PerfTrace.h`).
+- Profile project LRU cache (4 entries, mtime-invalidated) and in-memory profile-settings cache (`ProfileManager`).
+- Global OpenCV template LRU cache with background prefetch (`TemplateCache`, `RunWarmup`); workflow block-list ImageFind thumbnail LRU (`WorkflowEditorPanel`).
+
+### Changed
+
+- Main window placement persists per monitor: saves screen name + frame geometry to `QSettings` (`ui/state/mainWindow/placement/*`); restores on startup before first show (not cursor monitor); first launch centers on primary screen (`UiStateManager`, `MainWindow`, `main.cpp`).
+- ImageFind **이전 복귀** supports per-block **연속 감지 실패 N회** before jumping to the previous template-matching block (`returnToPreviousMissLimit` JSON, default 1; `ImageFindBlock`, `ImageFindEditor`).
+- ImageFind failure-handling tooltips aligned with `WorkflowRunner::resolveImageFindDetectionFailure` order (retry phase 1 → return vs retry phase 2; miss-limit accumulation; edge cases) (`ImageFindEditor`, `BlockListWidget`).
+- Profile switch fast path: optimistic list selection, skip unchanged profile-settings disk write, bounded 250 ms session stop wait, project cache hit avoids JSON parse, single feature-list/workflow refresh, deferred target-detail panel on auto-switch (`MainWindow`, `FeatureListPanel`).
+- Foreground profile auto-switch passes Win32 HWND hint to `ScreenCapture` (500 ms TTL) to skip `EnumWindows` on the same tick (`ScreenCapture`, `MainWindow`).
+- Hotkey sync skips full hook reinstall when project hotkey fingerprint is unchanged (`HotkeyManager`).
+- Run warmup prefetches selected feature templates on the UI thread first, then remaining templates on a background thread (`RunWarmup`).
+
+### Fixed
+
+- Foreground-window profile auto-switch now reacts directly to Win32 `EVENT_SYSTEM_FOREGROUND`; the first 50 ms precise poll remains only as fallback, replacing the former two stable 250 ms polls that added 250–500 ms of visible lag (`MainWindow`).
+- Fast Hold / infinite-repeat workflows no longer reinstall low-level input-interrupt hooks or clone the workflow graph on every loop; loop logs remain one entry per iteration but batch their `QTextEdit` rendering every 50 ms to avoid blocking physical mouse-hook delivery (`MainWindow`, `UserInputInterruptMonitor`, `LogPanelWidget`).
+- Hold / **무한 반복** loop completion log and workflow title timing update every iteration again (removed 10-loop throttle in `logLoopCompletion`; per-block run log/UI suppression during fast repeats unchanged).
+- Hold mode no longer releases physically held Shift/Ctrl/Alt when the feature session ends: skip synthetic Hold-hotkey release when PIPBONG never injected that key/button into the target app (fixes mouse Hold + click-only workflows sending a spurious side-button UP); `forceKeyUp` skips modifier VKs still physically down; run-end keyboard restore skips session-start user holds; client PostMessage clicks include physical modifier flags (`InputSimulator`, `MainWindow`, `ExecutionContext`, `FeatureRunSession`).
+- ImageFind **첫 루프 위치 기억** replays by workflow loop round (`runLoopNumber`) — loop 1 → hit 1, loop 2 → hit 2, … — not per block execution within the same loop (`ImageFindBlock`, `ExecutionContext`).
+- ImageFind **이전 복귀** / **재시도** failure handling no longer requires feature **연속 감지 실패 시 종료** or loop-region miss limit: blocks with either option enabled treat one failed poll as detection failure (`ImageFindBlock`, `ImageFindEditor` tooltips).
+- ImageFind **이전 복귀** at the first template-matching block wraps to the last one; **재시도** advance from the last wraps to the first (`WorkflowRunner`).
+- ImageFind **이전 복귀** block-list feedback: ~560 ms hold at full purple glass plus ~840 ms fade, brighter tint, `↓`/`↩` index labels kept over running `▶`, dual-row scroll, and no interrupt by later row flashes (`BlockListWidget`).
 
 ### Removed
 

@@ -5,7 +5,6 @@
 #include "core/vision/ImageMatcher.h"
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 struct ImageFindMatchTestResult {
@@ -61,8 +60,12 @@ public:
     int roiCorrectionExpandPercent = kDefaultRoiCorrectionExpandPercent;
     /// On detection failure (miss limit), workflow jumps to the previous ImageFind block.
     bool returnToPreviousImageFindOnFailure = false;
+    /// Consecutive poll misses before return-to-previous triggers (when enabled; default 1).
+    int returnToPreviousMissLimit = 1;
     /// On detection failure: run the next block once, retry this block; on second failure jump to next ImageFind.
     bool retryAfterNextActionOnFailure = false;
+    /// Loop 1: remember all threshold hits in ROI (left-to-right, top-to-bottom). Loop 2+: replay without capture.
+    bool rememberMultiMatchPositions = false;
 
     bool hasTemplates() const;
     std::string primaryTemplatePath() const;
@@ -96,7 +99,5 @@ public:
 
 private:
     const PreparedTemplate& cachedTemplateFor(const std::string& resolvedPath) const;
-
-    mutable std::unordered_map<std::string, PreparedTemplate> m_cachedTemplates;
 };
 

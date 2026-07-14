@@ -1,6 +1,7 @@
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "core/input/HotkeyBinding.h"
 #include "core/vision/ImageMatcher.h"
+#include "core/vision/TemplateCache.h"
 #include "core/workflow/ExecutionContext.h"
 #include "ui/editors/WorkflowMatchFeedbackOverlay.h"
 #include "ui/editors/WorkflowRoiFlashOverlay.h"
@@ -512,8 +513,7 @@ void reportImageFindMiss(ExecutionContext& ctx,
     ctx.reportProgress(BlockProgressKind::ImageFindMiss);
 }
 
-bool imageFindExceededMissLimit(ExecutionContext& ctx, int& missAttempts) {
-    const int maxMisses = ctx.imageFindMaxMissAttempts();
+bool imageFindExceededMissLimit(int maxMisses, int& missAttempts) {
     if (maxMisses <= 0) {
         return false;
     }
@@ -679,6 +679,279 @@ void consumeAllSelections(ExecutionContext& ctx,
     }
 }
 
+bool rememberedHitTopLeftBefore(const ExecutionContext::RememberedImageFindHit& a,
+                                const ExecutionContext::RememberedImageFindHit& b) {
+    if (a.matchedWindowPercent.y != b.matchedWindowPercent.y) {
+        return a.matchedWindowPercent.y < b.matchedWindowPercent.y;
+    }
+    return a.matchedWindowPercent.x < b.matchedWindowPercent.x;
+}
+
+std::optional<ExecutionContext::RememberedImageFindHit>
+rememberedHitFromMatch(const MatchResult& match,
+                       SearchArea searchArea,
+                       const CaptureRegion& customRegion,
+                       const PercentRegion& percentRegion,
+                       int haystackWidth,
+                       int haystackHeight,
+                       const std::string& templatePath) {
+    if (!match.found || match.matchedSize.width <= 0 || match.matchedSize.height <= 0) {
+        return std::nullopt;
+    }
+    const cv::Point physicalTopLeft = ScreenCapture::haystackTopLeftToPhysical(
+        searchArea, customRegion, percentRegion, match.location, haystackWidth, haystackHeight);
+    CaptureRegion physical;
+    physical.x = physicalTopLeft.x;
+    physical.y = physicalTopLeft.y;
+    physical.width = match.matchedSize.width;
+    physical.height = match.matchedSize.height;
+    const PercentRegion percent = ScreenCapture::storeWindowPercentFromPhysical(physical);
+    if (!isValidWindowPercentRegion(percent)) {
+        return std::nullopt;
+    }
+    ExecutionContext::RememberedImageFindHit hit;
+    hit.matchedWindowPercent = percent;
+    hit.confidence = match.confidence;
+    hit.templatePath = templatePath;
+    return hit;
+}
+
+void appendUniqueRememberedHit(std::vector<ExecutionContext::RememberedImageFindHit>& hits,
+                               const ExecutionContext::RememberedImageFindHit& candidate) {
+    for (const ExecutionContext::RememberedImageFindHit& existing : hits) {
+        if (std::abs(existing.matchedWindowPercent.x - candidate.matchedWindowPercent.x) < 0.05
+            && std::abs(existing.matchedWindowPercent.y - candidate.matchedWindowPercent.y) < 0.05
+            && std::abs(existing.matchedWindowPercent.width - candidate.matchedWindowPercent.width)
+                   < 0.05
+            && std::abs(existing.matchedWindowPercent.height - candidate.matchedWindowPercent.height)
+                   < 0.05) {
+            return;
+        }
+    }
+    hits.push_back(candidate);
+}
+
+void collectRememberedHitsFromTemplate(const cv::Mat& haystack,
+                                       const cv::Mat& hayGray,
+                                       const PreparedTemplate& templ,
+                                       const MatchOptions& options,
+                                       SearchArea searchArea,
+                                       const CaptureRegion& customRegion,
+                                       const PercentRegion& percentRegion,
+                                       int haystackWidth,
+                                       int haystackHeight,
+                                       const std::string& templatePath,
+                                       std::vector<ExecutionContext::RememberedImageFindHit>& hits) {
+    if (hayGray.empty()) {
+        return;
+    }
+    std::vector<MatchResult> allMatches =
+        ImageMatcher::findAllTemplatesGray(hayGray, templ, options, true);
+    MatchResult peak = bestMatchByConfidence(allMatches);
+    const bool requireGrayscaleHaystack =
+        ImageMatcher::requiresGrayscaleHaystackRegion(options.templateColorMode, templ);
+    applyGrayscaleHaystackFilter(haystack, requireGrayscaleHaystack, allMatches, peak);
+    for (const MatchResult& match : allMatches) {
+        if (const std::optional<ExecutionContext::RememberedImageFindHit> hit =
+                rememberedHitFromMatch(match,
+                                       searchArea,
+                                       customRegion,
+                                       percentRegion,
+                                       haystackWidth,
+                                       haystackHeight,
+                                       templatePath)) {
+            appendUniqueRememberedHit(hits, *hit);
+        }
+    }
+}
+
+void maybeRememberMultiMatchPositions(ExecutionContext& ctx,
+                                      bool blockRememberEnabled,
+                                      const cv::Mat& haystack,
+                                      const cv::Mat& hayGray,
+                                      const PreparedTemplate& templ,
+                                      const MatchOptions& options,
+                                      SearchArea searchArea,
+                                      const CaptureRegion& customRegion,
+                                      const PercentRegion& percentRegion,
+                                      int haystackWidth,
+                                      int haystackHeight,
+                                      const std::string& templatePath) {
+    if (!ctx.shouldRememberPositionsForBlock(blockRememberEnabled) || ctx.runLoopNumber() != 1) {
+        return;
+    }
+    const int blockIndex = ctx.activeBlockIndex();
+    if (blockIndex < 0 || ctx.hasRememberedPositions(blockIndex)) {
+        return;
+    }
+    std::vector<ExecutionContext::RememberedImageFindHit> hits;
+    collectRememberedHitsFromTemplate(haystack,
+                                        hayGray,
+                                        templ,
+                                        options,
+                                        searchArea,
+                                        customRegion,
+                                        percentRegion,
+                                        haystackWidth,
+                                        haystackHeight,
+                                        templatePath,
+                                        hits);
+    if (hits.empty()) {
+        return;
+    }
+    std::sort(hits.begin(), hits.end(), rememberedHitTopLeftBefore);
+    ctx.setRememberedPositions(blockIndex, std::move(hits));
+    ctx.log("첫 루프 위치 " + std::to_string(ctx.rememberedPositionCount(blockIndex)) + "개 기억");
+}
+
+void maybeRememberMultiMatchPositionsAll(ExecutionContext& ctx,
+                                         bool blockRememberEnabled,
+                                         const cv::Mat& haystack,
+                                         const cv::Mat& hayGray,
+                                         const std::vector<const PreparedTemplate*>& templates,
+                                         const std::vector<std::string>& templatePaths,
+                                         const MatchOptions& options,
+                                         SearchArea searchArea,
+                                         const CaptureRegion& customRegion,
+                                         const PercentRegion& percentRegion,
+                                         int haystackWidth,
+                                         int haystackHeight) {
+    if (!ctx.shouldRememberPositionsForBlock(blockRememberEnabled) || ctx.runLoopNumber() != 1) {
+        return;
+    }
+    const int blockIndex = ctx.activeBlockIndex();
+    if (blockIndex < 0 || ctx.hasRememberedPositions(blockIndex)) {
+        return;
+    }
+    std::vector<ExecutionContext::RememberedImageFindHit> hits;
+    for (size_t index = 0; index < templates.size(); ++index) {
+        const std::string& templatePath =
+            index < templatePaths.size() ? templatePaths[index] : std::string{};
+        collectRememberedHitsFromTemplate(haystack,
+                                          hayGray,
+                                          *templates[index],
+                                          options,
+                                          searchArea,
+                                          customRegion,
+                                          percentRegion,
+                                          haystackWidth,
+                                          haystackHeight,
+                                          templatePath,
+                                          hits);
+    }
+    if (hits.empty()) {
+        return;
+    }
+    std::sort(hits.begin(), hits.end(), rememberedHitTopLeftBefore);
+    ctx.setRememberedPositions(blockIndex, std::move(hits));
+    ctx.log("첫 루프 위치 " + std::to_string(ctx.rememberedPositionCount(blockIndex)) + "개 기억");
+}
+
+BlockResult replayRememberedImageFindPosition(ExecutionContext& ctx,
+                                              HWND targetWindow,
+                                              double matchThreshold,
+                                              int hitIndex) {
+    const int blockIndex = ctx.activeBlockIndex();
+    const int total = ctx.rememberedPositionCount(blockIndex);
+    const std::optional<ExecutionContext::RememberedImageFindHit> hitOpt =
+        ctx.rememberedPositionAt(blockIndex, hitIndex);
+    BlockResult result;
+    if (!hitOpt) {
+        result.success = false;
+        if (total <= 0) {
+            result.message = "기억한 위치 없음 (첫 루프에서 감지되지 않음)";
+        } else {
+            result.message = "기억한 위치 부족 (루프 " + std::to_string(ctx.runLoopNumber()) + ", 저장 "
+                             + std::to_string(total) + "개)";
+        }
+        return result;
+    }
+    const ExecutionContext::RememberedImageFindHit& hit = *hitOpt;
+    const CaptureRegion physical =
+        ScreenCapture::resolveWindowPercentRegion(hit.matchedWindowPercent);
+    if (physical.width <= 0 || physical.height <= 0) {
+        result.success = false;
+        result.message = "기억한 위치를 해석하지 못함";
+        return result;
+    }
+    const cv::Point screenCenter(physical.x + physical.width / 2, physical.y + physical.height / 2);
+    cv::Point matchPoint = screenCenter;
+#ifdef _WIN32
+    if (targetWindow) {
+        POINT clientPoint{screenCenter.x, screenCenter.y};
+        if (ScreenToClient(targetWindow, &clientPoint)) {
+            matchPoint = cv::Point(clientPoint.x, clientPoint.y);
+        }
+    }
+#endif
+    ctx.setLastMatchScreenPoint(screenCenter);
+    ctx.setLastMatch(matchPoint, hit.confidence, cv::Mat{}, matchThreshold);
+    ctx.reportProgress(BlockProgressKind::ImageFindSuccess);
+
+    char confidenceText[16];
+    std::snprintf(confidenceText, sizeof(confidenceText), "%.2f", hit.confidence);
+    result.success = true;
+    result.message = std::string("루프 ") + std::to_string(ctx.runLoopNumber()) + " · 기억한 위치 · 일치도 "
+                     + confidenceText + " · (" + std::to_string(matchPoint.x) + ","
+                     + std::to_string(matchPoint.y) + ")";
+    if (!hit.templatePath.empty()) {
+        const std::filesystem::path fileName = std::filesystem::path(hit.templatePath).filename();
+        result.message += " [" + fileName.string() + "]";
+    }
+    if (total > 1) {
+        result.message += " [" + std::to_string(hitIndex + 1) + "/" + std::to_string(total) + "]";
+    }
+    result.imageFindPollAttempts = 0;
+    ctx.log(result.message);
+    return result;
+}
+
+std::optional<BlockResult> tryReplayRememberedPositionForLoop(ExecutionContext& ctx,
+                                                            bool rememberEnabled,
+                                                            HWND targetWindow,
+                                                            double matchThreshold,
+                                                            int64_t matchWorkMs,
+                                                            int pollAttemptCount) {
+    if (!ctx.shouldRememberPositionsForBlock(rememberEnabled)) {
+        return std::nullopt;
+    }
+    const int blockIndex = ctx.activeBlockIndex();
+    if (!ctx.hasRememberedPositions(blockIndex)) {
+        if (ctx.runLoopNumber() >= 2) {
+            BlockResult result;
+            result.success = false;
+            result.message = "기억한 위치 없음 (첫 루프에서 감지되지 않음)";
+            result.imageFindMatchDurationMs = matchWorkMs;
+            result.imageFindPollAttempts = pollAttemptCount;
+            return result;
+        }
+        return std::nullopt;
+    }
+
+    const int hitIndex = ctx.runLoopNumber() - 1;
+    BlockResult result = replayRememberedImageFindPosition(ctx, targetWindow, matchThreshold, hitIndex);
+    result.imageFindMatchDurationMs = matchWorkMs;
+    result.imageFindPollAttempts = pollAttemptCount;
+    return result;
+}
+
+BlockResult finalizeImageFindWithRememberedLoop(ExecutionContext& ctx,
+                                                bool rememberEnabled,
+                                                HWND targetWindow,
+                                                double matchThreshold,
+                                                BlockResult detectedResult) {
+    if (const std::optional<BlockResult> replay = tryReplayRememberedPositionForLoop(
+            ctx,
+            rememberEnabled,
+            targetWindow,
+            matchThreshold,
+            detectedResult.imageFindMatchDurationMs,
+            detectedResult.imageFindPollAttempts)) {
+        return *replay;
+    }
+    return detectedResult;
+}
+
 } // namespace
 
 bool ImageFindBlock::hasTemplates() const {
@@ -735,13 +1008,7 @@ MatchOptions ImageFindBlock::matchOptions() const {
 }
 
 const PreparedTemplate& ImageFindBlock::cachedTemplateFor(const std::string& resolvedPath) const {
-    auto it = m_cachedTemplates.find(resolvedPath);
-    if (it == m_cachedTemplates.end() || it->second.empty()) {
-        PreparedTemplate loaded = ImageMatcher::loadTemplate(resolvedPath);
-        m_cachedTemplates[resolvedPath] = std::move(loaded);
-        return m_cachedTemplates[resolvedPath];
-    }
-    return it->second;
+    return TemplateCache::getOrLoad(resolvedPath);
 }
 
 BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
@@ -796,6 +1063,12 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         return result;
     }
 
+#ifdef _WIN32
+    const HWND targetWindow = ctx.targetWindow();
+#else
+    const HWND targetWindow = nullptr;
+#endif
+
     if (ctx.consumeImageFindPrimedBlockIndex(ctx.activeBlockIndex())) {
         BlockResult result;
         if (!ctx.hasLastMatch()) {
@@ -810,10 +1083,24 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         return result;
     }
 
+    const int blockIndex = ctx.activeBlockIndex();
+    if (const std::optional<BlockResult> replay = tryReplayRememberedPositionForLoop(
+            ctx, rememberMultiMatchPositions, targetWindow, threshold, 0, 0)) {
+        return *replay;
+    }
+
     const MatchOptions options = matchOptions();
     int missAttempts = 0;
     int pollAttemptCount = 0;
     int64_t matchWorkMs = 0;
+    int effectiveMaxMisses = ctx.imageFindMaxMissAttempts();
+    if (returnToPreviousImageFindOnFailure) {
+        effectiveMaxMisses =
+            std::max(effectiveMaxMisses, std::max(1, returnToPreviousMissLimit));
+    }
+    if (effectiveMaxMisses <= 0 && retryAfterNextActionOnFailure) {
+        effectiveMaxMisses = 1;
+    }
     auto lapStart = std::chrono::steady_clock::now();
     const auto accumulateMatchWork = [&]() {
         const auto now = std::chrono::steady_clock::now();
@@ -821,11 +1108,6 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             0,
             std::chrono::duration_cast<std::chrono::milliseconds>(now - lapStart).count());
     };
-#ifdef _WIN32
-    const HWND targetWindow = ctx.targetWindow();
-#else
-    const HWND targetWindow = nullptr;
-#endif
 
     while (true) {
         ++pollAttemptCount;
@@ -893,6 +1175,18 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                         haystack, hayGray, *templates[index], options, ctx, runtimeSearchArea, activeRegion, runtimePercentRegion);
                     if (selection.ok) {
                         accumulateMatchWork();
+                        maybeRememberMultiMatchPositions(ctx,
+                                                         rememberMultiMatchPositions,
+                                                         haystack,
+                                                         hayGray,
+                                                         *templates[index],
+                                                         options,
+                                                         runtimeSearchArea,
+                                                         activeRegion,
+                                                         runtimePercentRegion,
+                                                         haystack.cols,
+                                                         haystack.rows,
+                                                         relativePaths[index]);
                         BlockResult result = imageFindSuccessResult(ctx,
                                                                   roiCorrection,
                                                                   effectiveRoiCorrectionExpandPercent,
@@ -906,7 +1200,11 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                                                                   relativePaths[index]);
                         result.imageFindMatchDurationMs = matchWorkMs;
                         result.imageFindPollAttempts = pollAttemptCount;
-                        return result;
+                        return finalizeImageFindWithRememberedLoop(ctx,
+                                                                   rememberMultiMatchPositions,
+                                                                   targetWindow,
+                                                                   threshold,
+                                                                   result);
                     }
                     if (selection.peak.found
                         && (!bestMissPeak.found || selection.peak.confidence > bestMissPeak.confidence)) {
@@ -951,6 +1249,18 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                     extraSuffix = details.str();
                 }
                 accumulateMatchWork();
+                maybeRememberMultiMatchPositionsAll(ctx,
+                                                    rememberMultiMatchPositions,
+                                                    haystack,
+                                                    hayGray,
+                                                    templates,
+                                                    relativePaths,
+                                                    options,
+                                                    runtimeSearchArea,
+                                                    activeRegion,
+                                                    runtimePercentRegion,
+                                                    haystack.cols,
+                                                    haystack.rows);
                 BlockResult result = imageFindSuccessResult(ctx,
                                                             roiCorrection,
                                                             effectiveRoiCorrectionExpandPercent,
@@ -966,7 +1276,11 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                                                             extraSuffix);
                 result.imageFindMatchDurationMs = matchWorkMs;
                 result.imageFindPollAttempts = pollAttemptCount;
-                return result;
+                return finalizeImageFindWithRememberedLoop(ctx,
+                                                           rememberMultiMatchPositions,
+                                                           targetWindow,
+                                                           threshold,
+                                                           result);
             }
         }
 
@@ -979,7 +1293,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                             targetWindow,
                             missHaystackWidth,
                             missHaystackHeight);
-        if (imageFindExceededMissLimit(ctx, missAttempts)) {
+        if (imageFindExceededMissLimit(effectiveMaxMisses, missAttempts)) {
             accumulateMatchWork();
             BlockResult result = imageFindDetectionFailureResult(ctx);
             result.imageFindMatchDurationMs = matchWorkMs;
@@ -1046,9 +1360,15 @@ nlohmann::json ImageFindBlock::toJson() const {
     }
     if (returnToPreviousImageFindOnFailure) {
         json["returnToPreviousImageFindOnFailure"] = true;
+        if (returnToPreviousMissLimit != 1) {
+            json["returnToPreviousMissLimit"] = returnToPreviousMissLimit;
+        }
     }
     if (retryAfterNextActionOnFailure) {
         json["retryAfterNextActionOnFailure"] = true;
+    }
+    if (rememberMultiMatchPositions) {
+        json["rememberMultiMatchPositions"] = true;
     }
     if (templateColorMode != TemplateColorMode::Auto) {
         json["templateColorMode"] = templateColorModeToString(templateColorMode);
@@ -1133,7 +1453,10 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
     block->roiCorrectionExpandPercent = snapRoiCorrectionExpandPercent(
         json.value("roiCorrectionExpandPercent", kDefaultRoiCorrectionExpandPercent));
     block->returnToPreviousImageFindOnFailure = json.value("returnToPreviousImageFindOnFailure", false);
+    block->returnToPreviousMissLimit =
+        std::max(1, json.value("returnToPreviousMissLimit", 1));
     block->retryAfterNextActionOnFailure = json.value("retryAfterNextActionOnFailure", false);
+    block->rememberMultiMatchPositions = json.value("rememberMultiMatchPositions", false);
     block->templateColorMode =
         templateColorModeFromString(json.value("templateColorMode", "Auto"));
     return block;

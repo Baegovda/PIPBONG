@@ -99,6 +99,7 @@ private:
     std::vector<ToggleBindingEntry> m_toggleBindings;
     std::vector<MouseBindingEntry> m_mouseBindings;
     int m_nextId = 1;
+    std::string m_lastProjectHotkeyFingerprint;
 #ifdef _WIN32
     void* m_hotkeyHostHwnd = nullptr;
     void* m_keyboardHook = nullptr;

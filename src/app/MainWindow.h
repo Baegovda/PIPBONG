@@ -59,6 +59,8 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
 
+    void ensureInitialWindowPlacement();
+
 protected:
     void closeEvent(QCloseEvent* event) override;
     void showEvent(QShowEvent* event) override;
@@ -164,6 +166,7 @@ private:
                           LogLineKind kind = LogLineKind::Info);
     void stopFeatureRun(const std::string& featureId);
     void stopAllSessions();
+    void stopAllSessionsForProfileSwitch();
     void appendLog(const QString& message, LogLineKind kind = LogLineKind::Info);
     bool maybeSave(bool quiet = false);
     void loadProjectFromFile(const QString& path, bool quiet = false);
@@ -192,6 +195,8 @@ private:
     void syncProfileListSelection();
     bool switchToProfile(const QString& profileId, bool automatic = false);
     void saveActiveProfileSettings();
+    bool profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
+                              const ProgramSettings::ProfileSettings& b) const;
     void syncProfileToForegroundWindow();
     void updateWindowTitle();
     void syncWindowTitleDisplay();
@@ -315,6 +320,7 @@ private:
     QTimer* m_mouseLockSyncTimer = nullptr;
     QTimer* m_targetWindowCenterPinTimer = nullptr;
     QTimer* m_profileAutoSwitchTimer = nullptr;
+    void* m_profileForegroundEventHook = nullptr;
     UpdateChecker* m_updateChecker = nullptr;
     bool m_initialUpdateCheckDone = false;
     bool m_lastUpdateCheckWasSilent = false;
@@ -331,10 +337,12 @@ private:
     bool m_modified = false;
     bool m_refreshingProfileList = false;
     bool m_switchingProfile = false;
+    bool m_deferTargetDetailsProfileRefresh = false;
+    bool m_lastPersistedProfileSettingsValid = false;
+    QString m_lastPersistedProfileSettingsProfileId;
+    ProgramSettings::ProfileSettings m_lastPersistedProfileSettings{};
     bool m_restoringGlobalUiHistory = false;
     std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;
-    QString m_pendingProfileSwitchId;
-    int m_pendingProfileSwitchPolls = 0;
 };
