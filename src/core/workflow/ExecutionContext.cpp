@@ -62,7 +62,7 @@ bool ExecutionContext::pointerVisualFeedback() const {
 }
 
 void ExecutionContext::reportPointerFeedback(int clientX, int clientY) const {
-    if (!m_pointerVisualFeedback || !m_pointerFeedbackCallback) {
+    if (m_suppressRepeatUi || !m_pointerVisualFeedback || !m_pointerFeedbackCallback) {
         return;
     }
     m_pointerFeedbackCallback(clientX, clientY);
@@ -428,6 +428,50 @@ void ExecutionContext::clearCorrectedRois() {
     m_correctedRoisByBlockIndex.clear();
 }
 
+bool ExecutionContext::shouldRememberPositionsForBlock(bool blockEnabled) const {
+    return m_roiCorrectionSessionEligible && blockEnabled;
+}
+
+bool ExecutionContext::hasRememberedPositions(int blockIndex) const {
+    const auto it = m_rememberedPositionsByBlockIndex.find(blockIndex);
+    return it != m_rememberedPositionsByBlockIndex.end() && !it->second.hits.empty();
+}
+
+int ExecutionContext::rememberedPositionCount(int blockIndex) const {
+    const auto it = m_rememberedPositionsByBlockIndex.find(blockIndex);
+    if (it == m_rememberedPositionsByBlockIndex.end()) {
+        return 0;
+    }
+    return static_cast<int>(it->second.hits.size());
+}
+
+void ExecutionContext::setRememberedPositions(int blockIndex,
+                                            std::vector<RememberedImageFindHit> hits) {
+    if (blockIndex < 0) {
+        return;
+    }
+    RememberedImageFindPositions positions;
+    positions.hits = std::move(hits);
+    m_rememberedPositionsByBlockIndex[blockIndex] = std::move(positions);
+}
+
+std::optional<ExecutionContext::RememberedImageFindHit>
+ExecutionContext::rememberedPositionAt(int blockIndex, int zeroBasedIndex) const {
+    const auto it = m_rememberedPositionsByBlockIndex.find(blockIndex);
+    if (it == m_rememberedPositionsByBlockIndex.end()) {
+        return std::nullopt;
+    }
+    const RememberedImageFindPositions& positions = it->second;
+    if (zeroBasedIndex < 0 || zeroBasedIndex >= static_cast<int>(positions.hits.size())) {
+        return std::nullopt;
+    }
+    return positions.hits[static_cast<size_t>(zeroBasedIndex)];
+}
+
+void ExecutionContext::clearRememberedPositions() {
+    m_rememberedPositionsByBlockIndex.clear();
+}
+
 void ExecutionContext::setTargetWindowTitle(const std::wstring& title) {
     m_targetWindowTitle = title;
     ScreenCapture::setTargetWindowTitle(title);
@@ -480,6 +524,7 @@ void ExecutionContext::beginRunKeyboardSessionIfNeeded() {
 
 void ExecutionContext::noteSyntheticKeyDown(int virtualKey) {
     m_pipbongHeldVirtualKeys.insert(virtualKey);
+    m_pipbongEverInjectedVirtualKeys.insert(virtualKey);
 }
 
 void ExecutionContext::noteSyntheticKeyUp(int virtualKey) {
@@ -490,12 +535,23 @@ bool ExecutionContext::hasPipbongSyntheticKeyDown(int virtualKey) const {
     return m_pipbongHeldVirtualKeys.find(virtualKey) != m_pipbongHeldVirtualKeys.end();
 }
 
+bool ExecutionContext::pipbongEverInjectedVirtualKey(int virtualKey) const {
+    return m_pipbongEverInjectedVirtualKeys.find(virtualKey) != m_pipbongEverInjectedVirtualKeys.end();
+}
+
 void ExecutionContext::noteSyntheticMouseDown(MouseButton button) {
-    m_pipbongHeldMouseButtons.insert(static_cast<int>(button));
+    const int raw = static_cast<int>(button);
+    m_pipbongHeldMouseButtons.insert(raw);
+    m_pipbongEverInjectedMouseButtons.insert(raw);
 }
 
 void ExecutionContext::noteSyntheticMouseUp(MouseButton button) {
     m_pipbongHeldMouseButtons.erase(static_cast<int>(button));
+}
+
+bool ExecutionContext::pipbongEverInjectedMouseButton(MouseButton button) const {
+    return m_pipbongEverInjectedMouseButtons.find(static_cast<int>(button))
+           != m_pipbongEverInjectedMouseButtons.end();
 }
 
 void ExecutionContext::restoreRunHeldInput() {
@@ -515,6 +571,8 @@ void ExecutionContext::endRunInputSession() {
     m_runKeyboardSessionActive = false;
     m_pipbongHeldVirtualKeys.clear();
     m_pipbongHeldMouseButtons.clear();
+    m_pipbongEverInjectedVirtualKeys.clear();
+    m_pipbongEverInjectedMouseButtons.clear();
 }
 
 void ExecutionContext::endRunKeyboardSession() {

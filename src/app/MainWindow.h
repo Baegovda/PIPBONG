@@ -274,6 +274,8 @@ private:
     void clearStatusMessage();
     void refreshTitleBarStatus();
     void logLoopCompletion(FeatureRunSession& session, bool success, const QString& message);
+    void accumulateLoopCompletionStats(FeatureRunSession& session, bool success);
+    void publishLoopCompletionUi(FeatureRunSession& session, bool success, const QString& message);
     void     syncLoopTimingToWorkflowEditor(const FeatureRunSession* session);
 
     void onUserInputInterrupt(const std::string& featureId);

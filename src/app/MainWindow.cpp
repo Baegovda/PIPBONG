@@ -3094,7 +3094,7 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
     session.sessionContext->setRunLoopNumber(session.sessionIteration + 1);
 }
 
-void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, const QString& message) {
+void MainWindow::accumulateLoopCompletionStats(FeatureRunSession& session, bool success) {
     const qint64 elapsedMs = session.loopTimer.isValid() ? session.loopTimer.elapsed() : 0;
     session.loopTimer.invalidate();
 
@@ -3107,10 +3107,20 @@ void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, con
     session.lastLoopAverageMs =
         session.completedLoopCount > 0 ? session.totalLoopElapsedMs / session.completedLoopCount : 0;
     session.lastLoopSuccess = success;
+}
+
+void MainWindow::publishLoopCompletionUi(FeatureRunSession& session,
+                                         bool success,
+                                         const QString& message) {
+    const bool suppressRepeatUi =
+        session.sessionContext && session.sessionContext->suppressRepeatUi();
+    if (suppressRepeatUi && session.completedLoopCount % 10 != 0) {
+        return;
+    }
 
     QString line = tr("%1회째 루프 · %2ms · %3")
-                       .arg(loopNumber)
-                       .arg(elapsedMs)
+                       .arg(session.lastLoopNumber)
+                       .arg(session.lastLoopElapsedMs)
                        .arg(success ? tr("성공") : tr("실패"));
     if (!success && !message.isEmpty()) {
         line += QStringLiteral(" · ") + message;
@@ -3119,6 +3129,11 @@ void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, con
     if (isDisplayedRunningFeature(&session)) {
         syncLoopTimingToWorkflowEditor(&session);
     }
+}
+
+void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, const QString& message) {
+    accumulateLoopCompletionStats(session, success);
+    publishLoopCompletionUi(session, success, message);
 }
 
 void MainWindow::syncLoopTimingToWorkflowEditor(const FeatureRunSession* session) {
@@ -4019,7 +4034,9 @@ void MainWindow::onEngineStarted() {
         return;
     }
     session->loopTimer.start();
-    updateRunUiState();
+    if (!(session->sessionContext && session->sessionContext->suppressRepeatUi())) {
+        updateRunUiState();
+    }
 }
 
 void MainWindow::onEngineFinished(bool success, const QString& message) {
@@ -4035,7 +4052,7 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
         return;
     }
 
-    logLoopCompletion(*session, success, message);
+    accumulateLoopCompletionStats(*session, success);
 
     if (success && feature && session->runningMode == FeatureRunMode::RepeatCount && session->repeatSession) {
         --session->repeatRemaining;
@@ -4052,6 +4069,7 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
         } else if (session->sessionContext && session->sessionContext->detectionFailedThisRun()) {
             ++session->consecutiveDetectionFailLoops;
             if (session->consecutiveDetectionFailLoops >= feature->infiniteExitAfterConsecutiveMisses()) {
+                publishLoopCompletionUi(*session, success, message);
                 finishRunSession(session->featureId,
                                  false,
                                  tr("연속 감지 실패 %1회 — 실행 종료")
@@ -4059,6 +4077,7 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
                 return;
             }
         } else if (!success) {
+            publishLoopCompletionUi(*session, success, message);
             finishRunSession(session->featureId, success, message);
             return;
         }
@@ -4068,13 +4087,31 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
         || session->runningMode == FeatureRunMode::RepeatInfinite
         || session->runningMode == FeatureRunMode::RepeatCount) {
         if (session->runningMode == FeatureRunMode::RepeatCount && !success) {
+            publishLoopCompletionUi(*session, success, message);
             finishRunSession(session->featureId, success, message);
             return;
         }
+
+        const bool fastRepeat =
+            session->sessionContext && session->sessionContext->suppressRepeatUi();
+        const int delayMs = feature ? feature->resolvedLoopIntervalMs() : 0;
+        if (fastRepeat && delayMs <= 0) {
+            if (!shouldContinueRunSession(*session, feature)) {
+                publishLoopCompletionUi(*session, success, message);
+                finishRunSession(session->featureId, success, message);
+                return;
+            }
+            continueRepeatSession(*session, feature, success, message);
+            publishLoopCompletionUi(*session, success, message);
+            return;
+        }
+
+        publishLoopCompletionUi(*session, success, message);
         scheduleRepeatIteration(*session, feature, success, message);
         return;
     }
 
+    publishLoopCompletionUi(*session, success, message);
     finishRunSession(session->featureId, success, message);
 }
 
@@ -4128,6 +4165,9 @@ void MainWindow::onBlockMatchResult(int index,
                                     int clientX,
                                     int clientY) {
     FeatureRunSession* session = sessionForEngine(sender());
+    if (session && session->sessionContext && session->sessionContext->suppressRepeatUi()) {
+        return;
+    }
     if (hasClientPoint && session && session->pointerVisualFeedback) {
         WorkflowMatchFeedbackOverlay::pulseAtClientPoint(
             clientX,
@@ -4144,6 +4184,9 @@ void MainWindow::onBlockMatchResult(int index,
 void MainWindow::onPointerFeedbackAtClientPoint(int clientX, int clientY) {
     FeatureRunSession* session = sessionForEngine(sender());
     if (!session || !session->pointerVisualFeedback) {
+        return;
+    }
+    if (session->sessionContext && session->sessionContext->suppressRepeatUi()) {
         return;
     }
     WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, RunPointerFeedbackKind::Click);

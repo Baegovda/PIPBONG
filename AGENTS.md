@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.100` (from `project(PIPBONG VERSION 0.8.100)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.101` (from `project(PIPBONG VERSION 0.8.101)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1068,6 +1068,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.101] - 2026-07-14
+
+### Fixed
+
+- Hold / **무한 반복** fast repeat mouse stutter regression (v0.8.100): restore throttled loop log and workflow title timing during `suppressRepeatUi`; start the next zero-delay loop iteration before UI publish work; skip pointer-feedback overlay and redundant `updateRunUiState` on repeat iterations (`MainWindow`, `ExecutionContext`).
 
 ## [0.8.100] - 2026-07-14
 
