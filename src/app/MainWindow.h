@@ -12,6 +12,7 @@
 #include <QMainWindow>
 #include <QPointer>
 #include <QSet>
+#include <QMutex>
 #include <map>
 #include <memory>
 #include <string>
@@ -22,6 +23,16 @@
 #endif
 
 class Feature;
+
+struct WorkerFastRepeatUiCoalesce {
+    QMutex mutex;
+    bool flushScheduled = false;
+    int pendingIterations = 0;
+    qint64 pendingTotalElapsedMs = 0;
+    bool pendingLastSuccess = false;
+    qint64 pendingLastElapsedMs = 0;
+    QString pendingLastMessage;
+};
 
 class QPixmap;
 class QIcon;
@@ -286,10 +297,8 @@ private:
                                          bool success,
                                          std::int64_t elapsedOverrideMs = -1);
     void configureWorkerFastRepeat(FeatureRunSession& session, Feature* feature);
-    void onWorkerFastRepeatIteration(const std::string& featureId,
-                                     bool success,
-                                     std::int64_t elapsedMs,
-                                     const QString& message);
+    void flushWorkerFastRepeatUi(const std::string& featureId);
+    WorkerFastRepeatUiCoalesce& fastRepeatUiCoalesceFor(const std::string& featureId);
     void publishLoopCompletionUi(FeatureRunSession& session, bool success, const QString& message);
     void     syncLoopTimingToWorkflowEditor(const FeatureRunSession* session);
 
@@ -347,6 +356,7 @@ private:
     QString m_persistentStatusMessage;
     QString m_transientStatusMessage;
     std::map<std::string, FeatureRunSession> m_runSessions;
+    std::map<std::string, std::unique_ptr<WorkerFastRepeatUiCoalesce>> m_fastRepeatUiCoalesce;
     QPointer<CalculatorDialog> m_calculatorDialog;
     QPointer<SpikeWatchDialog> m_spikeWatchDialog;
     QSystemTrayIcon* m_trayIcon = nullptr;

@@ -3251,24 +3251,79 @@ void MainWindow::accumulateLoopCompletionStats(FeatureRunSession& session,
     session.lastLoopSuccess = success;
 }
 
-void MainWindow::onWorkerFastRepeatIteration(const std::string& featureId,
-                                             bool success,
-                                             std::int64_t elapsedMs,
-                                             const QString& message) {
+void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
     FeatureRunSession* session = sessionFor(featureId);
     if (!session) {
         return;
     }
-    accumulateLoopCompletionStats(*session, success, elapsedMs);
-    publishLoopCompletionUi(*session, success, message);
-    ++session->sessionIteration;
+
+    auto coalesceIt = m_fastRepeatUiCoalesce.find(featureId);
+    if (coalesceIt == m_fastRepeatUiCoalesce.end() || !coalesceIt->second) {
+        return;
+    }
+    WorkerFastRepeatUiCoalesce& coalesce = *coalesceIt->second;
+
+    int iterations = 0;
+    qint64 totalElapsedMs = 0;
+    bool lastSuccess = false;
+    qint64 lastElapsedMs = 0;
+    QString lastMessage;
+    {
+        QMutexLocker lock(&coalesce.mutex);
+        coalesce.flushScheduled = false;
+        iterations = coalesce.pendingIterations;
+        if (iterations <= 0) {
+            return;
+        }
+        totalElapsedMs = coalesce.pendingTotalElapsedMs;
+        lastSuccess = coalesce.pendingLastSuccess;
+        lastElapsedMs = coalesce.pendingLastElapsedMs;
+        lastMessage = coalesce.pendingLastMessage;
+        coalesce.pendingIterations = 0;
+        coalesce.pendingTotalElapsedMs = 0;
+    }
+
+    session->totalLoopElapsedMs += totalElapsedMs;
+    session->completedLoopCount += iterations;
+    session->sessionIteration += iterations;
+    session->hasLastLoopTiming = true;
+    session->lastLoopNumber = session->sessionIteration;
+    session->lastLoopElapsedMs = lastElapsedMs;
+    session->lastLoopAverageMs =
+        session->completedLoopCount > 0
+            ? session->totalLoopElapsedMs / session->completedLoopCount
+            : 0;
+    session->lastLoopSuccess = lastSuccess;
+    session->loopsSinceLastLogPublish += iterations;
+
     if (session->sessionContext) {
         session->sessionContext->setRunLoopNumber(session->sessionIteration + 1);
     }
+
+    publishLoopCompletionUi(*session, lastSuccess, lastMessage);
+
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
     if (feature) {
         syncEarlyLoopMouseLock(*session);
     }
+
+    {
+        QMutexLocker lock(&coalesce.mutex);
+        if (coalesce.pendingIterations > 0 && !coalesce.flushScheduled) {
+            coalesce.flushScheduled = true;
+            QTimer::singleShot(0, this, [this, featureId]() {
+                flushWorkerFastRepeatUi(featureId);
+            });
+        }
+    }
+}
+
+WorkerFastRepeatUiCoalesce& MainWindow::fastRepeatUiCoalesceFor(const std::string& featureId) {
+    auto& slot = m_fastRepeatUiCoalesce[featureId];
+    if (!slot) {
+        slot = std::make_unique<WorkerFastRepeatUiCoalesce>();
+    }
+    return *slot;
 }
 
 void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* feature) {
@@ -3293,10 +3348,30 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
     callbacks.delayMs = [featurePtr]() { return featurePtr->resolvedLoopIntervalMs(); };
     callbacks.onIterationComplete =
         [this, featureId](bool success, std::int64_t elapsedMs, const std::string& message) {
+            FeatureRunSession* active = sessionFor(featureId);
+            if (!active) {
+                return;
+            }
+            WorkerFastRepeatUiCoalesce& coalesce = fastRepeatUiCoalesceFor(featureId);
             const QString qMessage = QString::fromStdString(message);
-            QTimer::singleShot(0, this, [this, featureId, success, elapsedMs, qMessage]() {
-                onWorkerFastRepeatIteration(featureId, success, elapsedMs, qMessage);
-            });
+            bool scheduleFlush = false;
+            {
+                QMutexLocker lock(&coalesce.mutex);
+                ++coalesce.pendingIterations;
+                coalesce.pendingTotalElapsedMs += elapsedMs;
+                coalesce.pendingLastSuccess = success;
+                coalesce.pendingLastElapsedMs = elapsedMs;
+                coalesce.pendingLastMessage = qMessage;
+                if (!coalesce.flushScheduled) {
+                    coalesce.flushScheduled = true;
+                    scheduleFlush = true;
+                }
+            }
+            if (scheduleFlush) {
+                QTimer::singleShot(0, this, [this, featureId]() {
+                    flushWorkerFastRepeatUi(featureId);
+                });
+            }
         };
     callbacks.shouldContinue = [this, featureId, featurePtr, hotkeyMgr](bool success,
                                                                          bool detectionFailed) {
@@ -3352,10 +3427,20 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
 void MainWindow::publishLoopCompletionUi(FeatureRunSession& session,
                                          bool success,
                                          const QString& message) {
-    const bool suppressRepeatUi =
+    const bool fastRepeat =
         session.sessionContext && session.sessionContext->suppressRepeatUi();
-    if (suppressRepeatUi && session.completedLoopCount % 10 != 0) {
-        return;
+
+    if (isDisplayedRunningFeature(&session)) {
+        syncLoopTimingToWorkflowEditor(&session);
+    }
+
+    if (fastRepeat) {
+        constexpr int kMinLogIntervalMs = 500;
+        if (session.loopLogPublishTimer.isValid()
+            && session.loopLogPublishTimer.elapsed() < kMinLogIntervalMs) {
+            return;
+        }
+        session.loopLogPublishTimer.restart();
     }
 
     QString line = tr("%1회째 루프 · %2ms · %3")
@@ -3365,10 +3450,12 @@ void MainWindow::publishLoopCompletionUi(FeatureRunSession& session,
     if (!success && !message.isEmpty()) {
         line += QStringLiteral(" · ") + message;
     }
-    appendSessionLog(session, line, success ? LogLineKind::Success : LogLineKind::Warning);
-    if (isDisplayedRunningFeature(&session)) {
-        syncLoopTimingToWorkflowEditor(&session);
+    if (fastRepeat && session.loopsSinceLastLogPublish > 1) {
+        line += tr(" (+%1회)").arg(session.loopsSinceLastLogPublish - 1);
     }
+    session.loopsSinceLastLogPublish = 0;
+
+    appendSessionLog(session, line, success ? LogLineKind::Success : LogLineKind::Warning);
 }
 
 void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, const QString& message) {
@@ -3426,6 +3513,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         session.earlyLoopMouseLockEngaged = false;
         session.earlyLoopMouseLockReleased = false;
         session.earlyLoopMouseLockFailureCount = 0;
+        session.loopLogPublishTimer.invalidate();
+        session.loopsSinceLastLogPublish = 0;
+        m_fastRepeatUiCoalesce.erase(session.featureId);
         captureRunStartCursorPosition(session);
         captureFeatureMouseLockPosition(session);
         if (session.lockMouseDuringFirstLoopCount > 0) {
@@ -3880,6 +3970,7 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
     }
 
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
+    m_fastRepeatUiCoalesce.erase(featureId);
     m_runSessions.erase(featureId);
     reconcileMouseLocksFromRunningSessions();
     if (!hasAnyRunningSession()) {

@@ -6,6 +6,7 @@
 #include "ui/BlockListWidget.h"
 
 #include <QElapsedTimer>
+
 #include <memory>
 #include <string>
 
@@ -73,4 +74,6 @@ struct FeatureRunSession {
     int triggerPreemptCursorScreenX = 0;
     int triggerPreemptCursorScreenY = 0;
     bool triggerReleasedOwnMouseLockForPreempt = false;
+    QElapsedTimer loopLogPublishTimer;
+    int loopsSinceLastLogPublish = 0;
 };

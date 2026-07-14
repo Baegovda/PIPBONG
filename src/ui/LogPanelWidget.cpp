@@ -138,6 +138,9 @@ QString LogPanelWidget::colorForKind(LogLineKind kind) const {
 }
 
 void LogPanelWidget::appendHtml(const QString& html) {
+    while (m_pendingHtml.size() >= m_maxPendingLines) {
+        m_pendingHtml.removeFirst();
+    }
     m_pendingHtml.append(html);
     if (!m_flushTimer->isActive()) {
         m_flushTimer->start();

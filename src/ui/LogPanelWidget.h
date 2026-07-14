@@ -34,7 +34,8 @@ private:
     QToolButton* m_clearButton = nullptr;
     QTimer* m_flushTimer = nullptr;
     QStringList m_pendingHtml;
-    int m_maxLines = 2000;
+    int m_maxLines = 1000;
+    int m_maxPendingLines = 48;
 };
 
 LogLineKind logKindForWorkflowMessage(const QString& message);

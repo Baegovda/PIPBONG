@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.107` (from `project(PIPBONG VERSION 0.8.107)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.108` (from `project(PIPBONG VERSION 0.8.108)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1089,6 +1089,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.108] - 2026-07-15
+
+### Fixed
+
+- Hold / infinite-repeat fast loops no longer freeze the UI when failures repeat at 0 ms: worker loop UI updates coalesce on the main thread (one pending flush instead of per-iteration `QTimer::singleShot`), loop log lines throttle to ~500 ms with `+N` batch suffix, and `LogPanelWidget` caps pending HTML batches (48) and retained lines (1000) (`MainWindow`, `FeatureRunSession`, `LogPanelWidget`).
 
 ## [0.8.107] - 2026-07-15
 
