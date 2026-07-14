@@ -11,6 +11,7 @@
 #include "ui/editors/FeatureEditDialog.h"
 #include "ui/editors/FeatureEditPrefs.h"
 #include "ui/UiThemeColors.h"
+#include "app/FeatureHotkeyGate.h"
 #include <QApplication>
 #include <QCursor>
 #include <QHBoxLayout>
@@ -875,6 +876,7 @@ void FeatureListPanel::setupUi() {
         });
         connect(delegate, &QAbstractItemDelegate::closeEditor, this, [this](QWidget*, QAbstractItemDelegate::EndEditHint) {
             m_inlineRenameRow = -1;
+            m_renameHotkeyGate.reset();
         });
     }
     m_list->viewport()->installEventFilter(this);
@@ -1862,6 +1864,7 @@ void FeatureListPanel::onInlineRenameRequested() {
         return;
     }
     m_inlineRenameRow = m_list->row(item);
+    m_renameHotkeyGate = std::make_unique<FeatureHotkeyGateScope>();
     m_list->editItem(item);
 }
 

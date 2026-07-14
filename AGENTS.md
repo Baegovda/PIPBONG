@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.113` (from `project(PIPBONG VERSION 0.8.113)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.114` (from `project(PIPBONG VERSION 0.8.114)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1089,6 +1089,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.114] - 2026-07-15
+
+### Fixed
+
+- Feature hotkeys are blocked while inline F2 rename is active in the feature list: `FeatureHotkeyGateScope` held from edit start until editor close (`FeatureListPanel`).
 
 ## [0.8.113] - 2026-07-15
 

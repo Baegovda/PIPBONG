@@ -17,6 +17,7 @@ class Project;
 class Feature;
 class FeatureListWidget;
 class FeatureLibraryListWidget;
+class FeatureHotkeyGateScope;
 
 
 
@@ -226,6 +227,8 @@ private:
     bool m_editControlsEnabled = true;
 
     int m_inlineRenameRow = -1;
+
+    std::unique_ptr<FeatureHotkeyGateScope> m_renameHotkeyGate;
 
     bool m_restoringColumnLayout = false;
 
