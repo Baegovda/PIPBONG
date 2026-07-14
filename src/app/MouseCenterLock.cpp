@@ -194,6 +194,19 @@ bool MouseCenterLock::engageAtCurrentPosition() {
 #endif
 }
 
+void MouseCenterLock::updateFixedLockPoint(int screenX, int screenY) {
+#ifdef _WIN32
+    if (g_refCount <= 0 || g_anchor != LockAnchor::FixedScreenPoint) {
+        return;
+    }
+    POINT point{screenX, screenY};
+    applyPointClip(point, true);
+#else
+    (void)screenX;
+    (void)screenY;
+#endif
+}
+
 void MouseCenterLock::release() {
 #ifdef _WIN32
     if (g_refCount <= 0) {

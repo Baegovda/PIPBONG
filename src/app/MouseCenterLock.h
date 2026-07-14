@@ -7,6 +7,8 @@ public:
     static void engageAtTargetWindowOffset(int offsetX, int offsetY);
     static void engageAt(int screenX, int screenY);
     static bool engageAtCurrentPosition();
+    /// Updates the clip point when an early-loop lock is already active (FixedScreenPoint anchor only).
+    static void updateFixedLockPoint(int screenX, int screenY);
     static void release();
     static void releaseAll();
 

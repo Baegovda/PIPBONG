@@ -87,6 +87,9 @@ std::unique_ptr<Feature> Feature::clone() const {
     copy->m_restoreMousePositionOnEnd = m_restoreMousePositionOnEnd;
     copy->m_lockMouseToScreenCenterDuringRun = m_lockMouseToScreenCenterDuringRun;
     copy->m_lockMouseToCurrentPositionDuringRun = m_lockMouseToCurrentPositionDuringRun;
+    copy->m_lockMouseDuringFirstLoopCount = m_lockMouseDuringFirstLoopCount;
+    copy->m_unlockMouseOnBlockFailureBlock = m_unlockMouseOnBlockFailureBlock;
+    copy->m_unlockMouseOnBlockFailureCount = m_unlockMouseOnBlockFailureCount;
     copy->m_roiCorrection = m_roiCorrection;
     copy->m_roiCorrectionExpandPercent = m_roiCorrectionExpandPercent;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;
@@ -114,6 +117,9 @@ std::unique_ptr<Feature> Feature::duplicateAsNewInstance(bool preserveHotkey) co
     copy->m_restoreMousePositionOnEnd = m_restoreMousePositionOnEnd;
     copy->m_lockMouseToScreenCenterDuringRun = m_lockMouseToScreenCenterDuringRun;
     copy->m_lockMouseToCurrentPositionDuringRun = m_lockMouseToCurrentPositionDuringRun;
+    copy->m_lockMouseDuringFirstLoopCount = m_lockMouseDuringFirstLoopCount;
+    copy->m_unlockMouseOnBlockFailureBlock = m_unlockMouseOnBlockFailureBlock;
+    copy->m_unlockMouseOnBlockFailureCount = m_unlockMouseOnBlockFailureCount;
     copy->m_roiCorrection = m_roiCorrection;
     copy->m_roiCorrectionExpandPercent = m_roiCorrectionExpandPercent;
     copy->m_editFirstTemplateRoiOnStart = m_editFirstTemplateRoiOnStart;

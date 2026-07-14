@@ -35,6 +35,9 @@ public:
                       UserInputInterruptMode userInputInterruptMode,
                       bool pointerVisualFeedback,
                       bool restoreMousePositionOnEnd,
+                      int lockMouseDuringFirstLoopCount,
+                      int unlockMouseOnBlockFailureBlock,
+                      int unlockMouseOnBlockFailureCount,
                       bool roiCorrection,
                       int roiCorrectionExpandPercent,
                       bool editFirstTemplateRoiOnStart,
@@ -57,6 +60,9 @@ public:
     UserInputInterruptMode userInputInterruptMode() const;
     bool pointerVisualFeedback() const;
     bool restoreMousePositionOnEnd() const;
+    int lockMouseDuringFirstLoopCount() const;
+    int unlockMouseOnBlockFailureBlock() const;
+    int unlockMouseOnBlockFailureCount() const;
     bool roiCorrection() const;
     int roiCorrectionExpandPercent() const;
     bool editFirstTemplateRoiOnStart() const;
@@ -106,6 +112,11 @@ private:
     QComboBox* m_userInputInterruptCombo = nullptr;
     QCheckBox* m_pointerVisualFeedbackCheck = nullptr;
     QCheckBox* m_restoreMousePositionOnEndCheck = nullptr;
+    QCheckBox* m_earlyLoopMouseLockCheck = nullptr;
+    QWidget* m_earlyLoopMouseLockDetailsRow = nullptr;
+    DragAdjustSpinBox* m_earlyLoopMouseLockLoopSpin = nullptr;
+    DragAdjustSpinBox* m_earlyLoopMouseUnlockBlockSpin = nullptr;
+    DragAdjustSpinBox* m_earlyLoopMouseUnlockFailureSpin = nullptr;
     QCheckBox* m_roiCorrectionCheck = nullptr;
     QWidget* m_roiCorrectionExpandRow = nullptr;
     DragAdjustSpinBox* m_roiCorrectionExpandSpin = nullptr;

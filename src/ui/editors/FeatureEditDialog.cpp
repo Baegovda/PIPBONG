@@ -68,6 +68,9 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      UserInputInterruptMode userInputInterruptMode,
                                      bool pointerVisualFeedback,
                                      bool restoreMousePositionOnEnd,
+                                     int lockMouseDuringFirstLoopCount,
+                                     int unlockMouseOnBlockFailureBlock,
+                                     int unlockMouseOnBlockFailureCount,
                                      bool roiCorrection,
                                      int roiCorrectionExpandPercent,
                                      bool editFirstTemplateRoiOnStart,
@@ -113,6 +116,14 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
 
     m_pointerVisualFeedbackCheck->setChecked(pointerVisualFeedback);
     m_restoreMousePositionOnEndCheck->setChecked(restoreMousePositionOnEnd);
+    if (lockMouseDuringFirstLoopCount > 0) {
+        m_earlyLoopMouseLockCheck->setChecked(true);
+        m_earlyLoopMouseLockLoopSpin->setValue(lockMouseDuringFirstLoopCount);
+        m_earlyLoopMouseUnlockBlockSpin->setValue(
+            unlockMouseOnBlockFailureBlock > 0 ? unlockMouseOnBlockFailureBlock : 1);
+        m_earlyLoopMouseUnlockFailureSpin->setValue(
+            unlockMouseOnBlockFailureCount > 0 ? unlockMouseOnBlockFailureCount : 1);
+    }
     m_roiCorrectionCheck->setChecked(roiCorrection);
     m_roiCorrectionExpandSpin->setValue(snapRoiCorrectionExpandPercent(roiCorrectionExpandPercent));
     m_editFirstTemplateRoiOnStartCheck->setChecked(editFirstTemplateRoiOnStart);
@@ -305,6 +316,50 @@ void FeatureEditDialog::setupUi() {
         tr("기능 실행이 끝나면 워크플로가 시작될 때의 마우스 커서 위치로 되돌립니다."));
     form->addRow(QString(), m_restoreMousePositionOnEndCheck);
 
+    m_earlyLoopMouseLockCheck = new QCheckBox(tr("초기 루프 마우스 잠금"), this);
+    m_earlyLoopMouseLockCheck->setToolTip(
+        tr("처음 N회 루프 동안 마우스를 직전 템플릿 매칭 위치에 고정해 커서가 어긋나지 않게 합니다. "
+           "매칭 성공마다 잠금 위치가 갱신됩니다."));
+    form->addRow(QString(), m_earlyLoopMouseLockCheck);
+
+    m_earlyLoopMouseLockDetailsRow = new QWidget(this);
+    auto* earlyLockLayout = new QHBoxLayout(m_earlyLoopMouseLockDetailsRow);
+    earlyLockLayout->setContentsMargins(0, 0, 0, 0);
+    earlyLockLayout->setSpacing(8);
+
+    m_earlyLoopMouseLockLoopSpin = new DragAdjustSpinBox(m_earlyLoopMouseLockDetailsRow);
+    m_earlyLoopMouseLockLoopSpin->setRange(1, 9999);
+    m_earlyLoopMouseLockLoopSpin->setValue(3);
+    m_earlyLoopMouseLockLoopSpin->setSuffix(tr(" 루프"));
+    m_earlyLoopMouseLockLoopSpin->setToolTip(tr("마우스를 잠글 초기 루프 횟수입니다."));
+
+    m_earlyLoopMouseUnlockBlockSpin = new DragAdjustSpinBox(m_earlyLoopMouseLockDetailsRow);
+    m_earlyLoopMouseUnlockBlockSpin->setRange(1, 9999);
+    m_earlyLoopMouseUnlockBlockSpin->setValue(1);
+    m_earlyLoopMouseUnlockBlockSpin->setToolTip(
+        tr("워크플로 목록 # 열 번호. 이 블록이 아래 횟수만큼 실패하면 잠금을 해제합니다."));
+
+    m_earlyLoopMouseUnlockFailureSpin = new DragAdjustSpinBox(m_earlyLoopMouseLockDetailsRow);
+    m_earlyLoopMouseUnlockFailureSpin->setRange(1, 9999);
+    m_earlyLoopMouseUnlockFailureSpin->setValue(1);
+    m_earlyLoopMouseUnlockFailureSpin->setSuffix(tr(" 회"));
+    m_earlyLoopMouseUnlockFailureSpin->setToolTip(tr("지정 블록 실패 누적 횟수가 이 값에 도달하면 잠금을 해제합니다."));
+
+    earlyLockLayout->addWidget(new QLabel(tr("루프"), m_earlyLoopMouseLockDetailsRow));
+    earlyLockLayout->addWidget(m_earlyLoopMouseLockLoopSpin);
+    earlyLockLayout->addSpacing(8);
+    earlyLockLayout->addWidget(new QLabel(tr("블록 #"), m_earlyLoopMouseLockDetailsRow));
+    earlyLockLayout->addWidget(m_earlyLoopMouseUnlockBlockSpin);
+    earlyLockLayout->addSpacing(8);
+    earlyLockLayout->addWidget(new QLabel(tr("실패"), m_earlyLoopMouseLockDetailsRow));
+    earlyLockLayout->addWidget(m_earlyLoopMouseUnlockFailureSpin);
+    earlyLockLayout->addStretch();
+    form->addRow(QString(), m_earlyLoopMouseLockDetailsRow);
+
+    connect(m_earlyLoopMouseLockCheck, &QCheckBox::toggled, this, [this](bool) {
+        updateModeDependentUi();
+    });
+
     m_roiCorrectionCheck = new QCheckBox(tr("전체 ROI 보정"), this);
     m_roiCorrectionCheck->setToolTip(
         tr("무한 반복·N회 반복(2회 이상) 실행 시 모든 템플릿 매칭 블록에 ROI 보정을 적용합니다. "
@@ -452,6 +507,15 @@ void FeatureEditDialog::updateModeDependentUi() {
         m_roiCorrectionExpandRow->setVisible(roiCorrectionEligible);
     }
 
+    const bool earlyLockEligible = loopIntervalEligible;
+    if (m_earlyLoopMouseLockCheck) {
+        m_earlyLoopMouseLockCheck->setVisible(earlyLockEligible);
+    }
+    if (m_earlyLoopMouseLockDetailsRow) {
+        m_earlyLoopMouseLockDetailsRow->setVisible(
+            earlyLockEligible && m_earlyLoopMouseLockCheck && m_earlyLoopMouseLockCheck->isChecked());
+    }
+
     adjustSize();
 }
 
@@ -517,6 +581,15 @@ void FeatureEditDialog::tryAccept() {
     if (m_infiniteExitSpin) {
         m_infiniteExitSpin->interpretText();
     }
+    if (m_earlyLoopMouseLockLoopSpin) {
+        m_earlyLoopMouseLockLoopSpin->interpretText();
+    }
+    if (m_earlyLoopMouseUnlockBlockSpin) {
+        m_earlyLoopMouseUnlockBlockSpin->interpretText();
+    }
+    if (m_earlyLoopMouseUnlockFailureSpin) {
+        m_earlyLoopMouseUnlockFailureSpin->interpretText();
+    }
 
     if (m_loopIntervalMinSpin && m_loopIntervalMaxSpin
         && m_loopIntervalMaxSpin->value() < m_loopIntervalMinSpin->value()) {
@@ -560,7 +633,9 @@ bool FeatureEditDialog::isInteractiveWidget(const QWidget* widget) const {
             || widget == m_loopIntervalMaxSpin || widget == m_loopIntervalModeSwitch
             || widget == m_triggerCooldownSpin
             || widget == m_userInputInterruptCombo || widget == m_pointerVisualFeedbackCheck
-            || widget == m_restoreMousePositionOnEndCheck || widget == m_roiCorrectionCheck
+            || widget == m_restoreMousePositionOnEndCheck || widget == m_earlyLoopMouseLockCheck
+            || widget == m_earlyLoopMouseLockLoopSpin || widget == m_earlyLoopMouseUnlockBlockSpin
+            || widget == m_earlyLoopMouseUnlockFailureSpin || widget == m_roiCorrectionCheck
             || widget == m_editFirstTemplateRoiOnStartCheck
             || widget == m_hotkeyAllowExtraModifiersCheck) {
             return true;
@@ -618,6 +693,27 @@ bool FeatureEditDialog::pointerVisualFeedback() const {
 
 bool FeatureEditDialog::restoreMousePositionOnEnd() const {
     return m_restoreMousePositionOnEndCheck->isChecked();
+}
+
+int FeatureEditDialog::lockMouseDuringFirstLoopCount() const {
+    if (!m_earlyLoopMouseLockCheck || !m_earlyLoopMouseLockCheck->isChecked()) {
+        return 0;
+    }
+    return m_earlyLoopMouseLockLoopSpin ? m_earlyLoopMouseLockLoopSpin->value() : 0;
+}
+
+int FeatureEditDialog::unlockMouseOnBlockFailureBlock() const {
+    if (!m_earlyLoopMouseLockCheck || !m_earlyLoopMouseLockCheck->isChecked()) {
+        return 0;
+    }
+    return m_earlyLoopMouseUnlockBlockSpin ? m_earlyLoopMouseUnlockBlockSpin->value() : 0;
+}
+
+int FeatureEditDialog::unlockMouseOnBlockFailureCount() const {
+    if (!m_earlyLoopMouseLockCheck || !m_earlyLoopMouseLockCheck->isChecked()) {
+        return 1;
+    }
+    return m_earlyLoopMouseUnlockFailureSpin ? m_earlyLoopMouseUnlockFailureSpin->value() : 1;
 }
 
 bool FeatureEditDialog::roiCorrection() const {

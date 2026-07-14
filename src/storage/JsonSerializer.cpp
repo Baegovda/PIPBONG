@@ -54,6 +54,15 @@ nlohmann::json featureToJsonImpl(const Feature& feature) {
     if (feature.lockMouseToCurrentPositionDuringRun()) {
         json["lockMouseToCurrentPositionDuringRun"] = true;
     }
+    if (feature.lockMouseDuringFirstLoopCount() > 0) {
+        json["lockMouseDuringFirstLoopCount"] = feature.lockMouseDuringFirstLoopCount();
+        if (feature.unlockMouseOnBlockFailureBlock() > 0) {
+            json["unlockMouseOnBlockFailureBlock"] = feature.unlockMouseOnBlockFailureBlock();
+            if (feature.unlockMouseOnBlockFailureCount() != 1) {
+                json["unlockMouseOnBlockFailureCount"] = feature.unlockMouseOnBlockFailureCount();
+            }
+        }
+    }
     if (feature.roiCorrection()) {
         json["roiCorrection"] = true;
     }
@@ -98,6 +107,9 @@ void featureFromJsonImpl(const nlohmann::json& json, Feature& feature) {
     feature.setLockMouseToScreenCenterDuringRun(json.value("lockMouseToScreenCenterDuringRun", false));
     feature.setLockMouseToCurrentPositionDuringRun(
         json.value("lockMouseToCurrentPositionDuringRun", false));
+    feature.setLockMouseDuringFirstLoopCount(json.value("lockMouseDuringFirstLoopCount", 0));
+    feature.setUnlockMouseOnBlockFailureBlock(json.value("unlockMouseOnBlockFailureBlock", 0));
+    feature.setUnlockMouseOnBlockFailureCount(json.value("unlockMouseOnBlockFailureCount", 1));
     feature.setRoiCorrection(json.value("roiCorrection", false));
     feature.setRoiCorrectionExpandPercent(
         json.value("roiCorrectionExpandPercent", kDefaultRoiCorrectionExpandPercent));

@@ -1037,6 +1037,115 @@ void MainWindow::captureFeatureMouseLockPosition(FeatureRunSession& session) {
     session.hasMouseLockPosition = true;
 }
 
+bool MainWindow::isEarlyLoopMouseLockWindow(const FeatureRunSession& session) const {
+    if (session.lockMouseDuringFirstLoopCount <= 0 || session.earlyLoopMouseLockReleased) {
+        return false;
+    }
+    const int loopNumber = session.sessionContext ? session.sessionContext->runLoopNumber()
+                                                  : session.sessionIteration + 1;
+    return loopNumber <= session.lockMouseDuringFirstLoopCount;
+}
+
+bool MainWindow::engageEarlyLoopMouseLockAtBestPoint(FeatureRunSession& session) {
+#ifdef _WIN32
+    int screenX = 0;
+    int screenY = 0;
+    bool havePoint = false;
+
+    if (session.sessionContext && session.sessionContext->hasLastMatchScreenPoint()) {
+        const cv::Point matchPoint = session.sessionContext->lastMatchScreenPoint();
+        screenX = matchPoint.x;
+        screenY = matchPoint.y;
+        havePoint = true;
+    } else if (session.hasRunStartCursorPosition) {
+        screenX = session.runStartCursorScreenX;
+        screenY = session.runStartCursorScreenY;
+        havePoint = true;
+    } else if (InputSimulator::getCursorScreenPosition(screenX, screenY)) {
+        havePoint = true;
+    }
+
+    if (!havePoint) {
+        return false;
+    }
+
+    if (!session.earlyLoopMouseLockEngaged) {
+        MouseCenterLock::engageAt(screenX, screenY);
+        session.earlyLoopMouseLockEngaged = true;
+    } else {
+        MouseCenterLock::updateFixedLockPoint(screenX, screenY);
+    }
+    return true;
+#else
+    (void)session;
+    return false;
+#endif
+}
+
+void MainWindow::updateEarlyLoopMouseLockFromMatch(FeatureRunSession& session) {
+    if (!isEarlyLoopMouseLockWindow(session)) {
+        return;
+    }
+    engageEarlyLoopMouseLockAtBestPoint(session);
+}
+
+void MainWindow::releaseEarlyLoopMouseLockIfEngaged(FeatureRunSession& session) {
+#ifdef _WIN32
+    if (!session.earlyLoopMouseLockEngaged) {
+        return;
+    }
+    MouseCenterLock::release();
+    session.earlyLoopMouseLockEngaged = false;
+#else
+    (void)session;
+#endif
+}
+
+void MainWindow::syncEarlyLoopMouseLock(FeatureRunSession& session) {
+#ifdef _WIN32
+    if (isEarlyLoopMouseLockWindow(session)) {
+        engageEarlyLoopMouseLockAtBestPoint(session);
+        return;
+    }
+
+    releaseEarlyLoopMouseLockIfEngaged(session);
+    if (hasFeatureMouseLock(session) && !MouseCenterLock::isActive()) {
+        engageFeatureMouseLock(session);
+    }
+#else
+    (void)session;
+#endif
+}
+
+void MainWindow::handleEarlyLoopMouseLockBlockFailure(FeatureRunSession& session, int blockIndex) {
+    if (!isEarlyLoopMouseLockWindow(session) || session.unlockMouseOnBlockFailureBlock <= 0) {
+        return;
+    }
+
+    const int blockNumber = blockIndex + 1;
+    if (blockNumber != session.unlockMouseOnBlockFailureBlock) {
+        return;
+    }
+
+    ++session.earlyLoopMouseLockFailureCount;
+    if (session.earlyLoopMouseLockFailureCount < session.unlockMouseOnBlockFailureCount) {
+        return;
+    }
+
+    session.earlyLoopMouseLockReleased = true;
+    releaseEarlyLoopMouseLockIfEngaged(session);
+    if (shouldLogRunDetails(session)) {
+        appendSessionLog(session,
+                         tr("초기 루프 마우스 잠금 해제: 블록 %1 실패 %2회")
+                             .arg(blockNumber)
+                             .arg(session.earlyLoopMouseLockFailureCount),
+                         LogLineKind::Warning);
+    }
+    if (hasFeatureMouseLock(session)) {
+        engageFeatureMouseLock(session);
+    }
+}
+
 bool MainWindow::hasFeatureMouseLock(const FeatureRunSession& session) {
     return session.lockMouseToCurrentPositionDuringRun || session.lockMouseToScreenCenterDuringRun;
 }
@@ -1079,6 +1188,10 @@ void MainWindow::reconcileMouseLocksFromRunningSessions() {
             continue;
         }
         FeatureRunSession& mutableSession = m_runSessions.at(entry.first);
+        if (isEarlyLoopMouseLockWindow(mutableSession)) {
+            engageEarlyLoopMouseLockAtBestPoint(mutableSession);
+            continue;
+        }
         if (mutableSession.lockMouseToCurrentPositionDuringRun) {
             if (!mutableSession.hasMouseLockPosition) {
                 captureFeatureMouseLockPosition(mutableSession);
@@ -2942,6 +3055,9 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
     session.lockMouseToScreenCenterDuringRun = feature->lockMouseToScreenCenterDuringRun();
     session.lockMouseToCurrentPositionDuringRun = feature->lockMouseToCurrentPositionDuringRun();
+    session.lockMouseDuringFirstLoopCount = feature->lockMouseDuringFirstLoopCount();
+    session.unlockMouseOnBlockFailureBlock = feature->unlockMouseOnBlockFailureBlock();
+    session.unlockMouseOnBlockFailureCount = feature->unlockMouseOnBlockFailureCount();
 
     connectSessionEngine(session);
     m_runSessions.emplace(featureId, std::move(session));
@@ -3101,6 +3217,9 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
     session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
     session.lockMouseToScreenCenterDuringRun = feature->lockMouseToScreenCenterDuringRun();
     session.lockMouseToCurrentPositionDuringRun = feature->lockMouseToCurrentPositionDuringRun();
+    session.lockMouseDuringFirstLoopCount = feature->lockMouseDuringFirstLoopCount();
+    session.unlockMouseOnBlockFailureBlock = feature->unlockMouseOnBlockFailureBlock();
+    session.unlockMouseOnBlockFailureCount = feature->unlockMouseOnBlockFailureCount();
 
     const bool infiniteStyle = session.runningMode == FeatureRunMode::RepeatInfinite
                              || session.runningMode == FeatureRunMode::Hold
@@ -3152,6 +3271,10 @@ void MainWindow::onWorkerFastRepeatIteration(const std::string& featureId,
     ++session->sessionIteration;
     if (session->sessionContext) {
         session->sessionContext->setRunLoopNumber(session->sessionIteration + 1);
+    }
+    Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
+    if (feature) {
+        syncEarlyLoopMouseLock(*session);
     }
 }
 
@@ -3307,9 +3430,16 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         session.totalLoopElapsedMs = 0;
         session.completedLoopCount = 0;
         session.lastLoopAverageMs = 0;
+        session.earlyLoopMouseLockEngaged = false;
+        session.earlyLoopMouseLockReleased = false;
+        session.earlyLoopMouseLockFailureCount = 0;
         captureRunStartCursorPosition(session);
         captureFeatureMouseLockPosition(session);
-        engageFeatureMouseLock(session);
+        if (session.lockMouseDuringFirstLoopCount > 0) {
+            syncEarlyLoopMouseLock(session);
+        } else {
+            engageFeatureMouseLock(session);
+        }
         if (!hotkeyHoldFirstStart) {
             if (isDisplayedRunningFeature(&session)) {
                 syncLoopTimingToWorkflowEditor(&session);
@@ -3337,6 +3467,7 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
     }
     syncRunSessionContext(session);
     applyFeatureRunPoliciesToContext(session, feature);
+    syncEarlyLoopMouseLock(session);
     if (!repeatIteration && session.sessionContext) {
         session.sessionContext->clearCorrectedRois();
         session.sessionContext->clearRememberedPositions();
@@ -3485,9 +3616,16 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
         session.totalLoopElapsedMs = 0;
         session.completedLoopCount = 0;
         session.lastLoopAverageMs = 0;
+        session.earlyLoopMouseLockEngaged = false;
+        session.earlyLoopMouseLockReleased = false;
+        session.earlyLoopMouseLockFailureCount = 0;
         captureRunStartCursorPosition(session);
         captureFeatureMouseLockPosition(session);
-        engageFeatureMouseLock(session);
+        if (session.lockMouseDuringFirstLoopCount > 0) {
+            syncEarlyLoopMouseLock(session);
+        } else {
+            engageFeatureMouseLock(session);
+        }
         if (isDisplayedRunningFeature(&session)) {
             syncLoopTimingToWorkflowEditor(&session);
             m_workflowEditor->clearBlockMatchResults();
@@ -4246,6 +4384,7 @@ void MainWindow::onBlockProgress(int index, BlockProgressKind kind) {
         if (isDisplayedRunningFeature(session)) {
             m_workflowEditor->markBlockMatchSuccess(index);
         }
+        updateEarlyLoopMouseLockFromMatch(*session);
         break;
     }
 }
@@ -4310,6 +4449,7 @@ void MainWindow::onBlockFinished(int index, bool success, const QString& message
     }
     if (!success) {
         applyRunningBlockVisuals(*session, index, BlockListWidget::ExecutionHighlight::Failed);
+        handleEarlyLoopMouseLockBlockFailure(*session, index);
     } else {
         applyRunningBlockVisuals(*session, index, BlockListWidget::ExecutionHighlight::Success);
         if (isDisplayedRunningFeature(session)) {

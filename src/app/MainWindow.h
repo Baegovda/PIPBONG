@@ -149,6 +149,12 @@ private:
     bool isFeatureSessionActive(const FeatureRunSession& session) const;
     void captureFeatureMouseLockPosition(FeatureRunSession& session);
     static bool hasFeatureMouseLock(const FeatureRunSession& session);
+    bool isEarlyLoopMouseLockWindow(const FeatureRunSession& session) const;
+    bool engageEarlyLoopMouseLockAtBestPoint(FeatureRunSession& session);
+    void updateEarlyLoopMouseLockFromMatch(FeatureRunSession& session);
+    void syncEarlyLoopMouseLock(FeatureRunSession& session);
+    void releaseEarlyLoopMouseLockIfEngaged(FeatureRunSession& session);
+    void handleEarlyLoopMouseLockBlockFailure(FeatureRunSession& session, int blockIndex);
     void scheduleMouseLockPositionSync();
     void syncMouseLockPositions();
     void setupMenus();
