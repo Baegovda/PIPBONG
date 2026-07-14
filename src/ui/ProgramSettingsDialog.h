@@ -32,6 +32,7 @@ private:
     QComboBox* m_imageFindCaptureModeCombo = nullptr;
     QLabel* m_imageFindCaptureModeHint = nullptr;
     QCheckBox* m_runWithoutTargetWindowCheck = nullptr;
+    DragAdjustSpinBox* m_logMaxLinesSpin = nullptr;
     QLabel* m_clickFeedbackSummary = nullptr;
     QPushButton* m_clickFeedbackButton = nullptr;
     QLabel* m_windowSelectionFeedbackSummary = nullptr;

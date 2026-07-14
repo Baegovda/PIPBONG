@@ -38,6 +38,7 @@
 #include <QMetaObject>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSize>
 #include <QResizeEvent>
 #include <QStackedWidget>
 #include <QTimer>
@@ -565,9 +566,6 @@ void ImageFindEditor::setupUi() {
         TemplateCaptureHotkeySettings::setBinding({});
         updateTemplateHotkeyDisplay();
         syncTemplateCaptureHotkeyHook();
-    });
-    connect(m_thresholdSpin, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double) {
-        updatePreview();
     });
     refreshTemplateList();
     refreshRoiList();
@@ -1181,10 +1179,13 @@ void ImageFindEditor::updatePreview() {
         return;
     }
 
+    // Scale to the label's fixed max slot — never use current widget size (layout/spin
+    // drag can briefly change size() and make the thumbnail appear to grow/shrink).
+    constexpr QSize kPreviewSlot(140, 105);
     m_templatePreviewLabel->setText({});
     m_templatePreviewLabel->setToolTip(absolute);
     m_templatePreviewLabel->setPixmap(
-        pixmap.scaled(m_templatePreviewLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        pixmap.scaled(kPreviewSlot, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     if (m_templateSizeLabel) {
         m_templateSizeLabel->setText(
             tr("해상도: %1 × %2 px").arg(pixmap.width()).arg(pixmap.height()));

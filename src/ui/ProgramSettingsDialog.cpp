@@ -128,6 +128,25 @@ void ProgramSettingsDialog::setupUi() {
            "끄면 기능 실행 전에 '창 지정'이 필요합니다."),
         ProgramSettings::runWithoutTargetWindow());
 
+    auto* logRow = new QHBoxLayout();
+    logRow->addWidget(new QLabel(tr("실행 로그 최대 줄 수"), this));
+    m_logMaxLinesSpin = new DragAdjustSpinBox(this);
+    m_logMaxLinesSpin->setRange(ProgramSettings::kMinLogMaxLines,
+                                ProgramSettings::kMaxLogMaxLines);
+    m_logMaxLinesSpin->setSingleStep(50);
+    m_logMaxLinesSpin->setValue(ProgramSettings::logMaxLines());
+    m_logMaxLinesSpin->setMinimumWidth(96);
+    logRow->addWidget(m_logMaxLinesSpin);
+    logRow->addWidget(new QLabel(tr("줄"), this));
+    logRow->addStretch();
+    layout->addLayout(logRow);
+
+    auto* logHint = new HintLabel(
+        tr("실행 로그에 남길 최대 줄 수입니다. 초과하면 오래된 줄부터 지웁니다. (100~10000)"),
+        this);
+    logHint->setWordWrap(true);
+    layout->addWidget(logHint);
+
     auto* captureGroup = new QGroupBox(tr("템플릿 매칭 캡처"), this);
     auto* captureLayout = new QVBoxLayout(captureGroup);
 
@@ -225,6 +244,7 @@ void ProgramSettingsDialog::setupUi() {
             m_updateCheckEnabledCheck->isChecked() ? m_updateCheckIntervalSpin->value() : 0);
         ProgramSettings::setRunAsAdministrator(m_runAsAdministratorCheck->isChecked());
         ProgramSettings::setRunWithoutTargetWindow(m_runWithoutTargetWindowCheck->isChecked());
+        ProgramSettings::setLogMaxLines(m_logMaxLinesSpin->value());
         ProgramSettings::setImageFindCaptureMode(
             static_cast<ProgramSettings::ImageFindCaptureMode>(
                 m_imageFindCaptureModeCombo->currentData().toInt()));

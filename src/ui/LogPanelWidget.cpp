@@ -11,6 +11,8 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 namespace {
 
 QString htmlEscape(const QString& text) {
@@ -199,4 +201,14 @@ void LogPanelWidget::clearLog() {
     m_flushTimer->stop();
     m_pendingHtml.clear();
     m_view->clear();
+}
+
+void LogPanelWidget::setMaxLines(int maxLines) {
+    m_maxLines = std::max(1, maxLines);
+    flushPendingHtml();
+    trimOldLines();
+}
+
+int LogPanelWidget::maxLines() const {
+    return m_maxLines;
 }

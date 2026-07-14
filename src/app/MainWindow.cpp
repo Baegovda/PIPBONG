@@ -638,6 +638,7 @@ void MainWindow::setupUi() {
 
     m_logPanel = new LogPanelWidget(bottomPanel);
     m_logPanel->setMinimumHeight(72);
+    m_logPanel->setMaxLines(ProgramSettings::logMaxLines());
 
     m_bottomHorizontalSplitter = new QSplitter(Qt::Horizontal, bottomPanel);
     m_bottomHorizontalSplitter->addWidget(m_logPanel);
@@ -1348,6 +1349,9 @@ void MainWindow::onProgramSettings() {
     saveActiveProfileSettings();
     applyCloseToTrayPolicy();
     applyUpdateCheckInterval();
+    if (m_logPanel) {
+        m_logPanel->setMaxLines(ProgramSettings::logMaxLines());
+    }
     if (ProgramSettings::autoInstallUpdates() && m_updateChecker && m_updateChecker->hasPendingUpdate()) {
         m_autoUpdateDeferred = true;
         maybeStartAutomaticUpdate();

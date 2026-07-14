@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.109` (from `project(PIPBONG VERSION 0.8.109)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.110` (from `project(PIPBONG VERSION 0.8.110)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -504,7 +504,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Templates               | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/templates/*.png`                                                                                                                                                                                                                                                        |
 | Manual save/open        | File menu; last path in `QSettings` key `project/lastFile`                                                                                                                                                                                                                                                                   |
 | Debounce                | 800 ms after edits; also on window close                                                                                                                                                                                                                                                                                     |
-| Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog                               |
+| Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, `program/logMaxLines`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog                               |
 | Calculator sheet        | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry`                                                                                                                                                                                                                        |
 | CPU spike watch         | `QSettings` — `spikewatch/geometry`, `spikewatch/intervalMs`, thresholds, `topN`, `deltaMargin` (not in `project.json`)                                                                                                                                                                                                    |
 
@@ -1089,6 +1089,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.110] - 2026-07-15
+
+### Added
+
+- Program settings **실행 로그 최대 줄 수** (100–10000, default 1000) persisted as `program/logMaxLines`; applied live to `LogPanelWidget` (`ProgramSettings`, `ProgramSettingsDialog`, `MainWindow`).
+
+### Fixed
+
+- ImageFind block editor: adjusting **임계값** no longer rescales the template thumbnail — removed needless preview refresh on threshold change and scale to a fixed preview slot size (`ImageFindEditor`).
 
 ## [0.8.109] - 2026-07-15
 

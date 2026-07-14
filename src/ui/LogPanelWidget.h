@@ -23,6 +23,8 @@ public:
     void appendLine(LogLineKind kind, const QString& text);
     void appendSessionLine(const QString& featureName, LogLineKind kind, const QString& text);
     void clearLog();
+    void setMaxLines(int maxLines);
+    int maxLines() const;
 
 private:
     QString colorForKind(LogLineKind kind) const;

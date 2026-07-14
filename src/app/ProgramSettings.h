@@ -49,6 +49,10 @@ public:
     static bool runWithoutTargetWindow();
     static void setRunWithoutTargetWindow(bool enabled);
 
+    /// Maximum retained lines in the execution log panel.
+    static int logMaxLines();
+    static void setLogMaxLines(int lines);
+
     /// Snapshot/apply the profile-scoped subset of settings.
     static ProfileSettings profileSettings();
     static void applyProfileSettings(const ProfileSettings& settings);
@@ -56,6 +60,10 @@ public:
     static constexpr int kDefaultUpdateCheckIntervalMinutes = 5;
     static constexpr int kMinUpdateCheckIntervalMinutes = 0;
     static constexpr int kMaxUpdateCheckIntervalMinutes = 1440;
+
+    static constexpr int kDefaultLogMaxLines = 1000;
+    static constexpr int kMinLogMaxLines = 100;
+    static constexpr int kMaxLogMaxLines = 10000;
 
     /// Reconcile the Windows Run key with the saved startup preference.
     static void syncWindowsStartupRegistration();

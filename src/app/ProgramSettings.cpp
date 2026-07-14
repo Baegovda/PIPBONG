@@ -16,6 +16,7 @@ constexpr const char* kUpdateCheckIntervalMinutesKey = "program/updateCheckInter
 constexpr const char* kPinTargetWindowToScreenCenterKey = "program/pinTargetWindowToScreenCenter";
 constexpr const char* kImageFindCaptureModeKey = "program/imageFindCaptureMode";
 constexpr const char* kRunWithoutTargetWindowKey = "program/runWithoutTargetWindow";
+constexpr const char* kLogMaxLinesKey = "program/logMaxLines";
 
 } // namespace
 
@@ -126,6 +127,27 @@ bool ProgramSettings::runWithoutTargetWindow() {
 void ProgramSettings::setRunWithoutTargetWindow(bool enabled) {
     QSettings settings;
     settings.setValue(kRunWithoutTargetWindowKey, enabled);
+}
+
+int ProgramSettings::logMaxLines() {
+    QSettings settings;
+    int lines = settings.value(kLogMaxLinesKey, kDefaultLogMaxLines).toInt();
+    if (lines < kMinLogMaxLines) {
+        lines = kMinLogMaxLines;
+    } else if (lines > kMaxLogMaxLines) {
+        lines = kMaxLogMaxLines;
+    }
+    return lines;
+}
+
+void ProgramSettings::setLogMaxLines(int lines) {
+    if (lines < kMinLogMaxLines) {
+        lines = kMinLogMaxLines;
+    } else if (lines > kMaxLogMaxLines) {
+        lines = kMaxLogMaxLines;
+    }
+    QSettings settings;
+    settings.setValue(kLogMaxLinesKey, lines);
 }
 
 ProgramSettings::ProfileSettings ProgramSettings::profileSettings() {
