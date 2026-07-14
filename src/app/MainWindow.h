@@ -374,4 +374,5 @@ private:
     std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;
+    QElapsedTimer m_pendingDefaultProfileSwitchTimer;
 };

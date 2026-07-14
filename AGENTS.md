@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.110` (from `project(PIPBONG VERSION 0.8.110)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.111` (from `project(PIPBONG VERSION 0.8.111)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -486,7 +486,7 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.6 UI
 
-- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked target-window title per profile; **foreground-window auto-switch** reacts directly to Win32 `EVENT_SYSTEM_FOREGROUND` (50 ms precise poll remains as fallback), activates the profile whose linked title best matches the focused top-level window (longest substring wins), and falls back to the default profile when unmatched; PIPBONG foreground keeps the current profile (`MainWindow::syncProfileToForegroundWindow`, `ProfileManager::profileIdForForegroundTitle`).
+- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked target-window title per profile; **foreground-window auto-switch** reacts directly to Win32 `EVENT_SYSTEM_FOREGROUND` (50 ms precise poll remains as fallback), activates the profile whose linked title best matches the focused top-level window (longest substring wins), and falls back to the default profile when unmatched after a short stable delay; PIPBONG foreground and Alt+Tab / shell transient windows keep the current profile (`MainWindow::syncProfileToForegroundWindow`, `ProfileManager::profileIdForForegroundTitle`).
 - **Feature list:** Create/delete/rename features; hotkey binding (button, double-click, context menu).
 - **Workflow editor:** Block list with drag-and-drop reorder; per-type **블록 추가** buttons (템플릿 매칭, 마우스, 키보드, 딜레이); template thumbnails (48×48); block editors in `BlockEditorDialog`.
 - **ImageFind editor:** ROI preview, match test, screen capture overlay, `CaptureConfirmDialog`.
@@ -1089,6 +1089,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.111] - 2026-07-15
+
+### Fixed
+
+- Profile auto-switch no longer flips to the default profile when Alt+Tabbing from a linked target window back to PIPBONG: ignore shell/Alt+Tab transient foreground windows, keep current profile while PIPBONG is focused, and delay unmatched→default fallback ~400 ms (`MainWindow::syncProfileToForegroundWindow`).
 
 ## [0.8.110] - 2026-07-15
 

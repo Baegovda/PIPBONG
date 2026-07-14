@@ -123,6 +123,34 @@ void CALLBACK foregroundWindowEventProc(HWINEVENTHOOK,
     }
 }
 
+bool isShellTransientForegroundWindow(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return true;
+    }
+    wchar_t className[256]{};
+    if (GetClassNameW(hwnd, className, 256) <= 0) {
+        return false;
+    }
+    // Classic Alt+Tab switcher + common Win10/11 shell overlays during focus transit.
+    static const wchar_t* kIgnoredClasses[] = {
+        L"#32771",
+        L"ForegroundStaging",
+        L"MultitaskingViewFrame",
+        L"XamlExplorerHostIslandWindow",
+        L"Shell_TrayWnd",
+        L"Shell_SecondaryTrayWnd",
+        L"NotifyIconOverflowWindow",
+        L"WorkerW",
+        L"Progman",
+    };
+    for (const wchar_t* ignored : kIgnoredClasses) {
+        if (_wcsicmp(className, ignored) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool applyNativeAlwaysOnTop(QWidget* window, bool enabled) {
     if (!window || !window->internalWinId()) {
         return false;
@@ -4889,12 +4917,17 @@ void MainWindow::syncProfileToForegroundWindow() {
 
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
+    // Alt+Tab back to PIPBONG (or any of our dialogs/tray popups): keep the current profile.
     if (pid == GetCurrentProcessId()) {
+        m_pendingDefaultProfileSwitchTimer.invalidate();
         return;
     }
 
     hwnd = GetAncestor(hwnd, GA_ROOT);
     if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    if (isShellTransientForegroundWindow(hwnd)) {
         return;
     }
 
@@ -4903,7 +4936,27 @@ void MainWindow::syncProfileToForegroundWindow() {
     const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
     const QString targetProfileId = m_profileManager->profileIdForForegroundTitle(foregroundTitle);
     if (targetProfileId == m_profileManager->activeProfileId()) {
+        m_pendingDefaultProfileSwitchTimer.invalidate();
         return;
+    }
+
+    // Matching a linked-window profile: switch immediately.
+    // Falling back to the default profile (unmatched title): require a short stable delay so
+    // Alt+Tab / shell overlays do not yank the profile away while returning to PIPBONG.
+    const bool fallingBackToDefault =
+        !m_profileManager->defaultProfileId().isEmpty()
+        && targetProfileId == m_profileManager->defaultProfileId();
+    if (fallingBackToDefault) {
+        constexpr int kDefaultFallbackStableMs = 400;
+        if (!m_pendingDefaultProfileSwitchTimer.isValid()) {
+            m_pendingDefaultProfileSwitchTimer.start();
+            return;
+        }
+        if (m_pendingDefaultProfileSwitchTimer.elapsed() < kDefaultFallbackStableMs) {
+            return;
+        }
+    } else {
+        m_pendingDefaultProfileSwitchTimer.invalidate();
     }
 
     ScreenCapture::setForegroundHintWindow(hwnd);
