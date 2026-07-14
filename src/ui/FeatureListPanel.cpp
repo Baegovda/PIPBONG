@@ -34,6 +34,8 @@
 #include <QEvent>
 #include <QFrame>
 #include <QGroupBox>
+#include <QLineEdit>
+#include <QAbstractItemView>
 namespace {
 constexpr int kHeaderExtraHeight = 4;
 // Row-height min/max: UiResizeHandle::kMinListRowHeightPx / kMaxListRowHeightPx
@@ -650,6 +652,49 @@ public:
         const int rowHeight = m_panel ? m_panel->columnLayout().rowHeight : 26;
         return {option.rect.width(), rowHeight};
     }
+    QWidget* createEditor(QWidget* parent,
+                          const QStyleOptionViewItem& option,
+                          const QModelIndex& index) const override {
+        Q_UNUSED(index);
+        if (!m_panel) {
+            return nullptr;
+        }
+        auto* edit = new QLineEdit(parent);
+        edit->setFrame(true);
+        edit->setFont(option.font);
+        edit->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        return edit;
+    }
+    void updateEditorGeometry(QWidget* editor,
+                              const QStyleOptionViewItem& option,
+                              const QModelIndex& index) const override {
+        Q_UNUSED(index);
+        if (!m_panel || !editor) {
+            return;
+        }
+        const FeatureListColumnRects cols = featureListColumnRects(option.rect, m_panel->columnLayout());
+        editor->setGeometry(cols.name.adjusted(1, 1, -1, -1));
+    }
+    void setEditorData(QWidget* editor, const QModelIndex& index) const override {
+        auto* line = qobject_cast<QLineEdit*>(editor);
+        if (!line) {
+            return;
+        }
+        line->setText(index.data(kFeatureNameRole).toString());
+        line->selectAll();
+    }
+    void setModelData(QWidget* editor, QAbstractItemModel* model, const QModelIndex& index) const override {
+        auto* line = qobject_cast<QLineEdit*>(editor);
+        if (!line || !model) {
+            return;
+        }
+        const QString name = line->text().trimmed();
+        if (name.isEmpty()) {
+            return;
+        }
+        model->setData(index, name, kFeatureNameRole);
+        model->setData(index, name, Qt::DisplayRole);
+    }
     void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override {
         if (!m_panel || !index.isValid()) {
             QStyledItemDelegate::paint(painter, option, index);
@@ -812,6 +857,26 @@ void FeatureListPanel::setupUi() {
     connect(m_list, &FeatureListWidget::deleteRequested, this, &FeatureListPanel::onRemoveFeature);
     connect(m_list, &FeatureListWidget::copyRequested, this, &FeatureListPanel::onCopyFeature);
     connect(m_list, &FeatureListWidget::pasteRequested, this, &FeatureListPanel::onPasteFeature);
+    connect(m_list, &FeatureListWidget::renameRequested, this, &FeatureListPanel::onInlineRenameRequested);
+    if (QAbstractItemDelegate* delegate = m_list->itemDelegate()) {
+        connect(delegate, &QAbstractItemDelegate::commitData, this, [this](QWidget*) {
+            if (m_inlineRenameRow < 0 || !m_list || !m_project) {
+                return;
+            }
+            QListWidgetItem* item = m_list->item(m_inlineRenameRow);
+            if (!item) {
+                m_inlineRenameRow = -1;
+                return;
+            }
+            const QString name = item->data(kFeatureNameRole).toString().trimmed();
+            const int row = m_inlineRenameRow;
+            m_inlineRenameRow = -1;
+            applyInlineRename(row, name);
+        });
+        connect(delegate, &QAbstractItemDelegate::closeEditor, this, [this](QWidget*, QAbstractItemDelegate::EndEditHint) {
+            m_inlineRenameRow = -1;
+        });
+    }
     m_list->viewport()->installEventFilter(this);
 
     tableLayout->addWidget(m_headerRow);
@@ -1275,7 +1340,25 @@ void FeatureListPanel::setEditControlsEnabled(bool enabled) {
     if (m_removeButton) {
         m_removeButton->setEnabled(enabled);
     }
+    updateListItemEditableFlags();
     updateReorderEnabled();
+}
+
+void FeatureListPanel::updateListItemEditableFlags() {
+    if (!m_list) {
+        return;
+    }
+    for (int row = 0; row < m_list->count(); ++row) {
+        QListWidgetItem* item = m_list->item(row);
+        if (!item) {
+            continue;
+        }
+        if (m_editControlsEnabled) {
+            item->setFlags(item->flags() | Qt::ItemIsEditable);
+        } else {
+            item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+        }
+    }
 }
 
 void FeatureListPanel::updateReorderEnabled() {
@@ -1529,6 +1612,11 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
     item->setData(kHotkeyCtrlRole, hotkey.ctrl);
     item->setData(kHotkeyAltRole, hotkey.alt);
     item->setData(kHotkeyShiftRole, hotkey.shift);
+    if (m_editControlsEnabled) {
+        item->setFlags(item->flags() | Qt::ItemIsEditable);
+    } else {
+        item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+    }
     QString tooltip = featureName;
     tooltip += QStringLiteral("\n") + tr("동작: %1").arg(featureRunModeLabel(feature.runMode()));
     if (feature.runMode() == FeatureRunMode::RepeatCount) {
@@ -1765,6 +1853,39 @@ void FeatureListPanel::onEditFeature() {
     editFeatureAt(selectedIndex());
 }
 
+void FeatureListPanel::onInlineRenameRequested() {
+    if (!m_editControlsEnabled || !m_list || !m_project) {
+        return;
+    }
+    QListWidgetItem* item = m_list->currentItem();
+    if (!item || !(item->flags() & Qt::ItemIsEditable)) {
+        return;
+    }
+    m_inlineRenameRow = m_list->row(item);
+    m_list->editItem(item);
+}
+
+void FeatureListPanel::applyInlineRename(int row, const QString& name) {
+    if (!m_project || row < 0 || name.isEmpty()) {
+        return;
+    }
+    Feature* feature = m_project->featureAt(row);
+    if (!feature) {
+        return;
+    }
+    const QString previous = QString::fromStdString(feature->name());
+    if (previous == name) {
+        return;
+    }
+    emit mutationAboutToCommit(QStringLiteral("feature-rename"));
+    feature->setName(name.toStdString());
+    if (QListWidgetItem* item = m_list->item(row)) {
+        const QSignalBlocker blocker(m_list);
+        configureListItem(item, *feature);
+    }
+    emit projectModified();
+}
+
 void FeatureListPanel::onContextMenu(const QPoint& pos) {
     QListWidgetItem* item = m_list->itemAt(pos);
     if (!item) {
@@ -1810,6 +1931,8 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
     menu.addAction(tr("라이브러리에서 가져오기"), this, [this]() {
         emit importFeatureFromLibraryRequested();
     })
+        ->setEnabled(m_editControlsEnabled);
+    menu.addAction(tr("이름 바꾸기"), this, &FeatureListPanel::onInlineRenameRequested)
         ->setEnabled(m_editControlsEnabled);
     menu.addAction(tr("편집"), this, &FeatureListPanel::onEditFeature);
     menu.addAction(tr("복사"), this, &FeatureListPanel::onCopyFeature);

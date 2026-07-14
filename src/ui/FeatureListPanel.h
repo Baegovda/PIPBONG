@@ -148,6 +148,8 @@ private slots:
 
     void onEditFeature();
 
+    void onInlineRenameRequested();
+
     void onSelectionChanged();
     void onLibrarySelectionChanged();
 
@@ -171,9 +173,13 @@ private:
 
     bool editFeatureAt(int index);
 
+    void applyInlineRename(int row, const QString& name);
+
     void applyColumnLayoutToList();
 
     void updateReorderEnabled();
+
+    void updateListItemEditableFlags();
 
     bool enableToggleHitTest(int row, const QPoint& viewportPos) const;
 
@@ -218,6 +224,8 @@ private:
     int m_animPhase = 0;
 
     bool m_editControlsEnabled = true;
+
+    int m_inlineRenameRow = -1;
 
     bool m_restoringColumnLayout = false;
 

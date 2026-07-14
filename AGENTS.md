@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.112` (from `project(PIPBONG VERSION 0.8.112)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.113` (from `project(PIPBONG VERSION 0.8.113)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1089,6 +1089,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.113] - 2026-07-15
+
+### Added
+
+- Feature list inline rename: select a feature and press **F2** (or context menu **이름 바꾸기**) to edit the name in place over the name column; Enter commits, Esc cancels (`FeatureListWidget`, `FeatureListPanel`, `FeatureListItemDelegate`).
 
 ## [0.8.112] - 2026-07-15
 

@@ -21,6 +21,7 @@ signals:
     void deleteRequested();
     void copyRequested();
     void pasteRequested();
+    void renameRequested();
 
 protected:
     QMimeData* buildDragMimeData(int row) const override;

@@ -43,7 +43,7 @@ QStringList selectedIdsInRowOrder(const QListWidget* list) {
 FeatureListWidget::FeatureListWidget(QWidget* parent)
     : ReorderableListWidget(parent) {
     setSelectionMode(QAbstractItemView::ExtendedSelection);
-    setToolTip(tr("Ctrl/Shift+클릭 다중 선택 · 드래그하여 기능 순서 변경 · 기능/라이브러리/프로필 간 드래그 복사 · Ctrl+C/V · Delete"));
+    setToolTip(tr("Ctrl/Shift+클릭 다중 선택 · 드래그하여 기능 순서 변경 · 기능/라이브러리/프로필 간 드래그 복사 · F2 이름 바꾸기 · Ctrl+C/V · Delete"));
     connect(this, &ReorderableListWidget::rowsReordered, this, &FeatureListWidget::featureRowsReordered);
     connect(this,
             &ReorderableListWidget::externalItemDropped,
@@ -106,6 +106,11 @@ void FeatureListWidget::keyPressEvent(QKeyEvent* event) {
     }
     if (event->key() == Qt::Key_Delete) {
         emit deleteRequested();
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_F2) {
+        emit renameRequested();
         event->accept();
         return;
     }
