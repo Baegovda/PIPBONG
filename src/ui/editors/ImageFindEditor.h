@@ -157,6 +157,8 @@ private:
 
     void updateRoiCorrectionUi();
 
+    void updateReturnToPreviousMissLimitUi();
+
     ImageFindBlock* m_block = nullptr;
 
     QString m_projectDirectory;
@@ -185,7 +187,13 @@ private:
 
     QCheckBox* m_returnToPreviousImageFindCheck = nullptr;
 
+    QWidget* m_returnToPreviousMissLimitRow = nullptr;
+
+    DragAdjustSpinBox* m_returnToPreviousMissLimitSpin = nullptr;
+
     QCheckBox* m_retryAfterNextActionCheck = nullptr;
+
+    QCheckBox* m_rememberMultiMatchPositionsCheck = nullptr;
 
     HintLabel* m_roiCorrectionGlobalHint = nullptr;
 

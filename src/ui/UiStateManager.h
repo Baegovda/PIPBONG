@@ -26,6 +26,7 @@ public:
                                const std::function<void(const QSettings&)>& reader);
 
     void restoreAll();
+    void restoreMainWindowGeometry();
     void saveNow();
 
     static QString settingsKey(const QString& id);
@@ -50,4 +51,5 @@ private:
     QVector<QPair<QHeaderView*, QString>> m_headers;
     QVector<SettingsHookEntry> m_settingsHooks;
     bool m_restoring = false;
+    bool m_mainWindowGeometryRestored = false;
 };

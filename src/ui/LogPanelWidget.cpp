@@ -7,6 +7,7 @@
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextEdit>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -81,6 +82,11 @@ LogPanelWidget::LogPanelWidget(QWidget* parent)
     m_view->setFrameShape(QFrame::NoFrame);
     m_view->document()->setDefaultStyleSheet(QStringLiteral("p { margin: 0; }"));
 
+    m_flushTimer = new QTimer(this);
+    m_flushTimer->setSingleShot(true);
+    m_flushTimer->setInterval(50);
+    connect(m_flushTimer, &QTimer::timeout, this, &LogPanelWidget::flushPendingHtml);
+
     outer->addWidget(header);
     outer->addWidget(m_view, 1);
 
@@ -132,8 +138,20 @@ QString LogPanelWidget::colorForKind(LogLineKind kind) const {
 }
 
 void LogPanelWidget::appendHtml(const QString& html) {
+    m_pendingHtml.append(html);
+    if (!m_flushTimer->isActive()) {
+        m_flushTimer->start();
+    }
+}
+
+void LogPanelWidget::flushPendingHtml() {
+    if (m_pendingHtml.isEmpty()) {
+        return;
+    }
+    const QString html = m_pendingHtml.join(QStringLiteral("<br/>")) + QStringLiteral("<br/>");
+    m_pendingHtml.clear();
     m_view->moveCursor(QTextCursor::End);
-    m_view->insertHtml(html + QStringLiteral("<br/>"));
+    m_view->insertHtml(html);
     trimOldLines();
     if (QScrollBar* bar = m_view->verticalScrollBar()) {
         bar->setValue(bar->maximum());
@@ -175,5 +193,7 @@ void LogPanelWidget::appendSessionLine(const QString& featureName,
 }
 
 void LogPanelWidget::clearLog() {
+    m_flushTimer->stop();
+    m_pendingHtml.clear();
     m_view->clear();
 }

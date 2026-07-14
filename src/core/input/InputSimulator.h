@@ -142,6 +142,8 @@ public:
     static void forceKeyUp(int virtualKey);
     /// Untracked mouse button UP for a hold hotkey VK (side buttons, etc.).
     static void forceHotkeyMouseButtonUp(int virtualKey);
+    /// Deliver swallowed Hold hotkey release to the target client when possible (PostMessage).
+    static void releaseHoldHotkeyToTarget(HWND hwnd, int virtualKey);
     /// Brief untracked UP then DOWN so games feel a gap while the finger still holds
     /// (restores down state so a later physical KEYUP can end Hold mode).
     static void pulseHeldKeyGap(int virtualKey);

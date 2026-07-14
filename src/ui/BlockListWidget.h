@@ -24,6 +24,8 @@
 
 #include <QKeyEvent>
 
+#include <QTimer>
+
 
 
 class QDragEnterEvent;
@@ -236,6 +238,14 @@ private:
                              ExecutionHighlight highlight,
                              int durationMs);
 
+    bool isReturnToPreviousFlashVisible() const;
+
+    void cancelReturnFlashHold();
+
+    void startReturnToPreviousFade(int fadeMs);
+
+    void scrollReturnToPreviousRowsIntoView();
+
     void updateLoopRegionPickPreview();
 
     void updateLoopRegionChrome();
@@ -303,6 +313,8 @@ private:
     ExecutionHighlight m_activeHighlight = ExecutionHighlight::None;
 
     QVariantAnimation* m_flashAnimation = nullptr;
+
+    QTimer* m_returnFlashHoldTimer = nullptr;
 
     int m_flashRow = -1;
 

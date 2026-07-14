@@ -8,6 +8,7 @@ int main(int argc, char* argv[]) {
     QLocale::setDefault(QLocale(QLocale::Korean, QLocale::SouthKorea));
     Application app(argc, argv);
     MainWindow window;
+    window.ensureInitialWindowPlacement();
     window.show();
     return app.exec();
 }

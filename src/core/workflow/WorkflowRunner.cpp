@@ -15,6 +15,26 @@ WorkflowRunResult executeSingleBlock(const Workflow& workflow,
                                      ExecutionContext& ctx,
                                      const WorkflowRunHooks* hooks);
 
+int lastImageFindBlockIndex(const Workflow& workflow) {
+    const auto& blocks = workflow.blocks();
+    for (int i = static_cast<int>(blocks.size()) - 1; i >= 0; --i) {
+        if (blocks[i] && blocks[i]->type() == BlockType::ImageFind) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int firstImageFindBlockIndex(const Workflow& workflow) {
+    const auto& blocks = workflow.blocks();
+    for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
+        if (blocks[i] && blocks[i]->type() == BlockType::ImageFind) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 int previousImageFindBlockIndex(const Workflow& workflow, int currentIndex) {
     for (int i = currentIndex - 1; i >= 0; --i) {
         const auto& blocks = workflow.blocks();
@@ -22,6 +42,10 @@ int previousImageFindBlockIndex(const Workflow& workflow, int currentIndex) {
             && blocks[i]->type() == BlockType::ImageFind) {
             return i;
         }
+    }
+    const int last = lastImageFindBlockIndex(workflow);
+    if (last >= 0 && last != currentIndex) {
+        return last;
     }
     return -1;
 }
@@ -32,6 +56,10 @@ int nextImageFindBlockIndex(const Workflow& workflow, int currentIndex) {
         if (blocks[i] && blocks[i]->type() == BlockType::ImageFind) {
             return i;
         }
+    }
+    const int first = firstImageFindBlockIndex(workflow);
+    if (first >= 0 && first != currentIndex) {
+        return first;
     }
     return -1;
 }

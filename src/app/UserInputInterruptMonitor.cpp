@@ -169,6 +169,10 @@ void UserInputInterruptMonitor::registerSession(const std::string& featureId,
         entry.mode = mode;
         entry.featureHotkey = featureHotkey;
         entry.context = context;
+        const auto existing = m_sessions.find(featureId);
+        if (existing != m_sessions.end()) {
+            entry.lastInterruptAt = existing->second.lastInterruptAt;
+        }
         m_sessions[featureId] = entry;
     }
     refreshHooks();

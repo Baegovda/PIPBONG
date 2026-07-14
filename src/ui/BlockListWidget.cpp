@@ -358,7 +358,9 @@ void attachChipHeaderRowActions(BlockListWidget* table,
 constexpr int kMissFlashMs = 72;
 constexpr int kSuccessFlashMs = 140;
 constexpr int kFailedFlashMs = 170;
-constexpr int kReturnToPreviousFlashMs = 480;
+constexpr int kReturnToPreviousHoldMs = 560;
+constexpr int kReturnToPreviousFadeMs = 840;
+constexpr int kReturnToPreviousGlassAlphaCap = 78;
 constexpr qreal kRunningGlassIntensity = 0.16;
 constexpr int kMaxGlassAlpha = 52;
 
@@ -409,6 +411,7 @@ GlassColors glassColorsFor(BlockListWidget::ExecutionHighlight highlight,
         break;
     case BlockListWidget::ExecutionHighlight::ReturnToPrevious:
         colors.tint = QColor(168, 108, 232);
+        colors.intensity = qMin(1.0, colors.intensity * 1.12);
         break;
     case BlockListWidget::ExecutionHighlight::None:
     default:
@@ -996,6 +999,14 @@ BlockListWidget::BlockListWidget(QWidget* parent)
             &QVariantAnimation::finished,
             this,
             &BlockListWidget::onFlashAnimationFinished);
+
+    m_returnFlashHoldTimer = new QTimer(this);
+    m_returnFlashHoldTimer->setSingleShot(true);
+    connect(m_returnFlashHoldTimer, &QTimer::timeout, this, [this]() {
+        if (m_flashKind == ExecutionHighlight::ReturnToPrevious) {
+            startReturnToPreviousFade(kReturnToPreviousFadeMs);
+        }
+    });
 
     m_dropIndicator = new DropInsertionIndicator(viewport());
     m_dropIndicator->hide();
@@ -1711,14 +1722,14 @@ void BlockListWidget::setBlockInfo(int row,
     returnPrevItem->setTextAlignment(Qt::AlignCenter);
     returnPrevItem->setFlags(itemFlags);
     returnPrevItem->setToolTip(
-        tr("매칭 실패 시 바로 이전 템플릿 매칭 블록으로 돌아감 — 발동 횟수"));
+        tr("못 찾으면 이전 템플릿 찾기로 돌아감 — 실행 중 발동 횟수"));
     setItem(tableRow, kColReturnPrev, returnPrevItem);
 
     auto* retryAfterNextItem = new QTableWidgetItem(QStringLiteral("—"));
     retryAfterNextItem->setTextAlignment(Qt::AlignCenter);
     retryAfterNextItem->setFlags(itemFlags);
     retryAfterNextItem->setToolTip(
-        tr("바로 다음 동작 후 다시 감지 시도 / 다음 템플릿 매칭 블록으로 넘어감 — 발동 횟수"));
+        tr("못 찾으면 → 아래 블록 1회 → 재찾기 → (또 실패 시) 다음/이전 찾기 — 실행 중 발동 횟수"));
     setItem(tableRow, kColRetryAfterNext, retryAfterNextItem);
 
     auto* scoreItem = new QTableWidgetItem(QStringLiteral("—"));
@@ -1918,7 +1929,7 @@ void BlockListWidget::setBlockImageFindFailureHandlingCounts(int row,
         returnPrevItem->setTextAlignment(Qt::AlignCenter);
         returnPrevItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
         returnPrevItem->setToolTip(
-            tr("매칭 실패 시 바로 이전 템플릿 매칭 블록으로 돌아감 — 발동 횟수"));
+            tr("못 찾으면 이전 템플릿 찾기로 돌아감 — 실행 중 발동 횟수"));
         setItem(tableRow, kColReturnPrev, returnPrevItem);
     }
     QTableWidgetItem* retryItem = item(tableRow, kColRetryAfterNext);
@@ -1927,7 +1938,7 @@ void BlockListWidget::setBlockImageFindFailureHandlingCounts(int row,
         retryItem->setTextAlignment(Qt::AlignCenter);
         retryItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
         retryItem->setToolTip(
-            tr("바로 다음 동작 후 다시 감지 시도 / 다음 템플릿 매칭 블록으로 넘어감 — 발동 횟수"));
+            tr("못 찾으면 → 다음 블록 1회 실행 → 재찾기 / 다음 찾기로 넘어감 — 실행 중 발동 횟수"));
         setItem(tableRow, kColRetryAfterNext, retryItem);
     }
 
@@ -1949,10 +1960,12 @@ void BlockListWidget::clearBlockMatchResults() {
     m_rowMatchSucceeded.fill(false);
     m_rowMatchLockedSuccess.fill(false);
     m_rowCompletedHighlight.fill(ExecutionHighlight::None);
+    cancelReturnFlashHold();
     if (m_flashAnimation) {
         m_flashAnimation->stop();
     }
     m_flashRow = -1;
+    m_flashRowSecondary = -1;
     m_flashKind = ExecutionHighlight::None;
     m_flashIntensity = 0.0;
     for (int row = 0; row < m_blockCount; ++row) {
@@ -2060,8 +2073,51 @@ void BlockListWidget::notifyImageFindReturnToPrevious(int sourceRow, int targetR
         return;
     }
     triggerDualRowFlash(
-        sourceRow, targetRow, ExecutionHighlight::ReturnToPrevious, kReturnToPreviousFlashMs);
+        sourceRow, targetRow, ExecutionHighlight::ReturnToPrevious, kReturnToPreviousFadeMs);
+    scrollReturnToPreviousRowsIntoView();
     applyActiveRowVisuals();
+}
+
+bool BlockListWidget::isReturnToPreviousFlashVisible() const {
+    return m_flashKind == ExecutionHighlight::ReturnToPrevious
+        && (m_flashIntensity > 0.0
+            || (m_returnFlashHoldTimer && m_returnFlashHoldTimer->isActive()));
+}
+
+void BlockListWidget::cancelReturnFlashHold() {
+    if (m_returnFlashHoldTimer) {
+        m_returnFlashHoldTimer->stop();
+    }
+}
+
+void BlockListWidget::startReturnToPreviousFade(int fadeMs) {
+    if (!m_flashAnimation || fadeMs <= 0 || m_flashKind != ExecutionHighlight::ReturnToPrevious) {
+        return;
+    }
+
+    m_flashIntensity = 1.0;
+    m_flashAnimation->stop();
+    m_flashAnimation->setDuration(fadeMs);
+    m_flashAnimation->setStartValue(1.0);
+    m_flashAnimation->setEndValue(0.0);
+    m_flashAnimation->start();
+}
+
+void BlockListWidget::scrollReturnToPreviousRowsIntoView() {
+    if (m_flashRow < 0 || m_flashRowSecondary < 0) {
+        return;
+    }
+
+    const int tableA = tableRowForBlockRow(m_flashRow);
+    const int tableB = tableRowForBlockRow(m_flashRowSecondary);
+    if (tableA < 0 || tableB < 0) {
+        return;
+    }
+
+    const int anchorTableRow = (tableA + tableB) / 2;
+    if (QTableWidgetItem* anchor = item(anchorTableRow, 0)) {
+        scrollToItem(anchor, QAbstractItemView::PositionAtCenter);
+    }
 }
 
 void BlockListWidget::clearActiveRow() {
@@ -2072,7 +2128,11 @@ void BlockListWidget::triggerRowFlash(int row, ExecutionHighlight highlight, int
     if (!m_flashAnimation || row < 0 || durationMs <= 0) {
         return;
     }
+    if (isReturnToPreviousFlashVisible() && highlight != ExecutionHighlight::ReturnToPrevious) {
+        return;
+    }
 
+    cancelReturnFlashHold();
     m_flashRow = row;
     m_flashRowSecondary = -1;
     m_flashKind = highlight;
@@ -2092,11 +2152,18 @@ void BlockListWidget::triggerDualRowFlash(int primaryRow,
         return;
     }
 
+    cancelReturnFlashHold();
+    m_flashAnimation->stop();
     m_flashRow = primaryRow;
     m_flashRowSecondary = secondaryRow;
     m_flashKind = highlight;
     m_flashIntensity = 1.0;
-    m_flashAnimation->stop();
+
+    if (highlight == ExecutionHighlight::ReturnToPrevious && m_returnFlashHoldTimer) {
+        m_returnFlashHoldTimer->start(kReturnToPreviousHoldMs);
+        return;
+    }
+
     m_flashAnimation->setDuration(durationMs);
     m_flashAnimation->setStartValue(1.0);
     m_flashAnimation->setEndValue(0.0);
@@ -2118,6 +2185,7 @@ void BlockListWidget::onFlashAnimationFinished() {
     m_flashRow = -1;
     m_flashRowSecondary = -1;
     m_flashKind = ExecutionHighlight::None;
+    cancelReturnFlashHold();
     applyActiveRowVisuals();
 }
 
@@ -2127,7 +2195,14 @@ qreal BlockListWidget::rowGlassIntensity(int row, ExecutionHighlight highlight) 
     }
     if (m_flashKind == highlight && m_flashIntensity > 0.0
         && (m_flashRow == row || m_flashRowSecondary == row)) {
+        if (highlight == ExecutionHighlight::ReturnToPrevious) {
+            return qMin<qreal>(1.0, m_flashIntensity * 1.08);
+        }
         return m_flashIntensity;
+    }
+    if (highlight == ExecutionHighlight::ReturnToPrevious && isReturnToPreviousFlashVisible()
+        && (m_flashRow == row || m_flashRowSecondary == row)) {
+        return 1.0;
     }
     return 0.0;
 }
@@ -2170,8 +2245,17 @@ void BlockListWidget::applyActiveRowVisuals() {
         const ExecutionHighlight rowHighlight = rowVisualHighlight(blockRow);
         const qreal glassIntensity = rowGlassIntensity(blockRow, rowHighlight);
         const bool showGlass = rowHighlight != ExecutionHighlight::None && glassIntensity > 0.0;
+        const bool returnFlashRow = isReturnToPreviousFlashVisible()
+            && (blockRow == m_flashRow || blockRow == m_flashRowSecondary);
 
-        if (blockRow == m_activeRow && m_activeHighlight != ExecutionHighlight::None) {
+        if (returnFlashRow) {
+            rowFont.setBold(true);
+            if (blockRow == m_flashRow) {
+                indexText = QStringLiteral("↓ %1").arg(blockRow + 1);
+            } else if (blockRow == m_flashRowSecondary) {
+                indexText = QStringLiteral("↩ %1").arg(blockRow + 1);
+            }
+        } else if (blockRow == m_activeRow && m_activeHighlight != ExecutionHighlight::None) {
             rowFont.setBold(true);
             switch (m_activeHighlight) {
             case ExecutionHighlight::Running:
@@ -2192,14 +2276,6 @@ void BlockListWidget::applyActiveRowVisuals() {
         } else if (tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow]
                    && blockRow == qMin(m_loopRegionPickAnchorRow, m_loopRegionPickCurrentRow)) {
             indexText = QStringLiteral("↻ %1").arg(blockRow + 1);
-        } else if (m_flashKind == ExecutionHighlight::ReturnToPrevious && m_flashIntensity > 0.0) {
-            if (blockRow == m_flashRow) {
-                indexText = QStringLiteral("↓ %1").arg(blockRow + 1);
-                rowFont.setBold(true);
-            } else if (blockRow == m_flashRowSecondary) {
-                indexText = QStringLiteral("↩ %1").arg(blockRow + 1);
-                rowFont.setBold(true);
-            }
         }
 
         const bool inLoopRegion = tableRow < m_loopRegionMember.size() && m_loopRegionMember[tableRow];
@@ -2207,7 +2283,23 @@ void BlockListWidget::applyActiveRowVisuals() {
 
         if (showGlass) {
             glassColors = glassColorsFor(rowHighlight, glassIntensity, rowPalette);
-            rowBrush = glassBodyBrush(glassColors, rowPalette, m_blockRowHeight);
+            if (rowHighlight == ExecutionHighlight::ReturnToPrevious) {
+                const QColor tint = tintOverlay(glassColors.tint, glassColors.intensity, kReturnToPreviousGlassAlphaCap);
+                const QColor specular = tintOverlay(QColor(255, 255, 255), glassColors.intensity, 34);
+                const QColor base = rowPalette.color(QPalette::Base);
+                const QColor alt = rowPalette.color(QPalette::AlternateBase);
+                QLinearGradient gradient(0, 0, 0, qMax(m_blockRowHeight, 1));
+                gradient.setColorAt(0.0, blendOver(base, specular));
+                gradient.setColorAt(0.18, blendOver(base, tint));
+                gradient.setColorAt(1.0,
+                                     blendOver(alt.isValid() ? alt : base,
+                                               tintOverlay(glassColors.tint, glassColors.intensity * 0.55,
+                                                           kReturnToPreviousGlassAlphaCap)));
+                gradient.setCoordinateMode(QGradient::ObjectBoundingMode);
+                rowBrush = QBrush(gradient);
+            } else {
+                rowBrush = glassBodyBrush(glassColors, rowPalette, m_blockRowHeight);
+            }
             rowForeground = glassColors.foreground;
             useGlassIndex = true;
         }
@@ -2257,7 +2349,9 @@ void BlockListWidget::applyActiveRowVisuals() {
         }
     }
 
-    if (m_activeRow >= 0) {
+    if (isReturnToPreviousFlashVisible()) {
+        scrollReturnToPreviousRowsIntoView();
+    } else if (m_activeRow >= 0) {
         const int activeTableRow = tableRowForBlockRow(m_activeRow);
         if (activeTableRow >= 0) {
             if (QTableWidgetItem* anchor = item(activeTableRow, 0)) {

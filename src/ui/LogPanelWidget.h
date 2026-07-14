@@ -1,8 +1,10 @@
 #pragma once
 
+#include <QStringList>
 #include <QWidget>
 
 class QTextEdit;
+class QTimer;
 class QToolButton;
 
 enum class LogLineKind {
@@ -25,10 +27,13 @@ public:
 private:
     QString colorForKind(LogLineKind kind) const;
     void appendHtml(const QString& html);
+    void flushPendingHtml();
     void trimOldLines();
 
     QTextEdit* m_view = nullptr;
     QToolButton* m_clearButton = nullptr;
+    QTimer* m_flushTimer = nullptr;
+    QStringList m_pendingHtml;
     int m_maxLines = 2000;
 };
 

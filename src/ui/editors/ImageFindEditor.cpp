@@ -228,9 +228,17 @@ void ImageFindEditor::reload() {
         QSignalBlocker blocker(m_returnToPreviousImageFindCheck);
         m_returnToPreviousImageFindCheck->setChecked(m_block->returnToPreviousImageFindOnFailure);
     }
+    if (m_returnToPreviousMissLimitSpin) {
+        QSignalBlocker blocker(m_returnToPreviousMissLimitSpin);
+        m_returnToPreviousMissLimitSpin->setValue(std::max(1, m_block->returnToPreviousMissLimit));
+    }
     if (m_retryAfterNextActionCheck) {
         QSignalBlocker blocker(m_retryAfterNextActionCheck);
         m_retryAfterNextActionCheck->setChecked(m_block->retryAfterNextActionOnFailure);
+    }
+    if (m_rememberMultiMatchPositionsCheck) {
+        QSignalBlocker blocker(m_rememberMultiMatchPositionsCheck);
+        m_rememberMultiMatchPositionsCheck->setChecked(m_block->rememberMultiMatchPositions);
     }
     if (m_templateColorModeCombo) {
         QSignalBlocker blocker(m_templateColorModeCombo);
@@ -239,6 +247,7 @@ void ImageFindEditor::reload() {
         m_templateColorModeCombo->setCurrentIndex(index >= 0 ? index : 0);
     }
     updateRoiCorrectionUi();
+    updateReturnToPreviousMissLimitUi();
 }
 
 void ImageFindEditor::setRoiCorrectionUiPolicy(bool featureGlobalEnabled, bool sessionEligible) {
@@ -257,6 +266,17 @@ void ImageFindEditor::updateRoiCorrectionUi() {
     }
     if (m_roiCorrectionGlobalHint) {
         m_roiCorrectionGlobalHint->setVisible(m_roiCorrectionSessionEligible && m_featureRoiCorrectionGlobal);
+    }
+    if (m_rememberMultiMatchPositionsCheck) {
+        m_rememberMultiMatchPositionsCheck->setVisible(m_roiCorrectionSessionEligible);
+    }
+}
+
+void ImageFindEditor::updateReturnToPreviousMissLimitUi() {
+    const bool showLimit = m_returnToPreviousImageFindCheck
+                           && m_returnToPreviousImageFindCheck->isChecked();
+    if (m_returnToPreviousMissLimitRow) {
+        m_returnToPreviousMissLimitRow->setVisible(showLimit);
     }
 }
 
@@ -342,22 +362,52 @@ void ImageFindEditor::setupUi() {
     matchForm->addRow(QString(), m_roiCorrectionExpandRow);
 
     m_returnToPreviousImageFindCheck =
-        new QCheckBox(tr("매칭 실패 시 바로 이전 템플릿 매칭 블록으로 돌아감"), this);
+        new QCheckBox(tr("못 찾으면 이전 템플릿 찾기로 돌아감"), this);
     m_returnToPreviousImageFindCheck->setToolTip(
-        tr("감지 실패(연속 미스 한도 도달) 시 워크플로가 바로 앞쪽 템플릿 매칭 블록부터 다시 실행됩니다. "
-           "다음 동작 후 재시도 옵션과 함께 켜면, 재시도 후에도 실패할 때 이전 블록으로 돌아갑니다. "
-           "기능·구간 반복에서 미스 한도가 설정되어 있을 때 동작합니다."));
+        tr("연속으로 설정한 횟수만큼 감지에 실패하면, 목록에서 바로 위 템플릿 찾기 블록부터 다시 실행합니다.\n"
+           "맨 앞 템플릿 찾기 블록이면 마지막 찾기 블록으로 순환합니다.\n"
+           "「다음 블록 실행 후 재찾기」와 함께 켜면: 첫 실패 때는 재시도(①②)만 하고, "
+           "재시도 후에도 또 실패할 때 이전 복귀가 다음 찾기 블록 이동보다 먼저 실행됩니다."));
+    connect(m_returnToPreviousImageFindCheck, &QCheckBox::toggled, this,
+            [this](bool) { updateReturnToPreviousMissLimitUi(); });
     matchForm->addRow(QString(), m_returnToPreviousImageFindCheck);
 
+    m_returnToPreviousMissLimitRow = new QWidget(this);
+    auto* returnMissLimitLayout = new QHBoxLayout(m_returnToPreviousMissLimitRow);
+    returnMissLimitLayout->setContentsMargins(24, 0, 0, 0);
+    returnMissLimitLayout->setSpacing(4);
+    returnMissLimitLayout->addWidget(new QLabel(tr("연속 감지 실패"), m_returnToPreviousMissLimitRow));
+    m_returnToPreviousMissLimitSpin = new DragAdjustSpinBox(m_returnToPreviousMissLimitRow);
+    m_returnToPreviousMissLimitSpin->setRange(1, 9999);
+    m_returnToPreviousMissLimitSpin->setValue(1);
+    m_returnToPreviousMissLimitSpin->setMinimumWidth(72);
+    m_returnToPreviousMissLimitSpin->setMaximumWidth(96);
+    m_returnToPreviousMissLimitSpin->setToolTip(
+        tr("이 횟수만큼 연속으로 템플릿을 찾지 못하면 이전 템플릿 찾기 블록으로 돌아갑니다."));
+    returnMissLimitLayout->addWidget(m_returnToPreviousMissLimitSpin);
+    returnMissLimitLayout->addWidget(new QLabel(tr("회"), m_returnToPreviousMissLimitRow));
+    returnMissLimitLayout->addStretch(1);
+    matchForm->addRow(QString(), m_returnToPreviousMissLimitRow);
+
     m_retryAfterNextActionCheck =
-        new QCheckBox(tr("바로 다음 동작 후 다시 감지 시도, 감지되지 않으면 다음 템플릿 매칭 블록 절차로 넘어감"),
-                      this);
+        new QCheckBox(tr("못 찾으면 → 다음 블록 1회 실행 → 다시 찾기"), this);
     m_retryAfterNextActionCheck->setToolTip(
-        tr("감지 실패 시 바로 다음 블록을 한 번 실행한 뒤 이 블록을 다시 감지합니다. "
-           "그래도 실패하면 다음 템플릿 매칭 블록으로 넘어갑니다. "
-           "이전 블록 복귀 옵션과 함께 켜면, 재시도 후 실패 시 이전 블록 복귀가 우선합니다. "
-           "기능·구간 반복에서 미스 한도가 설정되어 있을 때 동작합니다."));
+        tr("탐지 실패 판정은 탐지 재시도 간격마다 누적됩니다. 이전 복귀도 켜져 있으면 그쪽의 「연속 감지 실패」 횟수를 따릅니다.\n"
+           "① 첫 실패: 바로 아래 블록(클릭·키·딜레이 등)을 한 번 실행합니다. (아래 블록이 없으면 생략)\n"
+           "② 이 블록에서 같은 템플릿을 다시 찾습니다.\n"
+           "③ 또 실패: 다음 템플릿 찾기 블록으로 넘어갑니다. (맨 마지막이면 첫 찾기로 순환)\n"
+           "이전 복귀도 켜져 있으면 ③ 대신 이전 템플릿 찾기 블록으로 돌아갑니다.\n"
+           "※ 아래 블록 실행이 오류로 중단되면 ② 재찾기까지 진행되지 않을 수 있습니다."));
     matchForm->addRow(QString(), m_retryAfterNextActionCheck);
+
+    m_rememberMultiMatchPositionsCheck =
+        new QCheckBox(tr("첫 루프 위치 기억 (루프마다 순서대로 제공)"), this);
+    m_rememberMultiMatchPositionsCheck->setToolTip(
+        tr("첫 루프에서 ROI 안의 모든 매칭 위치를 위→아래, 왼쪽→오른쪽 순으로 기억합니다.\n"
+           "1번째 루프 → 1번 위치, 2번째 루프 → 2번 위치처럼 루프 회차마다 해당 순번을 탐색 없이 제공합니다.\n"
+           "저장된 개수보다 루프가 더 많으면 실패합니다.\n"
+           "무한 반복·N회 반복(2회 이상)·트리거 모드에서만 사용할 수 있습니다."));
+    matchForm->addRow(QString(), m_rememberMultiMatchPositionsCheck);
 
     m_roiCorrectionGlobalHint = new HintLabel(
         tr("기능 편집에서 전체 ROI 보정이 켜져 있습니다. 보정 영역 비율은 기능 편집에서 설정합니다."),
@@ -543,8 +593,16 @@ void ImageFindEditor::syncUiToBlockValues() {
     if (m_returnToPreviousImageFindCheck) {
         m_block->returnToPreviousImageFindOnFailure = m_returnToPreviousImageFindCheck->isChecked();
     }
+    if (m_returnToPreviousMissLimitSpin) {
+        m_returnToPreviousMissLimitSpin->interpretText();
+        m_block->returnToPreviousMissLimit =
+            std::max(1, m_returnToPreviousMissLimitSpin->value());
+    }
     if (m_retryAfterNextActionCheck) {
         m_block->retryAfterNextActionOnFailure = m_retryAfterNextActionCheck->isChecked();
+    }
+    if (m_rememberMultiMatchPositionsCheck && m_rememberMultiMatchPositionsCheck->isVisible()) {
+        m_block->rememberMultiMatchPositions = m_rememberMultiMatchPositionsCheck->isChecked();
     }
     if (m_templateColorModeCombo) {
         m_block->templateColorMode =

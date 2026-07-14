@@ -99,6 +99,9 @@ bool isAsyncKeyDown(int vk) {
     return (GetAsyncKeyState(vk) & 0x8000) != 0;
 }
 
+bool isShiftPhysicallyDown();
+bool isCtrlPhysicallyDown();
+
 bool isExtendedVirtualKey(int virtualKey) {
     switch (virtualKey) {
     case VK_RMENU:
@@ -386,10 +389,10 @@ bool getCursorClientPoint(HWND hwnd, int& clientX, int& clientY) {
 
 WPARAM clientButtonDownWParam(MouseButton button, const KeyModifiers& mods) {
     WPARAM wParam = 0;
-    if (mods.shift) {
+    if (mods.shift || isShiftPhysicallyDown()) {
         wParam |= MK_SHIFT;
     }
-    if (mods.ctrl) {
+    if (mods.ctrl || isCtrlPhysicallyDown()) {
         wParam |= MK_CONTROL;
     }
     if (button != MouseButton::Left && isAsyncKeyDown(VK_LBUTTON)) {
@@ -1142,6 +1145,9 @@ void InputSimulator::ensureKeyReleased(int virtualKey) {
 
 void InputSimulator::forceKeyUp(int virtualKey) {
 #ifdef _WIN32
+    if (isModifierVirtualKey(virtualKey) && isModifierVirtualKeyPhysicallyDown(virtualKey)) {
+        return;
+    }
     sendKeyboardVk(virtualKey, false, false);
 #else
     (void)virtualKey;
@@ -1170,6 +1176,60 @@ void InputSimulator::forceHotkeyMouseButtonUp(int virtualKey) {
         break;
     }
 #else
+    (void)virtualKey;
+#endif
+}
+
+void InputSimulator::releaseHoldHotkeyToTarget(HWND hwnd, int virtualKey) {
+#ifdef _WIN32
+    if (!hwnd || !IsWindow(hwnd)) {
+        if (virtualKey == VK_LBUTTON || virtualKey == VK_RBUTTON || virtualKey == VK_MBUTTON
+            || virtualKey == VK_XBUTTON1 || virtualKey == VK_XBUTTON2) {
+            forceHotkeyMouseButtonUp(virtualKey);
+        } else {
+            forceKeyUp(virtualKey);
+        }
+        return;
+    }
+
+    int clientX = 0;
+    int clientY = 0;
+    if (!getCursorClientPoint(hwnd, clientX, clientY)) {
+        if (virtualKey == VK_LBUTTON || virtualKey == VK_RBUTTON || virtualKey == VK_MBUTTON
+            || virtualKey == VK_XBUTTON1 || virtualKey == VK_XBUTTON2) {
+            forceHotkeyMouseButtonUp(virtualKey);
+        } else {
+            forceKeyUp(virtualKey);
+        }
+        return;
+    }
+
+    const LPARAM lParam = MAKELPARAM(static_cast<WORD>(clientX & 0xFFFF),
+                                     static_cast<WORD>(clientY & 0xFFFF));
+    const WPARAM keyState = physicalMouseMoveWParam();
+
+    switch (virtualKey) {
+    case VK_LBUTTON:
+        PostMessage(hwnd, WM_LBUTTONUP, keyState & ~static_cast<WPARAM>(MK_LBUTTON), lParam);
+        return;
+    case VK_RBUTTON:
+        PostMessage(hwnd, WM_RBUTTONUP, keyState & ~static_cast<WPARAM>(MK_RBUTTON), lParam);
+        return;
+    case VK_MBUTTON:
+        PostMessage(hwnd, WM_MBUTTONUP, keyState & ~static_cast<WPARAM>(MK_MBUTTON), lParam);
+        return;
+    case VK_XBUTTON1:
+        PostMessage(hwnd, WM_XBUTTONUP, MAKEWPARAM(static_cast<WORD>(keyState), XBUTTON1), lParam);
+        return;
+    case VK_XBUTTON2:
+        PostMessage(hwnd, WM_XBUTTONUP, MAKEWPARAM(static_cast<WORD>(keyState), XBUTTON2), lParam);
+        return;
+    default:
+        forceKeyUp(virtualKey);
+        return;
+    }
+#else
+    (void)hwnd;
     (void)virtualKey;
 #endif
 }
@@ -1295,11 +1355,29 @@ int normalizeModifierVirtualKey(int virtualKey) {
     }
 }
 
+bool modifierWasHeldAtSessionStart(int virtualKey, const SessionModifierSnapshot& sessionStart) {
+    switch (normalizeModifierVirtualKey(virtualKey)) {
+    case VK_SHIFT:
+        return sessionStart.shift;
+    case VK_CONTROL:
+        return sessionStart.ctrl;
+    case VK_MENU:
+        return sessionStart.alt;
+    default:
+        return false;
+    }
+}
+
 void InputSimulator::restoreTrackedKeyboard(std::unordered_set<int>& heldKeys,
-                                            const SessionModifierSnapshot& /*sessionStart*/) {
+                                            const SessionModifierSnapshot& sessionStart) {
     const auto keysToRelease = heldKeys;
     for (int virtualKey : keysToRelease) {
-        sendKeyboardVk(normalizeModifierVirtualKey(virtualKey), false, false);
+        const int vk = normalizeModifierVirtualKey(virtualKey);
+        if (modifierWasHeldAtSessionStart(vk, sessionStart)) {
+            heldKeys.erase(virtualKey);
+            continue;
+        }
+        sendKeyboardVk(vk, false, false);
         heldKeys.erase(virtualKey);
     }
 }

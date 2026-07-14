@@ -29,6 +29,7 @@ struct FeatureRunSession {
     int repeatRemaining = 0;
     bool repeatSession = false;
     bool holdRunActive = false;
+    bool holdHotkeyReleasedToTarget = false;
     bool userStopRequested = false;
     quint64 holdRepeatGeneration = 0;
     int runningBlockIndex = -1;
