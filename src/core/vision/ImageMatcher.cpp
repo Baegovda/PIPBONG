@@ -554,6 +554,42 @@ bool ImageMatcher::requiresGrayscaleHaystackRegion(TemplateColorMode mode, const
     }
 }
 
+bool ImageMatcher::usesColorChannelMatching(TemplateColorMode mode, const PreparedTemplate& templ) {
+    if (templ.isGrayscaleTemplate) {
+        return false;
+    }
+    switch (mode) {
+    case TemplateColorMode::Color:
+    case TemplateColorMode::Auto:
+        return true;
+    case TemplateColorMode::Grayscale:
+    default:
+        return false;
+    }
+}
+
+bool ImageMatcher::requiresColorHaystackRegion(TemplateColorMode mode, const PreparedTemplate& templ) {
+    return usesColorChannelMatching(mode, templ);
+}
+
+std::vector<MatchResult> ImageMatcher::filterMatchesRejectingGrayscaleHaystack(
+    const cv::Mat& haystack,
+    const std::vector<MatchResult>& matches,
+    double maxMeanChannelSpread) {
+    if (haystack.empty()) {
+        return matches;
+    }
+
+    std::vector<MatchResult> filtered;
+    filtered.reserve(matches.size());
+    for (const MatchResult& match : matches) {
+        if (!isMatchRegionGrayscale(haystack, match, maxMeanChannelSpread)) {
+            filtered.push_back(match);
+        }
+    }
+    return filtered;
+}
+
 PreparedTemplate ImageMatcher::loadTemplate(const std::string& path) {
 
     PreparedTemplate templ;
@@ -609,6 +645,7 @@ void ImageMatcher::ensureTemplateScaleCache(const PreparedTemplate& templ, const
     templ.scaleCacheFactors = scaleFactors(options);
 
     templ.scaleCacheGrays.clear();
+    templ.scaleCacheBgrs.clear();
 
     templ.scaleCacheGrays.reserve(templ.scaleCacheFactors.size());
 
@@ -637,6 +674,57 @@ void ImageMatcher::ensureTemplateScaleCache(const PreparedTemplate& templ, const
         cv::resize(templ.gray, resized, cv::Size(width, height), 0, 0, interpolation);
 
         templ.scaleCacheGrays.push_back(std::move(resized));
+
+    }
+
+}
+
+
+
+void ImageMatcher::ensureTemplateBgrScaleCache(const PreparedTemplate& templ, const MatchOptions& options) {
+
+    ensureTemplateScaleCache(templ, options);
+
+    if (!templ.scaleCacheBgrs.empty()
+        && templ.scaleCacheBgrs.size() == templ.scaleCacheFactors.size()) {
+
+        return;
+
+    }
+
+
+
+    templ.scaleCacheBgrs.clear();
+
+    templ.scaleCacheBgrs.reserve(templ.scaleCacheFactors.size());
+
+    const cv::Mat sourceBgr = toBgr(templ.bgr);
+
+
+
+    for (const double scale : templ.scaleCacheFactors) {
+
+        if (std::abs(scale - 1.0) < kScaleEpsilon) {
+
+            templ.scaleCacheBgrs.push_back(sourceBgr);
+
+            continue;
+
+        }
+
+
+
+        const int width = std::max(1, static_cast<int>(std::lround(sourceBgr.cols * scale)));
+
+        const int height = std::max(1, static_cast<int>(std::lround(sourceBgr.rows * scale)));
+
+        const int interpolation = scale < 1.0 ? cv::INTER_AREA : cv::INTER_LINEAR;
+
+        cv::Mat resized;
+
+        cv::resize(sourceBgr, resized, cv::Size(width, height), 0, 0, interpolation);
+
+        templ.scaleCacheBgrs.push_back(std::move(resized));
 
     }
 
@@ -695,6 +783,46 @@ MatchResult ImageMatcher::findPeakMatchGray(const cv::Mat& hayGray,
         const double scale = templ.scaleCacheFactors[i];
 
         const MatchResult peak = findPeakAtScale(hayGray, templ.scaleCacheGrays[i], scale);
+
+        if (peak.found && peak.confidence > best.confidence) {
+
+            best = peak;
+
+        }
+
+    }
+
+    return best;
+
+}
+
+
+
+MatchResult ImageMatcher::findPeakMatchBgr(const cv::Mat& hayBgr,
+
+                                           const PreparedTemplate& templ,
+
+                                           const MatchOptions& options) {
+
+    MatchResult best;
+
+    const cv::Mat hay = toBgr(hayBgr);
+
+    if (hay.empty() || templ.empty()) {
+
+        return best;
+
+    }
+
+
+
+    ensureTemplateBgrScaleCache(templ, options);
+
+    for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
+
+        const double scale = templ.scaleCacheFactors[i];
+
+        const MatchResult peak = findPeakAtScale(hay, templ.scaleCacheBgrs[i], scale);
 
         if (peak.found && peak.confidence > best.confidence) {
 
@@ -915,6 +1043,76 @@ std::vector<MatchResult> ImageMatcher::findAllTemplatesGray(const cv::Mat& hayGr
         match.found = meetsThreshold(match.confidence, options.threshold) &&
 
                       isWithinBounds(match.location, match.matchedSize, hayGray.size());
+
+    }
+
+
+
+    allMatches.erase(std::remove_if(allMatches.begin(),
+
+                                    allMatches.end(),
+
+                                    [](const MatchResult& match) { return !match.found; }),
+
+                     allMatches.end());
+
+    std::sort(allMatches.begin(), allMatches.end(), topLeftBefore);
+
+    return allMatches;
+
+}
+
+
+
+std::vector<MatchResult> ImageMatcher::findAllTemplatesBgr(const cv::Mat& hayBgr,
+
+                                                           const PreparedTemplate& templ,
+
+                                                           const MatchOptions& options,
+
+                                                           bool enumerateAll) {
+
+    std::vector<MatchResult> allMatches;
+
+    const cv::Mat hay = toBgr(hayBgr);
+
+    if (hay.empty() || templ.empty()) {
+
+        return allMatches;
+
+    }
+
+
+
+    ensureTemplateBgrScaleCache(templ, options);
+
+    for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
+
+        const double scale = templ.scaleCacheFactors[i];
+
+        std::vector<MatchResult> scaleMatches = collectMatchesAtScale(
+
+            hay, templ.scaleCacheBgrs[i], scale, options.threshold, enumerateAll);
+
+        allMatches.insert(allMatches.end(), scaleMatches.begin(), scaleMatches.end());
+
+    }
+
+
+
+    if (enumerateAll) {
+
+        allMatches = dedupeOverlappingTopLeftFirst(std::move(allMatches));
+
+    }
+
+
+
+    for (MatchResult& match : allMatches) {
+
+        match.found = meetsThreshold(match.confidence, options.threshold) &&
+
+                      isWithinBounds(match.location, match.matchedSize, hay.size());
 
     }
 

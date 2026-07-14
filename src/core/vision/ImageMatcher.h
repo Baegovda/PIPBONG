@@ -35,6 +35,7 @@ struct PreparedTemplate {
     mutable std::string scaleCacheKey;
     mutable std::vector<double> scaleCacheFactors;
     mutable std::vector<cv::Mat> scaleCacheGrays;
+    mutable std::vector<cv::Mat> scaleCacheBgrs;
 
     bool empty() const { return bgr.empty() || gray.empty(); }
 };
@@ -55,6 +56,12 @@ public:
         const std::vector<MatchResult>& matches,
         double maxMeanChannelSpread = 10.0);
     static bool requiresGrayscaleHaystackRegion(TemplateColorMode mode, const PreparedTemplate& templ);
+    static bool requiresColorHaystackRegion(TemplateColorMode mode, const PreparedTemplate& templ);
+    static bool usesColorChannelMatching(TemplateColorMode mode, const PreparedTemplate& templ);
+    static std::vector<MatchResult> filterMatchesRejectingGrayscaleHaystack(
+        const cv::Mat& haystack,
+        const std::vector<MatchResult>& matches,
+        double maxMeanChannelSpread = 10.0);
     static MatchResult findTemplate(const cv::Mat& haystack,
                                     const PreparedTemplate& templ,
                                     const MatchOptions& options = {});
@@ -68,6 +75,9 @@ public:
     static MatchResult findPeakMatchGray(const cv::Mat& hayGray,
                                          const PreparedTemplate& templ,
                                          const MatchOptions& options);
+    static MatchResult findPeakMatchBgr(const cv::Mat& hayBgr,
+                                        const PreparedTemplate& templ,
+                                        const MatchOptions& options);
     static void findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
                                             const PreparedTemplate& templ,
                                             const MatchOptions& options,
@@ -79,9 +89,14 @@ public:
                                                          const PreparedTemplate& templ,
                                                          const MatchOptions& options,
                                                          bool enumerateAll = true);
+    static std::vector<MatchResult> findAllTemplatesBgr(const cv::Mat& hayBgr,
+                                                        const PreparedTemplate& templ,
+                                                        const MatchOptions& options,
+                                                        bool enumerateAll = true);
 
     static std::vector<double> scaleFactors(const MatchOptions& options);
 
 private:
     static void ensureTemplateScaleCache(const PreparedTemplate& templ, const MatchOptions& options);
+    static void ensureTemplateBgrScaleCache(const PreparedTemplate& templ, const MatchOptions& options);
 };

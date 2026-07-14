@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.108` (from `project(PIPBONG VERSION 0.8.108)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.109` (from `project(PIPBONG VERSION 0.8.109)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -640,7 +640,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `templates`                           | `[]`                      | Relative paths under `templates/`; multiple entries per block                                                                                                           |
 | `template`                            | `""`                      | Legacy single path; loaded when `templates` is empty; first `templates` entry is also written for backward compat                                                       |
 | `templateMatchMode`                   | `"Any"`                   | `"Any"` (one hit succeeds) or `"All"` (every template must match on the same capture)                                                                                   |
-| `templateColorMode`                   | `"Auto"`                  | `"Auto"` (analyze template), `"Grayscale"` (reject saturated color UI regions in haystack), or `"Color"` (no grayscale haystack filter); omitted when `Auto`            |
+| `templateColorMode`                   | `"Auto"`                  | `"Auto"` (analyze template: grayscale templates reject saturated haystack ROIs; color templates use BGR channel matching and reject effectively grayscale haystack ROIs), `"Grayscale"` (reject saturated color UI regions), or `"Color"` (color templates: BGR matching + reject grayscale haystack ROIs); omitted when `Auto`            |
 | `threshold`                           | `0.85`                    | Match confidence threshold                                                                                                                                              |
 | `pollIntervalMs`                      | `200`                     | Delay between retries when no match (5–60000 ms, 5 ms step); block polls until success or workflow stop                                                                 |
 | `searchArea`                          | `"TargetWindow"`          | `FullScreen`, `TargetWindow`, `CustomRegion`; legacy `"ScreenPercent"` loads as `CustomRegion`                                                                          |
@@ -1089,6 +1089,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.109] - 2026-07-15
+
+### Changed
+
+- ImageFind **템플릿 색상** **컬러** / **자동**(color template): color templates match on BGR channels and reject effectively grayscale haystack regions so a desaturated on-screen copy no longer hits; **흑백** unchanged (`ImageMatcher::findPeakMatchBgr`, `requiresColorHaystackRegion`, `ImageFindBlock`, `ImageFindEditor` tooltip).
 
 ## [0.8.108] - 2026-07-15
 

@@ -143,23 +143,75 @@ MatchResult bestMatchByConfidence(const std::vector<MatchResult>& matches) {
     return best ? *best : MatchResult{};
 }
 
-void applyGrayscaleHaystackFilter(const cv::Mat& haystack,
-                                  bool requireGrayscaleHaystack,
-                                  std::vector<MatchResult>& matches,
-                                  MatchResult& peak) {
-    if (!requireGrayscaleHaystack || haystack.empty()) {
+void applyTemplateColorModeHaystackFilter(const cv::Mat& haystack,
+                                          bool requireGrayscaleHaystack,
+                                          bool requireColorHaystack,
+                                          std::vector<MatchResult>& matches,
+                                          MatchResult& peak) {
+    if (haystack.empty()) {
         return;
     }
 
-    matches = ImageMatcher::filterMatchesToGrayscaleHaystack(haystack, matches);
-    if (matches.empty()) {
-        if (peak.found && !ImageMatcher::isMatchRegionGrayscale(haystack, peak)) {
-            peak = {};
+    if (requireGrayscaleHaystack) {
+        matches = ImageMatcher::filterMatchesToGrayscaleHaystack(haystack, matches);
+        if (matches.empty()) {
+            if (peak.found && !ImageMatcher::isMatchRegionGrayscale(haystack, peak)) {
+                peak = {};
+            }
+        } else {
+            peak = bestMatchByConfidence(matches);
         }
-        return;
     }
 
-    peak = bestMatchByConfidence(matches);
+    if (requireColorHaystack) {
+        matches = ImageMatcher::filterMatchesRejectingGrayscaleHaystack(haystack, matches);
+        if (matches.empty()) {
+            if (peak.found && ImageMatcher::isMatchRegionGrayscale(haystack, peak)) {
+                peak = {};
+            }
+        } else {
+            peak = bestMatchByConfidence(matches);
+        }
+    }
+}
+
+bool passesTemplateColorModeHaystackFilter(const cv::Mat& haystack,
+                                           const MatchResult& match,
+                                           bool requireGrayscaleHaystack,
+                                           bool requireColorHaystack) {
+    if (!match.found || haystack.empty()) {
+        return false;
+    }
+    if (requireGrayscaleHaystack && !ImageMatcher::isMatchRegionGrayscale(haystack, match)) {
+        return false;
+    }
+    if (requireColorHaystack && ImageMatcher::isMatchRegionGrayscale(haystack, match)) {
+        return false;
+    }
+    return true;
+}
+
+MatchResult findImageFindPeakMatch(const cv::Mat& haystack,
+                                   const cv::Mat& hayGray,
+                                   const PreparedTemplate& templ,
+                                   const MatchOptions& options) {
+    if (ImageMatcher::usesColorChannelMatching(options.templateColorMode, templ)
+        && haystack.channels() >= 3) {
+        return ImageMatcher::findPeakMatchBgr(haystack, templ, options);
+    }
+    return ImageMatcher::findPeakMatchGray(hayGray, templ, options);
+}
+
+std::vector<MatchResult> findImageFindAllMatches(const cv::Mat& haystack,
+                                                 const cv::Mat& hayGray,
+                                                 const PreparedTemplate& templ,
+                                                 const MatchOptions& options,
+                                                 bool enumerateAll) {
+    if (ImageMatcher::usesColorChannelMatching(options.templateColorMode, templ)
+        && haystack.channels() >= 3) {
+        return ImageMatcher::findAllTemplatesBgr(haystack, templ, options, enumerateAll);
+    }
+    return ImageMatcher::findAllTemplatesGray(hayGray, templ, options, enumerateAll);
 }
 
 struct ImageFindSelection {
@@ -184,16 +236,20 @@ ImageFindSelection trySelectImageFindMatch(const cv::Mat& haystack,
 
     const bool requireGrayscaleHaystack =
         ImageMatcher::requiresGrayscaleHaystackRegion(options.templateColorMode, templ);
+    const bool requireColorHaystack =
+        ImageMatcher::requiresColorHaystackRegion(options.templateColorMode, templ);
 
-    selection.peak = ImageMatcher::findPeakMatchGray(hayGray, templ, options);
+    selection.peak = findImageFindPeakMatch(haystack, hayGray, templ, options);
     if (!selection.peak.found
         || !ImageMatcher::meetsThreshold(selection.peak.confidence, options.threshold)) {
         return selection;
     }
 
     if (!ctx.hasConsumedMatchRegions()) {
-        if (requireGrayscaleHaystack
-            && !ImageMatcher::isMatchRegionGrayscale(haystack, selection.peak)) {
+        if (!passesTemplateColorModeHaystackFilter(haystack,
+                                                   selection.peak,
+                                                   requireGrayscaleHaystack,
+                                                   requireColorHaystack)) {
             return selection;
         }
         selection.match = selection.peak;
@@ -201,9 +257,12 @@ ImageFindSelection trySelectImageFindMatch(const cv::Mat& haystack,
         return selection;
     }
 
-    selection.allMatches =
-        ImageMatcher::findAllTemplatesGray(hayGray, templ, options, true);
-    applyGrayscaleHaystackFilter(haystack, requireGrayscaleHaystack, selection.allMatches, selection.peak);
+    selection.allMatches = findImageFindAllMatches(haystack, hayGray, templ, options, true);
+    applyTemplateColorModeHaystackFilter(haystack,
+                                         requireGrayscaleHaystack,
+                                         requireColorHaystack,
+                                         selection.allMatches,
+                                         selection.peak);
     if (selection.allMatches.empty()) {
         return selection;
     }
@@ -746,11 +805,17 @@ void collectRememberedHitsFromTemplate(const cv::Mat& haystack,
         return;
     }
     std::vector<MatchResult> allMatches =
-        ImageMatcher::findAllTemplatesGray(hayGray, templ, options, true);
+        findImageFindAllMatches(haystack, hayGray, templ, options, true);
     MatchResult peak = bestMatchByConfidence(allMatches);
     const bool requireGrayscaleHaystack =
         ImageMatcher::requiresGrayscaleHaystackRegion(options.templateColorMode, templ);
-    applyGrayscaleHaystackFilter(haystack, requireGrayscaleHaystack, allMatches, peak);
+    const bool requireColorHaystack =
+        ImageMatcher::requiresColorHaystackRegion(options.templateColorMode, templ);
+    applyTemplateColorModeHaystackFilter(haystack,
+                                         requireGrayscaleHaystack,
+                                         requireColorHaystack,
+                                         allMatches,
+                                         peak);
     for (const MatchResult& match : allMatches) {
         if (const std::optional<ExecutionContext::RememberedImageFindHit> hit =
                 rememberedHitFromMatch(match,
@@ -1531,11 +1596,17 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
 
     MatchOptions matchOptions = options;
     const cv::Mat hayGray = ImageMatcher::toGrayscale(result.haystack);
-    MatchResult peak = ImageMatcher::findPeakMatchGray(hayGray, templ, matchOptions);
-    result.matches = ImageMatcher::findAllTemplatesGray(hayGray, templ, matchOptions, true);
+    MatchResult peak = findImageFindPeakMatch(result.haystack, hayGray, templ, matchOptions);
+    result.matches = findImageFindAllMatches(result.haystack, hayGray, templ, matchOptions, true);
     const bool requireGrayscaleHaystack =
         ImageMatcher::requiresGrayscaleHaystackRegion(matchOptions.templateColorMode, templ);
-    applyGrayscaleHaystackFilter(result.haystack, requireGrayscaleHaystack, result.matches, peak);
+    const bool requireColorHaystack =
+        ImageMatcher::requiresColorHaystackRegion(matchOptions.templateColorMode, templ);
+    applyTemplateColorModeHaystackFilter(result.haystack,
+                                         requireGrayscaleHaystack,
+                                         requireColorHaystack,
+                                         result.matches,
+                                         peak);
     if (!result.matches.empty()) {
         result.match = result.matches.front();
     } else {
@@ -1626,11 +1697,17 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
                 result.needle = templ.bgr;
             }
             std::vector<MatchResult> templateMatches =
-                ImageMatcher::findAllTemplatesGray(hayGray, templ, matchOptions, true);
-            MatchResult peak = ImageMatcher::findPeakMatchGray(hayGray, templ, matchOptions);
+                findImageFindAllMatches(haystack, hayGray, templ, matchOptions, true);
+            MatchResult peak = findImageFindPeakMatch(haystack, hayGray, templ, matchOptions);
             const bool requireGrayscaleHaystack =
                 ImageMatcher::requiresGrayscaleHaystackRegion(matchOptions.templateColorMode, templ);
-            applyGrayscaleHaystackFilter(haystack, requireGrayscaleHaystack, templateMatches, peak);
+            const bool requireColorHaystack =
+                ImageMatcher::requiresColorHaystackRegion(matchOptions.templateColorMode, templ);
+            applyTemplateColorModeHaystackFilter(haystack,
+                                                 requireGrayscaleHaystack,
+                                                 requireColorHaystack,
+                                                 templateMatches,
+                                                 peak);
             if (multiCustomRoi) {
                 regionMatches.insert(regionMatches.end(), templateMatches.begin(), templateMatches.end());
             } else {

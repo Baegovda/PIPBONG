@@ -322,9 +322,11 @@ void ImageFindEditor::setupUi() {
     m_templateColorModeCombo->addItem(tr("흑백"), static_cast<int>(TemplateColorMode::Grayscale));
     m_templateColorModeCombo->addItem(tr("컬러"), static_cast<int>(TemplateColorMode::Color));
     m_templateColorModeCombo->setToolTip(
-        tr("자동: 템플릿 이미지를 분석해 흑백·컬러를 판별합니다.\n"
+        tr("자동: 템플릿 색상을 분석합니다. 흑백 템플릿은 채도 높은 UI 영역을 제외하고, "
+           "컬러 템플릿은 BGR 채널 매칭과 함께 화면의 흑백(채도 낮은) 영역을 제외합니다.\n"
            "흑백: 채도가 높은 UI 영역은 매칭에서 제외합니다.\n"
-           "컬러: 흑백 필터 없이 색이 있는 영역도 매칭합니다."));
+           "컬러: 컬러 템플릿은 BGR 채널로 매칭하며, 같은 형태의 흑백 화면 영역은 "
+           "매칭하지 않습니다."));
 
     auto* matchGroup = new QGroupBox(tr("매칭 설정"), this);
     auto* matchForm = new QFormLayout(matchGroup);
