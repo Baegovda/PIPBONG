@@ -51,6 +51,7 @@ class ProfileListWidget;
 class TargetWindowDetailPanel;
 class CustomTitleBar;
 class CalculatorDialog;
+class SpikeWatchDialog;
 class UpdateChecker;
 
 class MainWindow : public QMainWindow {
@@ -95,6 +96,7 @@ private slots:
     void maybeStartAutomaticUpdate();
     void onProgramSettings();
     void onCalculator();
+    void onSpikeWatch();
     void onAlwaysOnTopToggled(bool checked);
     void onPickTargetWindow();
     void onPickTargetWindowFromList();
@@ -313,6 +315,7 @@ private:
     QPushButton* m_exitButton = nullptr;
     QPushButton* m_updateButton = nullptr;
     QPushButton* m_calculatorButton = nullptr;
+    QPushButton* m_spikeWatchButton = nullptr;
     QPushButton* m_settingsButton = nullptr;
     TargetWindowDetailPanel* m_targetWindowDetailPanel = nullptr;
     CustomTitleBar* m_titleBar = nullptr;
@@ -339,6 +342,7 @@ private:
     QString m_transientStatusMessage;
     std::map<std::string, FeatureRunSession> m_runSessions;
     QPointer<CalculatorDialog> m_calculatorDialog;
+    QPointer<SpikeWatchDialog> m_spikeWatchDialog;
     QSystemTrayIcon* m_trayIcon = nullptr;
     QMenu* m_trayMenu = nullptr;
     bool m_forceQuit = false;

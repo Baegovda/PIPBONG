@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.102` (from `project(PIPBONG VERSION 0.8.102)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.103` (from `project(PIPBONG VERSION 0.8.103)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -437,6 +437,8 @@ Sbm1.0/                        # repo root (local workspace)
 | `src/core/workflow/`                   | `WorkflowEngine`, `Workflow`, `ExecutionContext`, block types               |
 | `src/core/poeninja/`                   | `PoeNinjaClient` — unofficial poe.ninja PoE2 Currency Exchange API          |
 | `src/ui/calculator/`                   | `CalculatorDialog`, `SpreadsheetModel` — 시세 계산기 (workflow-independent) |
+| `src/core/diagnostics/`                | `SystemCpuSampler`, `ProcessCpuSampler`, `CpuSpikeDetector`, `CpuMonitorWorker` |
+| `src/ui/diagnostics/`                  | `SpikeWatchDialog` — CPU 스파이크 감시 (workflow-independent) |
 | `src/ui/`                              | `FeatureListPanel`, `WorkflowEditorPanel`, `BlockListWidget`, editors       |
 | `src/ui/editors/ScreenRegionOverlay.*` | Win32 overlay for in-game template capture                                  |
 | `src/storage/`                         | `JsonSerializer`                                                            |
@@ -504,6 +506,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Debounce                | 800 ms after edits; also on window close                                                                                                                                                                                                                                                                                     |
 | Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog                               |
 | Calculator sheet        | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry`                                                                                                                                                                                                                        |
+| CPU spike watch         | `QSettings` — `spikewatch/geometry`, `spikewatch/intervalMs`, thresholds, `topN`, `deltaMargin` (not in `project.json`)                                                                                                                                                                                                    |
 
 ### 5.8 poe.ninja economy calculator
 
@@ -512,6 +515,14 @@ Sbm1.0/                        # repo root (local workspace)
 - **`SpreadsheetModel`:** 20×8 grid — manual numbers, `=A1+B1` formulas (`FormulaEvaluator`: `+ − * /`, parentheses, cell refs), **시세 연동** API cells (base-currency-relative values); recalculates on edit or refresh.
 - **`FormulaBuilderDialog`:** **수식 만들기** — in-dialog arithmetic manual, operator buttons, operand fields, live preview; **표에서 고르기** pick mode on the grid (click or drag-select cells; Esc cancels).
 - **Persistence:** `QSettings` keys `calculator/sheet_v1`, `calculator/lastLeague`, `calculator/baseCurrencyId`, `calculator/decimalPlaces` (0–8, default 4), `calculator/autoRefreshEnabled`, `calculator/autoRefreshMinutes` (1–120, default 5), `calculator/economyFavorites_v1`, `calculator/geometry` (not in `project.json`).
+
+### 5.9 CPU spike watch (diagnostics)
+
+- **Entry:** bottom **CPU 감시** button (left of **계산기**); modeless `SpikeWatchDialog` — manual diagnostic session only (no background monitoring when closed).
+- **Sampling:** `CpuMonitorWorker` on a dedicated `QThread` uses Win32 `GetSystemTimes` (system CPU %) and `CreateToolhelp32Snapshot` + `GetProcessTimes` (per-process CPU %); no PDH / new vcpkg deps.
+- **Spike detection:** `CpuSpikeDetector` — absolute thresholds (system / single process), optional relative jump over rolling median (`deltaMargin`; 0 = off), cooldown debounce.
+- **UI:** live Top N process table, spike event log (clipboard copy), DragAdjust interval/threshold controls; marks events when a PIPBONG feature session is active.
+- **Persistence:** `QSettings` keys `spikewatch/*` (geometry, interval, thresholds, top N, delta margin).
 
 ---
 
@@ -548,6 +559,14 @@ Sbm1.0/                        # repo root (local workspace)
 2. Select league → **새로고침** loads PoE2 economy exchange rates.
 3. Edit cells: numbers, **수식 만들기** (or type `=A1+B1`), or **시세 연동** on selected cell.
 4. Sheet, base currency, favorites, and window layout persist in `QSettings` across restarts.
+
+### CPU spike watch (diagnostics)
+
+1. Click bottom **CPU 감시** (left of **계산기**).
+2. Adjust sample interval and CPU thresholds if needed.
+3. Click **감시 시작** — Top N processes refresh on the worker thread; spike events append to the log when thresholds are exceeded.
+4. Reproduce mouse stutter or heavy load; inspect which process spiked and whether PIPBONG had an active feature run.
+5. **중지** or close the dialog to end sampling.
 
 ---
 
@@ -1068,6 +1087,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.103] - 2026-07-14
+
+### Added
+
+- **CPU 스파이크 감시** standalone diagnostic tool (like **계산기**): bottom **CPU 감시** opens modeless `SpikeWatchDialog`; worker-thread Win32 CPU sampling (`SystemCpuSampler`, `ProcessCpuSampler`), Top N process table, absolute/relative spike detection with event log and clipboard export (`CpuSpikeDetector`, `CpuMonitorWorker`); settings in `QSettings` `spikewatch/*`; optional PIPBONG feature-run correlation (`MainWindow`).
 
 ## [0.8.102] - 2026-07-14
 

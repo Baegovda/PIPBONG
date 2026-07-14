@@ -1,0 +1,407 @@
+#include "ui/diagnostics/SpikeWatchDialog.h"
+
+#include "core/diagnostics/CpuMonitorWorker.h"
+#include "ui/widgets/DragAdjustDoubleSpinBox.h"
+#include "ui/widgets/DragAdjustSpinBox.h"
+#include "ui/widgets/HintLabel.h"
+
+#include <QApplication>
+#include <QClipboard>
+#include <QCloseEvent>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QLabel>
+#include <QMetaType>
+#include <QPushButton>
+#include <QSettings>
+#include <QShowEvent>
+#include <QTableWidget>
+#include <QTextEdit>
+#include <QThread>
+#include <QEventLoop>
+#include <QTimer>
+#include <QVBoxLayout>
+
+namespace {
+
+constexpr auto kGeometrySettingsKey = "spikewatch/geometry";
+constexpr auto kIntervalSettingsKey = "spikewatch/intervalMs";
+constexpr auto kSystemThresholdSettingsKey = "spikewatch/systemThreshold";
+constexpr auto kProcessThresholdSettingsKey = "spikewatch/processThreshold";
+constexpr auto kTopNSettingsKey = "spikewatch/topN";
+constexpr auto kDeltaMarginSettingsKey = "spikewatch/deltaMargin";
+constexpr auto kCooldownSettingsKey = "spikewatch/cooldownMs";
+
+constexpr int kDefaultIntervalMs = 500;
+constexpr int kDefaultTopN = 10;
+constexpr int kDefaultCooldownMs = 2000;
+
+QString htmlEscape(const QString& text) {
+    QString escaped = text;
+    escaped.replace(QLatin1Char('&'), QStringLiteral("&amp;"));
+    escaped.replace(QLatin1Char('<'), QStringLiteral("&lt;"));
+    escaped.replace(QLatin1Char('>'), QStringLiteral("&gt;"));
+    return escaped;
+}
+
+} // namespace
+
+SpikeWatchDialog::SpikeWatchDialog(QWidget* parent)
+    : QDialog(parent) {
+    qRegisterMetaType<CpuSampleSnapshot>("CpuSampleSnapshot");
+    qRegisterMetaType<CpuSpikeEvent>("CpuSpikeEvent");
+    qRegisterMetaType<CpuSpikeDetectorConfig>("CpuSpikeDetectorConfig");
+
+    setWindowTitle(tr("CPU 스파이크 감시"));
+    setMinimumSize(720, 520);
+    setupUi();
+    loadPersistedState();
+
+    m_worker = new CpuMonitorWorker;
+    m_workerThread = new QThread(this);
+    m_worker->moveToThread(m_workerThread);
+    connect(m_worker, &CpuMonitorWorker::sampleReady, this, &SpikeWatchDialog::onSampleReady);
+    connect(m_worker, &CpuMonitorWorker::spikeDetected, this, &SpikeWatchDialog::onSpikeDetected);
+    connect(m_worker, &CpuMonitorWorker::monitoringStopped, this, &SpikeWatchDialog::onMonitoringStopped);
+    m_workerThread->start();
+}
+
+SpikeWatchDialog::~SpikeWatchDialog() {
+    stopMonitoringAndWait();
+    if (m_workerThread) {
+        m_workerThread->quit();
+        m_workerThread->wait(2000);
+    }
+    delete m_worker;
+    m_worker = nullptr;
+    persistState();
+}
+
+void SpikeWatchDialog::setFeatureRunningCallback(std::function<bool()> callback) {
+    m_featureRunningCallback = std::move(callback);
+    if (m_worker) {
+        m_worker->setFeatureRunningCallback(m_featureRunningCallback);
+    }
+}
+
+void SpikeWatchDialog::setupUi() {
+    auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(10);
+
+    auto* toolbar = new QHBoxLayout;
+    m_startButton = new QPushButton(tr("감시 시작"), this);
+    m_stopButton = new QPushButton(tr("중지"), this);
+    m_clearLogButton = new QPushButton(tr("로그 지우기"), this);
+    m_copyLogButton = new QPushButton(tr("클립보드 복사"), this);
+    m_stopButton->setEnabled(false);
+    toolbar->addWidget(m_startButton);
+    toolbar->addWidget(m_stopButton);
+    toolbar->addStretch();
+    toolbar->addWidget(m_clearLogButton);
+    toolbar->addWidget(m_copyLogButton);
+    root->addLayout(toolbar);
+
+    auto* settingsRow = new QHBoxLayout;
+    settingsRow->setSpacing(12);
+
+    auto addSetting = [&](const QString& labelText, QWidget* widget) {
+        auto* column = new QVBoxLayout;
+        column->setSpacing(2);
+        auto* label = new QLabel(labelText, this);
+        column->addWidget(label);
+        column->addWidget(widget);
+        settingsRow->addLayout(column);
+    };
+
+    m_intervalSpin = new DragAdjustSpinBox(this);
+    m_intervalSpin->setRange(200, 2000);
+    m_intervalSpin->setSingleStep(50);
+    m_intervalSpin->setSuffix(QStringLiteral(" ms"));
+    addSetting(tr("샘플 간격"), m_intervalSpin);
+
+    m_systemThresholdSpin = new DragAdjustDoubleSpinBox(this);
+    m_systemThresholdSpin->setRange(5.0, 100.0);
+    m_systemThresholdSpin->setSingleStep(1.0);
+    m_systemThresholdSpin->setDecimals(0);
+    m_systemThresholdSpin->setSuffix(QStringLiteral(" %"));
+    addSetting(tr("시스템 CPU 임계값"), m_systemThresholdSpin);
+
+    m_processThresholdSpin = new DragAdjustDoubleSpinBox(this);
+    m_processThresholdSpin->setRange(5.0, 100.0);
+    m_processThresholdSpin->setSingleStep(1.0);
+    m_processThresholdSpin->setDecimals(0);
+    m_processThresholdSpin->setSuffix(QStringLiteral(" %"));
+    addSetting(tr("프로세스 CPU 임계값"), m_processThresholdSpin);
+
+    m_topNSpin = new DragAdjustSpinBox(this);
+    m_topNSpin->setRange(5, 20);
+    m_topNSpin->setSingleStep(1);
+    addSetting(tr("Top N"), m_topNSpin);
+
+    m_deltaMarginSpin = new DragAdjustDoubleSpinBox(this);
+    m_deltaMarginSpin->setRange(0.0, 50.0);
+    m_deltaMarginSpin->setSingleStep(1.0);
+    m_deltaMarginSpin->setDecimals(0);
+    m_deltaMarginSpin->setSuffix(QStringLiteral(" %"));
+    m_deltaMarginSpin->setToolTip(tr("0이면 상대 급증 감지를 끕니다."));
+    addSetting(tr("상대 급증 마진"), m_deltaMarginSpin);
+
+    settingsRow->addStretch();
+    root->addLayout(settingsRow);
+
+    m_summaryLabel = new QLabel(tr("시스템 CPU: — · 최고: —"), this);
+    m_summaryLabel->setObjectName(QStringLiteral("spikeWatchSummary"));
+    root->addWidget(m_summaryLabel);
+
+    m_processTable = new QTableWidget(this);
+    m_processTable->setColumnCount(4);
+    m_processTable->setHorizontalHeaderLabels(
+        {tr("순위"), tr("프로세스"), tr("PID"), tr("CPU %")});
+    m_processTable->horizontalHeader()->setStretchLastSection(true);
+    m_processTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_processTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_processTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_processTable->setAlternatingRowColors(true);
+    root->addWidget(m_processTable, 2);
+
+    auto* logTitle = new QLabel(tr("스파이크 이벤트"), this);
+    root->addWidget(logTitle);
+
+    m_eventLog = new QTextEdit(this);
+    m_eventLog->setReadOnly(true);
+    m_eventLog->setLineWrapMode(QTextEdit::WidgetWidth);
+    m_eventLog->setMinimumHeight(140);
+    root->addWidget(m_eventLog, 1);
+
+    m_hintLabel = new HintLabel(
+        tr("CPU 급증은 마우스 끊김의 원인 후보이며, DWM·입력 훅·디스크 등 다른 원인도 있습니다. "
+           "관리자 권한이 없으면 일부 프로세스 CPU는 측정되지 않을 수 있습니다. "
+           "감시 중에도 PIPBONG·감시 도구 자체 CPU가 포함됩니다."),
+        this);
+    m_hintLabel->setWordWrap(true);
+    root->addWidget(m_hintLabel);
+
+    connect(m_startButton, &QPushButton::clicked, this, &SpikeWatchDialog::onStartClicked);
+    connect(m_stopButton, &QPushButton::clicked, this, &SpikeWatchDialog::onStopClicked);
+    connect(m_clearLogButton, &QPushButton::clicked, this, &SpikeWatchDialog::onClearLogClicked);
+    connect(m_copyLogButton, &QPushButton::clicked, this, &SpikeWatchDialog::onCopyLogClicked);
+}
+
+void SpikeWatchDialog::loadPersistedState() {
+    QSettings settings;
+    restoreGeometry(settings.value(QLatin1String(kGeometrySettingsKey)).toByteArray());
+
+    m_intervalSpin->setValue(settings.value(QLatin1String(kIntervalSettingsKey), kDefaultIntervalMs).toInt());
+    m_systemThresholdSpin->setValue(
+        settings.value(QLatin1String(kSystemThresholdSettingsKey), 70.0).toDouble());
+    m_processThresholdSpin->setValue(
+        settings.value(QLatin1String(kProcessThresholdSettingsKey), 40.0).toDouble());
+    m_topNSpin->setValue(settings.value(QLatin1String(kTopNSettingsKey), kDefaultTopN).toInt());
+    m_deltaMarginSpin->setValue(settings.value(QLatin1String(kDeltaMarginSettingsKey), 15.0).toDouble());
+    Q_UNUSED(settings.value(QLatin1String(kCooldownSettingsKey), kDefaultCooldownMs));
+}
+
+void SpikeWatchDialog::persistState() {
+    QSettings settings;
+    settings.setValue(QLatin1String(kGeometrySettingsKey), saveGeometry());
+    settings.setValue(QLatin1String(kIntervalSettingsKey), m_intervalSpin->value());
+    settings.setValue(QLatin1String(kSystemThresholdSettingsKey), m_systemThresholdSpin->value());
+    settings.setValue(QLatin1String(kProcessThresholdSettingsKey), m_processThresholdSpin->value());
+    settings.setValue(QLatin1String(kTopNSettingsKey), m_topNSpin->value());
+    settings.setValue(QLatin1String(kDeltaMarginSettingsKey), m_deltaMarginSpin->value());
+    settings.setValue(QLatin1String(kCooldownSettingsKey), kDefaultCooldownMs);
+}
+
+void SpikeWatchDialog::showEvent(QShowEvent* event) {
+    QDialog::showEvent(event);
+    if (m_worker) {
+        m_worker->setFeatureRunningCallback(m_featureRunningCallback);
+    }
+}
+
+void SpikeWatchDialog::closeEvent(QCloseEvent* event) {
+    stopMonitoringAndWait();
+    persistState();
+    QDialog::closeEvent(event);
+}
+
+void SpikeWatchDialog::setMonitoringUiActive(bool active) {
+    m_monitoringActive = active;
+    m_startButton->setEnabled(!active);
+    m_stopButton->setEnabled(active);
+    m_intervalSpin->setEnabled(!active);
+    m_systemThresholdSpin->setEnabled(!active);
+    m_processThresholdSpin->setEnabled(!active);
+    m_topNSpin->setEnabled(!active);
+    m_deltaMarginSpin->setEnabled(!active);
+}
+
+void SpikeWatchDialog::stopMonitoringAndWait() {
+    if (!m_worker || !m_monitoringActive) {
+        return;
+    }
+
+    QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    connect(m_worker, &CpuMonitorWorker::monitoringStopped, &loop, &QEventLoop::quit);
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QMetaObject::invokeMethod(m_worker, "requestStop", Qt::QueuedConnection);
+    timeout.start(2000);
+    loop.exec();
+    setMonitoringUiActive(false);
+}
+
+CpuSpikeDetectorConfig SpikeWatchDialog::buildDetectorConfig() const {
+    CpuSpikeDetectorConfig config;
+    config.systemThresholdPercent = m_systemThresholdSpin->value();
+    config.processThresholdPercent = m_processThresholdSpin->value();
+    config.deltaMarginPercent = m_deltaMarginSpin->value();
+    config.cooldownMs = kDefaultCooldownMs;
+    return config;
+}
+
+void SpikeWatchDialog::onStartClicked() {
+    if (!m_worker || m_monitoringActive) {
+        return;
+    }
+    persistState();
+    setMonitoringUiActive(true);
+    m_worker->setFeatureRunningCallback(m_featureRunningCallback);
+
+    const int intervalMs = m_intervalSpin->value();
+    const int topN = m_topNSpin->value();
+    const CpuSpikeDetectorConfig config = buildDetectorConfig();
+    QMetaObject::invokeMethod(
+        m_worker,
+        "startMonitoring",
+        Qt::QueuedConnection,
+        Q_ARG(int, intervalMs),
+        Q_ARG(int, topN),
+        Q_ARG(CpuSpikeDetectorConfig, config));
+}
+
+void SpikeWatchDialog::onStopClicked() {
+    stopMonitoringAndWait();
+}
+
+void SpikeWatchDialog::onClearLogClicked() {
+    m_eventLogPlainText.clear();
+    m_eventLog->clear();
+}
+
+void SpikeWatchDialog::onCopyLogClicked() {
+    QApplication::clipboard()->setText(m_eventLogPlainText);
+}
+
+void SpikeWatchDialog::onSampleReady(CpuSampleSnapshot snapshot) {
+    if (!snapshot.systemReady) {
+        m_summaryLabel->setText(tr("시스템 CPU: 준비 중… · 최고: —"));
+        return;
+    }
+
+    QString topSummary = tr("—");
+    if (!snapshot.topProcesses.isEmpty()) {
+        const ProcessCpuEntry& top = snapshot.topProcesses.front();
+        topSummary = QStringLiteral("%1 %2%")
+                           .arg(top.name)
+                           .arg(QString::number(top.cpuPercent, 'f', 1));
+    }
+
+    m_summaryLabel->setText(
+        tr("시스템 CPU: %1% · 최고: %2")
+            .arg(QString::number(snapshot.systemCpuPercent, 'f', 1))
+            .arg(topSummary));
+
+    m_processTable->setRowCount(snapshot.topProcesses.size());
+    for (int row = 0; row < snapshot.topProcesses.size(); ++row) {
+        const ProcessCpuEntry& entry = snapshot.topProcesses.at(row);
+        m_processTable->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
+        m_processTable->setItem(row, 1, new QTableWidgetItem(entry.name));
+        m_processTable->setItem(row, 2, new QTableWidgetItem(QString::number(entry.pid)));
+        m_processTable->setItem(
+            row,
+            3,
+            new QTableWidgetItem(QString::number(entry.cpuPercent, 'f', 1)));
+    }
+}
+
+QString SpikeWatchDialog::triggerKindDisplayName(SpikeTriggerKind kind) {
+    switch (kind) {
+    case SpikeTriggerKind::SystemAbsolute:
+        return SpikeWatchDialog::tr("시스템 절대");
+    case SpikeTriggerKind::ProcessAbsolute:
+        return SpikeWatchDialog::tr("프로세스 절대");
+    case SpikeTriggerKind::SystemRelative:
+        return SpikeWatchDialog::tr("시스템 상대");
+    case SpikeTriggerKind::ProcessRelative:
+        return SpikeWatchDialog::tr("프로세스 상대");
+    }
+    return SpikeWatchDialog::tr("알 수 없음");
+}
+
+QString SpikeWatchDialog::formatSpikeEventText(const CpuSpikeEvent& event) const {
+    const QString timestamp = event.timestamp.toString(QStringLiteral("HH:mm:ss.zzz"));
+    const QString kind = triggerKindDisplayName(event.triggerKind);
+    const QString featureHint = event.pipbongFeatureRunning
+                                    ? tr(" · PIPBONG 기능 실행 중")
+                                    : QString();
+
+    QStringList topLines;
+    for (int i = 0; i < event.topProcesses.size(); ++i) {
+        const ProcessCpuEntry& entry = event.topProcesses.at(i);
+        topLines << QStringLiteral("  %1. %2 (PID %3) %4%")
+                        .arg(i + 1)
+                        .arg(entry.name)
+                        .arg(entry.pid)
+                        .arg(QString::number(entry.cpuPercent, 'f', 1));
+    }
+
+    return QStringLiteral("[%1] %2 · %3 · system %4%%5\n%6\n")
+        .arg(timestamp, kind, event.triggerDetail)
+        .arg(QString::number(event.systemCpuPercent, 'f', 1))
+        .arg(featureHint)
+        .arg(topLines.join(QLatin1Char('\n')));
+}
+
+void SpikeWatchDialog::appendSpikeLog(const CpuSpikeEvent& event) {
+    const QString plain = formatSpikeEventText(event);
+    m_eventLogPlainText += plain;
+    if (!m_eventLogPlainText.endsWith(QLatin1Char('\n'))) {
+        m_eventLogPlainText += QLatin1Char('\n');
+    }
+
+    const QString timestamp = event.timestamp.toString(QStringLiteral("HH:mm:ss.zzz"));
+    QString html = QStringLiteral("<div style=\"margin-bottom:6px;\">")
+                   + QStringLiteral("<span style=\"color:#7dd3fc;\">[%1]</span> ").arg(htmlEscape(timestamp))
+                   + QStringLiteral("<span style=\"color:#fbbf24;\">%1</span> · ").arg(htmlEscape(triggerKindDisplayName(event.triggerKind)))
+                   + htmlEscape(event.triggerDetail)
+                   + QStringLiteral("<br/>")
+                   + QStringLiteral("<span style=\"color:#86efac;\">system %1%</span>").arg(QString::number(event.systemCpuPercent, 'f', 1));
+    if (event.pipbongFeatureRunning) {
+        html += QStringLiteral(" <span style=\"color:#c4b5fd;\">")
+                + htmlEscape(tr("PIPBONG 기능 실행 중"))
+                + QStringLiteral("</span>");
+    }
+
+    QStringList topHtml;
+    for (int i = 0; i < event.topProcesses.size(); ++i) {
+        const ProcessCpuEntry& entry = event.topProcesses.at(i);
+        topHtml << htmlEscape(QStringLiteral("  %1. %2 (PID %3) %4%")
+                                  .arg(i + 1)
+                                  .arg(entry.name)
+                                  .arg(entry.pid)
+                                  .arg(QString::number(entry.cpuPercent, 'f', 1)));
+    }
+    html += QStringLiteral("<br/>") + topHtml.join(QStringLiteral("<br/>")) + QStringLiteral("</div>");
+    m_eventLog->append(html);
+}
+
+void SpikeWatchDialog::onSpikeDetected(CpuSpikeEvent event) {
+    appendSpikeLog(event);
+}
+
+void SpikeWatchDialog::onMonitoringStopped() {
+    setMonitoringUiActive(false);
+}

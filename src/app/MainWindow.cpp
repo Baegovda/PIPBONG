@@ -9,6 +9,7 @@
 #include "app/TargetWindowCenterPin.h"
 #include "app/UserInputInterruptMonitor.h"
 #include "ui/calculator/CalculatorDialog.h"
+#include "ui/diagnostics/SpikeWatchDialog.h"
 #include "ui/ProgramSettingsDialog.h"
 #include "model/UserInputInterruptMode.h"
 #include "app/HotkeyManager.h"
@@ -623,11 +624,14 @@ void MainWindow::setupUi() {
     m_updateButton->setToolTip(tr("GitHub 릴리즈에서 업데이트를 확인합니다."));
     m_calculatorButton = new QPushButton(tr("계산기"), bottomPanel);
     m_calculatorButton->setToolTip(tr("poe.ninja 시세 계산기"));
+    m_spikeWatchButton = new QPushButton(tr("CPU 감시"), bottomPanel);
+    m_spikeWatchButton->setToolTip(tr("CPU 사용률 스파이크 진단"));
     m_settingsButton = new QPushButton(tr("설정"), bottomPanel);
     m_settingsButton->setToolTip(tr("프로그램 설정"));
     auto* exitRow = new QHBoxLayout;
     exitRow->addWidget(m_updateButton);
     exitRow->addStretch();
+    exitRow->addWidget(m_spikeWatchButton);
     exitRow->addWidget(m_calculatorButton);
     exitRow->addWidget(m_settingsButton);
     exitRow->addWidget(m_exitButton);
@@ -871,6 +875,7 @@ void MainWindow::connectSignals() {
     connect(m_settingsButton, &QPushButton::clicked, this, &MainWindow::onProgramSettings);
     connect(m_updateButton, &QPushButton::clicked, this, &MainWindow::onUpdateButtonClicked);
     connect(m_calculatorButton, &QPushButton::clicked, this, &MainWindow::onCalculator);
+    connect(m_spikeWatchButton, &QPushButton::clicked, this, &MainWindow::onSpikeWatch);
     connect(m_alwaysOnTopCheck, &QCheckBox::toggled, this, &MainWindow::onAlwaysOnTopToggled);
     connect(m_pickWindowButton, &QToolButton::clicked, this, &MainWindow::onPickTargetWindow);
     connect(m_pickWindowListButton, &QToolButton::clicked, this, &MainWindow::onPickTargetWindowFromList);
@@ -939,6 +944,9 @@ void MainWindow::applyCloseToTrayPolicy() {
 void MainWindow::hideToTray() {
     if (m_calculatorDialog) {
         m_calculatorDialog->hide();
+    }
+    if (m_spikeWatchDialog) {
+        m_spikeWatchDialog->hide();
     }
     if (m_uiState) {
         m_uiState->saveNow();
@@ -1271,6 +1279,20 @@ void MainWindow::onCalculator() {
     m_calculatorDialog->activateWindow();
 }
 
+void MainWindow::onSpikeWatch() {
+    if (!m_spikeWatchDialog) {
+        m_spikeWatchDialog = new SpikeWatchDialog(this);
+        m_spikeWatchDialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(m_spikeWatchDialog, &QObject::destroyed, this, [this]() { m_spikeWatchDialog = nullptr; });
+        m_spikeWatchDialog->setFeatureRunningCallback([this]() { return !m_runSessions.empty(); });
+    } else {
+        m_spikeWatchDialog->setFeatureRunningCallback([this]() { return !m_runSessions.empty(); });
+    }
+    m_spikeWatchDialog->show();
+    m_spikeWatchDialog->raise();
+    m_spikeWatchDialog->activateWindow();
+}
+
 void MainWindow::onProfileSelectionChanged() {
     if (m_refreshingProfileList || !m_profileList || !m_profileManager) {
         return;
@@ -1588,6 +1610,9 @@ void MainWindow::prepareForShutdown() {
     TargetWindowHighlightOverlay::dismissAll();
     if (m_calculatorDialog) {
         m_calculatorDialog->close();
+    }
+    if (m_spikeWatchDialog) {
+        m_spikeWatchDialog->close();
     }
     WindowPicker::cancelPick();
     WindowPickerHoverOverlay::dismissAll();
