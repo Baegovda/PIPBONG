@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.126` (from `project(PIPBONG VERSION 0.8.126)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.127` (from `project(PIPBONG VERSION 0.8.127)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -974,7 +974,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 | Surface                                                               | Constant / rule                                                                                                      |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `FeatureListHeaderWidget`; workflow block list: Interactive metrics, **요약** `Stretch` (fills slack so right-side handles resize neighbors), **매칭** `Fixed` on panel right |
+| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `FeatureListHeaderWidget`; workflow block list: custom `BlockListColumnHeader` (all sections `Fixed`; owns divider drag; **요약** absorbs slack; **매칭** pinned right) |
 | In-cell horizontal drag slack                                         | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
 | Row-height divider (feature list / workflow block list header bottom) | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight` (`kMinListRowHeightPx`–`kMaxListRowHeightPx`)  |
 | `QSplitter` handles                                                   | Always call `UiResizeHandle::configureSplitter` (12 px handle + non-collapsible panes) — also via `UiStateManager::registerSplitter` |
@@ -1092,6 +1092,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.127] - 2026-07-15
+
+### Changed
+
+- Workflow block list column resize rewritten: custom `BlockListColumnHeader` with all sections `Fixed` (no Qt Interactive/Stretch); divider drag resizes the correct neighbor (**요약** right edge resizes **동작 시간** etc.); **요약** fills leftover width; **매칭** stays pinned on the right (`BlockListWidget`).
 
 ## [0.8.126] - 2026-07-15
 
