@@ -30,7 +30,7 @@ Include **`summaryDividerX`** at **동작|요약** (left edge of summary column)
 
 ## Workflow panel vertical split
 
-- Block list vs **블록 추가**: `UiResizeHandle::DampedSplitter` (`kSplitterDragPixelsPerStep` = 8).
+- Block list vs **블록 추가**: `UiResizeHandle::DampedSplitter` (`kSplitterDragPixelsPerStep` = 40).
 - **Never** `WorkflowEditorPanel::setEnabled(false)` when no feature — disables splitter; disable edit buttons via `setEditingEnabled` + `m_feature` guard only.
 
 ## Anti-patterns (known failures — do not reintroduce)

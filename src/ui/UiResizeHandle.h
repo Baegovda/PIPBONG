@@ -12,7 +12,7 @@ constexpr int kDividerHalfWidthPx = 10;
 constexpr int kDividerHalfHeightPx = 10;
 constexpr int kSplitterHandleWidthPx = 12;
 /// Mouse pixels per 1 px of splitter pane resize (higher = lower sensitivity). Workflow panel only (`DampedSplitter`).
-constexpr int kSplitterDragPixelsPerStep = 8;
+constexpr int kSplitterDragPixelsPerStep = 40;
 constexpr int kWindowResizeBorderPx = 10;
 
 // Shared list/table row-height drag (feature list header + workflow block list header).
