@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.141` (from `project(PIPBONG VERSION 0.8.141)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.142` (from `project(PIPBONG VERSION 0.8.142)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1032,7 +1032,7 @@ Qt `Interactive` / `Stretch` / filler columns caused dead handles, inverted resi
 | Item | Rule |
 | ---- | ---- |
 | Widget | `UiResizeHandle::DampedSplitter` on `WorkflowEditorPanel::m_workflowSplitter` |
-| Sensitivity | `kSplitterDragPixelsPerStep` (3 px mouse → 1 px pane) |
+| Sensitivity | `kSplitterDragPixelsPerStep` (8 px mouse → 1 px pane) |
 | Persistence | `UiStateManager::registerSplitter(..., "workflowEditor/vertical")` |
 | No feature selected | Do **not** call `setEnabled(false)` on the panel — only disable add/edit via `setEditingEnabled` && `m_feature` |
 
@@ -1152,15 +1152,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
-- List column header resize handover: AGENTS.md §8.11 + always-applied `.cursor/rules/list-column-header-resize.mdc`; verified code reference git tag `v0.8.141`.
-
 ### Changed
 
 ### Fixed
 
 ### Removed
 
+## [0.8.142] - 2026-07-15
+
+### Changed
+
+- Workflow editor vertical splitter drag sensitivity: `kSplitterDragPixelsPerStep` 3 → 8 (8 mouse px per 1 px pane resize; `DampedSplitter`).
+
 ## [0.8.141] - 2026-07-15
+
+### Added
+
+- List column header resize handover: AGENTS.md §8.11 + always-applied `.cursor/rules/list-column-header-resize.mdc`; verified code reference git tag `v0.8.141`.
 
 ### Fixed
 
