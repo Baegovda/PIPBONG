@@ -3,6 +3,7 @@
 #include "ui/UiResizeHandle.h"
 #include "ui/UiThemeColors.h"
 
+#include <QEnterEvent>
 #include <QEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -23,6 +24,7 @@ bool darkThemeFromPalette(const QPalette& pal) {
 ListColumnHeaderWidget::ListColumnHeaderWidget(QWidget* parent)
     : QWidget(parent) {
     setMouseTracking(true);
+    setAttribute(Qt::WA_Hover, true);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     updateHeight();
 }
@@ -125,6 +127,20 @@ void ListColumnHeaderWidget::changeEvent(QEvent* event) {
         update();
     }
     QWidget::changeEvent(event);
+}
+
+void ListColumnHeaderWidget::enterEvent(QEnterEvent* event) {
+    QWidget::enterEvent(event);
+    if (m_activeHandle == 0) {
+        setCursor(cursorForHandle(handleAt(event->position().toPoint())));
+    }
+}
+
+void ListColumnHeaderWidget::leaveEvent(QEvent* event) {
+    if (m_activeHandle == 0) {
+        unsetCursor();
+    }
+    QWidget::leaveEvent(event);
 }
 
 void ListColumnHeaderWidget::paintEvent(QPaintEvent* event) {

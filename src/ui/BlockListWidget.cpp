@@ -218,50 +218,47 @@ struct BlockListColumnEdges {
     int matchDividerX = 0;
 };
 
-BlockListColumnEdges blockListColumnEdges(const QRect& itemRect,
-                                          const BlockListColumnLayout& layout,
-                                          bool roiVisible,
-                                          int contentLeftInset) {
+BlockListColumnEdges blockListColumnEdgesFromTable(const BlockListWidget* table, const QRect& itemRect) {
     BlockListColumnEdges edges;
     const int top = itemRect.top();
     const int height = itemRect.height();
+    const int inset = table->frameWidth();
+    const int left = itemRect.left();
 
-    int x = itemRect.left() + contentLeftInset;
-    edges.cols.index = QRect(x, top, layout.indexWidth, height);
-    x += layout.indexWidth;
-    edges.previewDividerX = x;
-    edges.cols.preview = QRect(x, top, layout.previewWidth, height);
-    x += layout.previewWidth;
-    edges.actionDividerX = x;
-    edges.cols.action = QRect(x, top, layout.actionWidth, height);
-    x += layout.actionWidth;
-    edges.cols.summary = QRect(x, top, layout.summaryWidth, height);
-    x += layout.summaryWidth;
-    edges.durationDividerX = x;
-    edges.cols.duration = QRect(x, top, layout.durationWidth, height);
-    x += layout.durationWidth;
-    edges.matchDurationDividerX = x;
-    edges.cols.matchDuration = QRect(x, top, layout.matchDurationWidth, height);
-    x += layout.matchDurationWidth;
-    edges.attemptsDividerX = x;
-    edges.cols.attempts = QRect(x, top, layout.attemptsWidth, height);
-    x += layout.attemptsWidth;
-    edges.returnPrevDividerX = x;
-    edges.cols.returnPrev = QRect(x, top, layout.returnPrevWidth, height);
-    x += layout.returnPrevWidth;
-    edges.retryDividerX = x;
-    edges.cols.retry = QRect(x, top, layout.retryWidth, height);
-    x += layout.retryWidth;
-    edges.scoreDividerX = x;
-    edges.cols.score = QRect(x, top, layout.scoreWidth, height);
-    x += layout.scoreWidth;
-    if (roiVisible) {
-        edges.roiCorrectionDividerX = x;
-        edges.cols.roiCorrection = QRect(x, top, layout.roiCorrectionWidth, height);
-        x += layout.roiCorrectionWidth;
+    const auto columnRect = [&](int col) -> QRect {
+        if (table->isColumnHidden(col)) {
+            return {};
+        }
+        const int x = left + inset + table->columnViewportPosition(col);
+        return QRect(x, top, table->columnWidth(col), height);
+    };
+
+    edges.cols.index = columnRect(kColIndex);
+    edges.cols.preview = columnRect(kColPreview);
+    edges.previewDividerX = edges.cols.preview.isValid() ? edges.cols.preview.left() : 0;
+    edges.cols.action = columnRect(kColAction);
+    edges.actionDividerX = edges.cols.action.isValid() ? edges.cols.action.left() : 0;
+    edges.cols.summary = columnRect(kColSummary);
+    edges.cols.duration = columnRect(kColDuration);
+    edges.durationDividerX = edges.cols.duration.isValid() ? edges.cols.duration.left() : 0;
+    edges.cols.matchDuration = columnRect(kColMatchDuration);
+    edges.matchDurationDividerX =
+        edges.cols.matchDuration.isValid() ? edges.cols.matchDuration.left() : 0;
+    edges.cols.attempts = columnRect(kColAttempts);
+    edges.attemptsDividerX = edges.cols.attempts.isValid() ? edges.cols.attempts.left() : 0;
+    edges.cols.returnPrev = columnRect(kColReturnPrev);
+    edges.returnPrevDividerX = edges.cols.returnPrev.isValid() ? edges.cols.returnPrev.left() : 0;
+    edges.cols.retry = columnRect(kColRetryAfterNext);
+    edges.retryDividerX = edges.cols.retry.isValid() ? edges.cols.retry.left() : 0;
+    edges.cols.score = columnRect(kColScore);
+    edges.scoreDividerX = edges.cols.score.isValid() ? edges.cols.score.left() : 0;
+    if (!table->isColumnHidden(kColRoiCorrection)) {
+        edges.cols.roiCorrection = columnRect(kColRoiCorrection);
+        edges.roiCorrectionDividerX =
+            edges.cols.roiCorrection.isValid() ? edges.cols.roiCorrection.left() : 0;
     }
-    edges.matchDividerX = x;
-    edges.cols.match = QRect(x, top, layout.matchWidth, height);
+    edges.cols.match = columnRect(kColMatch);
+    edges.matchDividerX = edges.cols.match.isValid() ? edges.cols.match.left() : 0;
     return edges;
 }
 
@@ -1470,9 +1467,7 @@ void BlockListWidget::wireListColumnHeader(ListColumnHeaderWidget* header, Block
     header->setRowHeightProvider([table] { return table->columnLayout().rowHeight; });
 
     header->setPaintLabelsProvider([table](ListColumnHeaderWidget::PaintContext& ctx) {
-        const BlockListColumnEdges edges = blockListColumnEdges(
-            ctx.rect, table->columnLayout(), table->m_roiCorrectionColumnVisible,
-            table->headerContentLeftInset());
+        const BlockListColumnEdges edges = blockListColumnEdgesFromTable(table, ctx.rect);
         QFont headerFont = ctx.painter->font();
         headerFont.setPointSize(qMax(headerFont.pointSize(), 9));
         headerFont.setBold(true);
@@ -1489,24 +1484,20 @@ void BlockListWidget::wireListColumnHeader(ListColumnHeaderWidget* header, Block
         ctx.painter->drawText(edges.cols.returnPrev, align, BlockListWidget::tr("이전 복귀"));
         ctx.painter->drawText(edges.cols.retry, align, BlockListWidget::tr("재시도"));
         ctx.painter->drawText(edges.cols.score, align, BlockListWidget::tr("기준/감지"));
-        if (table->m_roiCorrectionColumnVisible) {
+        if (!table->isColumnHidden(kColRoiCorrection)) {
             ctx.painter->drawText(edges.cols.roiCorrection, align, BlockListWidget::tr("ROI 보정"));
         }
         ctx.painter->drawText(edges.cols.match, align, BlockListWidget::tr("매칭"));
     });
 
     header->setDividerXsProvider([table](const QRect& rect) {
-        const BlockListColumnEdges edges = blockListColumnEdges(
-            rect, table->columnLayout(), table->m_roiCorrectionColumnVisible,
-            table->headerContentLeftInset());
-        return blockListDividerXs(edges, table->m_roiCorrectionColumnVisible);
+        const BlockListColumnEdges edges = blockListColumnEdgesFromTable(table, rect);
+        return blockListDividerXs(edges, !table->isColumnHidden(kColRoiCorrection));
     });
 
     header->setDividerHitProvider([table](const QPoint& pos, const QRect& rect) {
-        const BlockListColumnEdges edges = blockListColumnEdges(
-            rect, table->columnLayout(), table->m_roiCorrectionColumnVisible,
-            table->headerContentLeftInset());
-        return blockListDividerHandleAt(pos, edges, table->m_roiCorrectionColumnVisible);
+        const BlockListColumnEdges edges = blockListColumnEdgesFromTable(table, rect);
+        return blockListDividerHandleAt(pos, edges, !table->isColumnHidden(kColRoiCorrection));
     });
 
     header->setApplyDragProvider([table, header](int handleId, int deltaX, int deltaY, const QPoint&) {
