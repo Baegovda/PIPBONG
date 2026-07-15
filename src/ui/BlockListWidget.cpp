@@ -132,6 +132,8 @@ private:
     int m_resizeStartSize = 0;
 };
 
+constexpr int kMatchColumnWidth = kThumbnailSize + 6;
+
 void applyDefaultBlockListColumnWidths(QTableWidget* table) {
     const QSignalBlocker blocker(table->horizontalHeader());
     table->setColumnWidth(kColIndex, 28);
@@ -145,19 +147,68 @@ void applyDefaultBlockListColumnWidths(QTableWidget* table) {
     table->setColumnWidth(kColRetryAfterNext, 52);
     table->setColumnWidth(kColScore, 78);
     table->setColumnWidth(kColRoiCorrection, 52);
-    table->setColumnWidth(kColMatch, kThumbnailSize + 6);
+    table->setColumnWidth(kColMatch, kMatchColumnWidth);
 }
 
-// Standard Qt table header: every column Interactive, last visible section stretches.
+// Keep **매칭** Fixed at the viewport right edge. **요약** fills leftover width
+// (Interactive + programmatic size). Overflow shrinks metric columns so **매칭**
+// never leaves the panel. Avoid Stretch-in-middle (known inverted-resize bug).
+void fitBlockListColumnsToViewport(QTableWidget* table) {
+    QHeaderView* header = table ? table->horizontalHeader() : nullptr;
+    if (!header) {
+        return;
+    }
+    const int viewportWidth = table->viewport()->width();
+    if (viewportWidth <= 0) {
+        return;
+    }
+
+    const QSignalBlocker blocker(header);
+    const int minSize = header->minimumSectionSize();
+    header->resizeSection(kColMatch, kMatchColumnWidth);
+
+    int otherWidth = kMatchColumnWidth;
+    for (int column = 0; column < kColumnCount; ++column) {
+        if (column == kColSummary || column == kColMatch || header->isSectionHidden(column)) {
+            continue;
+        }
+        otherWidth += header->sectionSize(column);
+    }
+
+    int summaryWidth = viewportWidth - otherWidth;
+    if (summaryWidth < minSize) {
+        int deficit = minSize - summaryWidth;
+        for (int column = kColScore; column >= kColDuration && deficit > 0; --column) {
+            if (header->isSectionHidden(column)) {
+                continue;
+            }
+            const int current = header->sectionSize(column);
+            const int shrink = qMin(deficit, qMax(0, current - minSize));
+            if (shrink > 0) {
+                header->resizeSection(column, current - shrink);
+                deficit -= shrink;
+            }
+        }
+        summaryWidth = minSize;
+    }
+    header->resizeSection(kColSummary, summaryWidth);
+
+    if (QScrollBar* bar = table->horizontalScrollBar()) {
+        bar->setValue(0);
+    }
+}
+
+// **매칭** Fixed at trailing edge; other columns Interactive (**요약** size set by fit).
 void applyBlockListHeaderResizeModes(QHeaderView* header) {
     if (!header) {
         return;
     }
     header->setMinimumSectionSize(28);
     header->setCascadingSectionResizes(false);
-    header->setStretchLastSection(true);
+    header->setStretchLastSection(false);
     for (int column = 0; column < kColumnCount; ++column) {
-        header->setSectionResizeMode(column, QHeaderView::Interactive);
+        header->setSectionResizeMode(
+            column, column == kColMatch ? QHeaderView::Fixed : QHeaderView::Interactive);
     }
 }
 
@@ -183,6 +234,7 @@ void initBlockListColumnHeader(BlockListWidget* table) {
 
     applyBlockListHeaderResizeModes(table->horizontalHeader());
     applyDefaultBlockListColumnWidths(table);
+    fitBlockListColumnsToViewport(table);
 }
 
 class WorkflowChipHeaderRowWidget : public QWidget {
@@ -922,6 +974,12 @@ BlockListWidget::BlockListWidget(QWidget* parent)
     header->setSectionsMovable(false);
     header->setFirstSectionMovable(false);
     new BlockListHeaderRowHeightFilter(this, header);
+    connect(header, &QHeaderView::sectionResized, this, [this](int logicalIndex, int, int) {
+        if (logicalIndex == kColSummary || logicalIndex == kColMatch) {
+            return;
+        }
+        fitBlockListColumnsToViewport(this);
+    });
     setIconSize(QSize(kThumbnailSize, kThumbnailSize));
     setItemDelegateForColumn(0, new BlockListChromeRowDelegate(this));
     setItemDelegateForColumn(1, new CenterIconDelegate(this));
@@ -943,7 +1001,7 @@ BlockListWidget::BlockListWidget(QWidget* parent)
     setReorderEnabled(true);
     setAlternatingRowColors(false);
     setShowGrid(false);
-    setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     m_flashAnimation = new QVariantAnimation(this);
     m_flashAnimation->setStartValue(1.0);
@@ -1034,6 +1092,7 @@ void BlockListWidget::keyPressEvent(QKeyEvent* event) {
 
 void BlockListWidget::applyHeaderResizeModes() {
     applyBlockListHeaderResizeModes(horizontalHeader());
+    fitBlockListColumnsToViewport(this);
 }
 
 void BlockListWidget::setBlockRowHeight(int height, bool persist) {
@@ -1071,6 +1130,7 @@ void BlockListWidget::setRoiCorrectionColumnVisible(bool visible) {
     m_roiCorrectionColumnVisible = visible;
     if (QHeaderView* header = horizontalHeader()) {
         header->setSectionHidden(kColRoiCorrection, !visible);
+        fitBlockListColumnsToViewport(this);
     }
 }
 
@@ -2532,6 +2592,7 @@ void BlockListWidget::updateDragSourceVisuals() {
 
 void BlockListWidget::resizeEvent(QResizeEvent* event) {
     QTableWidget::resizeEvent(event);
+    fitBlockListColumnsToViewport(this);
     updateLoopRegionChrome();
     if (m_dropInsertionIndex >= 0) {
         updateDropIndicator();

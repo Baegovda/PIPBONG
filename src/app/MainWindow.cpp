@@ -708,7 +708,7 @@ void MainWindow::setupUiState() {
     m_uiState->registerSplitter(m_bottomHorizontalSplitter, QStringLiteral("main/bottomHorizontal"));
     m_uiState->registerSplitter(m_workflowEditor->workflowSplitter(), QStringLiteral("workflowEditor/vertical"));
     if (QHeaderView* blockHeader = m_workflowEditor->blockListHeader()) {
-        m_uiState->registerHeader(blockHeader, QStringLiteral("workflowBlockList/header_v2"));
+        m_uiState->registerHeader(blockHeader, QStringLiteral("workflowBlockList/header_v3"));
     }
     m_uiState->registerSettingsHooks(
         QStringLiteral("featureList/columns"),
