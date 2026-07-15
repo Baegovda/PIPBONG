@@ -63,6 +63,7 @@ class TargetWindowDetailPanel;
 class CustomTitleBar;
 class CalculatorDialog;
 class SpikeWatchDialog;
+class MemoDialog;
 class UpdateChecker;
 
 class MainWindow : public QMainWindow {
@@ -108,6 +109,7 @@ private slots:
     void onProgramSettings();
     void onCalculator();
     void onSpikeWatch();
+    void onMemo();
     void onAlwaysOnTopToggled(bool checked);
     void onPickTargetWindow();
     void onPickTargetWindowFromList();
@@ -212,6 +214,7 @@ private:
     void onLibraryEntriesMultiReordered(const QList<int>& selectedRows, int insertIndex);
     void onFeatureDroppedOnProfile(const QString& targetProfileId, const QMimeData* mime);
     void syncProfileListSelection();
+    void syncMemoDialogProfile();
     bool switchToProfile(const QString& profileId, bool automatic = false);
     void saveActiveProfileSettings();
     bool profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
@@ -335,6 +338,7 @@ private:
     QPushButton* m_updateButton = nullptr;
     QPushButton* m_calculatorButton = nullptr;
     QPushButton* m_spikeWatchButton = nullptr;
+    QPushButton* m_memoButton = nullptr;
     QPushButton* m_settingsButton = nullptr;
     TargetWindowDetailPanel* m_targetWindowDetailPanel = nullptr;
     CustomTitleBar* m_titleBar = nullptr;
@@ -363,6 +367,7 @@ private:
     std::map<std::string, std::unique_ptr<WorkerFastRepeatUiCoalesce>> m_fastRepeatUiCoalesce;
     QPointer<CalculatorDialog> m_calculatorDialog;
     QPointer<SpikeWatchDialog> m_spikeWatchDialog;
+    QPointer<MemoDialog> m_memoDialog;
     QSystemTrayIcon* m_trayIcon = nullptr;
     QMenu* m_trayMenu = nullptr;
     bool m_forceQuit = false;

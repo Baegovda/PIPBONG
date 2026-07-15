@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.146` (from `project(PIPBONG VERSION 0.8.146)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.147` (from `project(PIPBONG VERSION 0.8.147)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -419,6 +419,7 @@ Sbm1.0/                        # repo root (local workspace)
     ├── storage/               # JsonSerializer — project JSON I/O
     └── ui/                    # Feature list, workflow editor, block editors, overlay
         ├── calculator/        # SpreadsheetModel, CalculatorDialog (poe.ninja 시세 계산기)
+        └── memo/              # MemoDialog — profile-scoped notepad
         └── editors/
             ├── ScreenRegionOverlay.*   # Win32 screen-region picker (mandatory pattern)
             ├── ImageFindEditor.*       # template capture, ROI, match test
@@ -439,6 +440,8 @@ Sbm1.0/                        # repo root (local workspace)
 | `src/ui/calculator/`                   | `CalculatorDialog`, `SpreadsheetModel` — 시세 계산기 (workflow-independent) |
 | `src/core/diagnostics/`                | `SystemCpuSampler`, `ProcessCpuSampler`, `CpuSpikeDetector`, `CpuMonitorWorker` |
 | `src/ui/diagnostics/`                  | `SpikeWatchDialog` — CPU 스파이크 감시 (workflow-independent) |
+| `src/ui/memo/`                         | `MemoDialog` — 프로필별 메모장 |
+| `src/storage/ProfileMemoStore.*`       | Per-profile `memo.txt` read/write |
 | `src/ui/`                              | `FeatureListPanel`, `WorkflowEditorPanel`, `BlockListWidget`, editors       |
 | `src/ui/editors/ScreenRegionOverlay.*` | Win32 overlay for in-game template capture                                  |
 | `src/storage/`                         | `JsonSerializer`                                                            |
@@ -507,6 +510,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, `program/logMaxLines`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog                               |
 | Calculator sheet        | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry`                                                                                                                                                                                                                        |
 | CPU spike watch         | `QSettings` — `spikewatch/geometry`, `spikewatch/sectionSplitter`, `spikewatch/intervalMs`, thresholds, `topN`, `deltaMargin` (not in `project.json`)                                                                                                                                                                    |
+| Profile memo            | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/memo.txt` — plain UTF-8 text per profile; included in `.pipbong` package mirror; dialog geometry in `QSettings` `memo/geometry`                                                                                                                                          |
 
 ### 5.8 poe.ninja economy calculator
 
@@ -523,6 +527,13 @@ Sbm1.0/                        # repo root (local workspace)
 - **Spike detection:** `CpuSpikeDetector` — absolute thresholds (system / single process), optional relative jump over rolling median (`deltaMargin`; 0 = off), cooldown debounce.
 - **UI:** live Top N process table, **범인 추정** suspect ranking (`CpuCulpritAnalyzer` — weighted spike attribution, elevation during high system load, session baseline), spike event log (clipboard copy includes culprit report), DragAdjust interval/threshold controls; marks events when a PIPBONG feature session is active.
 - **Persistence:** `QSettings` keys `spikewatch/*` (geometry, section splitter, interval, thresholds, top N, delta margin).
+
+### 5.10 Profile memo (notepad)
+
+- **Entry:** bottom **메모장** button (left of **CPU 감시**); modeless `MemoDialog`.
+- **Content:** plain-text `QTextEdit` per active profile; auto-saves to `profiles/{profileId}/memo.txt` (600 ms debounce, flush on close and profile switch).
+- **Profile switch:** `MainWindow::syncMemoDialogProfile` saves the previous profile memo and loads the new profile when the dialog is open or on next open.
+- **Persistence:** profile workspace `memo.txt` (travels with `.pipbong` export); window geometry in `QSettings` `memo/geometry`.
 
 ---
 
@@ -567,6 +578,12 @@ Sbm1.0/                        # repo root (local workspace)
 3. Top N processes refresh on the worker thread; spike events append to the log when thresholds are exceeded.
 4. Reproduce mouse stutter or heavy load; inspect which process spiked and whether PIPBONG had an active feature run.
 5. **중지** or close the dialog to end sampling.
+
+### Profile memo (notepad)
+
+1. Click bottom **메모장** (left of **CPU 감시**).
+2. Type plain-text notes; content auto-saves to the active profile.
+3. Switch profiles — open memo loads that profile's saved text (saved separately per profile).
 
 ---
 
@@ -1159,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.147] - 2026-07-16
+
+### Added
+
+- **메모장** standalone tool (like **계산기** / **CPU 감시**): bottom **메모장** opens modeless `MemoDialog`; plain-text notes persist per profile as `profiles/{profileId}/memo.txt` (included in `.pipbong` mirror); auto-save on edit, profile switch, and shutdown; window geometry in `QSettings` `memo/geometry` (`ProfileMemoStore`, `MemoDialog`, `MainWindow`).
 
 ## [0.8.146] - 2026-07-16
 

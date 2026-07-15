@@ -10,6 +10,7 @@
 #include "app/UserInputInterruptMonitor.h"
 #include "ui/calculator/CalculatorDialog.h"
 #include "ui/diagnostics/SpikeWatchDialog.h"
+#include "ui/memo/MemoDialog.h"
 #include "ui/ProgramSettingsDialog.h"
 #include "model/UserInputInterruptMode.h"
 #include "app/HotkeyManager.h"
@@ -654,11 +655,14 @@ void MainWindow::setupUi() {
     m_calculatorButton->setToolTip(tr("poe.ninja 시세 계산기"));
     m_spikeWatchButton = new QPushButton(tr("CPU 감시"), bottomPanel);
     m_spikeWatchButton->setToolTip(tr("CPU 사용률 스파이크 진단"));
+    m_memoButton = new QPushButton(tr("메모장"), bottomPanel);
+    m_memoButton->setToolTip(tr("프로필별 메모"));
     m_settingsButton = new QPushButton(tr("설정"), bottomPanel);
     m_settingsButton->setToolTip(tr("프로그램 설정"));
     auto* exitRow = new QHBoxLayout;
     exitRow->addWidget(m_updateButton);
     exitRow->addStretch();
+    exitRow->addWidget(m_memoButton);
     exitRow->addWidget(m_spikeWatchButton);
     exitRow->addWidget(m_calculatorButton);
     exitRow->addWidget(m_settingsButton);
@@ -926,6 +930,7 @@ void MainWindow::connectSignals() {
     connect(m_updateButton, &QPushButton::clicked, this, &MainWindow::onUpdateButtonClicked);
     connect(m_calculatorButton, &QPushButton::clicked, this, &MainWindow::onCalculator);
     connect(m_spikeWatchButton, &QPushButton::clicked, this, &MainWindow::onSpikeWatch);
+    connect(m_memoButton, &QPushButton::clicked, this, &MainWindow::onMemo);
     connect(m_alwaysOnTopCheck, &QCheckBox::toggled, this, &MainWindow::onAlwaysOnTopToggled);
     connect(m_pickWindowButton, &QToolButton::clicked, this, &MainWindow::onPickTargetWindow);
     connect(m_pickWindowListButton, &QToolButton::clicked, this, &MainWindow::onPickTargetWindowFromList);
@@ -1455,6 +1460,31 @@ void MainWindow::onSpikeWatch() {
     m_spikeWatchDialog->startMonitoringIfIdle();
 }
 
+void MainWindow::onMemo() {
+    if (!m_memoDialog) {
+        m_memoDialog = new MemoDialog(this);
+        m_memoDialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(m_memoDialog, &QObject::destroyed, this, [this]() { m_memoDialog = nullptr; });
+    }
+    syncMemoDialogProfile();
+    m_memoDialog->show();
+    m_memoDialog->raise();
+    m_memoDialog->activateWindow();
+}
+
+void MainWindow::syncMemoDialogProfile() {
+    if (!m_memoDialog || !m_profileManager) {
+        return;
+    }
+    const ProfileManager::Profile* profile = m_profileManager->activeProfile();
+    const QString displayName =
+        profile ? (m_profileManager->isDefaultProfile(profile->id) ? tr("기본") : profile->name)
+                : QString();
+    m_memoDialog->setProfile(m_profileManager->activeProfileId(),
+                             m_profileManager->activeProjectDirectory(),
+                             displayName);
+}
+
 void MainWindow::onProfileSelectionChanged() {
     if (m_refreshingProfileList || !m_profileList || !m_profileManager) {
         return;
@@ -1781,6 +1811,10 @@ void MainWindow::prepareForShutdown() {
     }
     if (m_spikeWatchDialog) {
         m_spikeWatchDialog->close();
+    }
+    if (m_memoDialog) {
+        m_memoDialog->saveNow();
+        m_memoDialog->close();
     }
     WindowPicker::cancelPick();
     WindowPickerHoverOverlay::dismissAll();
@@ -4923,6 +4957,7 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         PIPBONG_PERF_SCOPE("switchToProfile.loadActiveProfile");
         loadActiveProfile(true);
     }
+    syncMemoDialogProfile();
     syncProfileListSelection();
     scheduleRunWarmup();
     if (!automatic) {

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.146 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.147 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -77,8 +77,10 @@ set(PIPBONG_SOURCES
     src/ui/calculator/CalculatorDialog.cpp
     src/ui/diagnostics/SpikeWatchDialog.cpp
     src/ui/diagnostics/ProcessIconCache.cpp
+    src/ui/memo/MemoDialog.cpp
     src/storage/JsonSerializer.cpp
     src/storage/ProjectPackage.cpp
+    src/storage/ProfileMemoStore.cpp
     src/ui/LogPanelWidget.cpp
     src/ui/FeatureListPanel.cpp
     src/ui/FeatureLibraryDialog.cpp
