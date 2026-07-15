@@ -14,6 +14,7 @@ class DragAdjustSpinBox;
 class HintLabel;
 class QLabel;
 class QPushButton;
+class QSplitter;
 class QTableWidget;
 class QTextEdit;
 class QThread;
@@ -69,6 +70,7 @@ private:
     DragAdjustDoubleSpinBox* m_deltaMarginSpin = nullptr;
 
     QLabel* m_summaryLabel = nullptr;
+    QSplitter* m_sectionSplitter = nullptr;
     QTableWidget* m_processTable = nullptr;
     QLabel* m_culpritSummaryLabel = nullptr;
     QTableWidget* m_culpritTable = nullptr;

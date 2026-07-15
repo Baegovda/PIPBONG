@@ -7,6 +7,7 @@
 class QCheckBox;
 class QComboBox;
 class QPushButton;
+class QSplitter;
 class QWidget;
 class WindowSelectionFeedbackPreviewWidget;
 class DragAdjustDoubleSpinBox;
@@ -32,6 +33,7 @@ private:
 
     WindowSelectionFeedbackPreviewWidget* m_preview = nullptr;
     QPushButton* m_replayButton = nullptr;
+    QSplitter* m_bodySplitter = nullptr;
 
     QCheckBox* m_enabledCheck = nullptr;
     QWidget* m_effectsGroup = nullptr;

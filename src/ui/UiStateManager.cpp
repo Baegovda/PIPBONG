@@ -173,7 +173,7 @@ void UiStateManager::registerSplitter(QSplitter* splitter, const QString& id) {
     if (!splitter) {
         return;
     }
-    splitter->setHandleWidth(UiResizeHandle::kSplitterHandleWidthPx);
+    UiResizeHandle::configureSplitter(splitter);
     m_splitters.append({splitter, id});
     connect(splitter, &QSplitter::splitterMoved, this, &UiStateManager::scheduleSave);
 }

@@ -1,6 +1,7 @@
 #include "ui/WindowSelectionFeedbackSettingsDialog.h"
 
 #include "app/PointerFeedbackSettings.h"
+#include "ui/UiResizeHandle.h"
 #include "ui/UiStrings.h"
 #include "ui/widgets/DragAdjustDoubleSpinBox.h"
 #include "ui/widgets/DragAdjustSpinBox.h"
@@ -18,9 +19,13 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
+#include <QSplitter>
 #include <QVBoxLayout>
 
 namespace {
+
+constexpr auto kDialogSplitterSettingsKey = "pointerFeedback/windowSelection/dialogSplitter";
 
 QLabel* makeFormLabel(const QString& text, QWidget* parent) {
     auto* label = new QLabel(text, parent);
@@ -81,6 +86,11 @@ WindowSelectionFeedbackSettingsDialog::WindowSelectionFeedbackSettingsDialog(QWi
     resize(660, 580);
     setupUi();
     loadFromSettings(PointerFeedbackSettings::windowSelection());
+    connect(this, &QDialog::finished, this, [this](int) {
+        if (m_bodySplitter) {
+            QSettings().setValue(QLatin1String(kDialogSplitterSettingsKey), m_bodySplitter->saveState());
+        }
+    });
 }
 
 void WindowSelectionFeedbackSettingsDialog::setupUi() {
@@ -100,13 +110,16 @@ void WindowSelectionFeedbackSettingsDialog::setupUi() {
     });
     outerLayout->addWidget(m_enabledCheck);
 
-    auto* bodyRow = new QHBoxLayout();
-    bodyRow->setSpacing(14);
+    auto* bodySplitter = new QSplitter(Qt::Horizontal, this);
+    UiResizeHandle::configureSplitter(bodySplitter);
+    m_bodySplitter = bodySplitter;
 
-    auto* previewColumn = new QVBoxLayout();
+    auto* previewPane = new QWidget(bodySplitter);
+    auto* previewColumn = new QVBoxLayout(previewPane);
+    previewColumn->setContentsMargins(0, 0, 0, 0);
     previewColumn->setSpacing(8);
 
-    auto* previewFrame = new QFrame(this);
+    auto* previewFrame = new QFrame(previewPane);
     previewFrame->setObjectName(QStringLiteral("windowSelectionFeedbackPreviewFrame"));
     previewFrame->setFrameShape(QFrame::StyledPanel);
     auto* previewFrameLayout = new QVBoxLayout(previewFrame);
@@ -123,9 +136,9 @@ void WindowSelectionFeedbackSettingsDialog::setupUi() {
 
     previewColumn->addWidget(previewFrame);
     previewColumn->addStretch();
-    bodyRow->addLayout(previewColumn, 4);
+    bodySplitter->addWidget(previewPane);
 
-    auto* scroll = new QScrollArea(this);
+    auto* scroll = new QScrollArea(bodySplitter);
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -236,8 +249,16 @@ void WindowSelectionFeedbackSettingsDialog::setupUi() {
     formColumn->addStretch();
 
     scroll->setWidget(scrollContent);
-    bodyRow->addWidget(scroll, 6);
-    outerLayout->addLayout(bodyRow, 1);
+    bodySplitter->addWidget(scroll);
+    bodySplitter->setStretchFactor(0, 4);
+    bodySplitter->setStretchFactor(1, 6);
+    bodySplitter->setSizes({260, 380});
+    const QByteArray splitterState =
+        QSettings().value(QLatin1String(kDialogSplitterSettingsKey)).toByteArray();
+    if (!splitterState.isEmpty()) {
+        bodySplitter->restoreState(splitterState);
+    }
+    outerLayout->addWidget(bodySplitter, 1);
 
     const auto hookPreview = [this]() { applyDraftToPreview(); };
     connect(m_durationSpin, &DragAdjustSpinBox::valueChanged, this, hookPreview);

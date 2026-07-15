@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QSplitter>
 #include <QtGlobal>
 
 // Shared grab zones for column dividers, splitter bars, frameless window edges,
@@ -17,6 +18,15 @@ constexpr int kMinListRowHeightPx = 20;
 constexpr int kMaxListRowHeightPx = 64;
 constexpr int kDefaultFeatureListRowHeightPx = 26;
 constexpr int kDefaultBlockListRowHeightPx = 36;
+
+/// Program-wide splitter policy: wide grab handle, panes not collapsible to zero.
+inline void configureSplitter(QSplitter* splitter) {
+    if (!splitter) {
+        return;
+    }
+    splitter->setHandleWidth(kSplitterHandleWidthPx);
+    splitter->setChildrenCollapsible(false);
+}
 
 inline bool isWithinHorizontalGrab(int pos, int dividerPos) {
     return qAbs(pos - dividerPos) <= kDividerHalfWidthPx;

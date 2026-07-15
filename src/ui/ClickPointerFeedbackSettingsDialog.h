@@ -6,6 +6,7 @@
 
 class QComboBox;
 class QPushButton;
+class QSplitter;
 class QWidget;
 class ClickPointerFeedbackPreviewWidget;
 class DragAdjustDoubleSpinBox;
@@ -31,6 +32,7 @@ private:
 
     ClickPointerFeedbackPreviewWidget* m_preview = nullptr;
     QPushButton* m_replayButton = nullptr;
+    QSplitter* m_bodySplitter = nullptr;
 
     QWidget* m_ringCountLabel = nullptr;
     QWidget* m_ringCountField = nullptr;

@@ -484,6 +484,7 @@ void MainWindow::setupUi() {
     contentLayout->setSpacing(0);
 
     m_mainHorizontalSplitter = new QSplitter(Qt::Horizontal, contentHost);
+    UiResizeHandle::configureSplitter(m_mainHorizontalSplitter);
     auto* profileGroup = new QGroupBox(tr("프로필"), m_mainHorizontalSplitter);
     profileGroup->setObjectName(QStringLiteral("profileListGroup"));
     profileGroup->setStyleSheet(QStringLiteral(
@@ -669,6 +670,7 @@ void MainWindow::setupUi() {
     m_logPanel->setMaxLines(ProgramSettings::logMaxLines());
 
     m_bottomHorizontalSplitter = new QSplitter(Qt::Horizontal, bottomPanel);
+    UiResizeHandle::configureSplitter(m_bottomHorizontalSplitter);
     m_bottomHorizontalSplitter->addWidget(m_logPanel);
     m_bottomHorizontalSplitter->addWidget(targetGroup);
     m_bottomHorizontalSplitter->setStretchFactor(0, 1);
@@ -681,6 +683,7 @@ void MainWindow::setupUi() {
     bottomLayout->addLayout(exitRow);
 
     m_mainVerticalSplitter = new QSplitter(Qt::Vertical, contentHost);
+    UiResizeHandle::configureSplitter(m_mainVerticalSplitter);
     m_mainVerticalSplitter->addWidget(m_mainHorizontalSplitter);
     m_mainVerticalSplitter->addWidget(bottomPanel);
     m_mainVerticalSplitter->setStretchFactor(0, 1);

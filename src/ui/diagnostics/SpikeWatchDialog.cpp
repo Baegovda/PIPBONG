@@ -1,6 +1,7 @@
 #include "ui/diagnostics/SpikeWatchDialog.h"
 
 #include "core/diagnostics/CpuMonitorWorker.h"
+#include "ui/UiResizeHandle.h"
 #include "ui/widgets/DragAdjustDoubleSpinBox.h"
 #include "ui/widgets/DragAdjustSpinBox.h"
 #include "ui/widgets/HintLabel.h"
@@ -15,6 +16,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QShowEvent>
+#include <QSplitter>
 #include <QTableWidget>
 #include <QTextEdit>
 #include <QThread>
@@ -25,6 +27,7 @@
 namespace {
 
 constexpr auto kGeometrySettingsKey = "spikewatch/geometry";
+constexpr auto kSectionSplitterSettingsKey = "spikewatch/sectionSplitter";
 constexpr auto kIntervalSettingsKey = "spikewatch/intervalMs";
 constexpr auto kSystemThresholdSettingsKey = "spikewatch/systemThreshold";
 constexpr auto kProcessThresholdSettingsKey = "spikewatch/processThreshold";
@@ -158,7 +161,14 @@ void SpikeWatchDialog::setupUi() {
     m_summaryLabel->setObjectName(QStringLiteral("spikeWatchSummary"));
     root->addWidget(m_summaryLabel);
 
-    m_processTable = new QTableWidget(this);
+    m_sectionSplitter = new QSplitter(Qt::Vertical, this);
+    UiResizeHandle::configureSplitter(m_sectionSplitter);
+
+    auto* processPane = new QWidget(m_sectionSplitter);
+    auto* processLayout = new QVBoxLayout(processPane);
+    processLayout->setContentsMargins(0, 0, 0, 0);
+    processLayout->setSpacing(6);
+    m_processTable = new QTableWidget(processPane);
     m_processTable->setColumnCount(4);
     m_processTable->setHorizontalHeaderLabels(
         {tr("순위"), tr("프로세스"), tr("PID"), tr("CPU %")});
@@ -169,16 +179,20 @@ void SpikeWatchDialog::setupUi() {
     m_processTable->setAlternatingRowColors(true);
     m_processTable->setIconSize(QSize(16, 16));
     m_processTable->verticalHeader()->setDefaultSectionSize(24);
-    root->addWidget(m_processTable, 2);
+    processLayout->addWidget(m_processTable);
+    m_sectionSplitter->addWidget(processPane);
 
-    auto* culpritTitle = new QLabel(tr("범인 추정 (의심 순위)"), this);
-    root->addWidget(culpritTitle);
-
-    m_culpritSummaryLabel = new QLabel(tr("감시를 시작하면 스파이크·CPU 패턴을 분석해 의심 프로세스를 표시합니다."), this);
+    auto* culpritPane = new QWidget(m_sectionSplitter);
+    auto* culpritLayout = new QVBoxLayout(culpritPane);
+    culpritLayout->setContentsMargins(0, 0, 0, 0);
+    culpritLayout->setSpacing(6);
+    auto* culpritTitle = new QLabel(tr("범인 추정 (의심 순위)"), culpritPane);
+    culpritLayout->addWidget(culpritTitle);
+    m_culpritSummaryLabel = new QLabel(tr("감시를 시작하면 스파이크·CPU 패턴을 분석해 의심 프로세스를 표시합니다."),
+                                       culpritPane);
     m_culpritSummaryLabel->setObjectName(QStringLiteral("spikeWatchCulpritSummary"));
-    root->addWidget(m_culpritSummaryLabel);
-
-    m_culpritTable = new QTableWidget(this);
+    culpritLayout->addWidget(m_culpritSummaryLabel);
+    m_culpritTable = new QTableWidget(culpritPane);
     m_culpritTable->setColumnCount(5);
     m_culpritTable->setHorizontalHeaderLabels(
         {tr("순위"), tr("프로세스"), tr("PID"), tr("의심도"), tr("근거")});
@@ -190,17 +204,28 @@ void SpikeWatchDialog::setupUi() {
     m_culpritTable->setAlternatingRowColors(true);
     m_culpritTable->setIconSize(QSize(16, 16));
     m_culpritTable->verticalHeader()->setDefaultSectionSize(24);
-    m_culpritTable->setMinimumHeight(120);
-    root->addWidget(m_culpritTable, 1);
+    m_culpritTable->setMinimumHeight(80);
+    culpritLayout->addWidget(m_culpritTable);
+    m_sectionSplitter->addWidget(culpritPane);
 
-    auto* logTitle = new QLabel(tr("스파이크 이벤트"), this);
-    root->addWidget(logTitle);
-
-    m_eventLog = new QTextEdit(this);
+    auto* logPane = new QWidget(m_sectionSplitter);
+    auto* logLayout = new QVBoxLayout(logPane);
+    logLayout->setContentsMargins(0, 0, 0, 0);
+    logLayout->setSpacing(6);
+    auto* logTitle = new QLabel(tr("스파이크 이벤트"), logPane);
+    logLayout->addWidget(logTitle);
+    m_eventLog = new QTextEdit(logPane);
     m_eventLog->setReadOnly(true);
     m_eventLog->setLineWrapMode(QTextEdit::WidgetWidth);
-    m_eventLog->setMinimumHeight(140);
-    root->addWidget(m_eventLog, 1);
+    m_eventLog->setMinimumHeight(80);
+    logLayout->addWidget(m_eventLog);
+    m_sectionSplitter->addWidget(logPane);
+
+    m_sectionSplitter->setStretchFactor(0, 2);
+    m_sectionSplitter->setStretchFactor(1, 1);
+    m_sectionSplitter->setStretchFactor(2, 1);
+    m_sectionSplitter->setSizes({280, 180, 180});
+    root->addWidget(m_sectionSplitter, 1);
 
     m_hintLabel = new HintLabel(
         tr("CPU 급증은 마우스 끊김의 원인 후보이며, DWM·입력 훅·디스크 등 다른 원인도 있습니다. "
@@ -221,6 +246,13 @@ void SpikeWatchDialog::setupUi() {
 void SpikeWatchDialog::loadPersistedState() {
     QSettings settings;
     restoreGeometry(settings.value(QLatin1String(kGeometrySettingsKey)).toByteArray());
+    if (m_sectionSplitter) {
+        const QByteArray splitterState =
+            settings.value(QLatin1String(kSectionSplitterSettingsKey)).toByteArray();
+        if (!splitterState.isEmpty()) {
+            m_sectionSplitter->restoreState(splitterState);
+        }
+    }
 
     m_intervalSpin->setValue(settings.value(QLatin1String(kIntervalSettingsKey), kDefaultIntervalMs).toInt());
     m_systemThresholdSpin->setValue(
@@ -235,6 +267,9 @@ void SpikeWatchDialog::loadPersistedState() {
 void SpikeWatchDialog::persistState() {
     QSettings settings;
     settings.setValue(QLatin1String(kGeometrySettingsKey), saveGeometry());
+    if (m_sectionSplitter) {
+        settings.setValue(QLatin1String(kSectionSplitterSettingsKey), m_sectionSplitter->saveState());
+    }
     settings.setValue(QLatin1String(kIntervalSettingsKey), m_intervalSpin->value());
     settings.setValue(QLatin1String(kSystemThresholdSettingsKey), m_systemThresholdSpin->value());
     settings.setValue(QLatin1String(kProcessThresholdSettingsKey), m_processThresholdSpin->value());

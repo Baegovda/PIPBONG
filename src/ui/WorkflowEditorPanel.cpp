@@ -13,6 +13,7 @@
 #include "ui/BlockListWidget.h"
 #include "ui/HotkeyBindingIcon.h"
 #include "ui/editors/WorkflowLoopRegionsDialog.h"
+#include "ui/UiResizeHandle.h"
 #include "ui/UiStrings.h"
 #include "ui/editors/BlockEditorDialog.h"
 #include "ui/editors/ImageFindPollIntervalPrefs.h"
@@ -609,12 +610,11 @@ void WorkflowEditorPanel::setupUi() {
     workflowLayout->setContentsMargins(0, 0, 0, 0);
 
     m_workflowSplitter = new QSplitter(Qt::Vertical, workflowPane);
+    UiResizeHandle::configureSplitter(m_workflowSplitter);
     m_workflowSplitter->addWidget(m_blockList);
     m_workflowSplitter->addWidget(toolsPane);
     m_workflowSplitter->setStretchFactor(0, 1);
     m_workflowSplitter->setStretchFactor(1, 0);
-    m_workflowSplitter->setCollapsible(0, false);
-    m_workflowSplitter->setCollapsible(1, false);
     m_workflowSplitter->setSizes({480, 120});
 
     workflowLayout->addWidget(m_workflowSplitter, 1);

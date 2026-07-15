@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.116` (from `project(PIPBONG VERSION 0.8.116)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.117` (from `project(PIPBONG VERSION 0.8.117)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -506,7 +506,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Debounce                | 800 ms after edits; also on window close                                                                                                                                                                                                                                                                                     |
 | Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, `program/logMaxLines`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog                               |
 | Calculator sheet        | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry`                                                                                                                                                                                                                        |
-| CPU spike watch         | `QSettings` — `spikewatch/geometry`, `spikewatch/intervalMs`, thresholds, `topN`, `deltaMargin` (not in `project.json`)                                                                                                                                                                                                    |
+| CPU spike watch         | `QSettings` — `spikewatch/geometry`, `spikewatch/sectionSplitter`, `spikewatch/intervalMs`, thresholds, `topN`, `deltaMargin` (not in `project.json`)                                                                                                                                                                    |
 
 ### 5.8 poe.ninja economy calculator
 
@@ -522,7 +522,7 @@ Sbm1.0/                        # repo root (local workspace)
 - **Sampling:** `CpuMonitorWorker` on a dedicated `QThread` uses Win32 `GetSystemTimes` (system CPU %) and `CreateToolhelp32Snapshot` + `GetProcessTimes` (per-process CPU %); no PDH / new vcpkg deps.
 - **Spike detection:** `CpuSpikeDetector` — absolute thresholds (system / single process), optional relative jump over rolling median (`deltaMargin`; 0 = off), cooldown debounce.
 - **UI:** live Top N process table, **범인 추정** suspect ranking (`CpuCulpritAnalyzer` — weighted spike attribution, elevation during high system load, session baseline), spike event log (clipboard copy includes culprit report), DragAdjust interval/threshold controls; marks events when a PIPBONG feature session is active.
-- **Persistence:** `QSettings` keys `spikewatch/*` (geometry, interval, thresholds, top N, delta margin).
+- **Persistence:** `QSettings` keys `spikewatch/*` (geometry, section splitter, interval, thresholds, top N, delta margin).
 
 ---
 
@@ -976,8 +976,10 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 | Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `BlockListHeaderView`, `FeatureListHeaderWidget`                    |
 | In-cell horizontal drag slack                                         | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
 | Row-height divider (feature list / workflow block list header bottom) | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight` (`kMinListRowHeightPx`–`kMaxListRowHeightPx`)  |
-| `QSplitter` handles                                                   | `kSplitterHandleWidthPx` (12 px) via `UiStateManager::registerSplitter`                                              |
+| `QSplitter` handles                                                   | Always call `UiResizeHandle::configureSplitter` (12 px handle + non-collapsible panes) — also via `UiStateManager::registerSplitter` |
 | Frameless main window edges                                           | `kWindowResizeBorderPx` (10 px) — `MainWindow::nativeEvent`                                                          |
+
+**When adding a multi-pane layout:** use `QSplitter` + `configureSplitter`; persist `saveState`/`restoreState` for dialog-owned splitters (main window uses `UiStateManager`). Do not ship side-by-side or stacked resizable panes with only stretch factors and no splitter.
 
 ### 8.10 ClipCursor and foreign game mouse confinement (mandatory — do not regress)
 
@@ -1089,6 +1091,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.117] - 2026-07-15
+
+### Added
+
+- Shared `UiResizeHandle::configureSplitter` (12 px handle, non-collapsible panes); applied to all `QSplitter` instances including main window, workflow editor, **CPU 감시** section panes, and click / window-selection feedback settings dialogs (`UiResizeHandle`, `UiStateManager`, `SpikeWatchDialog`, feedback settings dialogs).
+
+### Changed
+
+- **CPU 감시**: process table / culprit / spike event log use a vertical splitter with persisted sizes (`spikewatch/sectionSplitter`).
+- Click / window-selection feedback settings: preview vs form use a horizontal splitter with persisted sizes.
 
 ## [0.8.116] - 2026-07-15
 
