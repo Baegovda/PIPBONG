@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.139` (from `project(PIPBONG VERSION 0.8.139)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.140` (from `project(PIPBONG VERSION 0.8.140)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1092,6 +1092,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.140] - 2026-07-15
+
+### Changed
+
+- Workflow editor vertical splitter (block list vs **블록 추가**): lower drag sensitivity — 3 mouse pixels per 1 px pane resize via `DampedSplitter` (`UiResizeHandle::kSplitterDragPixelsPerStep`, `WorkflowEditorPanel`).
 
 ## [0.8.139] - 2026-07-15
 

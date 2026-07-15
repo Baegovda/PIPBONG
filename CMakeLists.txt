@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.139 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.140 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -88,6 +88,7 @@ set(PIPBONG_SOURCES
     src/ui/widgets/ReorderableListWidget.cpp
     src/ui/widgets/ListDragVisuals.cpp
     src/ui/widgets/ListColumnHeaderWidget.cpp
+    src/ui/widgets/DampedSplitter.cpp
     src/ui/ProfileListWidget.cpp
     src/ui/HotkeyBindingIcon.cpp
     src/ui/TargetWindowDetailPanel.cpp

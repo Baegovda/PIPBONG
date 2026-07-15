@@ -16,6 +16,7 @@
 #include "ui/HotkeyBindingIcon.h"
 #include "ui/editors/WorkflowLoopRegionsDialog.h"
 #include "ui/UiResizeHandle.h"
+#include "ui/widgets/DampedSplitter.h"
 #include "ui/UiStrings.h"
 #include "ui/editors/BlockEditorDialog.h"
 #include "ui/editors/ImageFindPollIntervalPrefs.h"
@@ -625,7 +626,7 @@ void WorkflowEditorPanel::setupUi() {
     auto* workflowLayout = new QVBoxLayout(workflowPane);
     workflowLayout->setContentsMargins(0, 0, 0, 0);
 
-    m_workflowSplitter = new QSplitter(Qt::Vertical, workflowPane);
+    m_workflowSplitter = new UiResizeHandle::DampedSplitter(Qt::Vertical, workflowPane);
     UiResizeHandle::configureSplitter(m_workflowSplitter);
     m_workflowSplitter->addWidget(blockListFrame);
     m_workflowSplitter->addWidget(toolsPane);
