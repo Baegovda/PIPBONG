@@ -9,6 +9,14 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+namespace {
+
+QString memoOpenSettingsKey(const QString& profileId) {
+    return QStringLiteral("memo/open/%1").arg(profileId);
+}
+
+} // namespace
+
 MemoDialog::MemoDialog(QWidget* parent)
     : QDialog(parent) {
     setWindowTitle(tr("메모장"));
@@ -71,9 +79,9 @@ void MemoDialog::scheduleSave() {
 void MemoDialog::closeEvent(QCloseEvent* event) {
     saveNow();
     persistGeometry();
-    if (event->spontaneous()) {
+    if (event->spontaneous() && !m_profileId.isEmpty()) {
         QSettings settings;
-        settings.setValue(QStringLiteral("memo/open"), false);
+        settings.setValue(memoOpenSettingsKey(m_profileId), false);
     }
     QDialog::closeEvent(event);
 }
@@ -81,8 +89,10 @@ void MemoDialog::closeEvent(QCloseEvent* event) {
 void MemoDialog::showEvent(QShowEvent* event) {
     QDialog::showEvent(event);
     restorePersistedGeometry();
-    QSettings settings;
-    settings.setValue(QStringLiteral("memo/open"), true);
+    if (!m_profileId.isEmpty()) {
+        QSettings settings;
+        settings.setValue(memoOpenSettingsKey(m_profileId), true);
+    }
 }
 
 void MemoDialog::persistGeometry() {

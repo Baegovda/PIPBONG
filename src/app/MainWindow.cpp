@@ -547,7 +547,7 @@ MainWindow::MainWindow(QWidget* parent)
         m_profileManager->loadSettings(m_profileManager->activeProfileId()));
     refreshProfileList();
     loadActiveProfile();
-    restoreMemoDialogOpenState();
+    syncMemoDialogProfile();
     refreshFeatureLibraryPanel();
     scheduleProfilePackageSeal();
 
@@ -1619,16 +1619,40 @@ void MainWindow::onMemo() {
 }
 
 void MainWindow::syncMemoDialogProfile() {
-    if (!m_memoDialog || !m_profileManager) {
+    if (!m_profileManager) {
         return;
     }
+
+    const QString profileId = m_profileManager->activeProfileId();
+    const bool shouldBeOpen =
+        !profileId.isEmpty()
+        && QSettings().value(QStringLiteral("memo/open/%1").arg(profileId), false).toBool();
+
+    if (!shouldBeOpen && !m_memoDialog) {
+        return;
+    }
+
+    if (!m_memoDialog) {
+        m_memoDialog = new MemoDialog(this);
+        m_memoDialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(m_memoDialog, &QObject::destroyed, this, [this]() { m_memoDialog = nullptr; });
+    }
+
     const ProfileManager::Profile* profile = m_profileManager->activeProfile();
     const QString displayName =
         profile ? (m_profileManager->isDefaultProfile(profile->id) ? tr("기본") : profile->name)
                 : QString();
-    m_memoDialog->setProfile(m_profileManager->activeProfileId(),
+    m_memoDialog->setProfile(profileId,
                              m_profileManager->activeProjectDirectory(),
                              displayName);
+
+    if (shouldBeOpen) {
+        if (!m_memoDialog->isVisible()) {
+            m_memoDialog->show();
+        }
+    } else if (m_memoDialog->isVisible()) {
+        m_memoDialog->hide();
+    }
 }
 
 void MainWindow::onProfileSelectionChanged() {
@@ -2104,19 +2128,6 @@ void MainWindow::restoreSelectedFeaturePreference() {
     if (!featureId.isEmpty()) {
         m_featureList->selectFeatureById(featureId);
     }
-}
-
-void MainWindow::restoreMemoDialogOpenState() {
-    if (!QSettings().value(QStringLiteral("memo/open"), false).toBool()) {
-        return;
-    }
-    if (!m_memoDialog) {
-        m_memoDialog = new MemoDialog(this);
-        m_memoDialog->setAttribute(Qt::WA_DeleteOnClose);
-        connect(m_memoDialog, &QObject::destroyed, this, [this]() { m_memoDialog = nullptr; });
-    }
-    syncMemoDialogProfile();
-    m_memoDialog->show();
 }
 
 QString MainWindow::selectedFeaturePreferenceKey() const {

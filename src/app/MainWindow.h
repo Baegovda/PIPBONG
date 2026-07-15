@@ -280,7 +280,6 @@ private:
     void syncEffectiveTargetWindowTitleToCapture();
     void saveSelectedFeaturePreference();
     void restoreSelectedFeaturePreference();
-    void restoreMemoDialogOpenState();
     QString selectedFeaturePreferenceKey() const;
     void scheduleRunWarmup();
     void prepareProjectUnload();
