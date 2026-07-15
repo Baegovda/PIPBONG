@@ -982,6 +982,8 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 **When adding a multi-pane layout:** use `QSplitter` + `configureSplitter`; persist `saveState`/`restoreState` for dialog-owned splitters (main window uses `UiStateManager`). Do not ship side-by-side or stacked resizable panes with only stretch factors and no splitter.
 
+**List column header resize (feature list + workflow block list):** see [§8.11](#811-list-column-header-resize-mandatory--do-not-regress) and `.cursor/rules/list-column-header-resize.mdc`. **Verified reference:** git tag **`v0.8.141`**.
+
 ### 8.10 ClipCursor and foreign game mouse confinement (mandatory — do not regress)
 
 **Status:** Fixed 2026-07-10 (v0.8.86). Games that confine the cursor with Win32 `ClipCursor` (e.g. MOBAs) lose confinement when PIPBONG calls `ClipCursor(nullptr)` without having applied its own lock.
@@ -994,6 +996,69 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 | Reconcile | `reconcileMouseLocksFromRunningSessions()` calls `releaseAll()` only when `MouseCenterLock::isActive()` |
 
 Key files: `src/app/MouseCenterLock.cpp`, `MainWindow::reconcileMouseLocksFromRunningSessions`.
+
+### 8.11 List column header resize (mandatory — do not regress)
+
+**Status:** Verified working on Windows (2026-07-15, v0.8.138–0.8.141). If this regresses, restore behavior from git tag **`v0.8.141`** before redesigning.
+
+#### Why not stock `QHeaderView`?
+
+Qt `Interactive` / `Stretch` / filler columns caused dead handles, inverted resize, clipped **매칭**, and header text disappearing (v0.8.119–0.8.131). Both lists use a **custom header widget** above the table.
+
+#### Architecture
+
+| Layer | Responsibility |
+| ----- | -------------- |
+| `ListColumnHeaderWidget` | Shared chrome: paint header background, column labels, vertical `|` guides (`paintDividerGuides`); mouse tracking; divider drag with dashed guide line; optional row-height handle on header bottom edge (feature list) |
+| `BlockListWidget::wireListColumnHeader` | Workflow providers: edges from **`columnViewportPosition` + `columnWidth`** (`blockListColumnEdgesFromTable`); `blockListDividerHandleAt` / `blockListDividerXs`; `applyPairwiseColumnResize` on drag |
+| `FeatureListPanel::wireListColumnHeader` | Feature providers: `featureListColumnEdges` from `FeatureListColumnLayout`; per-boundary width rules in `applyDrag` switch |
+| `BlockListColumnLayout` / `FeatureListColumnLayout` | Persisted widths + row height; workflow stores explicit `summaryWidth`; `reconcileSummarySlack()` on panel resize |
+| Stock `QHeaderView` | Workflow: **hidden** (`hide()`, height 0) after `initBlockListColumnHeader` — custom header is the only resize UI |
+
+#### Divider hit-test rules
+
+1. Horizontal grab: `UiResizeHandle::isWithinHorizontalGrab` → ±`kDividerHalfWidthPx` (10 px).
+2. Workflow divider X positions: **left edge** of each visible column from the **live table**, not from stale layout math.
+3. **Must include `summaryDividerX`** at column `kColSummary` (동작|요약 boundary). Omitting it was v0.8.137.
+4. `ListColumnHeaderWidget`: `Qt::WA_Hover`, `enterEvent`/`leaveEvent` refresh `SplitH` cursor (v0.8.135).
+5. On drag start: snapshot layout (`dividerDragStarted` → `m_headerDragStartLayout`); apply delta to snapshot, not cumulative layout drift.
+
+#### Pairwise column resize (workflow)
+
+`applyPairwiseColumnResize(rightColumnIndex, deltaX, startLayout)` adjusts **left and right** neighbor widths with per-column min/max clamps. **요약** width is stored; metric columns have fixed mins; slack goes to **요약** via `reconcileSummarySlack()` when the table viewport grows/shrinks.
+
+#### Workflow panel vertical split (block list vs **블록 추가**)
+
+| Item | Rule |
+| ---- | ---- |
+| Widget | `UiResizeHandle::DampedSplitter` on `WorkflowEditorPanel::m_workflowSplitter` |
+| Sensitivity | `kSplitterDragPixelsPerStep` (3 px mouse → 1 px pane) |
+| Persistence | `UiStateManager::registerSplitter(..., "workflowEditor/vertical")` |
+| No feature selected | Do **not** call `setEnabled(false)` on the panel — only disable add/edit via `setEditingEnabled` && `m_feature` |
+
+#### Anti-patterns
+
+- Reintroducing `BlockListColumnHeader`, viewport `eventFilter` resize, `QHeaderView::Stretch` mid-table, or hidden stretch filler columns.
+- Disabling the whole `WorkflowEditorPanel` when `refresh()` has no feature.
+- Computing workflow divider X from layout-only rects while the table has different widths.
+
+#### Manual regression (required before closing header/resize tasks)
+
+1. Workflow: every `|` shows `↔` on hover; drag resizes the expected column pair; **동작|요약** works; **매칭** pinned right.
+2. Feature: **사용|▶|기능|방식|키** dividers + header-bottom row height.
+3. Dark theme: divider guides readable.
+4. Empty feature selection: vertical splitter still draggable.
+
+#### Key files
+
+- `src/ui/widgets/ListColumnHeaderWidget.h` / `.cpp`
+- `src/ui/widgets/DampedSplitter.h` / `.cpp`
+- `src/ui/BlockListWidget.cpp` — `blockListColumnEdgesFromTable`, `wireListColumnHeader`, `applyPairwiseColumnResize`, `reconcileSummarySlack`
+- `src/ui/FeatureListPanel.cpp` — `wireListColumnHeader`
+- `src/ui/WorkflowEditorPanel.cpp` — splitter + `refresh()` enable policy
+- `src/ui/UiResizeHandle.h`
+
+Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 ---
 
@@ -1086,6 +1151,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ## [Unreleased]
 
 ### Added
+
+- List column header resize handover: AGENTS.md §8.11 + always-applied `.cursor/rules/list-column-header-resize.mdc`; verified code reference git tag `v0.8.141`.
 
 ### Changed
 
@@ -3928,6 +3995,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **Hard bans** on `cmake --preset` when `build/` exists, parallel configure, CMake Tools tasks.
 - Recovery: `.\scripts\recover-ide-build.ps1`. Full rules in [§3.2](#32-no-full-rebuild--vcpkg-lock-prevention-mandatory).
 
+### `list-column-header-resize.mdc`
+
+- Feature list + workflow block list column header resize uses shared `ListColumnHeaderWidget` — not stock `QHeaderView` Interactive/Stretch.
+- Full rules in [§8.11](#811-list-column-header-resize-mandatory--do-not-regress). **Code reference:** git tag **`v0.8.141`**.
+
 ### Korean update log (§3.7)
 
 - **`UpdateLog/update_log.md`** — user-facing Korean changelog; linked from `README.md`.
@@ -3936,4 +4008,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-13. Current application version: 0.8.99._
+_Last consolidated: 2026-07-15. Current application version: 0.8.141._

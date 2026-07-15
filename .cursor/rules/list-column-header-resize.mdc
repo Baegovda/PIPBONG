@@ -1,0 +1,61 @@
+---
+description: ListColumnHeaderWidget column resize — feature list + workflow block list (do not regress)
+alwaysApply: true
+---
+
+# List Column Header Resize (Mandatory — Do Not Regress)
+
+**Status:** Verified working on Windows (2026-07-15, v0.8.138–0.8.141). **Code reference:** git tag **`v0.8.141`** (`ListColumnHeaderWidget`, `BlockListWidget::wireListColumnHeader`, `FeatureListPanel::wireListColumnHeader`).
+
+Full handover: [AGENTS.md](../../AGENTS.md) — **§8.11 List column header resize**.
+
+## Purpose
+
+Feature list and workflow block list share **`ListColumnHeaderWidget`** above the table — **not** stock `QHeaderView` drag resize. Divider hit-test, paint guides, and drag apply live in list-specific `wireListColumnHeader` + layout structs.
+
+## Required architecture
+
+| Layer | Responsibility |
+| ----- | -------------- |
+| `ListColumnHeaderWidget` | Paint labels + `|` divider guides; ±`kDividerHalfWidthPx` hit-test; `SplitH` / `SizeVer` cursors; `WA_Hover` + `enterEvent`/`leaveEvent` |
+| `BlockListWidget` / `FeatureListPanel` | `wireListColumnHeader`: providers for edges, divider Xs, handle id, `applyDrag`; persist layout in `QSettings` |
+| Divider geometry | **From live table** `columnViewportPosition` + `columnWidth` (workflow) or layout math synced to list (feature) — **never** layout-only math that drifts from painted columns |
+| Pairwise resize | Drag moves **left+right neighbor** widths together (`applyPairwiseColumnResize` / feature-list switch); snapshot layout on `dividerDragStarted` |
+| Workflow **요약** | `summaryWidth` stored explicitly; `reconcileSummarySlack()` fills viewport slack on resize only — **매칭** fixed width pinned right |
+| Stock header | Workflow: `horizontalHeader()->hide()` + height 0 — custom header owns resize |
+
+## Workflow block list — every divider boundary
+
+Include **`summaryDividerX`** at **동작|요약** (left edge of summary column). `blockListDividerHandleAt` / `blockListDividerXs` must list **all** column left edges including summary, duration, …, match, and ROI when visible.
+
+## Workflow panel vertical split
+
+- Block list vs **블록 추가**: `UiResizeHandle::DampedSplitter` (`kSplitterDragPixelsPerStep` = 3).
+- **Never** `WorkflowEditorPanel::setEnabled(false)` when no feature — disables splitter; disable edit buttons via `setEditingEnabled` + `m_feature` guard only.
+
+## Anti-patterns (known failures — do not reintroduce)
+
+| Do not | Why |
+| ------ | --- |
+| Replace with `QHeaderView::Interactive` / `Stretch` / `StretchLastSection` alone | Broken resize, inverted drag, dead handles (v0.8.119–0.8.131) |
+| Divider positions from layout struct without `columnViewportPosition` | Cursor/hit-test drift from visible columns (v0.8.135) |
+| Omit **동작|요약** divider | That boundary not resizable (v0.8.137) |
+| `setEnabled(false)` on whole workflow panel when `!m_feature` | Vertical split not draggable (v0.8.141) |
+| Custom `BlockListColumnHeader` / viewport eventFilter one-offs | Superseded by shared `ListColumnHeaderWidget` |
+
+## Before closing header/resize UI tasks
+
+Manually verify on Windows:
+
+1. Workflow header: `↔` on every `|` divider including **동작|요약**; drag resizes correct neighbor pair; **요약** absorbs slack; **매칭** stays right.
+2. Feature header: all four dividers (**사용|▶|기능|방식|키**) + bottom row-height edge.
+3. Dark theme: `|` guides visible.
+4. No feature selected: workflow vertical splitter still drags.
+
+## Key files
+
+- `src/ui/widgets/ListColumnHeaderWidget.*`
+- `src/ui/BlockListWidget.cpp` — `blockListColumnEdgesFromTable`, `wireListColumnHeader`, `applyPairwiseColumnResize`
+- `src/ui/FeatureListPanel.cpp` — `wireListColumnHeader`
+- `src/ui/UiResizeHandle.h` — grab constants, `configureSplitter`, `DampedSplitter`
+- `src/ui/WorkflowEditorPanel.cpp` — `m_workflowSplitter`, no whole-panel disable
