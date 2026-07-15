@@ -202,6 +202,7 @@ void applyBlockListHeaderResizeModes(QHeaderView* header) {
             column,
             column == kColFiller ? QHeaderView::Fixed : QHeaderView::Interactive);
     }
+    header->setSectionHidden(kColFiller, true);
 }
 
 void initBlockListColumnHeader(BlockListWidget* table) {
