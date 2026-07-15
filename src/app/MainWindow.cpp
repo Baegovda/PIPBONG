@@ -47,6 +47,7 @@
 #include "ui/UiResizeHandle.h"
 #include "ui/ProfileEditDialog.h"
 #include "ui/UiStateManager.h"
+#include "ui/UiThemeColors.h"
 #include "ui/editors/MatchTestOverlay.h"
 #include "ui/editors/WorkflowMatchFeedbackOverlay.h"
 #include "ui/editors/WorkflowRoiFlashOverlay.h"
@@ -188,6 +189,68 @@ bool windowTitleMatchesSubTarget(const QString& windowTitle,
     const bool mainHit =
         !mainBinding.isEmpty() && windowTitle.contains(mainBinding, Qt::CaseInsensitive);
     return subHit && (!mainHit || subBinding.length() >= mainBinding.length());
+}
+
+bool windowTitleMatchesMainBinding(const QString& windowTitle, const QString& mainBinding) {
+    return !mainBinding.isEmpty() && !windowTitle.isEmpty()
+           && windowTitle.contains(mainBinding, Qt::CaseInsensitive);
+}
+
+void applyWindowListBindingMark(QListWidgetItem* item,
+                                const QPalette& pal,
+                                bool isMainBinding,
+                                bool isSubBinding) {
+    if (!item || (!isMainBinding && !isSubBinding)) {
+        return;
+    }
+
+    const bool dark = isDarkTheme(pal);
+    const QColor mainAccent = dark ? QColor(0x81, 0xc7, 0x84) : QColor(0x2f, 0x9e, 0x62);
+    const QColor subAccent = dark ? QColor(0x64, 0xb5, 0xf6) : QColor(0x1e, 0x88, 0xe5);
+
+    QColor tint = isMainBinding ? mainAccent : subAccent;
+    if (isMainBinding && isSubBinding) {
+        tint = QColor((mainAccent.red() + subAccent.red()) / 2,
+                      (mainAccent.green() + subAccent.green()) / 2,
+                      (mainAccent.blue() + subAccent.blue()) / 2);
+    }
+    tint.setAlpha(dark ? 48 : 40);
+
+    QString badges;
+    if (isMainBinding) {
+        badges += QStringLiteral("● 주 대상");
+    }
+    if (isSubBinding) {
+        if (!badges.isEmpty()) {
+            badges += QStringLiteral("  ");
+        }
+        badges += QStringLiteral("● 서브 창");
+    }
+
+    item->setText(item->text() + QStringLiteral("    ") + badges);
+    item->setToolTip(badges);
+    item->setBackground(QBrush(tint));
+
+    QFont font = item->font();
+    font.setBold(true);
+    item->setFont(font);
+
+    const QColor accent =
+        isMainBinding && isSubBinding ? primaryContentTextColor(pal)
+        : isMainBinding                  ? mainAccent
+                                         : subAccent;
+    item->setForeground(QBrush(accent));
+}
+
+QString windowListBindingLegendHtml(const QPalette& pal) {
+    const bool dark = isDarkTheme(pal);
+    const QColor mainAccent = dark ? QColor(0x81, 0xc7, 0x84) : QColor(0x2f, 0x9e, 0x62);
+    const QColor subAccent = dark ? QColor(0x64, 0xb5, 0xf6) : QColor(0x1e, 0x88, 0xe5);
+    return QStringLiteral(
+               "<span style='color:%1; font-weight:600'>● 주 대상</span>"
+               "&nbsp;&nbsp;"
+               "<span style='color:%2; font-weight:600'>● 서브 창</span>")
+        .arg(mainAccent.name(), subAccent.name());
 }
 
 enum WindowListPickChoice {
@@ -4307,6 +4370,11 @@ void MainWindow::onPickTargetWindowFromList() {
     hintLabel->setWordWrap(true);
     layout->addWidget(hintLabel);
 
+    auto* legendLabel = new QLabel(&dialog);
+    legendLabel->setTextFormat(Qt::RichText);
+    legendLabel->setText(windowListBindingLegendHtml(dialog.palette()));
+    layout->addWidget(legendLabel);
+
     auto* listWidget = new QListWidget(&dialog);
     listWidget->setSelectionMode(QAbstractItemView::SingleSelection);
     listWidget->setIconSize(QSize(24, 24));
@@ -4343,6 +4411,7 @@ void MainWindow::onPickTargetWindowFromList() {
     auto populateList = [listWidget, mainBinding, subBinding]() {
         const HWND currentTarget = ScreenCapture::targetWindow();
         const QVector<WindowListEntry> entries = collectWindowListEntries();
+        const QPalette listPalette = listWidget->palette();
         listWidget->clear();
 
         int selectedIndex = -1;
@@ -4353,12 +4422,19 @@ void MainWindow::onPickTargetWindowFromList() {
             item->setIcon(entry.icon);
             item->setData(Qt::UserRole, QVariant::fromValue(reinterpret_cast<qulonglong>(entry.hwnd)));
             item->setData(Qt::UserRole + 1, QString::fromStdWString(entry.title));
+
+            const QString entryTitle = QString::fromStdWString(entry.title);
+            const bool isMainBinding =
+                windowTitleMatchesMainBinding(entryTitle, mainBinding)
+                || (currentTarget && currentTarget == entry.hwnd);
+            const bool isSubBinding =
+                windowTitleMatchesSubTarget(entryTitle, mainBinding, subBinding);
+            applyWindowListBindingMark(item, listPalette, isMainBinding, isSubBinding);
+
             if (currentTarget && currentTarget == entry.hwnd) {
                 selectedIndex = i;
             }
-            const QString entryTitle = QString::fromStdWString(entry.title);
-            if (subMatchIndex < 0
-                && windowTitleMatchesSubTarget(entryTitle, mainBinding, subBinding)) {
+            if (subMatchIndex < 0 && isSubBinding) {
                 subMatchIndex = i;
             }
         }

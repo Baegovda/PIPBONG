@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.150` (from `project(PIPBONG VERSION 0.8.150)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.151` (from `project(PIPBONG VERSION 0.8.151)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1176,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.151] - 2026-07-16
+
+### Changed
+
+- Main window **창 목록** picker marks the current **주 대상** and **서브 창** bindings with colored row tint, bold text, and **● 주 대상** / **● 서브 창** badges; legend shown above the list (`MainWindow::onPickTargetWindowFromList`).
 
 ## [0.8.150] - 2026-07-16
 
