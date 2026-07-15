@@ -1984,6 +1984,7 @@ void MainWindow::prepareForShutdown() {
     }
     if (m_memoDialog) {
         m_memoDialog->saveNow();
+        m_memoDialog->prepareForApplicationShutdown();
         m_memoDialog->close();
     }
     WindowPicker::cancelPick();

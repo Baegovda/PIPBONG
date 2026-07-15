@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.157` (from `project(PIPBONG VERSION 0.8.157)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.158` (from `project(PIPBONG VERSION 0.8.158)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1176,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.158] - 2026-07-16
+
+### Fixed
+
+- **메모장** close (×) did not persist closed state: frameless custom close uses programmatic `close()` so `QCloseEvent::spontaneous()` was false; `closeEvent` now always writes `memo/open/{profileId}` unless `prepareForApplicationShutdown()` preserves open on app exit (`MemoDialog`, `MainWindow::prepareForShutdown`).
 
 ## [0.8.157] - 2026-07-16
 

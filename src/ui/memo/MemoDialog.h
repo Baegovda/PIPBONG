@@ -22,6 +22,8 @@ public:
                     const QString& profileDirectory,
                     const QString& profileDisplayName);
     void saveNow();
+    /// Call before programmatic close during app shutdown so open state stays true when visible.
+    void prepareForApplicationShutdown();
 
 protected:
     void changeEvent(QEvent* event) override;
@@ -40,6 +42,7 @@ private:
     void updateWindowTitle();
     void updateChrome();
     bool isInDragRegion(const QPoint& pos) const;
+    void persistOpenState(bool open);
 
     QString m_profileId;
     QString m_profileDirectory;
@@ -50,6 +53,7 @@ private:
     QTimer* m_saveTimer = nullptr;
     bool m_loading = false;
     bool m_dragging = false;
+    bool m_preserveOpenStateOnClose = false;
     QPoint m_dragOffset;
     int m_headerHeight = 32;
 };

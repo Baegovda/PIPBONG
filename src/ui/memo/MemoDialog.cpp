@@ -125,6 +125,10 @@ void MemoDialog::scheduleSave() {
     m_saveTimer->start();
 }
 
+void MemoDialog::prepareForApplicationShutdown() {
+    m_preserveOpenStateOnClose = isVisible();
+}
+
 void MemoDialog::changeEvent(QEvent* event) {
     QDialog::changeEvent(event);
     switch (event->type()) {
@@ -141,20 +145,23 @@ void MemoDialog::changeEvent(QEvent* event) {
 void MemoDialog::closeEvent(QCloseEvent* event) {
     saveNow();
     persistGeometry();
-    if (event->spontaneous() && !m_profileId.isEmpty()) {
-        QSettings settings;
-        settings.setValue(memoOpenSettingsKey(m_profileId), false);
-    }
+    persistOpenState(m_preserveOpenStateOnClose);
+    m_preserveOpenStateOnClose = false;
     QDialog::closeEvent(event);
+}
+
+void MemoDialog::persistOpenState(bool open) {
+    if (m_profileId.isEmpty()) {
+        return;
+    }
+    QSettings settings;
+    settings.setValue(memoOpenSettingsKey(m_profileId), open);
 }
 
 void MemoDialog::showEvent(QShowEvent* event) {
     QDialog::showEvent(event);
     restorePersistedGeometry();
-    if (!m_profileId.isEmpty()) {
-        QSettings settings;
-        settings.setValue(memoOpenSettingsKey(m_profileId), true);
-    }
+    persistOpenState(true);
 }
 
 void MemoDialog::paintEvent(QPaintEvent* event) {
