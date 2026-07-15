@@ -18,6 +18,16 @@ constexpr int kMinListRowHeightPx = 20;
 constexpr int kMaxListRowHeightPx = 64;
 constexpr int kDefaultFeatureListRowHeightPx = 26;
 constexpr int kDefaultBlockListRowHeightPx = 36;
+/// Mouse pixels per 1 px row-height change on list header bottom-edge drag (higher = lower sensitivity).
+constexpr int kListRowHeightDragPixelsPerStep = 4;
+
+inline int scaleListRowHeightDragDelta(int deltaY) {
+    const int step = qMax(1, kListRowHeightDragPixelsPerStep);
+    if (deltaY >= 0) {
+        return deltaY / step;
+    }
+    return -((-deltaY) / step);
+}
 
 /// Program-wide splitter policy: wide grab handle, panes not collapsible to zero.
 inline void configureSplitter(QSplitter* splitter) {

@@ -265,8 +265,11 @@ void ListColumnHeaderWidget::applyDrag(const QPoint& pos) {
     if (!m_applyDrag) {
         return;
     }
-    const int deltaX = pos.x() - m_dragStartPos.x();
-    const int deltaY = pos.y() - m_dragStartPos.y();
+    int deltaX = pos.x() - m_dragStartPos.x();
+    int deltaY = pos.y() - m_dragStartPos.y();
+    if (m_activeHandle == kRowHeightHandleId) {
+        deltaY = UiResizeHandle::scaleListRowHeightDragDelta(deltaY);
+    }
     m_applyDrag(m_activeHandle, deltaX, deltaY, pos);
     if (m_activeHandle == kRowHeightHandleId) {
         m_dragGuideY = pos.y();
