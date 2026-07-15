@@ -135,10 +135,12 @@ private:
 };
 
 /*
- * Column resize (plain Qt, no filler / no Stretch-in-middle):
- *   - Metric columns: Interactive (user drags dividers normally)
- *   - 요약 + 매칭: Fixed — 매칭 stays on the right edge; 요약 fills leftover width
- *   - layoutBlockListColumns() runs after resize / column drag / ROI toggle
+ * Column resize (standard Qt):
+ *   - Metric columns (# … ROI): Interactive — drag dividers normally
+ *   - 요약: Stretch — fills leftover width (so handles to its right resize
+ *     the Interactive neighbor, not a Fixed 요약)
+ *   - 매칭: Fixed — stays on the panel right edge
+ *   - layoutBlockListColumns() only pins 매칭 and clamps overflow
  */
 void setDefaultBlockListWidths(QHeaderView* header) {
     if (!header) {
@@ -171,9 +173,13 @@ void configureBlockListHeader(QHeaderView* header) {
     header->setFirstSectionMovable(false);
     header->setDefaultAlignment(Qt::AlignCenter);
     for (int column = 0; column < kColumnCount; ++column) {
-        const bool fixed = (column == kColSummary || column == kColMatch);
-        header->setSectionResizeMode(column,
-                                     fixed ? QHeaderView::Fixed : QHeaderView::Interactive);
+        if (column == kColMatch) {
+            header->setSectionResizeMode(column, QHeaderView::Fixed);
+        } else if (column == kColSummary) {
+            header->setSectionResizeMode(column, QHeaderView::Stretch);
+        } else {
+            header->setSectionResizeMode(column, QHeaderView::Interactive);
+        }
     }
 }
 
@@ -199,23 +205,19 @@ void layoutBlockListColumns(QTableWidget* table) {
         used += header->sectionSize(column);
     }
 
-    int summaryWidth = viewportWidth - used;
-    if (summaryWidth < minSize) {
-        int need = minSize - summaryWidth;
-        for (int column = kColScore; column >= kColDuration && need > 0; --column) {
-            if (header->isSectionHidden(column)) {
-                continue;
-            }
-            const int current = header->sectionSize(column);
-            const int shrink = qMin(need, qMax(0, current - minSize));
-            if (shrink > 0) {
-                header->resizeSection(column, current - shrink);
-                need -= shrink;
-            }
+    // Keep room for Stretch 요약 at minimum size so 매칭 is never pushed off-screen.
+    int overflow = used + minSize - viewportWidth;
+    for (int column = kColScore; column >= kColDuration && overflow > 0; --column) {
+        if (header->isSectionHidden(column)) {
+            continue;
         }
-        summaryWidth = minSize;
+        const int current = header->sectionSize(column);
+        const int shrink = qMin(overflow, qMax(0, current - minSize));
+        if (shrink > 0) {
+            header->resizeSection(column, current - shrink);
+            overflow -= shrink;
+        }
     }
-    header->resizeSection(kColSummary, summaryWidth);
 
     if (QScrollBar* bar = table->horizontalScrollBar()) {
         bar->setValue(0);
