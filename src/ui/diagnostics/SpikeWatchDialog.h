@@ -25,6 +25,8 @@ public:
     ~SpikeWatchDialog() override;
 
     void setFeatureRunningCallback(std::function<bool()> callback);
+    /// Starts monitoring if idle (e.g. when opening from the main-window button).
+    void startMonitoringIfIdle();
 
 protected:
     void closeEvent(QCloseEvent* event) override;

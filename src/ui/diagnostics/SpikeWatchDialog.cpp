@@ -84,6 +84,10 @@ void SpikeWatchDialog::setFeatureRunningCallback(std::function<bool()> callback)
     }
 }
 
+void SpikeWatchDialog::startMonitoringIfIdle() {
+    onStartClicked();
+}
+
 void SpikeWatchDialog::setupUi() {
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(12, 12, 12, 12);

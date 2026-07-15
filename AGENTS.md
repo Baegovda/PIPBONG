@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.115` (from `project(PIPBONG VERSION 0.8.115)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.116` (from `project(PIPBONG VERSION 0.8.116)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -518,7 +518,7 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.9 CPU spike watch (diagnostics)
 
-- **Entry:** bottom **CPU 감시** button (left of **계산기**); modeless `SpikeWatchDialog` — manual diagnostic session only (no background monitoring when closed).
+- **Entry:** bottom **CPU 감시** button (left of **계산기**); opens modeless `SpikeWatchDialog` and starts monitoring immediately; stops when the dialog is closed (no background monitoring when closed).
 - **Sampling:** `CpuMonitorWorker` on a dedicated `QThread` uses Win32 `GetSystemTimes` (system CPU %) and `CreateToolhelp32Snapshot` + `GetProcessTimes` (per-process CPU %); no PDH / new vcpkg deps.
 - **Spike detection:** `CpuSpikeDetector` — absolute thresholds (system / single process), optional relative jump over rolling median (`deltaMargin`; 0 = off), cooldown debounce.
 - **UI:** live Top N process table, **범인 추정** suspect ranking (`CpuCulpritAnalyzer` — weighted spike attribution, elevation during high system load, session baseline), spike event log (clipboard copy includes culprit report), DragAdjust interval/threshold controls; marks events when a PIPBONG feature session is active.
@@ -562,9 +562,9 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### CPU spike watch (diagnostics)
 
-1. Click bottom **CPU 감시** (left of **계산기**).
-2. Adjust sample interval and CPU thresholds if needed.
-3. Click **감시 시작** — Top N processes refresh on the worker thread; spike events append to the log when thresholds are exceeded.
+1. Click bottom **CPU 감시** (left of **계산기**) — the dialog opens and monitoring starts immediately.
+2. Adjust sample interval and CPU thresholds if needed (stop first to edit, then **감시 시작** again).
+3. Top N processes refresh on the worker thread; spike events append to the log when thresholds are exceeded.
 4. Reproduce mouse stutter or heavy load; inspect which process spiked and whether PIPBONG had an active feature run.
 5. **중지** or close the dialog to end sampling.
 
@@ -1089,6 +1089,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.116] - 2026-07-15
+
+### Changed
+
+- Bottom **CPU 감시** opens the spike-watch dialog and starts monitoring immediately (`SpikeWatchDialog::startMonitoringIfIdle`, `MainWindow::onSpikeWatch`); closing the dialog still stops sampling.
 
 ## [0.8.115] - 2026-07-15
 

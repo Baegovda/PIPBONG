@@ -1431,6 +1431,7 @@ void MainWindow::onSpikeWatch() {
     m_spikeWatchDialog->show();
     m_spikeWatchDialog->raise();
     m_spikeWatchDialog->activateWindow();
+    m_spikeWatchDialog->startMonitoringIfIdle();
 }
 
 void MainWindow::onProfileSelectionChanged() {
