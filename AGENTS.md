@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.151` (from `project(PIPBONG VERSION 0.8.151)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.152` (from `project(PIPBONG VERSION 0.8.152)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1176,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.152] - 2026-07-16
+
+### Changed
+
+- Main window **로그 / 대상 창** vertical splitter can be dragged further down (more workflow space): lowered bottom-panel minimum heights (`TargetWindowDetailPanel`, `LogPanelWidget`, `MainWindow`) and added `clampMainVerticalSplitterSizes()` on drag/restore.
 
 ## [0.8.151] - 2026-07-16
 

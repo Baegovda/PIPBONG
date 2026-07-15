@@ -34,7 +34,8 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
     : QFrame(parent) {
     setObjectName(QStringLiteral("targetWindowDetailPanel"));
     setFrameShape(QFrame::NoFrame);
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    setMinimumHeight(48);
     setAttribute(Qt::WA_StyledBackground, true);
 
     auto* outerLayout = new QVBoxLayout(this);

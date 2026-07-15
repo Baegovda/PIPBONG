@@ -253,6 +253,55 @@ QString windowListBindingLegendHtml(const QPalette& pal) {
         .arg(mainAccent.name(), subAccent.name());
 }
 
+constexpr int kMinMainWorkspacePanePx = 252;
+constexpr int kMinBottomPanelPx = 108;
+
+void clampMainVerticalSplitterSizesImpl(QSplitter* splitter) {
+    if (!splitter || splitter->count() < 2) {
+        return;
+    }
+
+    QWidget* topPane = splitter->widget(0);
+    QWidget* bottomPane = splitter->widget(1);
+    if (!topPane || !bottomPane) {
+        return;
+    }
+
+    const int handle = splitter->handleWidth();
+    const int total = splitter->height();
+    if (total <= handle) {
+        return;
+    }
+
+    const int available = total - handle;
+    const int minTop = qMax(kMinMainWorkspacePanePx, topPane->minimumHeight());
+    const int minBottom = qMax(kMinBottomPanelPx, bottomPane->minimumHeight());
+    if (available < minTop + minBottom) {
+        return;
+    }
+
+    QList<int> sizes = splitter->sizes();
+    int topSize = sizes.value(0, 0);
+    int bottomSize = sizes.value(1, 0);
+    if (topSize + bottomSize <= 0) {
+        return;
+    }
+
+    topSize = qBound(minTop, topSize, available - minBottom);
+    bottomSize = available - topSize;
+    if (bottomSize < minBottom) {
+        bottomSize = minBottom;
+        topSize = available - bottomSize;
+    }
+
+    if (sizes.value(0) == topSize && sizes.value(1) == bottomSize) {
+        return;
+    }
+
+    QSignalBlocker blocker(splitter);
+    splitter->setSizes({topSize, bottomSize});
+}
+
 enum WindowListPickChoice {
     WindowListPickCancelled = 0,
     WindowListPickMain = QDialog::Accepted,
@@ -636,11 +685,13 @@ void MainWindow::setupUi() {
     m_mainHorizontalSplitter->setSizes({130, 210, 940});
 
     auto* bottomPanel = new QWidget(contentHost);
+    bottomPanel->setMinimumHeight(kMinBottomPanelPx);
     auto* bottomLayout = new QVBoxLayout(bottomPanel);
     bottomLayout->setContentsMargins(8, 6, 8, 8);
     bottomLayout->setSpacing(6);
 
     auto* targetGroup = new QGroupBox(tr("대상 창"), bottomPanel);
+    targetGroup->setMinimumHeight(72);
     auto* targetLayout = new QVBoxLayout(targetGroup);
     targetLayout->setContentsMargins(8, 4, 8, 6);
     targetLayout->setSpacing(4);
@@ -750,7 +801,7 @@ void MainWindow::setupUi() {
     exitRow->addWidget(m_exitButton);
 
     m_logPanel = new LogPanelWidget(bottomPanel);
-    m_logPanel->setMinimumHeight(72);
+    m_logPanel->setMinimumHeight(48);
     m_logPanel->setMaxLines(ProgramSettings::logMaxLines());
 
     m_bottomHorizontalSplitter = new QSplitter(Qt::Horizontal, bottomPanel);
@@ -775,6 +826,9 @@ void MainWindow::setupUi() {
     m_mainVerticalSplitter->setCollapsible(0, false);
     m_mainVerticalSplitter->setCollapsible(1, false);
     m_mainVerticalSplitter->setSizes({640, 240});
+    connect(m_mainVerticalSplitter, &QSplitter::splitterMoved, this, [this](int, int) {
+        clampMainVerticalSplitterSizes();
+    });
 
     contentLayout->addWidget(m_mainVerticalSplitter, 1);
     outerLayout->addWidget(contentHost, 1);
@@ -859,7 +913,12 @@ void MainWindow::setupUiState() {
     }
     m_uiState->restoreAll();
     m_workflowEditor->clampWorkflowSplitterSizes();
+    clampMainVerticalSplitterSizes();
     restoreAlwaysOnTopPreference();
+}
+
+void MainWindow::clampMainVerticalSplitterSizes() {
+    clampMainVerticalSplitterSizesImpl(m_mainVerticalSplitter);
 }
 
 void MainWindow::setupMenus() {

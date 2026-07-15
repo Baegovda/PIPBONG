@@ -171,6 +171,7 @@ private:
     void scheduleMouseLockPositionSync();
     void syncMouseLockPositions();
     void setupMenus();
+    void clampMainVerticalSplitterSizes();
     void setupUiState();
     void connectSignals();
     void updateRunUiState();

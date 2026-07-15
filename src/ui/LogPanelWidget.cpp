@@ -80,7 +80,7 @@ LogPanelWidget::LogPanelWidget(QWidget* parent)
     m_view->setReadOnly(true);
     m_view->setUndoRedoEnabled(false);
     m_view->setLineWrapMode(QTextEdit::WidgetWidth);
-    m_view->setMinimumHeight(56);
+    m_view->setMinimumHeight(28);
     m_view->setFrameShape(QFrame::NoFrame);
     m_view->document()->setDefaultStyleSheet(QStringLiteral("p { margin: 0; }"));
 
