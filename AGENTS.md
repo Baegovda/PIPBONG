@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.149` (from `project(PIPBONG VERSION 0.8.149)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.150` (from `project(PIPBONG VERSION 0.8.150)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1176,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.150] - 2026-07-16
+
+### Added
+
+- Main window **창 목록** picker: **서브 창으로 지정** sets the selected window as the profile sub-target (`commitActiveProfileSubTargetWindow`, `ProfileManager::updateProfileSubTargetBinding`); target detail panel shows **● 서브 창** when the foreground/displayed window matches the sub binding (`TargetWindowDetailPanel`, `MainWindow::updateTargetWindowDetails`).
 
 ## [0.8.149] - 2026-07-16
 

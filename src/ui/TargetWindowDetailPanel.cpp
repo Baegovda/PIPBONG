@@ -157,12 +157,15 @@ void TargetWindowDetailPanel::refreshDetailText() {
     const QPalette pal = palette();
     const QColor text = pal.color(QPalette::WindowText);
     const QColor muted = secondaryHintTextColor(pal);
-    const QColor stateColor = stateColorFor(m_lastDetailData);
+    const QColor stateColor = m_lastDetailData.subTarget
+                                  ? (text.lightness() < 128 ? QColor(0x64, 0xb5, 0xf6)
+                                                            : QColor(0x1e, 0x88, 0xe5))
+                                  : stateColorFor(m_lastDetailData);
     const QString sep = QStringLiteral(" &nbsp;&middot;&nbsp; ");
     const QString title = m_lastDetailData.title.isEmpty() ? tr("이름 없는 창") : m_lastDetailData.title;
 
     m_titleLabel->setText(title);
-    m_statusLabel->setText(m_lastDetailData.stateText);
+    m_statusLabel->setText(m_lastDetailData.subTarget ? tr("● 서브 창") : m_lastDetailData.stateText);
 
     const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
     m_statusLabel->setStyleSheet(QStringLiteral(

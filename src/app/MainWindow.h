@@ -268,6 +268,7 @@ private:
     void updateTargetWindowControlsForActiveProfile();
 #ifdef _WIN32
     void commitActiveProfileTargetWindow(HWND hwnd, const QString& title);
+    void commitActiveProfileSubTargetWindow(HWND hwnd, const QString& title);
 #endif
     bool isActiveDefaultProfile() const;
     std::wstring currentTargetWindowTitleW() const;

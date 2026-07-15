@@ -178,6 +178,24 @@ struct WindowListEntry {
     QIcon icon;
 };
 
+bool windowTitleMatchesSubTarget(const QString& windowTitle,
+                                 const QString& mainBinding,
+                                 const QString& subBinding) {
+    if (subBinding.isEmpty() || windowTitle.isEmpty()) {
+        return false;
+    }
+    const bool subHit = windowTitle.contains(subBinding, Qt::CaseInsensitive);
+    const bool mainHit =
+        !mainBinding.isEmpty() && windowTitle.contains(mainBinding, Qt::CaseInsensitive);
+    return subHit && (!mainHit || subBinding.length() >= mainBinding.length());
+}
+
+enum WindowListPickChoice {
+    WindowListPickCancelled = 0,
+    WindowListPickMain = QDialog::Accepted,
+    WindowListPickSub = 2,
+};
+
 QIcon iconForProcessPath(const std::wstring& processPath) {
     if (processPath.empty()) {
         return {};
@@ -579,7 +597,7 @@ void MainWindow::setupUi() {
 
     m_pickWindowListButton = new QToolButton(actionBar);
     m_pickWindowListButton->setText(tr("목록"));
-    m_pickWindowListButton->setToolTip(tr("현재 표시 중인 창 목록에서 대상 창을 선택합니다."));
+    m_pickWindowListButton->setToolTip(tr("표시 중인 창 목록에서 주 대상 창을 선택하거나 서브 대상 창으로 지정합니다."));
     configureTargetWindowActionButton(m_pickWindowListButton);
 
     m_showTargetWindowButton = new QToolButton(actionBar);
@@ -4283,7 +4301,8 @@ void MainWindow::onPickTargetWindowFromList() {
     layout->setSpacing(8);
 
     auto* hintLabel = new QLabel(
-        tr("현재 데스크톱에 표시된 최상위 창 목록입니다. 더블클릭하거나 선택 후 확인을 누르세요."),
+        tr("현재 데스크톱에 표시된 최상위 창 목록입니다. 더블클릭하거나 선택 후 확인을 누르세요. "
+           "서브 대상 창은 「서브 창으로 지정」을 사용하세요."),
         &dialog);
     hintLabel->setWordWrap(true);
     layout->addWidget(hintLabel);
@@ -4294,6 +4313,9 @@ void MainWindow::onPickTargetWindowFromList() {
     layout->addWidget(listWidget, 1);
 
     auto* refreshButton = new QPushButton(tr("새로고침"), &dialog);
+    auto* subPickButton = new QPushButton(tr("서브 창으로 지정"), &dialog);
+    subPickButton->setEnabled(false);
+    subPickButton->setToolTip(tr("선택한 창을 이 프로필의 서브 대상 창으로 저장합니다."));
     auto* buttonRow = new QHBoxLayout();
     buttonRow->addWidget(refreshButton);
     buttonRow->addStretch();
@@ -4307,15 +4329,24 @@ void MainWindow::onPickTargetWindowFromList() {
     if (auto* cancelButton = buttonBox->button(QDialogButtonBox::Cancel)) {
         cancelButton->setText(tr("취소"));
     }
+    buttonRow->addWidget(subPickButton);
     buttonRow->addWidget(buttonBox);
     layout->addLayout(buttonRow);
 
-    auto populateList = [listWidget]() {
+    const QString mainBinding =
+        QString::fromStdString(m_project ? m_project->targetWindowTitle() : std::string{}).trimmed();
+    const QString subBinding =
+        m_profileManager
+            ? m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed()
+            : QString();
+
+    auto populateList = [listWidget, mainBinding, subBinding]() {
         const HWND currentTarget = ScreenCapture::targetWindow();
         const QVector<WindowListEntry> entries = collectWindowListEntries();
         listWidget->clear();
 
         int selectedIndex = -1;
+        int subMatchIndex = -1;
         for (int i = 0; i < entries.size(); ++i) {
             const auto& entry = entries[i];
             auto* item = new QListWidgetItem(entry.displayText, listWidget);
@@ -4325,21 +4356,34 @@ void MainWindow::onPickTargetWindowFromList() {
             if (currentTarget && currentTarget == entry.hwnd) {
                 selectedIndex = i;
             }
+            const QString entryTitle = QString::fromStdWString(entry.title);
+            if (subMatchIndex < 0
+                && windowTitleMatchesSubTarget(entryTitle, mainBinding, subBinding)) {
+                subMatchIndex = i;
+            }
         }
 
         if (selectedIndex >= 0) {
             listWidget->setCurrentRow(selectedIndex);
+        } else if (subMatchIndex >= 0) {
+            listWidget->setCurrentRow(subMatchIndex);
         } else if (listWidget->count() > 0) {
             listWidget->setCurrentRow(0);
         }
     };
 
     connect(refreshButton, &QPushButton::clicked, &dialog, populateList);
-    connect(listWidget, &QListWidget::itemDoubleClicked, &dialog, [&dialog](QListWidgetItem*) { dialog.accept(); });
-    connect(listWidget, &QListWidget::currentItemChanged, &dialog, [listWidget, okButton](QListWidgetItem* current) {
-        if (okButton) {
-            okButton->setEnabled(current != nullptr);
-        }
+    connect(listWidget, &QListWidget::itemDoubleClicked, &dialog,
+            [&dialog](QListWidgetItem*) { dialog.done(WindowListPickMain); });
+    connect(listWidget, &QListWidget::currentItemChanged, &dialog,
+            [listWidget, okButton, subPickButton](QListWidgetItem* current) {
+                const bool hasItem = current != nullptr;
+                if (okButton) {
+                    okButton->setEnabled(hasItem);
+                }
+                if (subPickButton) {
+                    subPickButton->setEnabled(hasItem);
+                }
         if (!current) {
             WindowPickerHoverOverlay::dismissAll();
             return;
@@ -4351,8 +4395,13 @@ void MainWindow::onPickTargetWindowFromList() {
             WindowPickerHoverOverlay::dismissAll();
         }
     });
-    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, [&dialog]() { dialog.done(WindowListPickMain); });
     connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(subPickButton, &QPushButton::clicked, &dialog, [&dialog, listWidget]() {
+        if (listWidget->currentItem()) {
+            dialog.done(WindowListPickSub);
+        }
+    });
 
     struct ListPickerHoverGuard {
         ~ListPickerHoverGuard() { WindowPickerHoverOverlay::dismissAll(); }
@@ -4364,7 +4413,8 @@ void MainWindow::onPickTargetWindowFromList() {
         return;
     }
 
-    if (dialog.exec() != QDialog::Accepted) {
+    const int pickResult = dialog.exec();
+    if (pickResult == WindowListPickCancelled) {
         return;
     }
 
@@ -4382,6 +4432,19 @@ void MainWindow::onPickTargetWindowFromList() {
 
     const QString title = currentItem->data(Qt::UserRole + 1).toString();
     const HWND selectedHwnd = hwnd;
+    if (pickResult == WindowListPickSub) {
+        commitActiveProfileSubTargetWindow(selectedHwnd, title);
+        appendLog(tr("서브 대상 창을 지정했습니다: %1")
+                      .arg(title.isEmpty() ? tr("(제목 없음)") : title),
+                  LogLineKind::Success);
+        showTransientStatus(tr("서브 대상 창을 목록에서 지정했습니다."), 3000);
+        updateTargetWindowDetails();
+        QTimer::singleShot(0, this, [this, selectedHwnd]() {
+            TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd, this);
+        });
+        return;
+    }
+
     commitActiveProfileTargetWindow(selectedHwnd, title);
     appendLog(tr("대상 창을 지정했습니다: %1").arg(title.isEmpty() ? tr("(제목 없음)") : title),
               LogLineKind::Success);
@@ -5237,6 +5300,23 @@ void MainWindow::commitActiveProfileTargetWindow(HWND hwnd, const QString& title
     }
     scheduleAutoSave();
 }
+
+void MainWindow::commitActiveProfileSubTargetWindow(HWND hwnd, const QString& title) {
+    if (!m_profileManager || isActiveDefaultProfile()) {
+        return;
+    }
+
+    QString processPath;
+    if (hwnd && IsWindow(hwnd)) {
+        ScreenCapture::TargetWindowInfo info;
+        if (ScreenCapture::queryWindowInfo(hwnd, info)) {
+            processPath = QString::fromStdWString(info.processPath);
+        }
+    }
+
+    const QString profileId = m_profileManager->activeProfileId();
+    m_profileManager->updateProfileSubTargetBinding(profileId, title, processPath);
+}
 #endif
 
 void MainWindow::updateTargetWindowControlsForActiveProfile() {
@@ -5253,7 +5333,7 @@ void MainWindow::updateTargetWindowControlsForActiveProfile() {
         m_pickWindowListButton->setEnabled(!lockedDefault);
         m_pickWindowListButton->setToolTip(lockedDefault
                                                ? lockedTooltip
-                                               : tr("현재 표시 중인 창 목록에서 대상 창을 선택합니다."));
+                                               : tr("표시 중인 창 목록에서 주 대상 창을 선택하거나 서브 대상 창으로 지정합니다."));
     }
     if (m_showTargetWindowButton) {
         m_showTargetWindowButton->setEnabled(!lockedDefault);
@@ -5286,6 +5366,10 @@ void MainWindow::updateTargetWindowDetails() {
 #ifdef _WIN32
     const QString savedTitle =
         QString::fromStdString(m_project ? m_project->targetWindowTitle() : std::string{}).trimmed();
+    const QString subBinding =
+        m_profileManager
+            ? m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed()
+            : QString();
     syncTargetWindowTitleToCapture();
 
     HWND hwnd = ScreenCapture::targetWindow();
@@ -5293,6 +5377,21 @@ void MainWindow::updateTargetWindowDetails() {
         hwnd = ScreenCapture::findTargetWindow();
         if (hwnd) {
             ScreenCapture::setTargetWindow(hwnd);
+        }
+    }
+
+    if (!subBinding.isEmpty()) {
+        HWND fg = GetForegroundWindow();
+        if (fg && IsWindow(fg)) {
+            fg = GetAncestor(fg, GA_ROOT);
+        }
+        if (fg && IsWindow(fg)) {
+            wchar_t fgTitleBuffer[512]{};
+            GetWindowTextW(fg, fgTitleBuffer, 512);
+            const QString fgTitle = QString::fromWCharArray(fgTitleBuffer).trimmed();
+            if (windowTitleMatchesSubTarget(fgTitle, savedTitle, subBinding)) {
+                hwnd = fg;
+            }
         }
     }
 
@@ -5355,14 +5454,25 @@ void MainWindow::updateTargetWindowDetails() {
 
     // Persist exe path once resolved so profile list icons survive settings saves
     // and restarts (even if an earlier save wiped linkedTargetProcessPath).
+    const bool isSubTarget =
+        windowTitleMatchesSubTarget(title, savedTitle, subBinding);
     if (m_profileManager && !processPath.isEmpty() && !isActiveDefaultProfile()) {
         const QString profileId = m_profileManager->activeProfileId();
-        const QString storedPath = m_profileManager->linkedTargetProcessPath(profileId);
-        if (storedPath.compare(processPath, Qt::CaseInsensitive) != 0) {
-            m_profileManager->updateProfileTargetBinding(profileId, savedTitle.isEmpty() ? title : savedTitle,
-                                                         processPath);
-            if (!m_deferTargetDetailsProfileRefresh) {
-                refreshProfileList();
+        if (isSubTarget) {
+            const QString storedSubPath = m_profileManager->subLinkedTargetProcessPath(profileId);
+            if (storedSubPath.compare(processPath, Qt::CaseInsensitive) != 0) {
+                m_profileManager->updateProfileSubTargetBinding(
+                    profileId, subBinding.isEmpty() ? title : subBinding, processPath);
+            }
+        } else {
+            const QString storedPath = m_profileManager->linkedTargetProcessPath(profileId);
+            if (storedPath.compare(processPath, Qt::CaseInsensitive) != 0) {
+                m_profileManager->updateProfileTargetBinding(profileId,
+                                                             savedTitle.isEmpty() ? title : savedTitle,
+                                                             processPath);
+                if (!m_deferTargetDetailsProfileRefresh) {
+                    refreshProfileList();
+                }
             }
         }
     }
@@ -5378,6 +5488,7 @@ void MainWindow::updateTargetWindowDetails() {
     data.processName = processName;
     data.processPath = processPath;
     data.stateText = stateText;
+    data.subTarget = isSubTarget;
     data.minimized = info.minimized;
     data.visible = info.visible;
     data.monitorDpi = info.monitorDpi;

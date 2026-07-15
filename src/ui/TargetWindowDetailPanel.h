@@ -17,6 +17,7 @@ struct TargetWindowDetailData {
     QString processName;
     QString processPath;
     QString stateText;
+    bool subTarget = false;
     bool minimized = false;
     bool visible = true;
     int monitorDpi = 0;
