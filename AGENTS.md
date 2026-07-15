@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.120` (from `project(PIPBONG VERSION 0.8.120)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.121` (from `project(PIPBONG VERSION 0.8.121)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -974,7 +974,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 | Surface                                                               | Constant / rule                                                                                                      |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `FeatureListHeaderWidget`, workflow `BlockListHeaderView` (skips hidden/Stretch sections); trailing `Stretch` filler column on block list |
+| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `FeatureListHeaderWidget`; workflow block list uses stock `QHeaderView::Interactive` plus a fixed trailing filler column synced to viewport width |
 | In-cell horizontal drag slack                                         | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
 | Row-height divider (feature list / workflow block list header bottom) | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight` (`kMinListRowHeightPx`–`kMaxListRowHeightPx`)  |
 | `QSplitter` handles                                                   | Always call `UiResizeHandle::configureSplitter` (12 px handle + non-collapsible panes) — also via `UiStateManager::registerSplitter` |
@@ -1092,6 +1092,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.121] - 2026-07-15
+
+### Fixed
+
+- Workflow block list header layout overflow: removed multi-column crush shrink and custom `BlockListHeaderView`; stock `QHeaderView::Interactive` data columns plus a fixed empty filler column sized to `viewport − dataWidth` (only **요약** shrinks when saved widths exceed the panel); restores default widths when a crushed layout is detected on load (`BlockListWidget`).
 
 ## [0.8.120] - 2026-07-15
 

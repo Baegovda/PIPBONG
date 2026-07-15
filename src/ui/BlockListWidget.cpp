@@ -132,90 +132,18 @@ private:
     int m_resizeStartSize = 0;
 };
 
-class BlockListHeaderView final : public QHeaderView {
-public:
-    explicit BlockListHeaderView(QWidget* parent = nullptr)
-        : QHeaderView(Qt::Horizontal, parent) {
-        setMouseTracking(true);
+int blockListDataWidth(QHeaderView* header) {
+    if (!header) {
+        return 0;
     }
-
-protected:
-    int resizeHandleSectionAt(int x) const {
-        int bestSection = -1;
-        int bestDistance = UiResizeHandle::kDividerHalfWidthPx + 1;
-        for (int visual = 0; visual < count(); ++visual) {
-            const int logical = logicalIndex(visual);
-            if (isSectionHidden(logical)) {
-                continue;
-            }
-            if (sectionResizeMode(logical) != QHeaderView::Interactive) {
-                continue;
-            }
-            const int handleX = sectionViewportPosition(logical) + sectionSize(logical);
-            const int distance = qAbs(x - handleX);
-            if (distance <= UiResizeHandle::kDividerHalfWidthPx && distance < bestDistance) {
-                bestDistance = distance;
-                bestSection = logical;
-            }
-        }
-        return bestSection;
-    }
-
-    void mousePressEvent(QMouseEvent* event) override {
-        if (event->button() == Qt::LeftButton) {
-            const int section = resizeHandleSectionAt(event->pos().x());
-            if (section >= 0) {
-                m_resizingSection = section;
-                m_resizePressPos = event->globalPosition().toPoint().x();
-                m_resizeStartSize = sectionSize(section);
-                event->accept();
-                return;
-            }
-        }
-        m_resizingSection = -1;
-        QHeaderView::mousePressEvent(event);
-    }
-
-    void mouseMoveEvent(QMouseEvent* event) override {
-        if (m_resizingSection >= 0 && (event->buttons() & Qt::LeftButton)) {
-            const int delta = event->globalPosition().toPoint().x() - m_resizePressPos;
-            resizeSection(m_resizingSection, qMax(minimumSectionSize(), m_resizeStartSize + delta));
-            event->accept();
-            return;
-        }
-
-        QHeaderView::mouseMoveEvent(event);
-        if (m_resizingSection < 0) {
-            if (resizeHandleSectionAt(event->pos().x()) >= 0) {
-                setCursor(Qt::SplitHCursor);
-            } else if (cursor().shape() == Qt::SplitHCursor) {
-                unsetCursor();
-            }
+    int width = 0;
+    for (int column = 0; column < kColFiller; ++column) {
+        if (!header->isSectionHidden(column)) {
+            width += header->sectionSize(column);
         }
     }
-
-    void mouseReleaseEvent(QMouseEvent* event) override {
-        if (m_resizingSection >= 0) {
-            m_resizingSection = -1;
-            unsetCursor();
-            event->accept();
-            return;
-        }
-        QHeaderView::mouseReleaseEvent(event);
-    }
-
-    void leaveEvent(QEvent* event) override {
-        if (m_resizingSection < 0) {
-            unsetCursor();
-        }
-        QHeaderView::leaveEvent(event);
-    }
-
-private:
-    int m_resizingSection = -1;
-    int m_resizePressPos = 0;
-    int m_resizeStartSize = 0;
-};
+    return width;
+}
 
 void syncBlockListHeaderLayout(QTableWidget* table) {
     QHeaderView* header = table ? table->horizontalHeader() : nullptr;
@@ -223,36 +151,26 @@ void syncBlockListHeaderLayout(QTableWidget* table) {
         return;
     }
 
-    int dataWidth = 0;
-    for (int column = 0; column < kColFiller; ++column) {
-        if (!header->isSectionHidden(column)) {
-            dataWidth += header->sectionSize(column);
-        }
-    }
-
     const int viewportWidth = table->viewport()->width();
-    if (dataWidth < viewportWidth) {
-        if (QScrollBar* bar = table->horizontalScrollBar()) {
-            bar->setValue(0);
-        }
+    if (viewportWidth <= 0) {
         return;
     }
 
-    int overflow = dataWidth - viewportWidth;
-    for (int column = kColFiller - 1; column >= 0 && overflow > 0; --column) {
-        if (header->isSectionHidden(column)
-            || header->sectionResizeMode(column) != QHeaderView::Interactive) {
-            continue;
-        }
-        const int current = header->sectionSize(column);
-        const int minSize = header->minimumSectionSize();
-        const int removable = qMax(0, current - minSize);
-        if (removable <= 0) {
-            continue;
-        }
-        const int shrink = qMin(removable, overflow);
-        header->resizeSection(column, current - shrink);
-        overflow -= shrink;
+    const QSignalBlocker blocker(header);
+
+    int dataWidth = blockListDataWidth(header);
+    if (dataWidth > viewportWidth) {
+        const int overflow = dataWidth - viewportWidth;
+        const int summaryWidth = header->sectionSize(kColSummary);
+        header->resizeSection(kColSummary,
+                              qMax(header->minimumSectionSize(), summaryWidth - overflow));
+        dataWidth = blockListDataWidth(header);
+    }
+
+    header->resizeSection(kColFiller, qMax(0, viewportWidth - dataWidth));
+
+    if (QScrollBar* bar = table->horizontalScrollBar()) {
+        bar->setValue(0);
     }
 }
 
@@ -277,12 +195,12 @@ void applyBlockListHeaderResizeModes(QHeaderView* header) {
         return;
     }
     header->setMinimumSectionSize(24);
-    header->setStretchLastSection(true);
+    header->setStretchLastSection(false);
     header->setCascadingSectionResizes(false);
     for (int column = 0; column < kColumnCount; ++column) {
         header->setSectionResizeMode(
             column,
-            column == kColFiller ? QHeaderView::Stretch : QHeaderView::Interactive);
+            column == kColFiller ? QHeaderView::Fixed : QHeaderView::Interactive);
     }
 }
 
@@ -1043,13 +961,17 @@ private:
 BlockListWidget::BlockListWidget(QWidget* parent)
     : QTableWidget(parent)
     , m_blockRowHeight(UiResizeHandle::kDefaultBlockListRowHeightPx) {
-    setHorizontalHeader(new BlockListHeaderView(this));
     initBlockListColumnHeader(this);
     QHeaderView* header = horizontalHeader();
     header->setDefaultAlignment(Qt::AlignCenter);
     header->setSectionsMovable(false);
     header->setFirstSectionMovable(false);
     new BlockListHeaderRowHeightFilter(this, header);
+    connect(header, &QHeaderView::sectionResized, this, [this](int logicalIndex, int, int) {
+        if (logicalIndex != kColFiller) {
+            syncBlockListHeaderLayout(this);
+        }
+    });
     setIconSize(QSize(kThumbnailSize, kThumbnailSize));
     setItemDelegateForColumn(0, new BlockListChromeRowDelegate(this));
     setItemDelegateForColumn(1, new CenterIconDelegate(this));
@@ -1161,7 +1083,11 @@ void BlockListWidget::keyPressEvent(QKeyEvent* event) {
 }
 
 void BlockListWidget::applyHeaderResizeModes() {
-    applyBlockListHeaderResizeModes(horizontalHeader());
+    QHeaderView* header = horizontalHeader();
+    applyBlockListHeaderResizeModes(header);
+    if (header && header->sectionSize(kColSummary) < 48) {
+        applyDefaultBlockListColumnWidths(this);
+    }
     syncBlockListHeaderLayout(this);
 }
 
