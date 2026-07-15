@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.148` (from `project(PIPBONG VERSION 0.8.148)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.149` (from `project(PIPBONG VERSION 0.8.149)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1176,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.149] - 2026-07-16
+
+### Fixed
+
+- Workflow block list hover highlight no longer sticks on the last row when the cursor moves over empty viewport space below the rows (`BlockListWidget` hover uses `rowAt` instead of `rowAtViewportY` clamp).
 
 ## [0.8.148] - 2026-07-16
 

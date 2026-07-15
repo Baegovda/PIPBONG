@@ -1913,7 +1913,8 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
         switch (event->type()) {
         case QEvent::MouseMove: {
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            updateHoverTableRow(rowAtViewportY(mouseEvent->pos().y()));
+            const int tableRow = rowAt(mouseEvent->pos().y());
+            updateHoverTableRow(tableRow);
             break;
         }
         case QEvent::Leave:
