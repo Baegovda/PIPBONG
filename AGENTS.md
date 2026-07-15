@@ -974,9 +974,9 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 | Surface                                                               | Constant / rule                                                                                                      |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `FeatureListHeaderWidget`; workflow block list: custom `BlockListColumnHeader` (all sections `Fixed`; owns divider drag; **요약** absorbs slack; **매칭** pinned right) |
+| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `FeatureListHeaderWidget`; workflow block list: custom `BlockListColumnHeader` viewport eventFilter drag (all `Fixed`; **요약** slack; **매칭** pinned; no header row-height drag) |
 | In-cell horizontal drag slack                                         | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
-| Row-height divider (feature list / workflow block list header bottom) | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight` (`kMinListRowHeightPx`–`kMaxListRowHeightPx`)  |
+| Row-height divider (feature list header bottom)                       | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight`; workflow block list row height is settings-only (no header drag) |
 | `QSplitter` handles                                                   | Always call `UiResizeHandle::configureSplitter` (12 px handle + non-collapsible panes) — also via `UiStateManager::registerSplitter` |
 | Frameless main window edges                                           | `kWindowResizeBorderPx` (10 px) — `MainWindow::nativeEvent`                                                          |
 
