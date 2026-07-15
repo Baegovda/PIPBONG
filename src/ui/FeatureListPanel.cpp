@@ -39,6 +39,7 @@
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QAbstractItemView>
+#include <climits>
 namespace {
 constexpr int kRowSeparatorHeight = 1;
 constexpr int kSelectionBarWidth = 3;
@@ -55,8 +56,10 @@ constexpr int kMinModeColumnWidth = 28;
 constexpr int kMaxModeColumnWidth = 120;
 constexpr int kMinHotkeyColumnWidth = 36;
 constexpr int kMaxHotkeyColumnWidth = 180;
-constexpr int kRunButtonColumnWidth = 24;
-constexpr int kEnableColumnWidth = 26;
+constexpr int kMinEnableColumnWidth = 22;
+constexpr int kMaxEnableColumnWidth = 48;
+constexpr int kMinRunColumnWidth = 20;
+constexpr int kMaxRunColumnWidth = 40;
 struct FeatureListColumnRects {
     QRect enable;
     QRect run;
@@ -66,6 +69,8 @@ struct FeatureListColumnRects {
 };
 struct FeatureListColumnEdges {
     FeatureListColumnRects cols;
+    int runDividerX = 0;
+    int nameDividerX = 0;
     int modeDividerX = 0;
     int hotkeyDividerX = 0;
 };
@@ -74,20 +79,63 @@ FeatureListColumnEdges featureListColumnEdges(const QRect& itemRect, const Featu
     const QRect content = itemRect.adjusted(kColumnMargin, 0, -kColumnMargin, 0);
 
     const int enableLeft = content.left();
-    const int runLeft = enableLeft + kEnableColumnWidth + kColumnGap;
-    const int nameLeft = runLeft + kRunButtonColumnWidth + kColumnGap;
+    const int runLeft = enableLeft + layout.enableColumnWidth + kColumnGap;
+    const int nameLeft = runLeft + layout.runColumnWidth + kColumnGap;
     const int hotkeyLeft = content.right() - layout.hotkeyColumnWidth + 1;
     const int modeLeft = hotkeyLeft - kColumnGap - layout.modeColumnWidth;
     const int nameWidth = qMax(0, modeLeft - kColumnGap - nameLeft);
 
+    edges.runDividerX = runLeft;
+    edges.nameDividerX = nameLeft;
     edges.hotkeyDividerX = hotkeyLeft;
     edges.modeDividerX = modeLeft;
-    edges.cols.enable = QRect(enableLeft, content.top(), kEnableColumnWidth, content.height());
-    edges.cols.run = QRect(runLeft, content.top(), kRunButtonColumnWidth, content.height());
+    edges.cols.enable = QRect(enableLeft, content.top(), layout.enableColumnWidth, content.height());
+    edges.cols.run = QRect(runLeft, content.top(), layout.runColumnWidth, content.height());
     edges.cols.hotkey = QRect(hotkeyLeft, content.top(), layout.hotkeyColumnWidth, content.height());
     edges.cols.mode = QRect(modeLeft, content.top(), layout.modeColumnWidth, content.height());
     edges.cols.name = QRect(nameLeft, content.top(), nameWidth, content.height());
     return edges;
+}
+
+enum class FeatureListResizeHandleId : int {
+    None = 0,
+    Run = 1,
+    RunName = 2,
+    Mode = 3,
+    Hotkey = 4,
+};
+
+int featureListDividerHandleAt(const QPoint& pos, const FeatureListColumnEdges& edges) {
+    struct Candidate {
+        int x = 0;
+        FeatureListResizeHandleId handle = FeatureListResizeHandleId::None;
+    };
+    const QList<Candidate> candidates = {{edges.runDividerX, FeatureListResizeHandleId::Run},
+                                         {edges.nameDividerX, FeatureListResizeHandleId::RunName},
+                                         {edges.modeDividerX, FeatureListResizeHandleId::Mode},
+                                         {edges.hotkeyDividerX, FeatureListResizeHandleId::Hotkey}};
+
+    FeatureListResizeHandleId best = FeatureListResizeHandleId::None;
+    int bestDistance = INT_MAX;
+    for (const Candidate& candidate : candidates) {
+        if (candidate.x <= 0
+            || !UiResizeHandle::isWithinHorizontalGrab(pos.x(), candidate.x)) {
+            continue;
+        }
+        const int distance = qAbs(pos.x() - candidate.x);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = candidate.handle;
+        }
+    }
+    return static_cast<int>(best);
+}
+
+QList<int> featureListDividerXs(const FeatureListColumnEdges& edges) {
+    return {edges.runDividerX,
+            edges.nameDividerX,
+            edges.modeDividerX,
+            edges.hotkeyDividerX};
 }
 FeatureListColumnRects featureListColumnRects(const QRect& itemRect, const FeatureListColumnLayout& layout) {
     return featureListColumnEdges(itemRect, layout).cols;
@@ -1011,12 +1059,18 @@ void FeatureListPanel::onLibraryContextMenu(const QPoint& pos) {
 
 void FeatureListPanel::setColumnLayout(const FeatureListColumnLayout& layout, bool persist) {
     FeatureListColumnLayout clamped = layout;
+    clamped.enableColumnWidth =
+        qBound(kMinEnableColumnWidth, layout.enableColumnWidth, kMaxEnableColumnWidth);
+    clamped.runColumnWidth =
+        qBound(kMinRunColumnWidth, layout.runColumnWidth, kMaxRunColumnWidth);
     clamped.modeColumnWidth =
         qBound(kMinModeColumnWidth, layout.modeColumnWidth, kMaxModeColumnWidth);
     clamped.hotkeyColumnWidth =
         qBound(kMinHotkeyColumnWidth, layout.hotkeyColumnWidth, kMaxHotkeyColumnWidth);
     clamped.rowHeight = UiResizeHandle::clampListRowHeight(layout.rowHeight);
-    if (clamped.modeColumnWidth == m_columnLayout.modeColumnWidth
+    if (clamped.enableColumnWidth == m_columnLayout.enableColumnWidth
+        && clamped.runColumnWidth == m_columnLayout.runColumnWidth
+        && clamped.modeColumnWidth == m_columnLayout.modeColumnWidth
         && clamped.hotkeyColumnWidth == m_columnLayout.hotkeyColumnWidth
         && clamped.rowHeight == m_columnLayout.rowHeight) {
         return;
@@ -1045,6 +1099,8 @@ void FeatureListPanel::applyColumnLayoutToList() {
     }
 }
 void FeatureListPanel::saveColumnLayout(QSettings& settings, const QString& settingsKey) const {
+    settings.setValue(settingsKey + QStringLiteral("/enableColumnWidth"), m_columnLayout.enableColumnWidth);
+    settings.setValue(settingsKey + QStringLiteral("/runColumnWidth"), m_columnLayout.runColumnWidth);
     settings.setValue(settingsKey + QStringLiteral("/modeColumnWidth"), m_columnLayout.modeColumnWidth);
     settings.setValue(settingsKey + QStringLiteral("/hotkeyColumnWidth"), m_columnLayout.hotkeyColumnWidth);
     settings.setValue(settingsKey + QStringLiteral("/rowHeight"), m_columnLayout.rowHeight);
@@ -1056,6 +1112,16 @@ void FeatureListPanel::restoreColumnLayout(const QSettings& settings, const QStr
         return;
     }
     FeatureListColumnLayout layout = m_columnLayout;
+    layout.enableColumnWidth = qBound(kMinEnableColumnWidth,
+                                      readLayoutInt(settings,
+                                                    settingsKey + QStringLiteral("/enableColumnWidth"),
+                                                    layout.enableColumnWidth),
+                                      kMaxEnableColumnWidth);
+    layout.runColumnWidth = qBound(kMinRunColumnWidth,
+                                   readLayoutInt(settings,
+                                                 settingsKey + QStringLiteral("/runColumnWidth"),
+                                                 layout.runColumnWidth),
+                                   kMaxRunColumnWidth);
     layout.modeColumnWidth = qBound(kMinModeColumnWidth,
                                     readLayoutInt(settings,
                                                   settingsKey + QStringLiteral("/modeColumnWidth"),
@@ -1714,15 +1780,11 @@ void FeatureListPanel::wireListColumnHeader(ListColumnHeaderWidget* header, Feat
         return;
     }
 
-    enum class FeatureListResizeHandleId : int {
-        None = 0,
-        ModeColumnWidth = 1,
-        HotkeyColumnWidth = 2,
-    };
-
     header->setObjectName(QStringLiteral("featureListHeaderRow"));
     header->setToolTip(
         QObject::tr("헤더 구분선을 드래그해 열 너비·줄 높이를 조절합니다.\n"
+                    "· 사용|▶ 경계: 사용 열 너비\n"
+                    "· ▶|기능 경계: 실행 열 너비\n"
                     "· 기능|방식 경계: 방식 열 너비\n"
                     "· 방식|키 경계: 키 열 너비\n"
                     "· 헤더 아래 가장자리: 줄 높이"));
@@ -1739,6 +1801,7 @@ void FeatureListPanel::wireListColumnHeader(ListColumnHeaderWidget* header, Feat
         ctx.painter->setPen(ListColumnHeaderWidget::headerTextColor(ctx.palette));
         const Qt::Alignment headerAlign = Qt::AlignHCenter | Qt::AlignVCenter;
         ctx.painter->drawText(edges.cols.enable, headerAlign, FeatureListPanel::tr("사용"));
+        ctx.painter->drawText(edges.cols.run, headerAlign, QStringLiteral("\u25b6"));
         ctx.painter->drawText(edges.cols.name, headerAlign, FeatureListPanel::tr("기능"));
         ctx.painter->drawText(edges.cols.mode, headerAlign, FeatureListPanel::tr("방식"));
         ctx.painter->drawText(edges.cols.hotkey, headerAlign, FeatureListPanel::tr("키"));
@@ -1746,21 +1809,12 @@ void FeatureListPanel::wireListColumnHeader(ListColumnHeaderWidget* header, Feat
 
     header->setDividerXsProvider([panel](const QRect& rect) {
         const FeatureListColumnEdges edges = featureListColumnEdges(rect, panel->columnLayout());
-        return QList<int>{edges.modeDividerX, edges.hotkeyDividerX};
+        return featureListDividerXs(edges);
     });
 
     header->setDividerHitProvider([panel](const QPoint& pos, const QRect& rect) {
         const FeatureListColumnEdges edges = featureListColumnEdges(rect, panel->columnLayout());
-        const int modeDist = qAbs(pos.x() - edges.modeDividerX);
-        const int hotkeyDist = qAbs(pos.x() - edges.hotkeyDividerX);
-        if (UiResizeHandle::isWithinHorizontalGrab(pos.x(), edges.modeDividerX)
-            && modeDist <= hotkeyDist) {
-            return static_cast<int>(FeatureListResizeHandleId::ModeColumnWidth);
-        }
-        if (UiResizeHandle::isWithinHorizontalGrab(pos.x(), edges.hotkeyDividerX)) {
-            return static_cast<int>(FeatureListResizeHandleId::HotkeyColumnWidth);
-        }
-        return 0;
+        return featureListDividerHandleAt(pos, edges);
     });
 
     header->setApplyDragProvider([panel, header](int handleId, int deltaX, int deltaY, const QPoint&) {
@@ -1775,12 +1829,29 @@ void FeatureListPanel::wireListColumnHeader(ListColumnHeaderWidget* header, Feat
 
         FeatureListColumnLayout layout = panel->m_headerDragStartLayout;
         switch (static_cast<FeatureListResizeHandleId>(handleId)) {
-        case FeatureListResizeHandleId::ModeColumnWidth:
+        case FeatureListResizeHandleId::Run: {
+            int enableWidth = panel->m_headerDragStartLayout.enableColumnWidth;
+            int runWidth = panel->m_headerDragStartLayout.runColumnWidth;
+            int newEnable = qBound(kMinEnableColumnWidth, enableWidth + deltaX, kMaxEnableColumnWidth);
+            int actualDelta = newEnable - enableWidth;
+            int newRun = qBound(kMinRunColumnWidth, runWidth - actualDelta, kMaxRunColumnWidth);
+            actualDelta = runWidth - newRun;
+            newEnable = qBound(kMinEnableColumnWidth, enableWidth + actualDelta, kMaxEnableColumnWidth);
+            layout.enableColumnWidth = newEnable;
+            layout.runColumnWidth = newRun;
+            break;
+        }
+        case FeatureListResizeHandleId::RunName:
+            layout.runColumnWidth = qBound(kMinRunColumnWidth,
+                                           panel->m_headerDragStartLayout.runColumnWidth + deltaX,
+                                           kMaxRunColumnWidth);
+            break;
+        case FeatureListResizeHandleId::Mode:
             layout.modeColumnWidth = qBound(kMinModeColumnWidth,
                                             panel->m_headerDragStartLayout.modeColumnWidth - deltaX,
                                             kMaxModeColumnWidth);
             break;
-        case FeatureListResizeHandleId::HotkeyColumnWidth:
+        case FeatureListResizeHandleId::Hotkey:
             layout.hotkeyColumnWidth = qBound(kMinHotkeyColumnWidth,
                                               panel->m_headerDragStartLayout.hotkeyColumnWidth - deltaX,
                                               kMaxHotkeyColumnWidth);

@@ -24,6 +24,10 @@ class ListColumnHeaderWidget;
 
 struct FeatureListColumnLayout {
 
+    int enableColumnWidth = 26;
+
+    int runColumnWidth = 24;
+
     int modeColumnWidth = 34;
 
     int hotkeyColumnWidth = 50;
