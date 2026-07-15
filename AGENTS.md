@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.133` (from `project(PIPBONG VERSION 0.8.133)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.134` (from `project(PIPBONG VERSION 0.8.134)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1092,6 +1092,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.134] - 2026-07-15
+
+### Fixed
+
+- Workflow block list custom header labels disappeared (v0.8.133): restore layout-based `blockListColumnEdges` paint/hit-test in header coordinates (with table `frameWidth` inset) instead of broken `viewport()->mapTo()` column positions; keep pairwise divider resize (`BlockListWidget`).
 
 ## [0.8.133] - 2026-07-15
 

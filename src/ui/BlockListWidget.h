@@ -38,6 +38,8 @@ class QDropEvent;
 
 class QResizeEvent;
 
+class QShowEvent;
+
 class QSettings;
 
 class QTimer;
@@ -234,6 +236,8 @@ protected:
 
     void resizeEvent(QResizeEvent* event) override;
 
+    void showEvent(QShowEvent* event) override;
+
 
 
 private:
@@ -314,8 +318,7 @@ private:
     void applyPairwiseColumnResize(int rightColumnIndex,
                                    int deltaX,
                                    const BlockListColumnLayout& startLayout);
-    QRect headerColumnRect(const QWidget* header, int column, const QRect& headerRect) const;
-    int headerDividerX(const QWidget* header, int rightColumn) const;
+    int headerContentLeftInset() const;
     int summaryColumnWidthForViewport(int viewportWidth) const;
     int totalFixedColumnWidth(bool includeSummaryWidth, int summaryWidth) const;
     static int columnWidthFromLayout(const BlockListColumnLayout& layout, int column);
