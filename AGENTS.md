@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.152` (from `project(PIPBONG VERSION 0.8.152)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.153` (from `project(PIPBONG VERSION 0.8.153)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1176,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.153] - 2026-07-16
+
+### Added
+
+- Feature list panel: vertical `QSplitter` between the feature table and **라이브러리** drawer so users can drag to resize heights when the library is expanded; sizes persist under `featureList/libraryVertical_v1` (`FeatureListPanel`, `MainWindow`).
 
 ## [0.8.152] - 2026-07-16
 

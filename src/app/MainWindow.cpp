@@ -844,6 +844,8 @@ void MainWindow::setupUiState() {
     m_uiState->registerSplitter(m_mainHorizontalSplitter, QStringLiteral("main/horizontalProfiles"));
     m_uiState->registerSplitter(m_mainVerticalSplitter, QStringLiteral("main/vertical"));
     m_uiState->registerSplitter(m_bottomHorizontalSplitter, QStringLiteral("main/bottomHorizontal"));
+    m_uiState->registerSplitter(m_featureList->featureLibrarySplitter(),
+                                QStringLiteral("featureList/libraryVertical_v1"));
     m_uiState->registerSplitter(m_workflowEditor->workflowSplitter(), QStringLiteral("workflowEditor/vertical_v2"));
     m_uiState->registerSettingsHooks(
         QStringLiteral("featureList/columns"),
@@ -913,6 +915,9 @@ void MainWindow::setupUiState() {
     }
     m_uiState->restoreAll();
     m_workflowEditor->clampWorkflowSplitterSizes();
+    if (m_featureList) {
+        m_featureList->clampFeatureLibrarySplitterSizes();
+    }
     clampMainVerticalSplitterSizes();
     restoreAlwaysOnTopPreference();
 }

@@ -12,7 +12,7 @@ class QListWidget;
 class QToolButton;
 class QSettings;
 class QTimer;
-class QVariantAnimation;
+class QSplitter;
 class Project;
 class Feature;
 class FeatureListWidget;
@@ -97,6 +97,10 @@ public:
 
     static void wireListColumnHeader(ListColumnHeaderWidget* header, FeatureListPanel* panel);
 
+    QSplitter* featureLibrarySplitter() const { return m_featureLibrarySplitter; }
+
+    void clampFeatureLibrarySplitterSizes();
+
     /// Replaces the library drawer contents with the given entries.
     void setLibraryEntries(const std::vector<LibraryEntryUi>& entries);
 
@@ -141,6 +145,8 @@ signals:
 protected:
 
     bool eventFilter(QObject* watched, QEvent* event) override;
+
+    void resizeEvent(QResizeEvent* event) override;
 
 
 
@@ -202,12 +208,8 @@ private:
     void onLibraryContextMenu(const QPoint& pos);
     void onRemoveLibraryEntries();
     QStringList selectedLibraryEntryIds() const;
-    int libraryDrawerContentHeight() const;
-    void animateLibraryDrawerTo(bool expanded);
-    void applyLibraryDrawerHeight(int height, bool expanded);
-    void syncLibraryDrawerHeight(bool animate);
-
-
+    void applyLibraryDrawerVisibility(bool expanded);
+    void ensureLibraryPaneSizeOnExpand();
 
     Project* m_project = nullptr;
 
@@ -242,11 +244,13 @@ private:
 
     QToolButton* m_libraryToggle = nullptr;
 
+    QWidget* m_libraryPane = nullptr;
+
+    QSplitter* m_featureLibrarySplitter = nullptr;
+
     QWidget* m_libraryDrawerHost = nullptr;
 
     FeatureLibraryListWidget* m_libraryList = nullptr;
-
-    QVariantAnimation* m_libraryDrawerAnimation = nullptr;
 
     int m_libraryEntryCount = 0;
 
