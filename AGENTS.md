@@ -1031,10 +1031,13 @@ Qt `Interactive` / `Stretch` / filler columns caused dead handles, inverted resi
 
 | Item | Rule |
 | ---- | ---- |
-| Widget | `UiResizeHandle::DampedSplitter` on `WorkflowEditorPanel::m_workflowSplitter` |
-| Sensitivity | `kSplitterDragPixelsPerStep` (40 px mouse → 1 px pane) |
-| Persistence | `UiStateManager::registerSplitter(..., "workflowEditor/vertical")` |
+| Widget | Stock `QSplitter` on `WorkflowEditorPanel::m_workflowSplitter` |
+| Minimum heights | Block list pane ≥ 120 px; **블록 추가** pane ≥ 88 px (`setMinimumHeight` on splitter children) |
+| Clamp | `clampWorkflowSplitterSizes()` after drag (`splitterMoved`), panel `resizeEvent`, and `MainWindow` post-`restoreAll` — prevents collapsing either pane |
+| Persistence | `UiStateManager::registerSplitter(..., "workflowEditor/vertical_v2")` — new key ignores corrupt saved states from `workflowEditor/vertical` |
 | No feature selected | Do **not** call `setEnabled(false)` on the panel — only disable add/edit via `setEditingEnabled` && `m_feature` |
+
+**Do not** reintroduce `DampedSplitter` or incremental `moveSplitter` scaling on the handle — it fought Qt's built-in drag and could zero out the block list.
 
 #### Anti-patterns
 
@@ -1052,7 +1055,6 @@ Qt `Interactive` / `Stretch` / filler columns caused dead handles, inverted resi
 #### Key files
 
 - `src/ui/widgets/ListColumnHeaderWidget.h` / `.cpp`
-- `src/ui/widgets/DampedSplitter.h` / `.cpp`
 - `src/ui/BlockListWidget.cpp` — `blockListColumnEdgesFromTable`, `wireListColumnHeader`, `applyPairwiseColumnResize`, `reconcileSummarySlack`
 - `src/ui/FeatureListPanel.cpp` — `wireListColumnHeader`
 - `src/ui/WorkflowEditorPanel.cpp` — splitter + `refresh()` enable policy
@@ -1160,9 +1162,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [0.8.143] - 2026-07-15
 
-### Changed
+### Fixed
 
-- Workflow editor vertical splitter: `kSplitterDragPixelsPerStep` 8 → 40 (40 mouse px per 1 px pane; block list vs **블록 추가**).
+- Workflow vertical splitter (block list vs **블록 추가**): removed `DampedSplitter` that fought Qt handle drag and could collapse the block list with no recovery; stock `QSplitter` with pane minimum heights (120/88 px), `clampWorkflowSplitterSizes()` on drag, resize, and after settings restore; persistence key `workflowEditor/vertical_v2` (`WorkflowEditorPanel`, `MainWindow`).
+
+### Removed
+
+- `DampedSplitter` and `UiResizeHandle::kSplitterDragPixelsPerStep`.
 
 ## [0.8.142] - 2026-07-15
 

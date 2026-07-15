@@ -88,7 +88,6 @@ set(PIPBONG_SOURCES
     src/ui/widgets/ReorderableListWidget.cpp
     src/ui/widgets/ListDragVisuals.cpp
     src/ui/widgets/ListColumnHeaderWidget.cpp
-    src/ui/widgets/DampedSplitter.cpp
     src/ui/ProfileListWidget.cpp
     src/ui/HotkeyBindingIcon.cpp
     src/ui/TargetWindowDetailPanel.cpp

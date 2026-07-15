@@ -16,12 +16,13 @@
 #include "ui/HotkeyBindingIcon.h"
 #include "ui/editors/WorkflowLoopRegionsDialog.h"
 #include "ui/UiResizeHandle.h"
-#include "ui/widgets/DampedSplitter.h"
 #include "ui/UiStrings.h"
 #include "ui/editors/BlockEditorDialog.h"
 #include "ui/editors/ImageFindPollIntervalPrefs.h"
 
-#include <QDialog>
+#include <QResizeEvent>
+#include <QSignalBlocker>
+#include <QSplitter>
 #include <QDir>
 #include <QFileInfo>
 #include <QFont>
@@ -519,6 +520,69 @@ QPixmap loadBlockThumbnail(const Block& block, const QString& projectDirectory) 
 
 } // namespace
 
+namespace {
+
+constexpr int kMinWorkflowBlockListPanePx = 120;
+constexpr int kMinWorkflowToolsPanePx = 88;
+constexpr int kDefaultWorkflowBlockListPanePx = 480;
+constexpr int kDefaultWorkflowToolsPanePx = 120;
+
+void applyWorkflowSplitterDefaults(QSplitter* splitter) {
+    if (!splitter) {
+        return;
+    }
+    QSignalBlocker blocker(splitter);
+    splitter->setSizes({kDefaultWorkflowBlockListPanePx, kDefaultWorkflowToolsPanePx});
+}
+
+} // namespace
+
+void WorkflowEditorPanel::clampWorkflowSplitterSizes() {
+    if (!m_workflowSplitter || m_workflowSplitter->count() < 2) {
+        return;
+    }
+
+    QWidget* listPane = m_workflowSplitter->widget(0);
+    QWidget* toolsPane = m_workflowSplitter->widget(1);
+    if (!listPane || !toolsPane) {
+        return;
+    }
+
+    const int minList = qMax(kMinWorkflowBlockListPanePx, listPane->minimumHeight());
+    const int minTools = qMax(kMinWorkflowToolsPanePx, toolsPane->minimumHeight());
+    const int handle = m_workflowSplitter->handleWidth();
+    const int total = m_workflowSplitter->height();
+    if (total <= handle) {
+        return;
+    }
+
+    const int available = total - handle;
+    if (available < minList + minTools) {
+        return;
+    }
+
+    QList<int> sizes = m_workflowSplitter->sizes();
+    int top = sizes.value(0, 0);
+    int bottom = sizes.value(1, 0);
+
+    if (top + bottom <= 0) {
+        applyWorkflowSplitterDefaults(m_workflowSplitter);
+        return;
+    }
+
+    top = qBound(minList, top, available - minTools);
+    bottom = available - top;
+    if (bottom < minTools) {
+        bottom = minTools;
+        top = qBound(minList, available - bottom, available - minTools);
+    }
+
+    if (top != sizes.value(0) || bottom != sizes.value(1)) {
+        QSignalBlocker blocker(m_workflowSplitter);
+        m_workflowSplitter->setSizes({top, bottom});
+    }
+}
+
 WorkflowEditorPanel::WorkflowEditorPanel(QWidget* parent)
     : QWidget(parent) {
     setupUi();
@@ -622,17 +686,24 @@ void WorkflowEditorPanel::setupUi() {
 
     toolsLayout->addWidget(addGroup);
 
+    blockListFrame->setMinimumHeight(kMinWorkflowBlockListPanePx);
+    toolsPane->setMinimumHeight(kMinWorkflowToolsPanePx);
+
     auto* workflowPane = new QWidget(this);
     auto* workflowLayout = new QVBoxLayout(workflowPane);
     workflowLayout->setContentsMargins(0, 0, 0, 0);
 
-    m_workflowSplitter = new UiResizeHandle::DampedSplitter(Qt::Vertical, workflowPane);
+    m_workflowSplitter = new QSplitter(Qt::Vertical, workflowPane);
     UiResizeHandle::configureSplitter(m_workflowSplitter);
     m_workflowSplitter->addWidget(blockListFrame);
     m_workflowSplitter->addWidget(toolsPane);
     m_workflowSplitter->setStretchFactor(0, 1);
     m_workflowSplitter->setStretchFactor(1, 0);
-    m_workflowSplitter->setSizes({480, 120});
+    applyWorkflowSplitterDefaults(m_workflowSplitter);
+
+    connect(m_workflowSplitter, &QSplitter::splitterMoved, this, [this](int, int) {
+        clampWorkflowSplitterSizes();
+    });
 
     workflowLayout->addWidget(m_workflowSplitter, 1);
 
@@ -674,6 +745,11 @@ void WorkflowEditorPanel::setupUi() {
 
 QSplitter* WorkflowEditorPanel::workflowSplitter() const {
     return m_workflowSplitter;
+}
+
+void WorkflowEditorPanel::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    clampWorkflowSplitterSizes();
 }
 
 void WorkflowEditorPanel::clearBlockMatchResults() {

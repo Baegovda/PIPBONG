@@ -57,12 +57,16 @@ public:
     void persistRunFeedbackForCurrentFeature();
 
     QSplitter* workflowSplitter() const;
+    void clampWorkflowSplitterSizes();
 
     BlockListWidget* blockList() const { return m_blockList; }
     ListColumnHeaderWidget* blockListColumnHeader() const { return m_blockListHeader; }
 
 signals:
     void workflowModified();
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 
 private slots:
     void onEditBlock();

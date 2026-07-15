@@ -30,7 +30,8 @@ Include **`summaryDividerX`** at **동작|요약** (left edge of summary column)
 
 ## Workflow panel vertical split
 
-- Block list vs **블록 추가**: `UiResizeHandle::DampedSplitter` (`kSplitterDragPixelsPerStep` = 40).
+- Block list vs **블록 추가**: stock `QSplitter` + pane minimum heights + `clampWorkflowSplitterSizes()` (`WorkflowEditorPanel`).
+- Persistence key **`workflowEditor/vertical_v2`**; never `DampedSplitter` / `kSplitterDragPixelsPerStep`.
 - **Never** `WorkflowEditorPanel::setEnabled(false)` when no feature — disables splitter; disable edit buttons via `setEditingEnabled` + `m_feature` guard only.
 
 ## Anti-patterns (known failures — do not reintroduce)
@@ -57,5 +58,5 @@ Manually verify on Windows:
 - `src/ui/widgets/ListColumnHeaderWidget.*`
 - `src/ui/BlockListWidget.cpp` — `blockListColumnEdgesFromTable`, `wireListColumnHeader`, `applyPairwiseColumnResize`
 - `src/ui/FeatureListPanel.cpp` — `wireListColumnHeader`
-- `src/ui/UiResizeHandle.h` — grab constants, `configureSplitter`, `DampedSplitter`
-- `src/ui/WorkflowEditorPanel.cpp` — `m_workflowSplitter`, no whole-panel disable
+- `src/ui/UiResizeHandle.h` — grab constants, `configureSplitter`
+- `src/ui/WorkflowEditorPanel.cpp` — `m_workflowSplitter`, `clampWorkflowSplitterSizes`, no whole-panel disable
