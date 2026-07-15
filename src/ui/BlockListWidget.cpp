@@ -1184,6 +1184,11 @@ void BlockListWidget::keyPressEvent(QKeyEvent* event) {
             event->accept();
             return;
         }
+        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+            emit editRequested();
+            event->accept();
+            return;
+        }
     }
     QTableWidget::keyPressEvent(event);
 }

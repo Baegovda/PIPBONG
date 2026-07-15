@@ -638,6 +638,7 @@ void WorkflowEditorPanel::setupUi() {
     connect(m_blockList, &BlockListWidget::copyRequested, this, &WorkflowEditorPanel::onCopyBlocks);
     connect(m_blockList, &BlockListWidget::pasteRequested, this, &WorkflowEditorPanel::onPasteBlocks);
     connect(m_blockList, &BlockListWidget::deleteRequested, this, &WorkflowEditorPanel::onDeleteBlocks);
+    connect(m_blockList, &BlockListWidget::editRequested, this, &WorkflowEditorPanel::onEditBlock);
     connect(m_blockList, &BlockListWidget::undoRequested, this, &WorkflowEditorPanel::onUndo);
     connect(m_blockList, &BlockListWidget::redoRequested, this, &WorkflowEditorPanel::onRedo);
 

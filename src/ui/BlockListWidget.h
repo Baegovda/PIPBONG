@@ -209,6 +209,8 @@ signals:
 
     void deleteRequested();
 
+    void editRequested();
+
     void undoRequested();
 
     void redoRequested();
