@@ -19,6 +19,7 @@
 #include <QDragMoveEvent>
 #include <QDropEvent>
 #include <QEvent>
+#include <QHoverEvent>
 #include <QHeaderView>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -83,11 +84,24 @@ public:
         : QHeaderView(Qt::Horizontal, owner)
         , m_owner(owner) {
         setMouseTracking(true);
+        viewport()->setMouseTracking(true);
         setSectionsClickable(true);
         setHighlightSections(false);
+        // Stock header never shows a resize cursor while sections are Fixed.
+        setAttribute(Qt::WA_Hover, true);
     }
 
 protected:
+    bool event(QEvent* event) override {
+        if (event->type() == QEvent::HoverMove) {
+            auto* hover = static_cast<QHoverEvent*>(event);
+            updateHoverCursor(hover->position().toPoint());
+        } else if (event->type() == QEvent::HoverLeave && m_drag == Drag::None) {
+            clearHoverCursor();
+        }
+        return QHeaderView::event(event);
+    }
+
     void mousePressEvent(QMouseEvent* event) override {
         if (event->button() == Qt::LeftButton && m_owner) {
             if (UiResizeHandle::isWithinBottomGrab(event->pos().y(), height())) {
@@ -95,7 +109,7 @@ protected:
                 m_pressPos = event->globalPosition().toPoint();
                 m_startValue = m_owner->blockRowHeight();
                 grabMouse();
-                setCursor(Qt::SizeVerCursor);
+                applyCursor(Qt::SizeVerCursor);
                 event->accept();
                 return;
             }
@@ -106,7 +120,7 @@ protected:
                 m_pressPos = event->pos();
                 m_startValue = sectionSize(target);
                 grabMouse();
-                setCursor(Qt::SplitHCursor);
+                applyCursor(Qt::SizeHorCursor);
                 event->accept();
                 return;
             }
@@ -126,14 +140,10 @@ protected:
             event->accept();
             return;
         }
-        if (UiResizeHandle::isWithinBottomGrab(event->pos().y(), height())) {
-            setCursor(Qt::SizeVerCursor);
-        } else if (resizeTargetAt(event->pos().x()) >= 0) {
-            setCursor(Qt::SplitHCursor);
-        } else {
-            unsetCursor();
-        }
-        QHeaderView::mouseMoveEvent(event);
+        // Do not call QHeaderView::mouseMoveEvent — with Fixed sections it forces
+        // the arrow cursor and clears our divider feedback.
+        updateHoverCursor(event->pos());
+        event->accept();
     }
 
     void mouseReleaseEvent(QMouseEvent* event) override {
@@ -143,7 +153,7 @@ protected:
             if (mouseGrabber() == this) {
                 releaseMouse();
             }
-            unsetCursor();
+            updateHoverCursor(event->pos());
             event->accept();
             return;
         }
@@ -152,13 +162,37 @@ protected:
 
     void leaveEvent(QEvent* event) override {
         if (m_drag == Drag::None) {
-            unsetCursor();
+            clearHoverCursor();
         }
         QHeaderView::leaveEvent(event);
     }
 
 private:
     enum class Drag { None, Column, RowHeight };
+
+    void applyCursor(const QCursor& cursor) {
+        setCursor(cursor);
+        if (QWidget* vp = viewport()) {
+            vp->setCursor(cursor);
+        }
+    }
+
+    void clearHoverCursor() {
+        unsetCursor();
+        if (QWidget* vp = viewport()) {
+            vp->unsetCursor();
+        }
+    }
+
+    void updateHoverCursor(const QPoint& pos) {
+        if (UiResizeHandle::isWithinBottomGrab(pos.y(), height())) {
+            applyCursor(Qt::SizeVerCursor);
+        } else if (resizeTargetAt(pos.x()) >= 0) {
+            applyCursor(Qt::SizeHorCursor);
+        } else {
+            clearHoverCursor();
+        }
+    }
 
     int nextVisibleLogical(int afterLogical) const {
         const int visual = visualIndex(afterLogical);
