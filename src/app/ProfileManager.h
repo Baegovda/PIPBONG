@@ -18,6 +18,8 @@ public:
         QString id;
         QString name;
         QString targetWindowTitle;
+        /// Secondary target window title (e.g. launcher); persisted in profile-settings.json.
+        QString subTargetWindowTitle;
     };
 
     explicit ProfileManager(const QString& dataDirectory);
@@ -38,16 +40,23 @@ public:
     QString activeProjectDirectory() const { return projectDirectory(m_activeProfileId); }
     QString activeProfilePackagePath() const { return profilePackagePath(m_activeProfileId); }
     QString targetWindowTitle(const QString& id) const;
+    QString subTargetWindowTitle(const QString& id) const;
     QString linkedTargetProcessPath(const QString& id) const;
+    QString subLinkedTargetProcessPath(const QString& id) const;
     /// Cached exe icon PNG under the profile folder (survives app uninstall).
     QIcon linkedTargetIcon(const QString& id) const;
     bool cacheLinkedTargetIcon(const QString& id, const QIcon& icon) const;
     void clearLinkedTargetIcon(const QString& id) const;
     bool setTargetWindowTitle(const QString& id, const QString& title);
+    bool setSubTargetWindowTitle(const QString& id, const QString& title);
     bool updateProfileTargetBinding(const QString& id,
                                     const QString& title,
                                     const QString& processPath);
+    bool updateProfileSubTargetBinding(const QString& id,
+                                       const QString& title,
+                                       const QString& processPath);
     void setProfileTargetWindowTitleInMemory(const QString& id, const QString& title);
+    void setProfileSubTargetWindowTitleInMemory(const QString& id, const QString& title);
 
     bool setActiveProfile(const QString& id);
     bool setDefaultProfile(const QString& id);
@@ -64,12 +73,13 @@ public:
     QString importProfileFromPackage(const QString& packagePath, const QString& preferredName = {});
 
     ProgramSettings::ProfileSettings loadSettings(const QString& id) const;
-    /// When @p replaceLinkedProcessPath is false (default), an empty
-    /// linkedTargetProcessPath in @p settings keeps any previously saved path
-    /// (QSettings snapshots omit that field). Pass true to clear or overwrite.
+    /// When @p replaceLinkedProcessPath / @p replaceSubLinkedProcessPath are false
+    /// (default), empty process-path fields keep previously saved paths
+    /// (QSettings snapshots omit those fields). Pass true to clear or overwrite.
     bool saveSettings(const QString& id,
                       const ProgramSettings::ProfileSettings& settings,
-                      bool replaceLinkedProcessPath = false) const;
+                      bool replaceLinkedProcessPath = false,
+                      bool replaceSubLinkedProcessPath = false) const;
 
     /// Resolves the profile whose linked target-window title best matches the foreground title.
     /// Returns the default profile when nothing matches or the title is empty.

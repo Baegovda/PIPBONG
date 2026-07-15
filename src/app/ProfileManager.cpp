@@ -175,6 +175,8 @@ QString ProfileManager::importProfileFromPackage(const QString& packagePath,
     for (Profile& profile : m_profiles) {
         if (profile.id == profileId) {
             profile.targetWindowTitle = loadProfileTargetWindowTitleFromProject(profileId);
+            const ProgramSettings::ProfileSettings settings = loadSettings(profileId);
+            profile.subTargetWindowTitle = settings.subTargetWindowTitle;
             break;
         }
     }
@@ -199,11 +201,26 @@ QString ProfileManager::targetWindowTitle(const QString& id) const {
     return profile->targetWindowTitle;
 }
 
+QString ProfileManager::subTargetWindowTitle(const QString& id) const {
+    const Profile* profile = profileById(id);
+    if (!profile || id == m_defaultProfileId) {
+        return {};
+    }
+    return profile->subTargetWindowTitle;
+}
+
 QString ProfileManager::linkedTargetProcessPath(const QString& id) const {
     if (id.isEmpty() || id == m_defaultProfileId) {
         return {};
     }
     return loadSettings(id).linkedTargetProcessPath;
+}
+
+QString ProfileManager::subLinkedTargetProcessPath(const QString& id) const {
+    if (id.isEmpty() || id == m_defaultProfileId) {
+        return {};
+    }
+    return loadSettings(id).subLinkedTargetProcessPath;
 }
 
 QIcon ProfileManager::linkedTargetIcon(const QString& id) const {
@@ -319,7 +336,64 @@ bool ProfileManager::updateProfileTargetBinding(const QString& id,
         return true;
     }
     // Title still set but path lookup failed — keep previously saved exe path.
-    return saveSettings(id, settings, false);
+    return saveSettings(id, settings, false, false);
+}
+
+bool ProfileManager::setSubTargetWindowTitle(const QString& id, const QString& title) {
+    if (id.isEmpty() || id == m_defaultProfileId) {
+        return false;
+    }
+    Profile* profile = nullptr;
+    for (Profile& candidate : m_profiles) {
+        if (candidate.id == id) {
+            profile = &candidate;
+            break;
+        }
+    }
+    if (!profile) {
+        return false;
+    }
+    const QString trimmed = title.trimmed();
+    profile->subTargetWindowTitle = trimmed;
+    ProgramSettings::ProfileSettings settings = loadSettings(id);
+    settings.subTargetWindowTitle = trimmed;
+    if (trimmed.isEmpty()) {
+        settings.subLinkedTargetProcessPath.clear();
+        return saveSettings(id, settings, false, true);
+    }
+    return saveSettings(id, settings, false, false);
+}
+
+bool ProfileManager::updateProfileSubTargetBinding(const QString& id,
+                                                   const QString& title,
+                                                   const QString& processPath) {
+    if (id.isEmpty() || id == m_defaultProfileId) {
+        return false;
+    }
+    Profile* profile = nullptr;
+    for (Profile& candidate : m_profiles) {
+        if (candidate.id == id) {
+            profile = &candidate;
+            break;
+        }
+    }
+    if (!profile) {
+        return false;
+    }
+    const QString trimmedTitle = title.trimmed();
+    profile->subTargetWindowTitle = trimmedTitle;
+    ProgramSettings::ProfileSettings settings = loadSettings(id);
+    settings.subTargetWindowTitle = trimmedTitle;
+    const QString trimmedPath = processPath.trimmed();
+    if (!trimmedPath.isEmpty()) {
+        settings.subLinkedTargetProcessPath = trimmedPath;
+        return saveSettings(id, settings, false, true);
+    }
+    if (trimmedTitle.isEmpty()) {
+        settings.subLinkedTargetProcessPath.clear();
+        return saveSettings(id, settings, false, true);
+    }
+    return saveSettings(id, settings, false, false);
 }
 
 void ProfileManager::setProfileTargetWindowTitleInMemory(const QString& id, const QString& title) {
@@ -329,6 +403,18 @@ void ProfileManager::setProfileTargetWindowTitleInMemory(const QString& id, cons
     for (Profile& profile : m_profiles) {
         if (profile.id == id) {
             profile.targetWindowTitle = title.trimmed();
+            return;
+        }
+    }
+}
+
+void ProfileManager::setProfileSubTargetWindowTitleInMemory(const QString& id, const QString& title) {
+    if (id.isEmpty() || id == m_defaultProfileId) {
+        return;
+    }
+    for (Profile& profile : m_profiles) {
+        if (profile.id == id) {
+            profile.subTargetWindowTitle = title.trimmed();
             return;
         }
     }
@@ -483,6 +569,10 @@ ProgramSettings::ProfileSettings ProfileManager::loadSettings(const QString& id)
         root.value(QStringLiteral("runWithoutTargetWindow")).toBool(settings.runWithoutTargetWindow);
     settings.linkedTargetProcessPath =
         root.value(QStringLiteral("linkedTargetProcessPath")).toString(settings.linkedTargetProcessPath);
+    settings.subTargetWindowTitle =
+        root.value(QStringLiteral("subTargetWindowTitle")).toString(settings.subTargetWindowTitle);
+    settings.subLinkedTargetProcessPath =
+        root.value(QStringLiteral("subLinkedTargetProcessPath")).toString(settings.subLinkedTargetProcessPath);
     m_settingsCache[id] = settings;
     m_settingsFileMtime[id] = mtime;
     return settings;
@@ -490,14 +580,25 @@ ProgramSettings::ProfileSettings ProfileManager::loadSettings(const QString& id)
 
 bool ProfileManager::saveSettings(const QString& id,
                                   const ProgramSettings::ProfileSettings& settings,
-                                  bool replaceLinkedProcessPath) const {
+                                  bool replaceLinkedProcessPath,
+                                  bool replaceSubLinkedProcessPath) const {
     QDir().mkpath(profileDirectory(id));
     ProgramSettings::ProfileSettings toWrite = settings;
     // Callers that snapshot QSettings-backed options often omit the exe path.
-    // Preserve a previously saved linkedTargetProcessPath unless the caller
-    // explicitly replaces/clears it (window pick, clear target title).
+    // Preserve previously saved process paths unless the caller explicitly replaces/clears them.
     if (!replaceLinkedProcessPath && toWrite.linkedTargetProcessPath.isEmpty()) {
         toWrite.linkedTargetProcessPath = loadSettings(id).linkedTargetProcessPath;
+    }
+    if (!replaceSubLinkedProcessPath && toWrite.subLinkedTargetProcessPath.isEmpty()) {
+        toWrite.subLinkedTargetProcessPath = loadSettings(id).subLinkedTargetProcessPath;
+    }
+    // Preserve subTargetWindowTitle when the caller snapshot omitted it (empty) but the
+    // in-memory / on-disk value still exists — unless replaceSub clears the binding.
+    if (toWrite.subTargetWindowTitle.isEmpty() && !replaceSubLinkedProcessPath) {
+        const QString previousSubTitle = loadSettings(id).subTargetWindowTitle;
+        if (!previousSubTitle.isEmpty()) {
+            toWrite.subTargetWindowTitle = previousSubTitle;
+        }
     }
     QJsonObject root;
     root.insert(QStringLiteral("version"), 1);
@@ -507,6 +608,12 @@ bool ProfileManager::saveSettings(const QString& id,
     root.insert(QStringLiteral("runWithoutTargetWindow"), toWrite.runWithoutTargetWindow);
     if (!toWrite.linkedTargetProcessPath.isEmpty()) {
         root.insert(QStringLiteral("linkedTargetProcessPath"), toWrite.linkedTargetProcessPath);
+    }
+    if (!toWrite.subTargetWindowTitle.isEmpty()) {
+        root.insert(QStringLiteral("subTargetWindowTitle"), toWrite.subTargetWindowTitle);
+    }
+    if (!toWrite.subLinkedTargetProcessPath.isEmpty()) {
+        root.insert(QStringLiteral("subLinkedTargetProcessPath"), toWrite.subLinkedTargetProcessPath);
     }
     QFile file(QDir(profileDirectory(id)).filePath(QString::fromLatin1(kSettingsFileName)));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -531,14 +638,17 @@ QString ProfileManager::profileIdForForegroundTitle(const QString& foregroundTit
         if (profile.id == m_defaultProfileId) {
             continue;
         }
-        const QString binding = profile.targetWindowTitle;
-        if (binding.isEmpty()) {
-            continue;
-        }
-        if (trimmed.contains(binding, Qt::CaseInsensitive) && binding.length() > bestLength) {
-            bestLength = binding.length();
-            bestId = profile.id;
-        }
+        const auto considerBinding = [&](const QString& binding) {
+            if (binding.isEmpty()) {
+                return;
+            }
+            if (trimmed.contains(binding, Qt::CaseInsensitive) && binding.length() > bestLength) {
+                bestLength = binding.length();
+                bestId = profile.id;
+            }
+        };
+        considerBinding(profile.targetWindowTitle);
+        considerBinding(profile.subTargetWindowTitle);
     }
     return bestId.isEmpty() ? m_defaultProfileId : bestId;
 }
@@ -560,6 +670,8 @@ bool ProfileManager::loadManifest() {
         profile.name = sanitizedProfileName(obj.value(QStringLiteral("name")).toString());
         profile.targetWindowTitle = loadProfileTargetWindowTitleFromProject(profile.id);
         if (!profile.id.isEmpty()) {
+            const ProgramSettings::ProfileSettings settings = loadSettings(profile.id);
+            profile.subTargetWindowTitle = settings.subTargetWindowTitle;
             m_profiles.push_back(profile);
         }
     }
@@ -645,10 +757,20 @@ void ProfileManager::ensureDefaultProfileConstraints() {
         }
     }
     setTargetWindowTitle(m_defaultProfileId, QString());
+    for (Profile& profile : m_profiles) {
+        if (profile.id == m_defaultProfileId) {
+            profile.subTargetWindowTitle.clear();
+            break;
+        }
+    }
     ProgramSettings::ProfileSettings settings = loadSettings(m_defaultProfileId);
-    if (!settings.runWithoutTargetWindow) {
+    if (!settings.runWithoutTargetWindow
+        || !settings.subTargetWindowTitle.isEmpty()
+        || !settings.subLinkedTargetProcessPath.isEmpty()) {
         settings.runWithoutTargetWindow = true;
-        saveSettings(m_defaultProfileId, settings);
+        settings.subTargetWindowTitle.clear();
+        settings.subLinkedTargetProcessPath.clear();
+        saveSettings(m_defaultProfileId, settings, false, true);
     }
 }
 

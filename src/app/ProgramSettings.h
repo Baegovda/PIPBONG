@@ -16,6 +16,9 @@ public:
         ImageFindCaptureMode imageFindCaptureMode = ImageFindCaptureMode::Hybrid;
         bool runWithoutTargetWindow = false;
         QString linkedTargetProcessPath;
+        /// Secondary detection window (e.g. game launcher) — title substring for auto-switch / run target.
+        QString subTargetWindowTitle;
+        QString subLinkedTargetProcessPath;
     };
 
     static bool autoSelectRunningFeature();

@@ -84,6 +84,7 @@ QVector<ProfileWindowListEntry> collectProfileWindowListEntries() {
 
 ProfileEditDialog::ProfileEditDialog(const QString& profileName,
                                      const QString& targetWindowTitle,
+                                     const QString& subTargetWindowTitle,
                                      bool defaultProfile,
                                      bool fixedDefaultProfile,
                                      const QString& currentTargetWindowTitle,
@@ -102,6 +103,9 @@ ProfileEditDialog::ProfileEditDialog(const QString& profileName,
     if (m_targetWindowTitleEdit) {
         m_targetWindowTitleEdit->setText(targetWindowTitle);
     }
+    if (m_subTargetWindowTitleEdit) {
+        m_subTargetWindowTitleEdit->setText(subTargetWindowTitle);
+    }
     if (m_defaultProfileCheck) {
         m_defaultProfileCheck->setChecked(defaultProfile);
     }
@@ -114,12 +118,17 @@ ProfileEditDialog::Result ProfileEditDialog::result() const {
         out.name = QStringLiteral("기본");
         out.defaultProfile = true;
         out.targetWindowTitle = QString();
+        out.subTargetWindowTitle = QString();
         return out;
     }
     out.name = m_nameEdit ? m_nameEdit->text().trimmed() : QString();
     out.defaultProfile = m_defaultProfileCheck && m_defaultProfileCheck->isChecked();
     out.targetWindowTitle =
         out.defaultProfile || !m_targetWindowTitleEdit ? QString() : m_targetWindowTitleEdit->text().trimmed();
+    out.subTargetWindowTitle =
+        out.defaultProfile || !m_subTargetWindowTitleEdit
+            ? QString()
+            : m_subTargetWindowTitleEdit->text().trimmed();
     return out;
 }
 
@@ -153,7 +162,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         layout->addWidget(lockedHint);
     } else {
         auto* hint = new HintLabel(
-            tr("프로필마다 이름과 연결된 프로그램(대상 창 제목)을 따로 저장합니다. 기본 프로필은 대상 창 없이 전역으로 동작합니다."),
+            tr("프로필마다 이름과 연결된 프로그램(주·서브 대상 창)을 따로 저장합니다. 기본 프로필은 대상 창 없이 전역으로 동작합니다."),
             this);
         layout->addWidget(hint);
 
@@ -170,7 +179,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     linkedLayout->setContentsMargins(0, 0, 0, 0);
     linkedLayout->setSpacing(6);
 
-    auto* targetLabel = new QLabel(tr("연결된 프로그램"), m_linkedProgramSection);
+    auto* targetLabel = new QLabel(tr("주 대상 창"), m_linkedProgramSection);
     linkedLayout->addWidget(targetLabel);
 
     m_targetWindowTitleEdit = new QLineEdit(m_linkedProgramSection);
@@ -178,7 +187,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     linkedLayout->addWidget(m_targetWindowTitleEdit);
 
     auto* targetHint = new HintLabel(
-        tr("기능 실행 시 이 제목을 기준으로 대상 창을 찾습니다. 비워두면 창 미지정 상태로 저장됩니다."),
+        tr("기능 실행 시 기본으로 이 제목을 기준으로 대상 창을 찾습니다. 비워두면 창 미지정 상태로 저장됩니다."),
         m_linkedProgramSection);
     linkedLayout->addWidget(targetHint);
 
@@ -196,10 +205,41 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
             m_targetWindowTitleEdit->setText(currentTargetWindowTitle);
         }
     });
-    connect(pickFromListButton, &QPushButton::clicked, this, &ProfileEditDialog::openWindowListPicker);
+    connect(pickFromListButton, &QPushButton::clicked, this, [this]() {
+        openWindowListPicker(m_targetWindowTitleEdit);
+    });
     connect(clearButton, &QPushButton::clicked, this, [this]() {
         if (m_targetWindowTitleEdit) {
             m_targetWindowTitleEdit->clear();
+        }
+    });
+
+    auto* subLabel = new QLabel(tr("서브 대상 창"), m_linkedProgramSection);
+    linkedLayout->addWidget(subLabel);
+
+    m_subTargetWindowTitleEdit = new QLineEdit(m_linkedProgramSection);
+    m_subTargetWindowTitleEdit->setPlaceholderText(tr("예: 런처 창 제목 또는 일부 문자열"));
+    linkedLayout->addWidget(m_subTargetWindowTitleEdit);
+
+    auto* subHint = new HintLabel(
+        tr("같은 프로필로 자동 전환되는 추가 감지 창입니다. 이 창이 포커스일 때 기능을 실행하면 서브 창이 대상이 됩니다."),
+        m_linkedProgramSection);
+    linkedLayout->addWidget(subHint);
+
+    auto* subButtons = new QHBoxLayout();
+    auto* subPickButton = new QPushButton(tr("창 목록"), m_linkedProgramSection);
+    auto* subClearButton = new QPushButton(tr("비우기"), m_linkedProgramSection);
+    subButtons->addWidget(subPickButton);
+    subButtons->addWidget(subClearButton);
+    subButtons->addStretch(1);
+    linkedLayout->addLayout(subButtons);
+
+    connect(subPickButton, &QPushButton::clicked, this, [this]() {
+        openWindowListPicker(m_subTargetWindowTitleEdit);
+    });
+    connect(subClearButton, &QPushButton::clicked, this, [this]() {
+        if (m_subTargetWindowTitleEdit) {
+            m_subTargetWindowTitleEdit->clear();
         }
     });
 
@@ -227,8 +267,11 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     layout->addWidget(buttons);
 }
 
-void ProfileEditDialog::openWindowListPicker() {
+void ProfileEditDialog::openWindowListPicker(QLineEdit* targetEdit) {
 #ifdef _WIN32
+    if (!targetEdit) {
+        return;
+    }
     QDialog dialog(this);
     dialog.setWindowTitle(tr("창 목록"));
     dialog.resize(700, 420);
@@ -263,9 +306,9 @@ void ProfileEditDialog::openWindowListPicker() {
     if (dialog.exec() != QDialog::Accepted || !listWidget->currentItem()) {
         return;
     }
-    m_targetWindowTitleEdit->setText(listWidget->currentItem()->data(Qt::UserRole).toString());
+    targetEdit->setText(listWidget->currentItem()->data(Qt::UserRole).toString());
 #else
-    (void)this;
+    Q_UNUSED(targetEdit);
 #endif
 }
 
@@ -287,7 +330,12 @@ void ProfileEditDialog::updateDefaultProfileUi() {
     if (m_linkedProgramSection) {
         m_linkedProgramSection->setVisible(!isDefault);
     }
-    if (isDefault && m_targetWindowTitleEdit) {
-        m_targetWindowTitleEdit->clear();
+    if (isDefault) {
+        if (m_targetWindowTitleEdit) {
+            m_targetWindowTitleEdit->clear();
+        }
+        if (m_subTargetWindowTitleEdit) {
+            m_subTargetWindowTitleEdit->clear();
+        }
     }
 }

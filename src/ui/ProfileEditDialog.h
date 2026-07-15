@@ -13,11 +13,13 @@ public:
     struct Result {
         QString name;
         QString targetWindowTitle;
+        QString subTargetWindowTitle;
         bool defaultProfile = false;
     };
 
     explicit ProfileEditDialog(const QString& profileName,
                                const QString& targetWindowTitle,
+                               const QString& subTargetWindowTitle,
                                bool defaultProfile,
                                bool fixedDefaultProfile,
                                const QString& currentTargetWindowTitle,
@@ -27,13 +29,14 @@ public:
 
 private:
     void setupUi(const QString& currentTargetWindowTitle);
-    void openWindowListPicker();
+    void openWindowListPicker(QLineEdit* targetEdit);
     void tryAccept();
     void updateDefaultProfileUi();
 
     QLineEdit* m_nameEdit = nullptr;
     QLabel* m_fixedDefaultNameLabel = nullptr;
     QLineEdit* m_targetWindowTitleEdit = nullptr;
+    QLineEdit* m_subTargetWindowTitleEdit = nullptr;
     QCheckBox* m_defaultProfileCheck = nullptr;
     QWidget* m_linkedProgramSection = nullptr;
     bool m_fixedDefaultProfile = false;

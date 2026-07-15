@@ -1478,6 +1478,7 @@ void MainWindow::onRenameProfile() {
     const bool fixedDefault = m_profileManager->isDefaultProfile(id);
     ProfileEditDialog dialog(profile->name,
                              m_profileManager->targetWindowTitle(id),
+                             m_profileManager->subTargetWindowTitle(id),
                              fixedDefault,
                              fixedDefault,
                              QString::fromStdString(m_project ? m_project->targetWindowTitle() : std::string{}),
@@ -1492,16 +1493,21 @@ void MainWindow::onRenameProfile() {
     const ProfileEditDialog::Result edited = dialog.result();
     m_profileManager->renameProfile(id, edited.name);
     QString effectiveTargetTitle = edited.targetWindowTitle;
+    QString effectiveSubTargetTitle = edited.subTargetWindowTitle;
     if (edited.defaultProfile) {
         // Default profile is global: no bound target window title.
         effectiveTargetTitle.clear();
+        effectiveSubTargetTitle.clear();
     }
     m_profileManager->setTargetWindowTitle(id, effectiveTargetTitle);
+    m_profileManager->setSubTargetWindowTitle(id, effectiveSubTargetTitle);
     if (edited.defaultProfile) {
         m_profileManager->setDefaultProfile(id);
         ProgramSettings::ProfileSettings profileSettings = m_profileManager->loadSettings(id);
         profileSettings.runWithoutTargetWindow = true;
-        m_profileManager->saveSettings(id, profileSettings);
+        profileSettings.subTargetWindowTitle.clear();
+        profileSettings.subLinkedTargetProcessPath.clear();
+        m_profileManager->saveSettings(id, profileSettings, false, true);
     } else if (id == m_profileManager->defaultProfileId()
                && !m_profileManager->profiles().empty()) {
         m_profileManager->setDefaultProfile(m_profileManager->profiles().front().id);
@@ -3229,7 +3235,11 @@ void MainWindow::syncRunSessionContext(FeatureRunSession& session) {
     if (!session.sessionContext) {
         return;
     }
-    session.sessionContext->setTargetWindowTitle(currentTargetWindowTitleW());
+    // Keep the title chosen at session start (main vs sub auto-detect). Re-resolving on
+    // every repeat would flip back to the main game window after the launcher loses focus.
+    if (session.sessionContext->targetWindowTitle().empty()) {
+        session.sessionContext->setTargetWindowTitle(resolveEffectiveTargetTitleW());
+    }
     session.sessionContext->setProjectDirectory(Application::instance()->projectDirectory().toStdString());
 }
 
@@ -3536,7 +3546,7 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
                                       && session.runningMode == FeatureRunMode::Hold;
 
     if (!repeatIteration) {
-        syncTargetWindowTitleToCapture();
+        syncEffectiveTargetWindowTitleToCapture();
         session.sessionIteration = 0;
         session.hasLastLoopTiming = false;
         session.totalLoopElapsedMs = 0;
@@ -3599,7 +3609,7 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
 
     configureWorkerFastRepeat(session, feature);
 
-    const std::wstring targetTitle = currentTargetWindowTitleW();
+    const std::wstring targetTitle = resolveEffectiveTargetTitleW();
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
     const bool skipTargetActivation = session.hotkeyLaunchedSession && !repeatIteration;
     WorkflowEngine* engine = session.engine.get();
@@ -3725,7 +3735,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
     }
 
     if (firstSessionStart) {
-        syncTargetWindowTitleToCapture();
+        syncEffectiveTargetWindowTitleToCapture();
         session.sessionIteration = 0;
         session.hasLastLoopTiming = false;
         session.totalLoopElapsedMs = 0;
@@ -3768,7 +3778,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
 
     ensureRunSessionResources(session, feature, session.sessionIteration > 0);
 
-    const std::wstring targetTitle = currentTargetWindowTitleW();
+    const std::wstring targetTitle = resolveEffectiveTargetTitleW();
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
     const bool skipTargetActivation = session.hotkeyLaunchedSession && firstSessionStart;
     WorkflowEngine* engine = session.engine.get();
@@ -5003,9 +5013,12 @@ void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
     }
 
     ScreenCapture::setTargetWindow(nullptr);
-    syncTargetWindowTitleToCapture();
+    // Prefer the foreground window when it matches this profile's main or sub binding
+    // (e.g. auto-switch landed on the launcher); otherwise fall back to the main title.
+    syncEffectiveTargetWindowTitleToCapture();
 #ifdef _WIN32
     if (HWND hwnd = ScreenCapture::targetWindow(); !hwnd || !IsWindow(hwnd)) {
+        ScreenCapture::setTargetWindowTitle(currentTargetWindowTitleW());
         hwnd = ScreenCapture::findTargetWindow();
         if (hwnd) {
             ScreenCapture::setTargetWindow(hwnd);
@@ -5062,8 +5075,73 @@ std::wstring MainWindow::currentTargetWindowTitleW() const {
     return QString::fromStdString(m_project->targetWindowTitle()).toStdWString();
 }
 
+std::wstring MainWindow::resolveEffectiveTargetTitleW() const {
+    const std::wstring mainTitle = currentTargetWindowTitleW();
+    if (!m_profileManager || isActiveDefaultProfile()) {
+        return mainTitle;
+    }
+
+    const QString profileId = m_profileManager->activeProfileId();
+    const QString subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
+    if (subBinding.isEmpty()) {
+        return mainTitle;
+    }
+
+    const QString mainBinding = QString::fromStdWString(mainTitle).trimmed();
+
+#ifdef _WIN32
+    HWND hwnd = GetForegroundWindow();
+    if (!hwnd || !IsWindow(hwnd)) {
+        return mainTitle;
+    }
+    hwnd = GetAncestor(hwnd, GA_ROOT);
+    if (!hwnd || !IsWindow(hwnd)) {
+        return mainTitle;
+    }
+    wchar_t titleBuffer[512]{};
+    GetWindowTextW(hwnd, titleBuffer, 512);
+    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+    if (foregroundTitle.isEmpty()) {
+        return mainTitle;
+    }
+
+    const bool subHit = foregroundTitle.contains(subBinding, Qt::CaseInsensitive);
+    const bool mainHit =
+        !mainBinding.isEmpty() && foregroundTitle.contains(mainBinding, Qt::CaseInsensitive);
+    if (subHit && (!mainHit || subBinding.length() >= mainBinding.length())) {
+        return subBinding.toStdWString();
+    }
+#else
+    Q_UNUSED(mainBinding);
+#endif
+    return mainTitle;
+}
+
 void MainWindow::syncTargetWindowTitleToCapture() {
     ScreenCapture::setTargetWindowTitle(currentTargetWindowTitleW());
+}
+
+void MainWindow::syncEffectiveTargetWindowTitleToCapture() {
+    const std::wstring title = resolveEffectiveTargetTitleW();
+    ScreenCapture::setTargetWindowTitle(title);
+#ifdef _WIN32
+    HWND hwnd = GetForegroundWindow();
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    hwnd = GetAncestor(hwnd, GA_ROOT);
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    wchar_t titleBuffer[512]{};
+    GetWindowTextW(hwnd, titleBuffer, 512);
+    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+    const QString binding = QString::fromStdWString(title).trimmed();
+    if (!binding.isEmpty() && foregroundTitle.contains(binding, Qt::CaseInsensitive)) {
+        ScreenCapture::setTargetWindow(hwnd);
+        ScreenCapture::setForegroundHintWindow(hwnd);
+    }
+#endif
 }
 
 bool MainWindow::isActiveDefaultProfile() const {

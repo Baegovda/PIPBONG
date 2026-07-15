@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.114` (from `project(PIPBONG VERSION 0.8.114)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.115` (from `project(PIPBONG VERSION 0.8.115)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -486,7 +486,7 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.6 UI
 
-- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked target-window title per profile; **foreground-window auto-switch** reacts directly to Win32 `EVENT_SYSTEM_FOREGROUND` (50 ms precise poll remains as fallback), activates the profile whose linked title best matches the focused top-level window (longest substring wins), and falls back to the default profile when unmatched after a short stable delay; PIPBONG foreground and Alt+Tab / shell transient windows keep the current profile (`MainWindow::syncProfileToForegroundWindow`, `ProfileManager::profileIdForForegroundTitle`).
+- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked **주 대상 창** and optional **서브 대상 창** (e.g. launcher) per profile; **foreground-window auto-switch** reacts directly to Win32 `EVENT_SYSTEM_FOREGROUND` (50 ms precise poll remains as fallback), activates the profile whose main or sub linked title best matches the focused top-level window (longest substring wins), and falls back to the default profile when unmatched after a short stable delay; PIPBONG foreground and Alt+Tab / shell transient windows keep the current profile (`MainWindow::syncProfileToForegroundWindow`, `ProfileManager::profileIdForForegroundTitle`). Feature runs pick the effective capture target from the focused window (sub title when it matches, otherwise main) via `MainWindow::resolveEffectiveTargetTitleW`.
 - **Feature list:** Create/delete/rename features; hotkey binding (button, double-click, context menu).
 - **Workflow editor:** Block list with drag-and-drop reorder; per-type **블록 추가** buttons (템플릿 매칭, 마우스, 키보드, 딜레이); template thumbnails (48×48); block editors in `BlockEditorDialog`.
 - **ImageFind editor:** ROI preview, match test, screen capture overlay, `CaptureConfirmDialog`.
@@ -499,7 +499,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Active profile manifest | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/manifest.json` (`activeProfileId`, `defaultProfileId`, unlimited profile list)                                                                                                                                                                                                      |
 | Profile project file    | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/project.json` via `ProfileManager`                                                                                                                                                                                                                                      |
 | Profile package mirror  | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}.pipbong` — ZIP archive of the profile workspace (`project.json`, `templates/`, `profile-settings.json`, optional `linked-target-icon.png`); updated on debounced auto-save / shutdown; unpacked when workspace is missing (`ProjectPackage`, `ProfileManager`) |
-| Profile settings file   | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`, `linkedTargetProcessPath` for persisted target-program icon when the window is not running) |
+| Profile settings file   | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`, `linkedTargetProcessPath` for persisted target-program icon when the window is not running, `subTargetWindowTitle` / `subLinkedTargetProcessPath` for an optional secondary detection window such as a game launcher) |
 | Linked target icon      | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/linked-target-icon.png` — cached exe icon when the linked program is uninstalled or not running (`ProfileManager::cacheLinkedTargetIcon`) |
 | Templates               | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/templates/*.png`                                                                                                                                                                                                                                                        |
 | Manual save/open        | File menu; last path in `QSettings` key `project/lastFile`                                                                                                                                                                                                                                                                   |
@@ -1089,6 +1089,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.115] - 2026-07-15
+
+### Added
+
+- Profile **서브 대상 창**: optional secondary window title (e.g. game launcher) in **프로필 편집**; stored in `profile-settings.json` as `subTargetWindowTitle` / `subLinkedTargetProcessPath`; foreground auto-switch matches main or sub title (`ProfileManager::profileIdForForegroundTitle`); feature run start picks effective capture target from the focused window via `resolveEffectiveTargetTitleW` (`ProfileEditDialog`, `MainWindow`).
 
 ## [0.8.114] - 2026-07-15
 
