@@ -64,6 +64,7 @@ constexpr int kColMatch = 11;
 constexpr int kColumnCount = 12;
 constexpr int kMatchColumnWidth = kThumbnailSize + 6;
 constexpr int kMinSummaryWidth = 48;
+constexpr int kMaxSummaryColumnWidth = 2000;
 constexpr int kMinMetricColumnWidth = 36;
 constexpr int kMaxMetricColumnWidth = 220;
 constexpr int kMinIndexColumnWidth = 20;
@@ -75,155 +76,116 @@ constexpr int kMaxActionColumnWidth = 160;
 constexpr int kMinMatchColumnWidth = 28;
 constexpr int kMaxMatchColumnWidth = 80;
 
-enum class BlockListResizeHandleId : int {
-    None = 0,
-    PreviewWidth = 1,
-    ActionWidth = 2,
-    DurationWidth = 3,
-    MatchDurationWidth = 4,
-    AttemptsWidth = 5,
-    ReturnPrevWidth = 6,
-    RetryWidth = 7,
-    ScoreWidth = 8,
-    RoiCorrectionWidth = 9,
-    MatchWidth = 10,
-};
-
-struct BlockListColumnRects {
-    QRect index;
-    QRect preview;
-    QRect action;
-    QRect summary;
-    QRect duration;
-    QRect matchDuration;
-    QRect attempts;
-    QRect returnPrev;
-    QRect retry;
-    QRect score;
-    QRect roiCorrection;
-    QRect match;
-};
-
-struct BlockListColumnEdges {
-    BlockListColumnRects cols;
-    int previewDividerX = 0;
-    int actionDividerX = 0;
-    int durationDividerX = 0;
-    int matchDurationDividerX = 0;
-    int attemptsDividerX = 0;
-    int returnPrevDividerX = 0;
-    int retryDividerX = 0;
-    int scoreDividerX = 0;
-    int roiCorrectionDividerX = 0;
-    int matchDividerX = 0;
-};
-
-BlockListColumnEdges blockListColumnEdges(const QRect& itemRect,
-                                          const BlockListColumnLayout& layout,
-                                          int summaryWidth,
-                                          bool roiVisible) {
-    BlockListColumnEdges edges;
-    const int top = itemRect.top();
-    const int height = itemRect.height();
-
-    int x = itemRect.left();
-    edges.cols.index = QRect(x, top, layout.indexWidth, height);
-    x += layout.indexWidth;
-    edges.previewDividerX = x;
-    edges.cols.preview = QRect(x, top, layout.previewWidth, height);
-    x += layout.previewWidth;
-    edges.actionDividerX = x;
-    edges.cols.action = QRect(x, top, layout.actionWidth, height);
-    x += layout.actionWidth;
-    edges.cols.summary = QRect(x, top, summaryWidth, height);
-    x += summaryWidth;
-    edges.durationDividerX = x;
-    edges.cols.duration = QRect(x, top, layout.durationWidth, height);
-    x += layout.durationWidth;
-    edges.matchDurationDividerX = x;
-    edges.cols.matchDuration = QRect(x, top, layout.matchDurationWidth, height);
-    x += layout.matchDurationWidth;
-    edges.attemptsDividerX = x;
-    edges.cols.attempts = QRect(x, top, layout.attemptsWidth, height);
-    x += layout.attemptsWidth;
-    edges.returnPrevDividerX = x;
-    edges.cols.returnPrev = QRect(x, top, layout.returnPrevWidth, height);
-    x += layout.returnPrevWidth;
-    edges.retryDividerX = x;
-    edges.cols.retry = QRect(x, top, layout.retryWidth, height);
-    x += layout.retryWidth;
-    edges.scoreDividerX = x;
-    edges.cols.score = QRect(x, top, layout.scoreWidth, height);
-    x += layout.scoreWidth;
-    if (roiVisible) {
-        edges.roiCorrectionDividerX = x;
-        edges.cols.roiCorrection = QRect(x, top, layout.roiCorrectionWidth, height);
-        x += layout.roiCorrectionWidth;
+int blockListColumnWidthFromLayout(const BlockListColumnLayout& layout, int column) {
+    switch (column) {
+    case kColIndex:
+        return layout.indexWidth;
+    case kColPreview:
+        return layout.previewWidth;
+    case kColAction:
+        return layout.actionWidth;
+    case kColSummary:
+        return layout.summaryWidth;
+    case kColDuration:
+        return layout.durationWidth;
+    case kColMatchDuration:
+        return layout.matchDurationWidth;
+    case kColAttempts:
+        return layout.attemptsWidth;
+    case kColReturnPrev:
+        return layout.returnPrevWidth;
+    case kColRetryAfterNext:
+        return layout.retryWidth;
+    case kColScore:
+        return layout.scoreWidth;
+    case kColRoiCorrection:
+        return layout.roiCorrectionWidth;
+    case kColMatch:
+        return layout.matchWidth;
+    default:
+        return 0;
     }
-    edges.matchDividerX = x;
-    edges.cols.match = QRect(x, top, layout.matchWidth, height);
-    return edges;
 }
 
-int blockListDividerHandleAt(const QPoint& pos,
-                             const BlockListColumnEdges& edges,
-                             bool roiVisible) {
-    struct Candidate {
-        int x = 0;
-        int handle = 0;
-    };
-    QList<Candidate> candidates = {{edges.previewDividerX,
-                                    static_cast<int>(BlockListResizeHandleId::PreviewWidth)},
-                                   {edges.actionDividerX,
-                                    static_cast<int>(BlockListResizeHandleId::ActionWidth)},
-                                   {edges.durationDividerX,
-                                    static_cast<int>(BlockListResizeHandleId::DurationWidth)},
-                                   {edges.matchDurationDividerX,
-                                    static_cast<int>(BlockListResizeHandleId::MatchDurationWidth)},
-                                   {edges.attemptsDividerX,
-                                    static_cast<int>(BlockListResizeHandleId::AttemptsWidth)},
-                                   {edges.returnPrevDividerX,
-                                    static_cast<int>(BlockListResizeHandleId::ReturnPrevWidth)},
-                                   {edges.retryDividerX,
-                                    static_cast<int>(BlockListResizeHandleId::RetryWidth)},
-                                   {edges.scoreDividerX,
-                                    static_cast<int>(BlockListResizeHandleId::ScoreWidth)},
-                                   {edges.matchDividerX,
-                                    static_cast<int>(BlockListResizeHandleId::MatchWidth)}};
-    if (roiVisible) {
-        candidates.append({edges.roiCorrectionDividerX,
-                           static_cast<int>(BlockListResizeHandleId::RoiCorrectionWidth)});
+void blockListSetLayoutColumnWidth(BlockListColumnLayout& layout, int column, int width) {
+    switch (column) {
+    case kColIndex:
+        layout.indexWidth = width;
+        break;
+    case kColPreview:
+        layout.previewWidth = width;
+        break;
+    case kColAction:
+        layout.actionWidth = width;
+        break;
+    case kColSummary:
+        layout.summaryWidth = width;
+        break;
+    case kColDuration:
+        layout.durationWidth = width;
+        break;
+    case kColMatchDuration:
+        layout.matchDurationWidth = width;
+        break;
+    case kColAttempts:
+        layout.attemptsWidth = width;
+        break;
+    case kColReturnPrev:
+        layout.returnPrevWidth = width;
+        break;
+    case kColRetryAfterNext:
+        layout.retryWidth = width;
+        break;
+    case kColScore:
+        layout.scoreWidth = width;
+        break;
+    case kColRoiCorrection:
+        layout.roiCorrectionWidth = width;
+        break;
+    case kColMatch:
+        layout.matchWidth = width;
+        break;
+    default:
+        break;
     }
-
-    int bestHandle = 0;
-    int bestDistance = INT_MAX;
-    for (const Candidate& candidate : candidates) {
-        if (!UiResizeHandle::isWithinHorizontalGrab(pos.x(), candidate.x)) {
-            continue;
-        }
-        const int distance = qAbs(pos.x() - candidate.x);
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            bestHandle = candidate.handle;
-        }
-    }
-    return bestHandle;
 }
 
-QList<int> blockListDividerXs(const BlockListColumnEdges& edges, bool roiVisible) {
-    QList<int> xs = {edges.previewDividerX,
-                     edges.actionDividerX,
-                     edges.durationDividerX,
-                     edges.matchDurationDividerX,
-                     edges.attemptsDividerX,
-                     edges.returnPrevDividerX,
-                     edges.retryDividerX,
-                     edges.scoreDividerX,
-                     edges.matchDividerX};
-    if (roiVisible) {
-        xs.append(edges.roiCorrectionDividerX);
+void blockListColumnWidthBounds(int column, int& minOut, int& maxOut) {
+    switch (column) {
+    case kColIndex:
+        minOut = kMinIndexColumnWidth;
+        maxOut = kMaxIndexColumnWidth;
+        break;
+    case kColPreview:
+        minOut = kMinPreviewColumnWidth;
+        maxOut = kMaxPreviewColumnWidth;
+        break;
+    case kColAction:
+        minOut = kMinActionColumnWidth;
+        maxOut = kMaxActionColumnWidth;
+        break;
+    case kColSummary:
+        minOut = kMinSummaryWidth;
+        maxOut = kMaxSummaryColumnWidth;
+        break;
+    case kColMatch:
+        minOut = kMinMatchColumnWidth;
+        maxOut = kMaxMatchColumnWidth;
+        break;
+    default:
+        minOut = kMinMetricColumnWidth;
+        maxOut = kMaxMetricColumnWidth;
+        break;
     }
-    return xs;
+}
+
+int blockListPreviousVisibleColumn(const QTableWidget* table, int column) {
+    for (int col = column - 1; col >= 0; --col) {
+        if (!table->isColumnHidden(col)) {
+            return col;
+        }
+    }
+    return -1;
 }
 
 void initBlockListColumnHeader(BlockListWidget* table) {
@@ -1154,17 +1116,112 @@ int BlockListWidget::summaryColumnWidthForViewport(int viewportWidth) const {
     return qMax(kMinSummaryWidth, viewportWidth - fixedWithoutSummary);
 }
 
-void BlockListWidget::applyColumnLayoutToTable() {
+int BlockListWidget::columnWidthFromLayout(const BlockListColumnLayout& layout, int column) {
+    return blockListColumnWidthFromLayout(layout, column);
+}
+
+void BlockListWidget::setLayoutColumnWidth(BlockListColumnLayout& layout, int column, int width) {
+    blockListSetLayoutColumnWidth(layout, column, width);
+}
+
+void BlockListWidget::columnWidthBounds(int column, int& minOut, int& maxOut) {
+    blockListColumnWidthBounds(column, minOut, maxOut);
+}
+
+void BlockListWidget::syncColumnLayoutFromTable(BlockListColumnLayout& layout) const {
+    for (int col = 0; col < columnCount(); ++col) {
+        if (isColumnHidden(col)) {
+            continue;
+        }
+        setLayoutColumnWidth(layout, col, columnWidth(col));
+    }
+}
+
+QRect BlockListWidget::headerColumnRect(const QWidget* header,
+                                        int column,
+                                        const QRect& headerRect) const {
+    if (!header || !viewport() || column < 0 || column >= columnCount() || isColumnHidden(column)) {
+        return {};
+    }
+    const QPoint headerLeft = viewport()->mapTo(header, QPoint(columnViewportPosition(column), 0));
+    return QRect(headerLeft.x(),
+                 headerRect.top(),
+                 columnWidth(column),
+                 headerRect.height());
+}
+
+int BlockListWidget::headerDividerX(const QWidget* header, int rightColumn) const {
+    if (!header || !viewport() || rightColumn <= 0 || rightColumn >= columnCount()
+        || isColumnHidden(rightColumn)) {
+        return -1;
+    }
+    return viewport()->mapTo(header, QPoint(columnViewportPosition(rightColumn), 0)).x();
+}
+
+void BlockListWidget::reconcileSummarySlack() {
+    if (!viewport()) {
+        return;
+    }
+    const int viewportWidth = viewport()->width();
+    int total = 0;
+    for (int col = 0; col < columnCount(); ++col) {
+        if (!isColumnHidden(col)) {
+            total += columnWidth(col);
+        }
+    }
+    if (total < viewportWidth) {
+        const int extra = viewportWidth - total;
+        m_columnLayout.summaryWidth += extra;
+        setColumnWidth(kColSummary, columnWidth(kColSummary) + extra);
+    } else if (total > viewportWidth) {
+        const int deficit = total - viewportWidth;
+        const int shrinkable = qMax(0, columnWidth(kColSummary) - kMinSummaryWidth);
+        const int shrink = qMin(deficit, shrinkable);
+        if (shrink > 0) {
+            m_columnLayout.summaryWidth -= shrink;
+            setColumnWidth(kColSummary, columnWidth(kColSummary) - shrink);
+        }
+    }
+}
+
+void BlockListWidget::applyPairwiseColumnResize(int rightColumnIndex,
+                                                int deltaX,
+                                                const BlockListColumnLayout& startLayout) {
+    const int leftColumnIndex = blockListPreviousVisibleColumn(this, rightColumnIndex);
+    if (leftColumnIndex < 0) {
+        return;
+    }
+
+    int leftWidth = columnWidthFromLayout(startLayout, leftColumnIndex);
+    int rightWidth = columnWidthFromLayout(startLayout, rightColumnIndex);
+    int minLeft = 0;
+    int maxLeft = 0;
+    int minRight = 0;
+    int maxRight = 0;
+    columnWidthBounds(leftColumnIndex, minLeft, maxLeft);
+    columnWidthBounds(rightColumnIndex, minRight, maxRight);
+
+    int newLeft = qBound(minLeft, leftWidth + deltaX, maxLeft);
+    int actualDelta = newLeft - leftWidth;
+    int newRight = qBound(minRight, rightWidth - actualDelta, maxRight);
+    actualDelta = rightWidth - newRight;
+    newLeft = qBound(minLeft, leftWidth + actualDelta, maxLeft);
+
+    BlockListColumnLayout layout = startLayout;
+    setLayoutColumnWidth(layout, leftColumnIndex, newLeft);
+    setLayoutColumnWidth(layout, rightColumnIndex, newRight);
+    setColumnLayout(layout, true);
+}
+
+void BlockListWidget::applyColumnLayoutToTable(bool reconcileSlack) {
     if (columnCount() != kColumnCount) {
         return;
     }
-    const int viewportWidth = viewport() ? viewport()->width() : width();
-    const int summaryWidth = summaryColumnWidthForViewport(viewportWidth);
 
     setColumnWidth(kColIndex, m_columnLayout.indexWidth);
     setColumnWidth(kColPreview, m_columnLayout.previewWidth);
     setColumnWidth(kColAction, m_columnLayout.actionWidth);
-    setColumnWidth(kColSummary, summaryWidth);
+    setColumnWidth(kColSummary, m_columnLayout.summaryWidth);
     setColumnWidth(kColDuration, m_columnLayout.durationWidth);
     setColumnWidth(kColMatchDuration, m_columnLayout.matchDurationWidth);
     setColumnWidth(kColAttempts, m_columnLayout.attemptsWidth);
@@ -1175,6 +1232,10 @@ void BlockListWidget::applyColumnLayoutToTable() {
         setColumnWidth(kColRoiCorrection, m_columnLayout.roiCorrectionWidth);
     }
     setColumnWidth(kColMatch, m_columnLayout.matchWidth);
+
+    if (reconcileSlack) {
+        reconcileSummarySlack();
+    }
 }
 
 void BlockListWidget::setColumnLayout(const BlockListColumnLayout& layout, bool persist) {
@@ -1198,11 +1259,14 @@ void BlockListWidget::setColumnLayout(const BlockListColumnLayout& layout, bool 
     clamped.roiCorrectionWidth =
         qBound(kMinMetricColumnWidth, layout.roiCorrectionWidth, kMaxMetricColumnWidth);
     clamped.matchWidth = qBound(kMinMatchColumnWidth, layout.matchWidth, kMaxMatchColumnWidth);
+    clamped.summaryWidth =
+        qBound(kMinSummaryWidth, layout.summaryWidth, kMaxSummaryColumnWidth);
     clamped.rowHeight = UiResizeHandle::clampListRowHeight(layout.rowHeight);
 
     if (clamped.indexWidth == m_columnLayout.indexWidth
         && clamped.previewWidth == m_columnLayout.previewWidth
         && clamped.actionWidth == m_columnLayout.actionWidth
+        && clamped.summaryWidth == m_columnLayout.summaryWidth
         && clamped.durationWidth == m_columnLayout.durationWidth
         && clamped.matchDurationWidth == m_columnLayout.matchDurationWidth
         && clamped.attemptsWidth == m_columnLayout.attemptsWidth
@@ -1236,6 +1300,7 @@ void BlockListWidget::saveColumnLayout(QSettings& settings, const QString& setti
     settings.setValue(settingsKey + QStringLiteral("/indexWidth"), m_columnLayout.indexWidth);
     settings.setValue(settingsKey + QStringLiteral("/previewWidth"), m_columnLayout.previewWidth);
     settings.setValue(settingsKey + QStringLiteral("/actionWidth"), m_columnLayout.actionWidth);
+    settings.setValue(settingsKey + QStringLiteral("/summaryWidth"), m_columnLayout.summaryWidth);
     settings.setValue(settingsKey + QStringLiteral("/durationWidth"), m_columnLayout.durationWidth);
     settings.setValue(settingsKey + QStringLiteral("/matchDurationWidth"),
                      m_columnLayout.matchDurationWidth);
@@ -1262,6 +1327,7 @@ void BlockListWidget::restoreColumnLayout(const QSettings& settings, const QStri
     layout.indexWidth = readInt(settingsKey + QStringLiteral("/indexWidth"), layout.indexWidth);
     layout.previewWidth = readInt(settingsKey + QStringLiteral("/previewWidth"), layout.previewWidth);
     layout.actionWidth = readInt(settingsKey + QStringLiteral("/actionWidth"), layout.actionWidth);
+    layout.summaryWidth = readInt(settingsKey + QStringLiteral("/summaryWidth"), layout.summaryWidth);
     layout.durationWidth = readInt(settingsKey + QStringLiteral("/durationWidth"), layout.durationWidth);
     layout.matchDurationWidth =
         readInt(settingsKey + QStringLiteral("/matchDurationWidth"), layout.matchDurationWidth);
@@ -1289,50 +1355,79 @@ void BlockListWidget::wireListColumnHeader(ListColumnHeaderWidget* header, Block
     header->setObjectName(QStringLiteral("blockListHeaderRow"));
     header->setToolTip(
         BlockListWidget::tr("헤더 구분선을 드래그해 열 너비·줄 높이를 조절합니다.\n"
-                            "· 요약 열은 남는 너비를 채웁니다.\n"
-                            "· 매칭 열은 오른쪽에 고정됩니다.\n"
+                            "· 요약 열은 패널 크기에 맞춰 남는 너비를 채웁니다.\n"
                             "· 헤더 아래 가장자리: 줄 높이"));
 
     header->setRowHeightProvider([table] { return table->columnLayout().rowHeight; });
 
-    header->setPaintLabelsProvider([table](ListColumnHeaderWidget::PaintContext& ctx) {
-        const int summaryWidth = table->columnWidth(kColSummary);
-        const BlockListColumnEdges edges = blockListColumnEdges(
-            ctx.rect, table->columnLayout(), summaryWidth, table->m_roiCorrectionColumnVisible);
+    header->setPaintLabelsProvider([table, header](ListColumnHeaderWidget::PaintContext& ctx) {
         QFont headerFont = ctx.painter->font();
         headerFont.setPointSize(qMax(headerFont.pointSize(), 9));
         headerFont.setBold(true);
         ctx.painter->setFont(headerFont);
         ctx.painter->setPen(ListColumnHeaderWidget::headerTextColor(ctx.palette));
         const Qt::Alignment align = Qt::AlignHCenter | Qt::AlignVCenter;
-        ctx.painter->drawText(edges.cols.index, align, QStringLiteral("#"));
-        ctx.painter->drawText(edges.cols.preview, align, QStringLiteral("◻"));
-        ctx.painter->drawText(edges.cols.action, align, BlockListWidget::tr("동작"));
-        ctx.painter->drawText(edges.cols.summary, align, QStringLiteral("요약"));
-        ctx.painter->drawText(edges.cols.duration, align, BlockListWidget::tr("동작 시간"));
-        ctx.painter->drawText(edges.cols.matchDuration, align, BlockListWidget::tr("매칭 시간"));
-        ctx.painter->drawText(edges.cols.attempts, align, BlockListWidget::tr("시도 횟수"));
-        ctx.painter->drawText(edges.cols.returnPrev, align, BlockListWidget::tr("이전 복귀"));
-        ctx.painter->drawText(edges.cols.retry, align, BlockListWidget::tr("재시도"));
-        ctx.painter->drawText(edges.cols.score, align, BlockListWidget::tr("기준/감지"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColIndex, ctx.rect), align,
+                              QStringLiteral("#"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColPreview, ctx.rect), align,
+                              QStringLiteral("◻"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColAction, ctx.rect), align,
+                              BlockListWidget::tr("동작"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColSummary, ctx.rect), align,
+                              QStringLiteral("요약"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColDuration, ctx.rect), align,
+                              BlockListWidget::tr("동작 시간"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColMatchDuration, ctx.rect), align,
+                              BlockListWidget::tr("매칭 시간"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColAttempts, ctx.rect), align,
+                              BlockListWidget::tr("시도 횟수"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColReturnPrev, ctx.rect), align,
+                              BlockListWidget::tr("이전 복귀"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColRetryAfterNext, ctx.rect), align,
+                              BlockListWidget::tr("재시도"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColScore, ctx.rect), align,
+                              BlockListWidget::tr("기준/감지"));
         if (table->m_roiCorrectionColumnVisible) {
-            ctx.painter->drawText(edges.cols.roiCorrection, align, BlockListWidget::tr("ROI 보정"));
+            ctx.painter->drawText(table->headerColumnRect(header, kColRoiCorrection, ctx.rect),
+                                  align,
+                                  BlockListWidget::tr("ROI 보정"));
         }
-        ctx.painter->drawText(edges.cols.match, align, BlockListWidget::tr("매칭"));
+        ctx.painter->drawText(table->headerColumnRect(header, kColMatch, ctx.rect), align,
+                              BlockListWidget::tr("매칭"));
     });
 
-    header->setDividerXsProvider([table](const QRect& rect) {
-        const int summaryWidth = table->columnWidth(kColSummary);
-        const BlockListColumnEdges edges = blockListColumnEdges(
-            rect, table->columnLayout(), summaryWidth, table->m_roiCorrectionColumnVisible);
-        return blockListDividerXs(edges, table->m_roiCorrectionColumnVisible);
+    header->setDividerXsProvider([table, header](const QRect&) {
+        QList<int> xs;
+        for (int col = 1; col < table->columnCount(); ++col) {
+            if (table->isColumnHidden(col)) {
+                continue;
+            }
+            const int x = table->headerDividerX(header, col);
+            if (x >= 0) {
+                xs.append(x);
+            }
+        }
+        return xs;
     });
 
-    header->setDividerHitProvider([table](const QPoint& pos, const QRect& rect) {
-        const int summaryWidth = table->columnWidth(kColSummary);
-        const BlockListColumnEdges edges = blockListColumnEdges(
-            rect, table->columnLayout(), summaryWidth, table->m_roiCorrectionColumnVisible);
-        return blockListDividerHandleAt(pos, edges, table->m_roiCorrectionColumnVisible);
+    header->setDividerHitProvider([table, header](const QPoint& pos, const QRect&) {
+        int bestColumn = 0;
+        int bestDistance = INT_MAX;
+        for (int col = 1; col < table->columnCount(); ++col) {
+            if (table->isColumnHidden(col)) {
+                continue;
+            }
+            const int x = table->headerDividerX(header, col);
+            if (x < 0 || !UiResizeHandle::isWithinHorizontalGrab(pos.x(), x)) {
+                continue;
+            }
+            const int distance = qAbs(pos.x() - x);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestColumn = col;
+            }
+        }
+        return bestColumn;
     });
 
     header->setApplyDragProvider([table, header](int handleId, int deltaX, int deltaY, const QPoint&) {
@@ -1345,69 +1440,16 @@ void BlockListWidget::wireListColumnHeader(ListColumnHeaderWidget* header, Block
             return;
         }
 
-        BlockListColumnLayout layout = table->m_headerDragStartLayout;
-        switch (static_cast<BlockListResizeHandleId>(handleId)) {
-        case BlockListResizeHandleId::PreviewWidth:
-            layout.previewWidth = qBound(kMinPreviewColumnWidth,
-                                         table->m_headerDragStartLayout.previewWidth - deltaX,
-                                         kMaxPreviewColumnWidth);
-            break;
-        case BlockListResizeHandleId::ActionWidth:
-            layout.actionWidth = qBound(kMinActionColumnWidth,
-                                        table->m_headerDragStartLayout.actionWidth - deltaX,
-                                        kMaxActionColumnWidth);
-            break;
-        case BlockListResizeHandleId::DurationWidth:
-            layout.durationWidth = qBound(kMinMetricColumnWidth,
-                                          table->m_headerDragStartLayout.durationWidth - deltaX,
-                                          kMaxMetricColumnWidth);
-            break;
-        case BlockListResizeHandleId::MatchDurationWidth:
-            layout.matchDurationWidth =
-                qBound(kMinMetricColumnWidth,
-                        table->m_headerDragStartLayout.matchDurationWidth - deltaX,
-                        kMaxMetricColumnWidth);
-            break;
-        case BlockListResizeHandleId::AttemptsWidth:
-            layout.attemptsWidth = qBound(kMinMetricColumnWidth,
-                                          table->m_headerDragStartLayout.attemptsWidth - deltaX,
-                                          kMaxMetricColumnWidth);
-            break;
-        case BlockListResizeHandleId::ReturnPrevWidth:
-            layout.returnPrevWidth = qBound(kMinMetricColumnWidth,
-                                            table->m_headerDragStartLayout.returnPrevWidth - deltaX,
-                                            kMaxMetricColumnWidth);
-            break;
-        case BlockListResizeHandleId::RetryWidth:
-            layout.retryWidth = qBound(kMinMetricColumnWidth,
-                                       table->m_headerDragStartLayout.retryWidth - deltaX,
-                                       kMaxMetricColumnWidth);
-            break;
-        case BlockListResizeHandleId::ScoreWidth:
-            layout.scoreWidth = qBound(kMinMetricColumnWidth,
-                                       table->m_headerDragStartLayout.scoreWidth - deltaX,
-                                       kMaxMetricColumnWidth);
-            break;
-        case BlockListResizeHandleId::RoiCorrectionWidth:
-            layout.roiCorrectionWidth =
-                qBound(kMinMetricColumnWidth,
-                       table->m_headerDragStartLayout.roiCorrectionWidth - deltaX,
-                       kMaxMetricColumnWidth);
-            break;
-        case BlockListResizeHandleId::MatchWidth:
-            layout.matchWidth = qBound(kMinMatchColumnWidth,
-                                       table->m_headerDragStartLayout.matchWidth - deltaX,
-                                       kMaxMatchColumnWidth);
-            break;
-        default:
+        if (handleId <= 0 || handleId >= table->columnCount()) {
             return;
         }
-        table->setColumnLayout(layout, true);
+        table->applyPairwiseColumnResize(handleId, deltaX, table->m_headerDragStartLayout);
         header->syncToLayout();
     });
 
     QObject::connect(header, &ListColumnHeaderWidget::dividerDragStarted, table, [table]() {
-        table->m_headerDragStartLayout = table->m_columnLayout;
+        table->m_headerDragStartLayout = table->columnLayout();
+        table->syncColumnLayoutFromTable(table->m_headerDragStartLayout);
     });
 
     QObject::connect(
@@ -1422,7 +1464,7 @@ void BlockListWidget::setRoiCorrectionColumnVisible(bool visible) {
     if (QHeaderView* header = horizontalHeader()) {
         header->setSectionHidden(kColRoiCorrection, !visible);
     }
-    applyColumnLayoutToTable();
+    applyColumnLayoutToTable(true);
 }
 
 void BlockListWidget::setBlockRoiCorrection(int row, bool enabled, bool interactive) {
@@ -2883,7 +2925,7 @@ void BlockListWidget::updateDragSourceVisuals() {
 
 void BlockListWidget::resizeEvent(QResizeEvent* event) {
     QTableWidget::resizeEvent(event);
-    applyColumnLayoutToTable();
+    applyColumnLayoutToTable(true);
     if (m_columnHeader) {
         m_columnHeader->update();
     }

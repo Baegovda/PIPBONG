@@ -52,6 +52,7 @@ struct BlockListColumnLayout {
     int indexWidth = 28;
     int previewWidth = 38;
     int actionWidth = 72;
+    int summaryWidth = 160;
     int durationWidth = 72;
     int matchDurationWidth = 72;
     int attemptsWidth = 58;
@@ -308,9 +309,19 @@ private:
 
     void finishThresholdDrag(QMouseEvent* mouseEvent);
 
-    void applyColumnLayoutToTable();
+    void applyColumnLayoutToTable(bool reconcileSlack = false);
+    void reconcileSummarySlack();
+    void applyPairwiseColumnResize(int rightColumnIndex,
+                                   int deltaX,
+                                   const BlockListColumnLayout& startLayout);
+    QRect headerColumnRect(const QWidget* header, int column, const QRect& headerRect) const;
+    int headerDividerX(const QWidget* header, int rightColumn) const;
     int summaryColumnWidthForViewport(int viewportWidth) const;
     int totalFixedColumnWidth(bool includeSummaryWidth, int summaryWidth) const;
+    static int columnWidthFromLayout(const BlockListColumnLayout& layout, int column);
+    static void setLayoutColumnWidth(BlockListColumnLayout& layout, int column, int width);
+    static void columnWidthBounds(int column, int& minOut, int& maxOut);
+    void syncColumnLayoutFromTable(BlockListColumnLayout& layout) const;
 
     bool m_roiCorrectionColumnVisible = false;
     BlockListColumnLayout m_columnLayout;

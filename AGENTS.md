@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.132` (from `project(PIPBONG VERSION 0.8.132)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.133` (from `project(PIPBONG VERSION 0.8.133)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1092,6 +1092,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.133] - 2026-07-15
+
+### Fixed
+
+- Workflow block list header column resize: pairwise left/right column width transfer on divider drag (fixes inverted resize when only the right column shrank from its far edge); **요약** width stored explicitly in `BlockListColumnLayout` and slack filled only on panel resize, not on every drag; header divider positions and labels read from `QTableWidget::columnViewportPosition` so header and body stay aligned (`BlockListWidget`).
 
 ## [0.8.132] - 2026-07-15
 
