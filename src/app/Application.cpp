@@ -1,6 +1,7 @@
 #include "app/Application.h"
 
 #include "PipbongVersion.h"
+#include "ui/UiHoverFeedback.h"
 
 #include <QDir>
 #include <QIcon>
@@ -19,6 +20,8 @@ Application::Application(int& argc, char** argv)
     setApplicationName(QStringLiteral("PIPBONG"));
     setOrganizationName(QStringLiteral("PIPBONG"));
     setApplicationVersion(QStringLiteral(PIPBONG_VERSION));
+    // Once at startup — never re-apply from changeEvent (StyleChange reentrancy).
+    setStyleSheet(UiHoverFeedback::programWideStyleSheet());
 
     const QIcon appIcon(QStringLiteral(":/app/Pipbong.ico"));
     if (!appIcon.isNull()) {

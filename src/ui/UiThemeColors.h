@@ -74,43 +74,71 @@ inline void applyLabelTextColor(QLabel* label, const QColor& color) {
 inline QString hotkeyBindingLabelIdleStyleSheet(const QPalette& pal) {
     if (isDarkTheme(pal)) {
         return QStringLiteral(
-            "font-weight: bold; padding: 8px; border: 1px solid #6a7888; border-radius: 4px; "
-            "background-color: #2a323c; color: #e8eef4;");
+            "QLabel {"
+            "  font-weight: bold; padding: 8px; border: 1px solid #6a7888; border-radius: 4px;"
+            "  background-color: #2a323c; color: #e8eef4;"
+            "}"
+            "QLabel:hover {"
+            "  border-color: #8aa4bc; background-color: #323c48;"
+            "}");
     }
     return QStringLiteral(
-        "font-weight: bold; padding: 8px; border: 1px solid #bbb; border-radius: 4px; "
-        "background-color: #ffffff; color: #202020;");
+        "QLabel {"
+        "  font-weight: bold; padding: 8px; border: 1px solid #bbb; border-radius: 4px;"
+        "  background-color: #ffffff; color: #202020;"
+        "}"
+        "QLabel:hover {"
+        "  border-color: #8aa4bc; background-color: #f3f7fb;"
+        "}");
 }
 
 inline QString hotkeyBindingLabelCaptureStyleSheet(const QPalette& pal) {
     if (isDarkTheme(pal)) {
         return QStringLiteral(
-            "font-weight: bold; padding: 8px; border: 2px solid #6a9fd8; border-radius: 4px; "
-            "background-color: #1e3a52; color: #d8ebff;");
+            "QLabel {"
+            "  font-weight: bold; padding: 8px; border: 2px solid #6a9fd8; border-radius: 4px;"
+            "  background-color: #1e3a52; color: #d8ebff;"
+            "}");
     }
     return QStringLiteral(
-        "font-weight: bold; padding: 8px; border: 2px solid #6a9fd8; border-radius: 4px; "
-        "background-color: #eef4fb; color: #202020;");
+        "QLabel {"
+        "  font-weight: bold; padding: 8px; border: 2px solid #6a9fd8; border-radius: 4px;"
+        "  background-color: #eef4fb; color: #202020;"
+        "}");
 }
 
 inline QString hotkeyBindingLabelLargeIdleStyleSheet(const QPalette& pal) {
     if (isDarkTheme(pal)) {
         return QStringLiteral(
-            "font-size: 16px; font-weight: bold; padding: 12px; border: 1px solid #6a7888; "
-            "border-radius: 4px; background-color: #2a323c; color: #e8eef4;");
+            "QLabel {"
+            "  font-size: 16px; font-weight: bold; padding: 12px; border: 1px solid #6a7888;"
+            "  border-radius: 4px; background-color: #2a323c; color: #e8eef4;"
+            "}"
+            "QLabel:hover {"
+            "  border-color: #8aa4bc; background-color: #323c48;"
+            "}");
     }
     return QStringLiteral(
-        "font-size: 16px; font-weight: bold; padding: 12px; border: 1px solid #bbb; "
-        "border-radius: 4px; background-color: #ffffff; color: #202020;");
+        "QLabel {"
+        "  font-size: 16px; font-weight: bold; padding: 12px; border: 1px solid #bbb;"
+        "  border-radius: 4px; background-color: #ffffff; color: #202020;"
+        "}"
+        "QLabel:hover {"
+        "  border-color: #8aa4bc; background-color: #f3f7fb;"
+        "}");
 }
 
 inline QString hotkeyBindingLabelLargeCaptureStyleSheet(const QPalette& pal) {
     if (isDarkTheme(pal)) {
         return QStringLiteral(
-            "font-size: 16px; font-weight: bold; padding: 12px; border: 2px solid #6a9fd8; "
-            "border-radius: 4px; background-color: #1e3a52; color: #d8ebff;");
+            "QLabel {"
+            "  font-size: 16px; font-weight: bold; padding: 12px; border: 2px solid #6a9fd8;"
+            "  border-radius: 4px; background-color: #1e3a52; color: #d8ebff;"
+            "}");
     }
     return QStringLiteral(
-        "font-size: 16px; font-weight: bold; padding: 12px; border: 2px solid #6a9fd8; "
-        "border-radius: 4px; background-color: #eef4fb; color: #202020;");
+        "QLabel {"
+        "  font-size: 16px; font-weight: bold; padding: 12px; border: 2px solid #6a9fd8;"
+        "  border-radius: 4px; background-color: #eef4fb; color: #202020;"
+        "}");
 }

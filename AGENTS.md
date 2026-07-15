@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.117` (from `project(PIPBONG VERSION 0.8.117)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.118` (from `project(PIPBONG VERSION 0.8.118)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -832,6 +832,7 @@ Key files: `src/ui/widgets/ReorderableListWidget.*`, `src/ui/widgets/ListDragVis
 | Rule           | Detail                                                                                                               |
 | -------------- | -------------------------------------------------------------------------------------------------------------------- |
 | Stylesheet     | Apply **once** in constructor / `setupUi`; use `palette(...)` in QSS for theme-aware colors                          |
+| Program hover  | `Application` applies `UiHoverFeedback::programWideStyleSheet()` once at startup; custom list rows use `State_MouseOver` in delegates — never re-apply from `StyleChange` |
 | `changeEvent`  | React only to `PaletteChange` / `ApplicationPaletteChange` when updating colors                                      |
 | Dynamic colors | Use `QPalette` on labels (`setPalette`, `setStyleSheet` on children avoided) with `m_updatingTheme` reentrancy guard |
 | Never          | `StyleChange` → `setStyleSheet` / unguarded `setPalette` cascade                                                     |
@@ -1091,6 +1092,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.118] - 2026-07-15
+
+### Added
+
+- Program-wide interactive hover feedback: `UiHoverFeedback::programWideStyleSheet` applied once in `Application` (buttons, tool buttons, combos/edits/spins, stock list/table items, header sections, splitter handles, scrollbar grips, tabs); feature / profile / library list rows and workflow block rows paint `State_MouseOver` / tracked hover tint; hotkey binding chips and **고정/랜덤** switch show hover (`UiHoverFeedback`, list delegates, `AnimatedTwoWaySwitch`).
 
 ## [0.8.117] - 2026-07-15
 

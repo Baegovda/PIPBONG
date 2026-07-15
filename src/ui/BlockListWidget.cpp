@@ -1,5 +1,6 @@
 #include "ui/BlockListWidget.h"
 
+#include "ui/UiHoverFeedback.h"
 #include "ui/UiResizeHandle.h"
 
 #include "core/workflow/Block.h"
@@ -1479,6 +1480,21 @@ void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
 }
 
 bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == viewport()) {
+        switch (event->type()) {
+        case QEvent::MouseMove: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            updateHoverTableRow(rowAtViewportY(mouseEvent->pos().y()));
+            break;
+        }
+        case QEvent::Leave:
+            updateHoverTableRow(-1);
+            break;
+        default:
+            break;
+        }
+    }
+
     if (watched == viewport() && m_loopRegionPickActive && rowCount() > 0) {
         switch (event->type()) {
         case QEvent::MouseButtonPress: {
@@ -2216,6 +2232,44 @@ QColor BlockListWidget::matchScoreForegroundColor(bool succeeded, bool onMissHig
     return text.lightness() < 128 ? QColor(255, 150, 158) : QColor(190, 58, 68);
 }
 
+void BlockListWidget::updateHoverTableRow(int tableRow) {
+    if (tableRow == m_hoverTableRow) {
+        return;
+    }
+    const int previous = m_hoverTableRow;
+    m_hoverTableRow = tableRow;
+    applyIdleRowBackground(previous);
+    applyIdleRowBackground(m_hoverTableRow);
+}
+
+void BlockListWidget::applyIdleRowBackground(int tableRow) {
+    if (tableRow < 0 || tableRow >= rowCount()) {
+        return;
+    }
+    const int blockRow = blockRowForTableRow(tableRow);
+    if (blockRow < 0) {
+        return;
+    }
+    if (rowVisualHighlight(blockRow) != ExecutionHighlight::None
+        || isReturnToPreviousFlashVisible()) {
+        return;
+    }
+    if (tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow]) {
+        return;
+    }
+
+    const QPalette rowPalette = palette();
+    const bool hovered = tableRow == m_hoverTableRow
+        && !(selectionModel() && selectionModel()->isRowSelected(tableRow, QModelIndex()));
+    const QBrush brush = hovered ? QBrush(UiHoverFeedback::blendListRowHover(rowPalette))
+                                 : rowPalette.brush(QPalette::Base);
+    for (int c = 0; c < kColumnCount; ++c) {
+        if (QTableWidgetItem* cellItem = item(tableRow, c)) {
+            cellItem->setBackground(brush);
+        }
+    }
+}
+
 void BlockListWidget::applyActiveRowVisuals() {
     const QPalette rowPalette = palette();
     const QBrush normalBrush = rowPalette.brush(QPalette::Base);
@@ -2317,6 +2371,9 @@ void BlockListWidget::applyActiveRowVisuals() {
                 QColor pickTint = rowPalette.color(QPalette::Highlight);
                 pickTint.setAlpha(48);
                 cellItem->setBackground(blendOver(rowPalette.color(QPalette::Base), pickTint));
+            } else if (tableRow == m_hoverTableRow
+                       && !(selectionModel() && selectionModel()->isRowSelected(tableRow, QModelIndex()))) {
+                cellItem->setBackground(UiHoverFeedback::blendListRowHover(rowPalette));
             } else if (inLoopRegion) {
                 cellItem->setBackground(normalBrush);
             } else {

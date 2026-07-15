@@ -2,6 +2,7 @@
 
 #include "ui/UiThemeColors.h"
 
+#include <QEnterEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPropertyAnimation>
@@ -89,7 +90,8 @@ void AnimatedTwoWaySwitch::paintEvent(QPaintEvent* /*event*/) {
     const QRectF track = trackRect();
     const qreal radius = track.height() / 2.0;
 
-    const QColor trackColor = palette().color(QPalette::Midlight);
+    const QColor trackColor = m_hovered ? palette().color(QPalette::Light)
+                                        : palette().color(QPalette::Midlight);
     const QColor accentColor = palette().color(QPalette::Highlight);
     const QColor thumbColor = palette().color(QPalette::Window);
     const QColor inactiveText = secondaryHintTextColor(palette());
@@ -97,6 +99,12 @@ void AnimatedTwoWaySwitch::paintEvent(QPaintEvent* /*event*/) {
     painter.setPen(Qt::NoPen);
     painter.setBrush(trackColor);
     painter.drawRoundedRect(track, radius, radius);
+
+    if (m_hovered) {
+        painter.setPen(QPen(accentColor, 1.5));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(track.adjusted(0.75, 0.75, -0.75, -0.75), radius, radius);
+    }
 
     QFont labelFont = font();
     labelFont.setBold(true);
@@ -137,6 +145,18 @@ void AnimatedTwoWaySwitch::mousePressEvent(QMouseEvent* event) {
 
 void AnimatedTwoWaySwitch::mouseReleaseEvent(QMouseEvent* event) {
     event->accept();
+}
+
+void AnimatedTwoWaySwitch::enterEvent(QEnterEvent* event) {
+    QWidget::enterEvent(event);
+    m_hovered = true;
+    update();
+}
+
+void AnimatedTwoWaySwitch::leaveEvent(QEvent* event) {
+    QWidget::leaveEvent(event);
+    m_hovered = false;
+    update();
 }
 
 void AnimatedTwoWaySwitch::resizeEvent(QResizeEvent* event) {

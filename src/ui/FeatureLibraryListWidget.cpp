@@ -1,6 +1,7 @@
 #include "ui/FeatureLibraryListWidget.h"
 
 #include "ui/FeatureDragMime.h"
+#include "ui/UiHoverFeedback.h"
 #include "ui/UiThemeColors.h"
 
 #include <QApplication>
@@ -58,13 +59,17 @@ public:
 
         const QPalette pal = opt.widget ? opt.widget->palette() : QApplication::palette();
         const bool selected = opt.state.testFlag(QStyle::State_Selected);
+        const bool hovered = opt.state.testFlag(QStyle::State_MouseOver) && !selected;
         const QColor contentColor = primaryContentTextColor(pal, selected);
         const QColor accent = contentColor.lightness() < 128 ? QColor(0x64, 0xb5, 0xf6)
                                                              : QColor(0x1e, 0x88, 0xe5);
-        const QColor fill = selected ? pal.color(QPalette::Highlight)
-                                     : (pal.color(QPalette::Button).isValid() ? pal.color(QPalette::Button)
-                                                                              : pal.color(QPalette::AlternateBase));
-        const QColor border = selected ? accent : fill.darker(108);
+        QColor fill = selected ? pal.color(QPalette::Highlight)
+                               : (pal.color(QPalette::Button).isValid() ? pal.color(QPalette::Button)
+                                                                        : pal.color(QPalette::AlternateBase));
+        if (hovered) {
+            fill = UiHoverFeedback::cardRowHoverFill(pal);
+        }
+        const QColor border = selected || hovered ? accent : fill.darker(108);
 
         const QRect rowRect = opt.rect.adjusted(2, 1, -2, -1);
         QPainterPath path;

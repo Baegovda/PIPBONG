@@ -227,6 +227,10 @@ private:
 
     void applyActiveRowVisuals();
 
+    void updateHoverTableRow(int tableRow);
+
+    void applyIdleRowBackground(int tableRow);
+
     void onFlashAnimationValueChanged(const QVariant& value);
 
     void onFlashAnimationFinished();
@@ -301,6 +305,8 @@ private:
     QVector<BlockListRowMeta> m_tableRowMeta;
 
     int m_dragSourceRow = -1;
+
+    int m_hoverTableRow = -1;
 
     int m_pendingReorderFrom = -1;
 

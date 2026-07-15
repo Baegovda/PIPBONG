@@ -1,6 +1,7 @@
 #include "ui/ProfileListWidget.h"
 
 #include "ui/FeatureDragMime.h"
+#include "ui/UiHoverFeedback.h"
 #include "ui/UiThemeColors.h"
 
 #include <QApplication>
@@ -37,6 +38,7 @@ public:
 
         const QPalette pal = opt.widget ? opt.widget->palette() : QApplication::palette();
         const bool selected = opt.state.testFlag(QStyle::State_Selected);
+        const bool hovered = opt.state.testFlag(QStyle::State_MouseOver) && !selected;
         const bool isDefault = index.data(kDefaultProfileRole).toBool();
         const bool dropHover = index.data(kFeatureDropHoverRole).toString()
                                    == QStringLiteral("featureDropHover");
@@ -49,8 +51,10 @@ public:
         if (dropHover && !selected) {
             fill = accent;
             fill.setAlpha(36);
+        } else if (hovered && !dropHover) {
+            fill = UiHoverFeedback::cardRowHoverFill(pal);
         }
-        const QColor border = selected || dropHover ? accent : fill.darker(108);
+        const QColor border = selected || dropHover || hovered ? accent : fill.darker(108);
 
         const QRect rowRect = opt.rect.adjusted(2, 1, -2, -1);
         QPainterPath path;

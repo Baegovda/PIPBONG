@@ -31,6 +31,8 @@ protected:
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void enterEvent(QEnterEvent* event) override;
+    void leaveEvent(QEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
 private:
@@ -41,6 +43,7 @@ private:
     QString m_leftLabel;
     QString m_rightLabel;
     bool m_rightSelected = false;
+    bool m_hovered = false;
     qreal m_thumbPosition = 0.0;
     QPropertyAnimation* m_animation = nullptr;
 };

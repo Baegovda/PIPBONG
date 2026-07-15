@@ -11,6 +11,7 @@
 #include "ui/editors/FeatureEditDialog.h"
 #include "ui/editors/FeatureEditPrefs.h"
 #include "ui/UiThemeColors.h"
+#include "ui/UiHoverFeedback.h"
 #include "app/FeatureHotkeyGate.h"
 #include <QApplication>
 #include <QCursor>
@@ -281,6 +282,7 @@ void paintFeatureListRowChrome(QPainter* painter,
                                const QRect& rect,
                                bool selected,
                                bool running,
+                               bool hovered,
                                const QPalette& palette) {
     QColor rowBg = palette.color(QPalette::Base);
     if (selected) {
@@ -288,6 +290,8 @@ void paintFeatureListRowChrome(QPainter* painter,
         rowBg = QColor(rowBg.red() + (highlight.red() - rowBg.red()) / 6,
                        rowBg.green() + (highlight.green() - rowBg.green()) / 6,
                        rowBg.blue() + (highlight.blue() - rowBg.blue()) / 6);
+    } else if (hovered) {
+        rowBg = UiHoverFeedback::blendListRowHover(palette);
     }
     painter->fillRect(rect, rowBg);
 
@@ -716,6 +720,7 @@ public:
         const FeatureListWidget* listWidget = qobject_cast<const FeatureListWidget*>(opt.widget);
         const bool isDragSource = listWidget && listWidget->dragSourceRow() == index.row();
         const bool selected = opt.state & QStyle::State_Selected;
+        const bool hovered = (opt.state & QStyle::State_MouseOver) && !selected;
         const QColor mutedColor = featureListMutedTextColor(opt.palette);
 
         painter->save();
@@ -737,7 +742,7 @@ public:
             return;
         }
 
-        paintFeatureListRowChrome(painter, opt.rect, selected, isRunning, opt.palette);
+        paintFeatureListRowChrome(painter, opt.rect, selected, isRunning, hovered, opt.palette);
         if (!featureEnabled) {
             QColor disabledOverlay = opt.palette.color(QPalette::Mid);
             disabledOverlay.setAlpha(48);
@@ -847,6 +852,10 @@ void FeatureListPanel::setupUi() {
 
     m_list = new FeatureListWidget(tableFrame);
     m_list->setObjectName(QStringLiteral("featureListView"));
+    m_list->setMouseTracking(true);
+    if (m_list->viewport()) {
+        m_list->viewport()->setMouseTracking(true);
+    }
     m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_list->setUniformItemSizes(true);
     m_list->setContextMenuPolicy(Qt::CustomContextMenu);

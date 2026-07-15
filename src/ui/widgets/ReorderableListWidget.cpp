@@ -83,6 +83,10 @@ ReorderableListWidget::ReorderableListWidget(QWidget* parent)
     setDragDropOverwriteMode(false);
     setDropIndicatorShown(false);
     setReorderEnabled(true);
+    setMouseTracking(true);
+    if (viewport()) {
+        viewport()->setMouseTracking(true);
+    }
 
     m_dropIndicator = new DropInsertionIndicator(viewport());
     m_dropIndicator->hide();
