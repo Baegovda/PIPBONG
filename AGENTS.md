@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.143` (from `project(PIPBONG VERSION 0.8.143)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.144` (from `project(PIPBONG VERSION 0.8.144)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1159,6 +1159,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.144] - 2026-07-16
+
+### Changed
+
+- Feature list: F2 inline rename editor and all row cells use horizontal center alignment (`FeatureListItemDelegate`, `configureListItem`).
 
 ## [0.8.143] - 2026-07-15
 

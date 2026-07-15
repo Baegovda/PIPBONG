@@ -474,7 +474,7 @@ public:
         auto* edit = new QLineEdit(parent);
         edit->setFrame(true);
         edit->setFont(option.font);
-        edit->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        edit->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
         return edit;
     }
     void updateEditorGeometry(QWidget* editor,
@@ -1436,6 +1436,7 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
     const QString modeText = featureRunModeCompact(feature.runMode(), feature.repeatCount());
     const HotkeyBinding& hotkey = feature.hotkey();
     item->setText(featureName);
+    item->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
     item->setSizeHint(QSize(0, m_columnLayout.rowHeight));
     item->setData(kFeatureIdRole, QString::fromStdString(feature.id()));
     item->setData(kFeatureNameRole, featureName);
