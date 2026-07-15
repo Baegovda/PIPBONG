@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.136` (from `project(PIPBONG VERSION 0.8.136)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.137` (from `project(PIPBONG VERSION 0.8.137)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1092,6 +1092,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.137] - 2026-07-15
+
+### Fixed
+
+- Workflow block list header: missing divider/hit-test between **동작** and **요약** — added `summaryDividerX` so the column boundary is draggable like other metrics (`BlockListWidget`).
 
 ## [0.8.136] - 2026-07-15
 

@@ -208,6 +208,7 @@ struct BlockListColumnEdges {
     BlockListColumnRects cols;
     int previewDividerX = 0;
     int actionDividerX = 0;
+    int summaryDividerX = 0;
     int durationDividerX = 0;
     int matchDurationDividerX = 0;
     int attemptsDividerX = 0;
@@ -239,6 +240,7 @@ BlockListColumnEdges blockListColumnEdgesFromTable(const BlockListWidget* table,
     edges.cols.action = columnRect(kColAction);
     edges.actionDividerX = edges.cols.action.isValid() ? edges.cols.action.left() : 0;
     edges.cols.summary = columnRect(kColSummary);
+    edges.summaryDividerX = edges.cols.summary.isValid() ? edges.cols.summary.left() : 0;
     edges.cols.duration = columnRect(kColDuration);
     edges.durationDividerX = edges.cols.duration.isValid() ? edges.cols.duration.left() : 0;
     edges.cols.matchDuration = columnRect(kColMatchDuration);
@@ -269,6 +271,7 @@ int blockListDividerHandleAt(const QPoint& pos, const BlockListColumnEdges& edge
     };
     QList<Candidate> candidates = {{edges.previewDividerX, kColPreview},
                                    {edges.actionDividerX, kColAction},
+                                   {edges.summaryDividerX, kColSummary},
                                    {edges.durationDividerX, kColDuration},
                                    {edges.matchDurationDividerX, kColMatchDuration},
                                    {edges.attemptsDividerX, kColAttempts},
@@ -298,6 +301,7 @@ int blockListDividerHandleAt(const QPoint& pos, const BlockListColumnEdges& edge
 QList<int> blockListDividerXs(const BlockListColumnEdges& edges, bool roiVisible) {
     QList<int> xs = {edges.previewDividerX,
                      edges.actionDividerX,
+                     edges.summaryDividerX,
                      edges.durationDividerX,
                      edges.matchDurationDividerX,
                      edges.attemptsDividerX,
