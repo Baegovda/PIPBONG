@@ -19,7 +19,7 @@ constexpr int kMaxListRowHeightPx = 64;
 constexpr int kDefaultFeatureListRowHeightPx = 26;
 constexpr int kDefaultBlockListRowHeightPx = 36;
 /// Mouse pixels per 1 px row-height change on list header bottom-edge drag (higher = lower sensitivity).
-constexpr int kListRowHeightDragPixelsPerStep = 4;
+constexpr int kListRowHeightDragPixelsPerStep = 8;
 
 inline int scaleListRowHeightDragDelta(int deltaY) {
     const int step = qMax(1, kListRowHeightDragPixelsPerStep);

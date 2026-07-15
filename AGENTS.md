@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.145` (from `project(PIPBONG VERSION 0.8.145)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.146` (from `project(PIPBONG VERSION 0.8.146)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -976,7 +976,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `ListColumnHeaderWidget` on feature list and workflow block list (`FeatureListPanel`, `BlockListWidget`) |
 | In-cell horizontal drag slack                                         | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
-| Row-height divider (list header bottom)                               | `kDividerHalfHeightPx` (bottom 10 px); drag delta via `scaleListRowHeightDragDelta` (`kListRowHeightDragPixelsPerStep` = 4); clamp via `clampListRowHeight` — feature list + workflow block list (`ListColumnHeaderWidget`) |
+| Row-height divider (list header bottom)                               | `kDividerHalfHeightPx` (bottom 10 px); drag delta via `scaleListRowHeightDragDelta` (`kListRowHeightDragPixelsPerStep` = 8); clamp via `clampListRowHeight` — feature list + workflow block list (`ListColumnHeaderWidget`) |
 | `QSplitter` handles                                                   | Always call `UiResizeHandle::configureSplitter` (12 px handle + non-collapsible panes) — also via `UiStateManager::registerSplitter` |
 | Frameless main window edges                                           | `kWindowResizeBorderPx` (10 px) — `MainWindow::nativeEvent`                                                          |
 
@@ -1159,6 +1159,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.146] - 2026-07-16
+
+### Changed
+
+- List header bottom-edge row-height drag sensitivity halved again: `kListRowHeightDragPixelsPerStep` 4 → 8 (`UiResizeHandle`, `ListColumnHeaderWidget`).
 
 ## [0.8.145] - 2026-07-16
 
