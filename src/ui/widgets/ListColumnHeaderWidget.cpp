@@ -6,6 +6,7 @@
 #include <QEnterEvent>
 #include <QEvent>
 #include <QMouseEvent>
+#include <climits>
 #include <QPainter>
 #include <QPalette>
 
@@ -79,14 +80,44 @@ void ListColumnHeaderWidget::paintDividerGuides(QPainter* painter,
                                                 const QList<int>& dividerXs,
                                                 int height,
                                                 const QPalette& pal) {
-    QColor guideColor = pal.color(QPalette::Mid);
-    if (darkThemeFromPalette(pal) && guideColor.lightness() < 90) {
-        guideColor = guideColor.lighter(140);
+    const bool dark = darkThemeFromPalette(pal);
+    QColor lineColor = pal.color(QPalette::Mid);
+    if (dark && lineColor.lightness() < 90) {
+        lineColor = lineColor.lighter(150);
+    } else if (!dark) {
+        lineColor = lineColor.darker(115);
     }
-    guideColor.setAlpha(70);
-    painter->setPen(QPen(guideColor, 1));
+    lineColor.setAlpha(dark ? 170 : 150);
+
+    const int lineTop = 3;
+    const int lineBottom = qMax(lineTop + 1, height - 3);
+    painter->setPen(QPen(lineColor, 1));
+    int lastX = INT_MIN;
     for (int x : dividerXs) {
-        painter->drawLine(x, 0, x, height);
+        if (x <= 0 || x == lastX) {
+            continue;
+        }
+        lastX = x;
+        painter->drawLine(x, lineTop, x, lineBottom);
+    }
+
+    QColor pipeColor = headerTextColor(pal);
+    pipeColor.setAlpha(dark ? 150 : 130);
+    painter->setPen(pipeColor);
+    QFont pipeFont = painter->font();
+    pipeFont.setPointSize(qMax(8, pipeFont.pointSize() - 1));
+    pipeFont.setBold(false);
+    painter->setFont(pipeFont);
+    const QString pipe = QStringLiteral("|");
+    const QFontMetrics metrics(pipeFont);
+    const int pipeBaseline = (height + metrics.ascent() - metrics.descent()) / 2;
+    lastX = INT_MIN;
+    for (int x : dividerXs) {
+        if (x <= 0 || x == lastX) {
+            continue;
+        }
+        lastX = x;
+        painter->drawText(x - metrics.horizontalAdvance(pipe) / 2, pipeBaseline, pipe);
     }
 }
 
