@@ -19,7 +19,6 @@
 #include <QDragMoveEvent>
 #include <QDropEvent>
 #include <QEvent>
-#include <QHoverEvent>
 #include <QHeaderView>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -63,260 +62,6 @@ constexpr int kColMatch = 11;
 constexpr int kColumnCount = 12;
 constexpr int kMatchColumnWidth = kThumbnailSize + 6;
 
-void setDefaultBlockListWidths(QHeaderView* header);
-void configureBlockListHeader(QHeaderView* header);
-void layoutBlockListColumns(QTableWidget* table, int protectColumn = -1);
-
-/*
- * Custom column header — Qt Interactive/Stretch are not used.
- * All sections are Fixed; this class owns divider hit-test + drag via the
- * header viewport eventFilter (QHeaderView mouse routing is unreliable here).
- *
- * - No row-height drag (user does not need it on this header)
- * - 매칭 pinned on the right; 요약 fills leftover width
- * - Divider right of 요약 resizes the RIGHT neighbor (동작 시간 …)
- */
-class BlockListColumnHeader final : public QHeaderView {
-public:
-    explicit BlockListColumnHeader(BlockListWidget* owner)
-        : QHeaderView(Qt::Horizontal, owner)
-        , m_owner(owner) {
-        setMouseTracking(true);
-        if (QWidget* vp = viewport()) {
-            vp->setMouseTracking(true);
-        }
-        setSectionsClickable(true);
-        setHighlightSections(false);
-        setAttribute(Qt::WA_Hover, true);
-    }
-
-protected:
-    bool eventFilter(QObject* watched, QEvent* event) override {
-        if (watched == viewport() && handleViewportEvent(event)) {
-            return true;
-        }
-        return QHeaderView::eventFilter(watched, event);
-    }
-
-    bool event(QEvent* event) override {
-        if (event->type() == QEvent::HoverMove) {
-            auto* hover = static_cast<QHoverEvent*>(event);
-            if (!m_dragging) {
-                updateHoverCursor(hover->position().toPoint().x());
-            }
-        } else if (event->type() == QEvent::HoverLeave && !m_dragging) {
-            clearHoverCursor();
-        }
-        return QHeaderView::event(event);
-    }
-
-    void mousePressEvent(QMouseEvent* event) override {
-        if (tryBeginDrag(event)) {
-            return;
-        }
-        QHeaderView::mousePressEvent(event);
-    }
-
-    void mouseMoveEvent(QMouseEvent* event) override {
-        if (m_dragging) {
-            applyColumnDrag(event->globalPosition().toPoint().x());
-            event->accept();
-            return;
-        }
-        updateHoverCursor(event->pos().x());
-        event->accept();
-    }
-
-    void mouseReleaseEvent(QMouseEvent* event) override {
-        if (endDrag(event->pos().x())) {
-            event->accept();
-            return;
-        }
-        QHeaderView::mouseReleaseEvent(event);
-    }
-
-    void leaveEvent(QEvent* event) override {
-        if (!m_dragging) {
-            clearHoverCursor();
-        }
-        QHeaderView::leaveEvent(event);
-    }
-
-private:
-    bool handleViewportEvent(QEvent* event) {
-        switch (event->type()) {
-        case QEvent::MouseButtonPress: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            return tryBeginDrag(mouseEvent);
-        }
-        case QEvent::MouseMove: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            if (m_dragging && (mouseEvent->buttons() & Qt::LeftButton)) {
-                applyColumnDrag(mouseEvent->globalPosition().toPoint().x());
-                return true;
-            }
-            updateHoverCursor(mouseEvent->pos().x());
-            // Eat move so Fixed-section QHeaderView cannot force the arrow cursor.
-            return true;
-        }
-        case QEvent::MouseButtonRelease: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            return endDrag(mouseEvent->pos().x());
-        }
-        default:
-            return false;
-        }
-    }
-
-    bool tryBeginDrag(QMouseEvent* event) {
-        if (!event || event->button() != Qt::LeftButton || !m_owner) {
-            return false;
-        }
-        const int target = resizeTargetAt(event->pos().x());
-        if (target < 0) {
-            return false;
-        }
-        m_dragging = true;
-        m_resizeColumn = target;
-        m_pressGlobalX = event->globalPosition().toPoint().x();
-        m_startWidth = sectionSize(target);
-        applyCursor(Qt::SizeHorCursor);
-        event->accept();
-        return true;
-    }
-
-    bool endDrag(int hoverX) {
-        if (!m_dragging) {
-            return false;
-        }
-        m_dragging = false;
-        m_resizeColumn = -1;
-        updateHoverCursor(hoverX);
-        return true;
-    }
-
-    void applyCursor(const QCursor& cursor) {
-        setCursor(cursor);
-        if (QWidget* vp = viewport()) {
-            vp->setCursor(cursor);
-        }
-    }
-
-    void clearHoverCursor() {
-        unsetCursor();
-        if (QWidget* vp = viewport()) {
-            vp->unsetCursor();
-        }
-    }
-
-    void updateHoverCursor(int x) {
-        if (resizeTargetAt(x) >= 0) {
-            applyCursor(Qt::SizeHorCursor);
-        } else {
-            clearHoverCursor();
-        }
-    }
-
-    int nextVisibleLogical(int afterLogical) const {
-        const int visual = visualIndex(afterLogical);
-        for (int v = visual + 1; v < count(); ++v) {
-            const int logical = logicalIndex(v);
-            if (logical >= 0 && !isSectionHidden(logical)) {
-                return logical;
-            }
-        }
-        return -1;
-    }
-
-    bool boundaryAt(int x, int* leftLogical, int* rightLogical) const {
-        int bestDist = UiResizeHandle::kDividerHalfWidthPx + 1;
-        int bestLeft = -1;
-        int bestRight = -1;
-        for (int visual = 0; visual < count(); ++visual) {
-            const int logical = logicalIndex(visual);
-            if (logical < 0 || isSectionHidden(logical)) {
-                continue;
-            }
-            const int right = nextVisibleLogical(logical);
-            if (right < 0) {
-                break;
-            }
-            const int edge = sectionViewportPosition(logical) + sectionSize(logical);
-            const int dist = qAbs(x - edge);
-            if (dist < bestDist) {
-                bestDist = dist;
-                bestLeft = logical;
-                bestRight = right;
-            }
-        }
-        if (bestLeft < 0) {
-            return false;
-        }
-        *leftLogical = bestLeft;
-        *rightLogical = bestRight;
-        return true;
-    }
-
-    int resizeTargetAt(int x) const {
-        int left = -1;
-        int right = -1;
-        if (!boundaryAt(x, &left, &right)) {
-            return -1;
-        }
-        if (right == kColMatch) {
-            if (left == kColSummary || left < 0) {
-                return -1;
-            }
-            return left;
-        }
-        if (left == kColSummary) {
-            return right;
-        }
-        if (left == kColMatch) {
-            return -1;
-        }
-        return left;
-    }
-
-    void applyColumnDrag(int globalX) {
-        if (!m_owner || m_resizeColumn < 0) {
-            return;
-        }
-        const int viewportWidth = m_owner->viewport()->width();
-        if (viewportWidth <= 0) {
-            return;
-        }
-        const int minSize = minimumSectionSize();
-        int others = 0;
-        for (int column = 0; column < kColumnCount; ++column) {
-            if (column == m_resizeColumn || column == kColSummary || isSectionHidden(column)) {
-                continue;
-            }
-            others += sectionSize(column);
-        }
-        const int maxWidth = qMax(minSize, viewportWidth - others - minSize);
-        const int delta = globalX - m_pressGlobalX;
-        const int newWidth = qBound(minSize, m_startWidth + delta, maxWidth);
-        if (newWidth == sectionSize(m_resizeColumn)) {
-            return;
-        }
-
-        {
-            const QSignalBlocker blocker(this);
-            resizeSection(m_resizeColumn, newWidth);
-            m_owner->setColumnWidth(m_resizeColumn, newWidth);
-        }
-        layoutBlockListColumns(m_owner, m_resizeColumn);
-        applyCursor(Qt::SizeHorCursor);
-    }
-
-    BlockListWidget* m_owner = nullptr;
-    bool m_dragging = false;
-    int m_resizeColumn = -1;
-    int m_pressGlobalX = 0;
-    int m_startWidth = 0;
-};
-
 void setDefaultBlockListWidths(QHeaderView* header) {
     if (!header) {
         return;
@@ -336,6 +81,13 @@ void setDefaultBlockListWidths(QHeaderView* header) {
     header->resizeSection(kColMatch, kMatchColumnWidth);
 }
 
+/*
+ * Stock Qt resize (no custom drag):
+ *   - Metric columns: Interactive — user drags dividers (including 요약|동작 시간)
+ *   - 요약: Stretch — fills leftover; do not resizeSection(요약)
+ *   - 매칭: Fixed on the right
+ * Fighting Stretch with programmatic summary widths was why right-side drag failed.
+ */
 void configureBlockListHeader(QHeaderView* header) {
     if (!header) {
         return;
@@ -347,12 +99,19 @@ void configureBlockListHeader(QHeaderView* header) {
     header->setSectionsMovable(false);
     header->setFirstSectionMovable(false);
     header->setDefaultAlignment(Qt::AlignCenter);
+    header->setSectionsClickable(true);
     for (int column = 0; column < kColumnCount; ++column) {
-        header->setSectionResizeMode(column, QHeaderView::Fixed);
+        if (column == kColMatch) {
+            header->setSectionResizeMode(column, QHeaderView::Fixed);
+        } else if (column == kColSummary) {
+            header->setSectionResizeMode(column, QHeaderView::Stretch);
+        } else {
+            header->setSectionResizeMode(column, QHeaderView::Interactive);
+        }
     }
 }
 
-void layoutBlockListColumns(QTableWidget* table, int protectColumn) {
+void layoutBlockListColumns(QTableWidget* table) {
     QHeaderView* header = table ? table->horizontalHeader() : nullptr;
     if (!header) {
         return;
@@ -365,8 +124,9 @@ void layoutBlockListColumns(QTableWidget* table, int protectColumn) {
     const QSignalBlocker blocker(header);
     const int minSize = header->minimumSectionSize();
     header->resizeSection(kColMatch, kMatchColumnWidth);
-    table->setColumnWidth(kColMatch, kMatchColumnWidth);
 
+    // Stretch 요약 needs at least minSize. If Interactive metrics overflow, shrink
+    // them (never assign an explicit 요약 width — that breaks right-side handles).
     int used = kMatchColumnWidth;
     for (int column = 0; column < kColumnCount; ++column) {
         if (column == kColSummary || column == kColMatch || header->isSectionHidden(column)) {
@@ -374,33 +134,18 @@ void layoutBlockListColumns(QTableWidget* table, int protectColumn) {
         }
         used += header->sectionSize(column);
     }
-
-    int summaryWidth = viewportWidth - used;
-    if (summaryWidth < minSize) {
-        int need = minSize - summaryWidth;
-        for (int column = kColScore; column >= kColDuration && need > 0; --column) {
-            if (column == protectColumn || header->isSectionHidden(column)) {
-                continue;
-            }
-            const int current = header->sectionSize(column);
-            const int shrink = qMin(need, qMax(0, current - minSize));
-            if (shrink > 0) {
-                header->resizeSection(column, current - shrink);
-                table->setColumnWidth(column, current - shrink);
-                need -= shrink;
-            }
+    int overflow = used + minSize - viewportWidth;
+    for (int column = kColScore; column >= kColDuration && overflow > 0; --column) {
+        if (header->isSectionHidden(column)) {
+            continue;
         }
-        used = kMatchColumnWidth;
-        for (int column = 0; column < kColumnCount; ++column) {
-            if (column == kColSummary || column == kColMatch || header->isSectionHidden(column)) {
-                continue;
-            }
-            used += header->sectionSize(column);
+        const int current = header->sectionSize(column);
+        const int shrink = qMin(overflow, qMax(0, current - minSize));
+        if (shrink > 0) {
+            header->resizeSection(column, current - shrink);
+            overflow -= shrink;
         }
-        summaryWidth = qMax(minSize, viewportWidth - used);
     }
-    header->resizeSection(kColSummary, summaryWidth);
-    table->setColumnWidth(kColSummary, summaryWidth);
 
     if (QScrollBar* bar = table->horizontalScrollBar()) {
         bar->setValue(0);
@@ -431,11 +176,6 @@ void initBlockListColumnHeader(BlockListWidget* table) {
     configureBlockListHeader(header);
     setDefaultBlockListWidths(header);
     layoutBlockListColumns(table);
-}
-
-void installCustomBlockListHeader(BlockListWidget* table) {
-    table->setHorizontalHeader(new BlockListColumnHeader(table));
-    initBlockListColumnHeader(table);
 }
 
 class WorkflowChipHeaderRowWidget : public QWidget {
@@ -1169,7 +909,7 @@ private:
 BlockListWidget::BlockListWidget(QWidget* parent)
     : QTableWidget(parent)
     , m_blockRowHeight(UiResizeHandle::kDefaultBlockListRowHeightPx) {
-    installCustomBlockListHeader(this);
+    initBlockListColumnHeader(this);
     setIconSize(QSize(kThumbnailSize, kThumbnailSize));
     setItemDelegateForColumn(0, new BlockListChromeRowDelegate(this));
     setItemDelegateForColumn(1, new CenterIconDelegate(this));
