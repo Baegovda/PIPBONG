@@ -68,7 +68,6 @@
 #include <QFileIconProvider>
 #include <QGroupBox>
 #include <QHBoxLayout>
-#include <QHeaderView>
 #include <QIcon>
 #include <QInputDialog>
 #include <QLabel>
@@ -707,9 +706,7 @@ void MainWindow::setupUiState() {
     m_uiState->registerSplitter(m_mainVerticalSplitter, QStringLiteral("main/vertical"));
     m_uiState->registerSplitter(m_bottomHorizontalSplitter, QStringLiteral("main/bottomHorizontal"));
     m_uiState->registerSplitter(m_workflowEditor->workflowSplitter(), QStringLiteral("workflowEditor/vertical"));
-    if (QHeaderView* blockHeader = m_workflowEditor->blockListHeader()) {
-        m_uiState->registerHeader(blockHeader, QStringLiteral("workflowBlockList/header_v3"));
-    }
+    // Block-list columns are laid out at runtime (매칭 pinned); do not persist header state.
     m_uiState->registerSettingsHooks(
         QStringLiteral("featureList/columns"),
         [this](QSettings& settings) {
