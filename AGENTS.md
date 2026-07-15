@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.140` (from `project(PIPBONG VERSION 0.8.140)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.141` (from `project(PIPBONG VERSION 0.8.141)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1092,6 +1092,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.141] - 2026-07-15
+
+### Fixed
+
+- Workflow editor: block-list vs **블록 추가** vertical splitter stays draggable when no feature is selected (no longer disables the whole panel in `WorkflowEditorPanel::refresh`).
 
 ## [0.8.140] - 2026-07-15
 

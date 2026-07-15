@@ -984,11 +984,11 @@ void WorkflowEditorPanel::refresh() {
     if (!m_feature) {
         m_blockList->setLoopRegions({});
         clearLoopTiming();
-        setEnabled(false);
+        updateWorkflowToolButtonStates();
+        setEditingEnabled(m_editingEnabled);
         return;
     }
 
-    setEnabled(true);
     updateTitleText();
 
     const auto& blocks = m_feature->workflow().blocks();
@@ -1071,24 +1071,27 @@ void WorkflowEditorPanel::updateWorkflowToolButtonStates() {
         }
     }
 
+    const bool canEdit = m_editingEnabled && m_feature != nullptr;
+
     if (m_removeAllWaitButton) {
-        m_removeAllWaitButton->setEnabled(m_editingEnabled && hasWait);
+        m_removeAllWaitButton->setEnabled(canEdit && hasWait);
     }
     if (m_insertWaitBetweenButton) {
-        m_insertWaitBetweenButton->setEnabled(m_editingEnabled && blockCount >= 2);
+        m_insertWaitBetweenButton->setEnabled(canEdit && blockCount >= 2);
     }
     if (m_loopRegionsButton) {
-        m_loopRegionsButton->setEnabled(m_editingEnabled && blockCount > 0);
+        m_loopRegionsButton->setEnabled(canEdit && blockCount > 0);
     }
 }
 
 void WorkflowEditorPanel::setEditingEnabled(bool enabled) {
     m_editingEnabled = enabled;
+    const bool canEdit = enabled && m_feature != nullptr;
     for (QPushButton* button : m_addTypeButtons) {
-        button->setEnabled(enabled);
+        button->setEnabled(canEdit);
     }
     updateWorkflowToolButtonStates();
-    m_blockList->setReorderEnabled(enabled);
+    m_blockList->setReorderEnabled(canEdit);
     if (!enabled) {
         setLoopRegionPickMode(false);
     }
