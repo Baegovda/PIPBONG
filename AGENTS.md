@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.156` (from `project(PIPBONG VERSION 0.8.156)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.157` (from `project(PIPBONG VERSION 0.8.157)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1176,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.157] - 2026-07-16
+
+### Changed
+
+- **메모장** chrome uses app theme colors (`palette(base)` / `palette(mid)` / `UiThemeColors`) instead of yellow post-it styling; frameless card layout retained (`MemoDialog`).
 
 ## [0.8.156] - 2026-07-16
 

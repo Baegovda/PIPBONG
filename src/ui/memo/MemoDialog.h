@@ -7,6 +7,7 @@ class QLabel;
 class QPushButton;
 class QTextEdit;
 class QTimer;
+class QEvent;
 class QMouseEvent;
 class QPaintEvent;
 class QResizeEvent;
@@ -23,6 +24,7 @@ public:
     void saveNow();
 
 protected:
+    void changeEvent(QEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void paintEvent(QPaintEvent* event) override;

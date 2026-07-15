@@ -1,11 +1,12 @@
 #include "ui/memo/MemoDialog.h"
 
 #include "storage/ProfileMemoStore.h"
+#include "ui/UiThemeColors.h"
 
 #include <QCloseEvent>
+#include <QEvent>
 #include <QFont>
 #include <QLabel>
-#include <QLinearGradient>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
@@ -23,7 +24,7 @@ QString memoOpenSettingsKey(const QString& profileId) {
 }
 
 constexpr int kShadowSize = 8;
-constexpr int kNoteRadius = 4;
+constexpr int kNoteRadius = 10;
 
 } // namespace
 
@@ -61,12 +62,12 @@ MemoDialog::MemoDialog(QWidget* parent)
         "QTextEdit {"
         "  background: transparent;"
         "  border: none;"
-        "  color: #4a4435;"
-        "  selection-background-color: #ffe082;"
-        "  selection-color: #3a3428;"
+        "  color: palette(text);"
+        "  selection-background-color: palette(highlight);"
+        "  selection-color: palette(highlighted-text);"
         "}"
         "QTextEdit::placeholder {"
-        "  color: #9a8f6e;"
+        "  color: palette(placeholderText);"
         "}"));
 
     auto* layout = new QVBoxLayout(this);
@@ -124,6 +125,19 @@ void MemoDialog::scheduleSave() {
     m_saveTimer->start();
 }
 
+void MemoDialog::changeEvent(QEvent* event) {
+    QDialog::changeEvent(event);
+    switch (event->type()) {
+    case QEvent::PaletteChange:
+    case QEvent::ApplicationPaletteChange:
+        updateChrome();
+        update();
+        break;
+    default:
+        break;
+    }
+}
+
 void MemoDialog::closeEvent(QCloseEvent* event) {
     saveNow();
     persistGeometry();
@@ -146,6 +160,11 @@ void MemoDialog::showEvent(QShowEvent* event) {
 void MemoDialog::paintEvent(QPaintEvent* event) {
     Q_UNUSED(event);
 
+    const QPalette pal = palette();
+    const QColor surface = pal.color(QPalette::Base);
+    const QColor border = pal.color(QPalette::Mid);
+    const bool dark = isDarkTheme(pal);
+
     const QRect full = rect();
     const QRect noteRect = full.adjusted(0, 0, -kShadowSize, -kShadowSize);
 
@@ -153,31 +172,15 @@ void MemoDialog::paintEvent(QPaintEvent* event) {
     painter.setRenderHint(QPainter::Antialiasing, true);
 
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(0, 0, 0, 42));
+    painter.setBrush(dark ? QColor(0, 0, 0, 72) : QColor(0, 0, 0, 38));
     painter.drawRoundedRect(noteRect.translated(kShadowSize, kShadowSize), kNoteRadius, kNoteRadius);
 
-    QLinearGradient paperGradient(noteRect.topLeft(), noteRect.bottomLeft());
-    paperGradient.setColorAt(0.0, QColor(0xff, 0xf9, 0xc0));
-    paperGradient.setColorAt(1.0, QColor(0xff, 0xf3, 0x9a));
-    painter.setBrush(paperGradient);
-    painter.setPen(QPen(QColor(0xe6, 0xd7, 0x78), 1));
+    painter.setBrush(surface);
+    painter.setPen(QPen(border, 1));
     painter.drawRoundedRect(noteRect, kNoteRadius, kNoteRadius);
 
-    const int fold = 18;
-    const QPoint foldTopRight(noteRect.right(), noteRect.top());
-    QPolygon foldTriangle;
-    foldTriangle << foldTopRight << QPoint(foldTopRight.x() - fold, foldTopRight.y())
-                 << QPoint(foldTopRight.x(), foldTopRight.y() + fold);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(0xf0, 0xe2, 0x88));
-    painter.drawPolygon(foldTriangle);
-
-    painter.setPen(QPen(QColor(0xd8, 0xc8, 0x70), 1));
-    painter.drawLine(foldTopRight.x() - fold, foldTopRight.y(),
-                     foldTopRight.x(), foldTopRight.y() + fold);
-
     const int ruleY = noteRect.top() + m_headerHeight;
-    painter.setPen(QPen(QColor(0xeb, 0xdf, 0x9a), 1));
+    painter.setPen(QPen(border, 1));
     painter.drawLine(noteRect.left() + 10, ruleY, noteRect.right() - 10, ruleY);
 }
 
@@ -265,13 +268,15 @@ void MemoDialog::updateChrome() {
     } else {
         m_profileLabel->setText(m_profileDisplayName);
     }
-    m_profileLabel->setStyleSheet(QStringLiteral(
-        "color: #7a6f52; background: transparent; padding-right: 28px;"));
+
+    const QPalette pal = palette();
+    applyLabelTextColor(m_profileLabel, secondaryHintTextColor(pal));
+    m_profileLabel->setStyleSheet(QStringLiteral("background: transparent; padding-right: 28px;"));
 
     if (m_closeButton) {
         m_closeButton->setStyleSheet(QStringLiteral(
             "QPushButton {"
-            "  color: #8a7d5c;"
+            "  color: palette(windowText);"
             "  background: transparent;"
             "  border: none;"
             "  font-size: 16px;"
@@ -279,8 +284,8 @@ void MemoDialog::updateChrome() {
             "  border-radius: 12px;"
             "}"
             "QPushButton:hover {"
-            "  color: #4a4435;"
-            "  background: rgba(0, 0, 0, 12);"
+            "  color: palette(text);"
+            "  background: palette(midlight);"
             "}"));
     }
 }
