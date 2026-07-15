@@ -62,96 +62,6 @@ constexpr int kColMatch = 11;
 constexpr int kColumnCount = 12;
 constexpr int kMatchColumnWidth = kThumbnailSize + 6;
 
-void setDefaultBlockListWidths(QHeaderView* header) {
-    if (!header) {
-        return;
-    }
-    const QSignalBlocker blocker(header);
-    header->resizeSection(kColIndex, 28);
-    header->resizeSection(kColPreview, kThumbnailSize + 6);
-    header->resizeSection(kColAction, 72);
-    header->resizeSection(kColSummary, 160);
-    header->resizeSection(kColDuration, 72);
-    header->resizeSection(kColMatchDuration, 72);
-    header->resizeSection(kColAttempts, 58);
-    header->resizeSection(kColReturnPrev, 52);
-    header->resizeSection(kColRetryAfterNext, 52);
-    header->resizeSection(kColScore, 78);
-    header->resizeSection(kColRoiCorrection, 52);
-    header->resizeSection(kColMatch, kMatchColumnWidth);
-}
-
-/*
- * Stock Qt resize (no custom drag):
- *   - Metric columns: Interactive — user drags dividers (including 요약|동작 시간)
- *   - 요약: Stretch — fills leftover; do not resizeSection(요약)
- *   - 매칭: Fixed on the right
- * Fighting Stretch with programmatic summary widths was why right-side drag failed.
- */
-void configureBlockListHeader(QHeaderView* header) {
-    if (!header) {
-        return;
-    }
-    header->setMinimumSectionSize(32);
-    header->setDefaultSectionSize(72);
-    header->setCascadingSectionResizes(false);
-    header->setStretchLastSection(false);
-    header->setSectionsMovable(false);
-    header->setFirstSectionMovable(false);
-    header->setDefaultAlignment(Qt::AlignCenter);
-    header->setSectionsClickable(true);
-    for (int column = 0; column < kColumnCount; ++column) {
-        if (column == kColMatch) {
-            header->setSectionResizeMode(column, QHeaderView::Fixed);
-        } else if (column == kColSummary) {
-            header->setSectionResizeMode(column, QHeaderView::Stretch);
-        } else {
-            header->setSectionResizeMode(column, QHeaderView::Interactive);
-        }
-    }
-}
-
-void layoutBlockListColumns(QTableWidget* table) {
-    QHeaderView* header = table ? table->horizontalHeader() : nullptr;
-    if (!header) {
-        return;
-    }
-    const int viewportWidth = table->viewport()->width();
-    if (viewportWidth <= 0) {
-        return;
-    }
-
-    const QSignalBlocker blocker(header);
-    const int minSize = header->minimumSectionSize();
-    header->resizeSection(kColMatch, kMatchColumnWidth);
-
-    // Stretch 요약 needs at least minSize. If Interactive metrics overflow, shrink
-    // them (never assign an explicit 요약 width — that breaks right-side handles).
-    int used = kMatchColumnWidth;
-    for (int column = 0; column < kColumnCount; ++column) {
-        if (column == kColSummary || column == kColMatch || header->isSectionHidden(column)) {
-            continue;
-        }
-        used += header->sectionSize(column);
-    }
-    int overflow = used + minSize - viewportWidth;
-    for (int column = kColScore; column >= kColDuration && overflow > 0; --column) {
-        if (header->isSectionHidden(column)) {
-            continue;
-        }
-        const int current = header->sectionSize(column);
-        const int shrink = qMin(overflow, qMax(0, current - minSize));
-        if (shrink > 0) {
-            header->resizeSection(column, current - shrink);
-            overflow -= shrink;
-        }
-    }
-
-    if (QScrollBar* bar = table->horizontalScrollBar()) {
-        bar->setValue(0);
-    }
-}
-
 void initBlockListColumnHeader(BlockListWidget* table) {
     table->setColumnCount(kColumnCount);
     table->setHorizontalHeaderLabels({QStringLiteral("#"),
@@ -172,10 +82,23 @@ void initBlockListColumnHeader(BlockListWidget* table) {
             BlockListWidget::tr("블록 아이콘·썸네일 (클릭하여 편집)"));
     }
 
-    QHeaderView* header = table->horizontalHeader();
-    configureBlockListHeader(header);
-    setDefaultBlockListWidths(header);
-    layoutBlockListColumns(table);
+    if (QHeaderView* header = table->horizontalHeader()) {
+        header->setDefaultAlignment(Qt::AlignCenter);
+        header->setSectionsClickable(true);
+    }
+
+    table->setColumnWidth(kColIndex, 28);
+    table->setColumnWidth(kColPreview, kThumbnailSize + 6);
+    table->setColumnWidth(kColAction, 72);
+    table->setColumnWidth(kColSummary, 160);
+    table->setColumnWidth(kColDuration, 72);
+    table->setColumnWidth(kColMatchDuration, 72);
+    table->setColumnWidth(kColAttempts, 58);
+    table->setColumnWidth(kColReturnPrev, 52);
+    table->setColumnWidth(kColRetryAfterNext, 52);
+    table->setColumnWidth(kColScore, 78);
+    table->setColumnWidth(kColRoiCorrection, 52);
+    table->setColumnWidth(kColMatch, kMatchColumnWidth);
 }
 
 class WorkflowChipHeaderRowWidget : public QWidget {
@@ -1020,13 +943,6 @@ void BlockListWidget::keyPressEvent(QKeyEvent* event) {
     QTableWidget::keyPressEvent(event);
 }
 
-void BlockListWidget::applyHeaderResizeModes() {
-    QHeaderView* header = horizontalHeader();
-    configureBlockListHeader(header);
-    setDefaultBlockListWidths(header);
-    layoutBlockListColumns(this);
-}
-
 void BlockListWidget::setBlockRowHeight(int height, bool persist) {
     const int clamped = UiResizeHandle::clampListRowHeight(height);
     if (clamped == m_blockRowHeight) {
@@ -1062,7 +978,6 @@ void BlockListWidget::setRoiCorrectionColumnVisible(bool visible) {
     m_roiCorrectionColumnVisible = visible;
     if (QHeaderView* header = horizontalHeader()) {
         header->setSectionHidden(kColRoiCorrection, !visible);
-        layoutBlockListColumns(this);
     }
 }
 
@@ -2524,7 +2439,6 @@ void BlockListWidget::updateDragSourceVisuals() {
 
 void BlockListWidget::resizeEvent(QResizeEvent* event) {
     QTableWidget::resizeEvent(event);
-    layoutBlockListColumns(this);
     updateLoopRegionChrome();
     if (m_dropInsertionIndex >= 0) {
         updateDropIndicator();

@@ -62,8 +62,6 @@ public:
 
     BlockListWidget* blockList() const { return m_blockList; }
 
-    void applyBlockListHeaderResizeModes();
-
 signals:
     void workflowModified();
 

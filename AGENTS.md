@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.130` (from `project(PIPBONG VERSION 0.8.130)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.131` (from `project(PIPBONG VERSION 0.8.131)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -974,7 +974,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 | Surface                                                               | Constant / rule                                                                                                      |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `FeatureListHeaderWidget`; workflow block list: stock `QHeaderView` — Interactive metrics, **요약** `Stretch`, **매칭** `Fixed` (do not `resizeSection` 요약) |
+| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `FeatureListHeaderWidget` only; workflow block list uses stock `QHeaderView` (no custom resize/layout code) |
 | In-cell horizontal drag slack                                         | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
 | Row-height divider (feature list header bottom)                       | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight`; workflow block list row height is settings-only (no header drag) |
 | `QSplitter` handles                                                   | Always call `UiResizeHandle::configureSplitter` (12 px handle + non-collapsible panes) — also via `UiStateManager::registerSplitter` |
@@ -1092,6 +1092,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.131] - 2026-07-15
+
+### Removed
+
+- Workflow block list custom column-header resize/layout code (`configureBlockListHeader`, `layoutBlockListColumns`, `applyHeaderResizeModes`, `applyBlockListHeaderResizeModes`); header is stock Qt with initial column widths only (`BlockListWidget`, `WorkflowEditorPanel`, `MainWindow`).
 
 ## [0.8.130] - 2026-07-15
 

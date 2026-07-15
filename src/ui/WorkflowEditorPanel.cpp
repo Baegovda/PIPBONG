@@ -659,12 +659,6 @@ QHeaderView* WorkflowEditorPanel::blockListHeader() const {
     return m_blockList ? m_blockList->horizontalHeader() : nullptr;
 }
 
-void WorkflowEditorPanel::applyBlockListHeaderResizeModes() {
-    if (m_blockList) {
-        m_blockList->applyHeaderResizeModes();
-    }
-}
-
 QSplitter* WorkflowEditorPanel::workflowSplitter() const {
     return m_workflowSplitter;
 }

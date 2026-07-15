@@ -159,8 +159,6 @@ public:
 
     void selectBlockRow(int blockRow);
 
-    void applyHeaderResizeModes();
-
 signals:
 
     void blockRowsReordered(int fromRow, int toRow);

@@ -750,9 +750,6 @@ void MainWindow::setupUiState() {
                 &UiStateManager::scheduleSave);
     }
     m_uiState->restoreAll();
-    if (m_workflowEditor) {
-        m_workflowEditor->applyBlockListHeaderResizeModes();
-    }
     restoreAlwaysOnTopPreference();
 }
 
