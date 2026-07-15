@@ -1,5 +1,7 @@
 #include "ui/WorkflowEditorPanel.h"
 
+#include "ui/widgets/ListColumnHeaderWidget.h"
+
 #include "app/PerfTrace.h"
 #include "core/workflow/BlockFactory.h"
 #include "core/workflow/blocks/ClickBlock.h"
@@ -41,6 +43,7 @@
 #include <QSettings>
 #include <QSizePolicy>
 #include <QSplitter>
+#include <QFrame>
 #include <QVBoxLayout>
 
 #include <QtMath>
@@ -527,6 +530,19 @@ void WorkflowEditorPanel::setupUi() {
     m_titleLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 14px;"));
 
     m_blockList = new BlockListWidget(this);
+
+    auto* blockListFrame = new QFrame(this);
+    blockListFrame->setObjectName(QStringLiteral("blockListTableFrame"));
+    blockListFrame->setFrameShape(QFrame::NoFrame);
+    auto* blockListLayout = new QVBoxLayout(blockListFrame);
+    blockListLayout->setContentsMargins(0, 0, 0, 0);
+    blockListLayout->setSpacing(0);
+
+    m_blockListHeader = new ListColumnHeaderWidget(blockListFrame);
+    BlockListWidget::wireListColumnHeader(m_blockListHeader, m_blockList);
+    blockListLayout->addWidget(m_blockListHeader);
+    blockListLayout->addWidget(m_blockList, 1);
+
     connect(m_blockList, &QTableWidget::cellClicked, this,
             [this](int row, int column) {
                 if (column != BlockListWidget::PreviewColumn || m_loopRegionPickActive) {
@@ -611,7 +627,7 @@ void WorkflowEditorPanel::setupUi() {
 
     m_workflowSplitter = new QSplitter(Qt::Vertical, workflowPane);
     UiResizeHandle::configureSplitter(m_workflowSplitter);
-    m_workflowSplitter->addWidget(m_blockList);
+    m_workflowSplitter->addWidget(blockListFrame);
     m_workflowSplitter->addWidget(toolsPane);
     m_workflowSplitter->setStretchFactor(0, 1);
     m_workflowSplitter->setStretchFactor(1, 0);
@@ -653,10 +669,6 @@ void WorkflowEditorPanel::setupUi() {
             &BlockListWidget::imageFindRoiCorrectionChanged,
             this,
             &WorkflowEditorPanel::onImageFindRoiCorrectionChanged);
-}
-
-QHeaderView* WorkflowEditorPanel::blockListHeader() const {
-    return m_blockList ? m_blockList->horizontalHeader() : nullptr;
 }
 
 QSplitter* WorkflowEditorPanel::workflowSplitter() const {

@@ -18,6 +18,7 @@ class Feature;
 class FeatureListWidget;
 class FeatureLibraryListWidget;
 class FeatureHotkeyGateScope;
+class ListColumnHeaderWidget;
 
 
 
@@ -89,6 +90,8 @@ public:
     void saveColumnLayout(QSettings& settings, const QString& settingsKey) const;
 
     void restoreColumnLayout(const QSettings& settings, const QString& settingsKey);
+
+    static void wireListColumnHeader(ListColumnHeaderWidget* header, FeatureListPanel* panel);
 
     /// Replaces the library drawer contents with the given entries.
     void setLibraryEntries(const std::vector<LibraryEntryUi>& entries);
@@ -206,7 +209,7 @@ private:
 
     FeatureListWidget* m_list = nullptr;
 
-    QWidget* m_headerRow = nullptr;
+    ListColumnHeaderWidget* m_headerRow = nullptr;
 
     QPushButton* m_addButton = nullptr;
 
@@ -221,6 +224,7 @@ private:
     QString m_lastSelectedFeatureId;
 
     FeatureListColumnLayout m_columnLayout;
+    FeatureListColumnLayout m_headerDragStartLayout;
 
     int m_animPhase = 0;
 

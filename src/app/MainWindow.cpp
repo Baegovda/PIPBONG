@@ -706,7 +706,6 @@ void MainWindow::setupUiState() {
     m_uiState->registerSplitter(m_mainVerticalSplitter, QStringLiteral("main/vertical"));
     m_uiState->registerSplitter(m_bottomHorizontalSplitter, QStringLiteral("main/bottomHorizontal"));
     m_uiState->registerSplitter(m_workflowEditor->workflowSplitter(), QStringLiteral("workflowEditor/vertical"));
-    // Block-list columns are laid out at runtime (매칭 pinned); do not persist header state.
     m_uiState->registerSettingsHooks(
         QStringLiteral("featureList/columns"),
         [this](QSettings& settings) {
@@ -724,19 +723,39 @@ void MainWindow::setupUiState() {
             }
         });
     m_uiState->registerSettingsHooks(
-        QStringLiteral("workflowBlockList/rowHeight"),
+        QStringLiteral("workflowBlockList/columns"),
         [this](QSettings& settings) {
             if (m_workflowEditor && m_workflowEditor->blockList()) {
-                m_workflowEditor->blockList()->saveRowHeight(
+                m_workflowEditor->blockList()->saveColumnLayout(
                     settings,
-                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/rowHeight")));
+                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/columns")));
             }
         },
         [this](const QSettings& settings) {
             if (m_workflowEditor && m_workflowEditor->blockList()) {
-                m_workflowEditor->blockList()->restoreRowHeight(
+                m_workflowEditor->blockList()->restoreColumnLayout(
                     settings,
-                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/rowHeight")));
+                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/columns")));
+            }
+        });
+    m_uiState->registerSettingsHooks(
+        QStringLiteral("workflowBlockList/rowHeight"),
+        [this](QSettings& settings) {
+            if (m_workflowEditor && m_workflowEditor->blockList()) {
+                m_workflowEditor->blockList()->saveColumnLayout(
+                    settings,
+                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/columns")));
+            }
+        },
+        [this](const QSettings& settings) {
+            if (m_workflowEditor && m_workflowEditor->blockList()) {
+                const QString columnsKey =
+                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/columns"));
+                if (!settings.contains(columnsKey + QStringLiteral("/rowHeight"))) {
+                    m_workflowEditor->blockList()->restoreRowHeight(
+                        settings,
+                        UiStateManager::settingsKey(QStringLiteral("workflowBlockList/rowHeight")));
+                }
             }
         });
     connect(m_featureList,
@@ -744,6 +763,10 @@ void MainWindow::setupUiState() {
             m_uiState,
             &UiStateManager::scheduleSave);
     if (m_workflowEditor && m_workflowEditor->blockList()) {
+        connect(m_workflowEditor->blockList(),
+                &BlockListWidget::columnLayoutChanged,
+                m_uiState,
+                &UiStateManager::scheduleSave);
         connect(m_workflowEditor->blockList(),
                 &BlockListWidget::rowHeightChanged,
                 m_uiState,

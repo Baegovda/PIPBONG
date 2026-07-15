@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.131` (from `project(PIPBONG VERSION 0.8.131)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.132` (from `project(PIPBONG VERSION 0.8.132)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -974,7 +974,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 | Surface                                                               | Constant / rule                                                                                                      |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `FeatureListHeaderWidget` only; workflow block list uses stock `QHeaderView` (no custom resize/layout code) |
+| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `ListColumnHeaderWidget` on feature list and workflow block list (`FeatureListPanel`, `BlockListWidget`) |
 | In-cell horizontal drag slack                                         | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
 | Row-height divider (feature list header bottom)                       | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight`; workflow block list row height is settings-only (no header drag) |
 | `QSplitter` handles                                                   | Always call `UiResizeHandle::configureSplitter` (12 px handle + non-collapsible panes) — also via `UiStateManager::registerSplitter` |
@@ -1092,6 +1092,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.132] - 2026-07-15
+
+### Added
+
+- Shared `ListColumnHeaderWidget` (`src/ui/widgets/ListColumnHeaderWidget.*`): draggable column-header chrome, divider guides, and row-height edge used by both feature list and workflow block list.
+- Workflow block list uses the same custom header pattern as the feature list: `ListColumnHeaderWidget` above the table, stock `QHeaderView` hidden, `BlockListColumnLayout` with flex **요약** and **매칭** pinned right; layout persisted under `workflowBlockList/columns` (`BlockListWidget`, `WorkflowEditorPanel`, `MainWindow`).
+
+### Changed
+
+- Feature list header refactored onto `ListColumnHeaderWidget` via `FeatureListPanel::wireListColumnHeader` (behavior unchanged).
 
 ## [0.8.131] - 2026-07-15
 

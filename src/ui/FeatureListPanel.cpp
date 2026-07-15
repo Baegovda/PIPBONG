@@ -2,6 +2,7 @@
 #include "ui/FeatureListWidget.h"
 #include "ui/FeatureLibraryListWidget.h"
 #include "ui/widgets/ReorderableListWidget.h"
+#include "ui/widgets/ListColumnHeaderWidget.h"
 #include "ui/UiResizeHandle.h"
 #include "ui/HotkeyBindingIcon.h"
 #include "model/Feature.h"
@@ -39,8 +40,6 @@
 #include <QLineEdit>
 #include <QAbstractItemView>
 namespace {
-constexpr int kHeaderExtraHeight = 4;
-// Row-height min/max: UiResizeHandle::kMinListRowHeightPx / kMaxListRowHeightPx
 constexpr int kRowSeparatorHeight = 1;
 constexpr int kSelectionBarWidth = 3;
 constexpr int kFeatureIdRole = Qt::UserRole;
@@ -135,33 +134,6 @@ bool darkThemeFromPalette(const QPalette& pal) {
         return window.lightness() < 128;
     }
     return pal.color(QPalette::WindowText).lightness() > 128;
-}
-
-QColor featureListHeaderTextColor(const QPalette& pal) {
-    const QColor window = pal.color(QPalette::Window);
-    const QColor windowText = pal.color(QPalette::WindowText);
-    const QColor highlight = pal.color(QPalette::Highlight);
-    const bool darkTheme = darkThemeFromPalette(pal);
-
-    if (highlight.isValid() && highlight != windowText) {
-        if (darkTheme) {
-            QColor accent = highlight.lighter(155);
-            if (accent.lightness() < 125) {
-                accent = QColor(0x8e, 0xc5, 0xff);
-            }
-            return accent;
-        }
-        QColor accent = highlight.darker(120);
-        if (accent.lightness() > 165 || accent.lightness() < 50) {
-            accent = QColor(0x1e, 0x5a, 0x8e);
-        }
-        return accent;
-    }
-
-    if (darkTheme) {
-        return QColor(0xb8, 0xc4, 0xd4);
-    }
-    return QColor(0x2f, 0x5d, 0x8a);
 }
 
 QColor featureListMutedTextColor(const QPalette& pal) {
@@ -349,40 +321,6 @@ void paintFeatureName(QPainter* painter,
     painter->drawText(rect, align, elided);
 }
 
-void paintFeatureListHeaderChrome(QPainter* painter, const QRect& rect, const QPalette& pal) {
-    QColor headerBg = pal.color(QPalette::Button);
-    if (!headerBg.isValid()) {
-        headerBg = pal.color(QPalette::AlternateBase);
-    }
-    if (darkThemeFromPalette(pal)) {
-        headerBg = headerBg.darker(108);
-    } else {
-        headerBg = headerBg.lighter(102);
-    }
-    painter->fillRect(rect, headerBg);
-
-    QColor bottomLine = pal.color(QPalette::Mid);
-    if (darkThemeFromPalette(pal) && bottomLine.lightness() < 90) {
-        bottomLine = bottomLine.lighter(140);
-    }
-    painter->setPen(QPen(bottomLine, 1));
-    painter->drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom());
-}
-
-void paintFeatureListColumnGuides(QPainter* painter,
-                                  const FeatureListColumnEdges& edges,
-                                  int height,
-                                  const QPalette& pal) {
-    QColor guideColor = pal.color(QPalette::Mid);
-    if (darkThemeFromPalette(pal) && guideColor.lightness() < 90) {
-        guideColor = guideColor.lighter(140);
-    }
-    guideColor.setAlpha(70);
-    painter->setPen(QPen(guideColor, 1));
-    painter->drawLine(edges.modeDividerX, 0, edges.modeDividerX, height);
-    painter->drawLine(edges.hotkeyDividerX, 0, edges.hotkeyDividerX, height);
-}
-
 void applyFeatureListPanelStyle(QWidget* panel) {
     panel->setObjectName(QStringLiteral("featureListPanel"));
     panel->setStyleSheet(QStringLiteral(
@@ -469,185 +407,6 @@ void applyFeatureListPanelStyle(QWidget* panel) {
         "  background: transparent;"
         "}"));
 }
-enum class FeatureListResizeHandle {
-    None,
-    ModeColumnWidth,
-    HotkeyColumnWidth,
-    RowHeight,
-};
-class FeatureListHeaderWidget : public QWidget {
-public:
-    explicit FeatureListHeaderWidget(FeatureListPanel* panel)
-        : QWidget(panel)
-        , m_panel(panel) {
-        setObjectName(QStringLiteral("featureListHeaderRow"));
-        setMouseTracking(true);
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        updateHeight();
-    }
-    QSize sizeHint() const override {
-        const int rowHeight = m_panel ? m_panel->columnLayout().rowHeight : 28;
-        return {200, rowHeight + kHeaderExtraHeight};
-    }
-    void syncToLayout() {
-        updateHeight();
-        update();
-    }
-protected:
-    void changeEvent(QEvent* event) override {
-        if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange) {
-            update();
-        }
-        QWidget::changeEvent(event);
-    }
-    void paintEvent(QPaintEvent* event) override {
-        Q_UNUSED(event);
-        if (!m_panel) {
-            return;
-        }
-        const FeatureListColumnLayout layout = m_panel->columnLayout();
-        const FeatureListColumnEdges edges = featureListColumnEdges(rect(), layout);
-        const FeatureListColumnRects& cols = edges.cols;
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::TextAntialiasing, true);
-
-        const QPalette pal = palette();
-        paintFeatureListHeaderChrome(&painter, rect(), pal);
-
-        QFont headerFont = font();
-        headerFont.setPointSize(qMax(headerFont.pointSize(), 9));
-        headerFont.setBold(true);
-        painter.setFont(headerFont);
-        painter.setPen(featureListHeaderTextColor(pal));
-        const Qt::Alignment headerAlign = Qt::AlignHCenter | Qt::AlignVCenter;
-        painter.drawText(cols.enable, headerAlign, tr("사용"));
-        painter.drawText(cols.name, headerAlign, tr("기능"));
-        painter.drawText(cols.mode, headerAlign, tr("방식"));
-        painter.drawText(cols.hotkey, headerAlign, tr("키"));
-
-        paintFeatureListColumnGuides(&painter, edges, height(), pal);
-
-        if (m_activeHandle != FeatureListResizeHandle::None) {
-            painter.setPen(QPen(palette().color(QPalette::Highlight), 1, Qt::DashLine));
-            if (m_activeHandle == FeatureListResizeHandle::RowHeight) {
-                painter.drawLine(0, m_dragGuideY, width(), m_dragGuideY);
-            } else {
-                painter.drawLine(m_dragGuideX, 0, m_dragGuideX, height());
-            }
-        }
-    }
-    void mouseMoveEvent(QMouseEvent* event) override {
-        if (!m_panel) {
-            return;
-        }
-        if (m_activeHandle != FeatureListResizeHandle::None) {
-            applyDrag(event->position().toPoint());
-            return;
-        }
-        setCursor(cursorForHandle(handleAt(event->position().toPoint())));
-    }
-    void mousePressEvent(QMouseEvent* event) override {
-        if (!m_panel || event->button() != Qt::LeftButton) {
-            return;
-        }
-        m_activeHandle = handleAt(event->position().toPoint());
-        if (m_activeHandle == FeatureListResizeHandle::None) {
-            return;
-        }
-        m_dragStartPos = event->position().toPoint();
-        m_dragStartLayout = m_panel->columnLayout();
-        m_dragGuideX = event->position().toPoint().x();
-        m_dragGuideY = event->position().toPoint().y();
-        grabMouse();
-        setCursor(cursorForHandle(m_activeHandle));
-        update();
-    }
-    void mouseReleaseEvent(QMouseEvent* event) override {
-        Q_UNUSED(event);
-        if (m_activeHandle == FeatureListResizeHandle::None) {
-            return;
-        }
-        m_activeHandle = FeatureListResizeHandle::None;
-        if (mouseGrabber() == this) {
-            releaseMouse();
-        }
-        unsetCursor();
-        update();
-    }
-private:
-    FeatureListResizeHandle handleAt(const QPoint& pos) const {
-        if (!m_panel) {
-            return FeatureListResizeHandle::None;
-        }
-        if (UiResizeHandle::isWithinBottomGrab(pos.y(), height())) {
-            return FeatureListResizeHandle::RowHeight;
-        }
-
-        const FeatureListColumnEdges edges =
-            featureListColumnEdges(rect(), m_panel->columnLayout());
-        const int modeDist = qAbs(pos.x() - edges.modeDividerX);
-        const int hotkeyDist = qAbs(pos.x() - edges.hotkeyDividerX);
-
-        if (UiResizeHandle::isWithinHorizontalGrab(pos.x(), edges.modeDividerX)
-            && modeDist <= hotkeyDist) {
-            return FeatureListResizeHandle::ModeColumnWidth;
-        }
-        if (UiResizeHandle::isWithinHorizontalGrab(pos.x(), edges.hotkeyDividerX)) {
-            return FeatureListResizeHandle::HotkeyColumnWidth;
-        }
-        return FeatureListResizeHandle::None;
-    }
-    static Qt::CursorShape cursorForHandle(FeatureListResizeHandle handle) {
-        switch (handle) {
-        case FeatureListResizeHandle::RowHeight:
-            return Qt::SizeVerCursor;
-        case FeatureListResizeHandle::None:
-            return Qt::ArrowCursor;
-        default:
-            return Qt::SplitHCursor;
-        }
-    }
-    void applyDrag(const QPoint& pos) {
-        const int deltaX = pos.x() - m_dragStartPos.x();
-        const int deltaY = pos.y() - m_dragStartPos.y();
-        FeatureListColumnLayout layout = m_dragStartLayout;
-        switch (m_activeHandle) {
-        case FeatureListResizeHandle::ModeColumnWidth:
-            layout.modeColumnWidth = qBound(kMinModeColumnWidth,
-                                            m_dragStartLayout.modeColumnWidth - deltaX,
-                                            kMaxModeColumnWidth);
-            m_dragGuideX = pos.x();
-            break;
-        case FeatureListResizeHandle::HotkeyColumnWidth:
-            layout.hotkeyColumnWidth = qBound(kMinHotkeyColumnWidth,
-                                              m_dragStartLayout.hotkeyColumnWidth - deltaX,
-                                              kMaxHotkeyColumnWidth);
-            m_dragGuideX = pos.x();
-            break;
-        case FeatureListResizeHandle::RowHeight:
-            layout.rowHeight =
-                UiResizeHandle::clampListRowHeight(m_dragStartLayout.rowHeight + deltaY);
-            m_dragGuideY = pos.y();
-            break;
-        default:
-            return;
-        }
-        m_panel->setColumnLayout(layout, true);
-    }
-    void updateHeight() {
-        const int rowHeight = m_panel ? m_panel->columnLayout().rowHeight : 28;
-        const int h = rowHeight + kHeaderExtraHeight;
-        setMinimumHeight(h);
-        setMaximumHeight(h);
-        updateGeometry();
-    }
-    FeatureListPanel* m_panel = nullptr;
-    FeatureListResizeHandle m_activeHandle = FeatureListResizeHandle::None;
-    QPoint m_dragStartPos;
-    FeatureListColumnLayout m_dragStartLayout;
-    int m_dragGuideX = 0;
-    int m_dragGuideY = 0;
-};
 class FeatureListItemDelegate : public QStyledItemDelegate {
 public:
     explicit FeatureListItemDelegate(const FeatureListPanel* panel)
@@ -843,12 +602,8 @@ void FeatureListPanel::setupUi() {
     tableLayout->setContentsMargins(0, 0, 0, 0);
     tableLayout->setSpacing(0);
 
-    m_headerRow = new FeatureListHeaderWidget(this);
-    m_headerRow->setToolTip(
-        tr("헤더 구분선을 드래그해 열 너비·줄 높이를 조절합니다.\n"
-           "· 기능|방식 경계: 방식 열 너비\n"
-           "· 방식|키 경계: 키 열 너비\n"
-           "· 헤더 아래 가장자리: 줄 높이"));
+    m_headerRow = new ListColumnHeaderWidget(this);
+    wireListColumnHeader(m_headerRow, this);
 
     m_list = new FeatureListWidget(tableFrame);
     m_list->setObjectName(QStringLiteral("featureListView"));
@@ -1269,7 +1024,7 @@ void FeatureListPanel::setColumnLayout(const FeatureListColumnLayout& layout, bo
     m_columnLayout = clamped;
     applyColumnLayoutToList();
     if (m_headerRow) {
-        static_cast<FeatureListHeaderWidget*>(m_headerRow)->syncToLayout();
+        m_headerRow->syncToLayout();
     }
     if (persist && !m_restoringColumnLayout) {
         emit columnLayoutChanged();
@@ -1953,6 +1708,101 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
     menu.addAction(tr("삭제"), this, &FeatureListPanel::onRemoveFeature);
     menu.exec(m_list->mapToGlobal(pos));
 }
+
+void FeatureListPanel::wireListColumnHeader(ListColumnHeaderWidget* header, FeatureListPanel* panel) {
+    if (!header || !panel) {
+        return;
+    }
+
+    enum class FeatureListResizeHandleId : int {
+        None = 0,
+        ModeColumnWidth = 1,
+        HotkeyColumnWidth = 2,
+    };
+
+    header->setObjectName(QStringLiteral("featureListHeaderRow"));
+    header->setToolTip(
+        QObject::tr("헤더 구분선을 드래그해 열 너비·줄 높이를 조절합니다.\n"
+                    "· 기능|방식 경계: 방식 열 너비\n"
+                    "· 방식|키 경계: 키 열 너비\n"
+                    "· 헤더 아래 가장자리: 줄 높이"));
+
+    header->setRowHeightProvider([panel] { return panel->columnLayout().rowHeight; });
+
+    header->setPaintLabelsProvider([panel](ListColumnHeaderWidget::PaintContext& ctx) {
+        const FeatureListColumnEdges edges =
+            featureListColumnEdges(ctx.rect, panel->columnLayout());
+        QFont headerFont = ctx.painter->font();
+        headerFont.setPointSize(qMax(headerFont.pointSize(), 9));
+        headerFont.setBold(true);
+        ctx.painter->setFont(headerFont);
+        ctx.painter->setPen(ListColumnHeaderWidget::headerTextColor(ctx.palette));
+        const Qt::Alignment headerAlign = Qt::AlignHCenter | Qt::AlignVCenter;
+        ctx.painter->drawText(edges.cols.enable, headerAlign, FeatureListPanel::tr("사용"));
+        ctx.painter->drawText(edges.cols.name, headerAlign, FeatureListPanel::tr("기능"));
+        ctx.painter->drawText(edges.cols.mode, headerAlign, FeatureListPanel::tr("방식"));
+        ctx.painter->drawText(edges.cols.hotkey, headerAlign, FeatureListPanel::tr("키"));
+    });
+
+    header->setDividerXsProvider([panel](const QRect& rect) {
+        const FeatureListColumnEdges edges = featureListColumnEdges(rect, panel->columnLayout());
+        return QList<int>{edges.modeDividerX, edges.hotkeyDividerX};
+    });
+
+    header->setDividerHitProvider([panel](const QPoint& pos, const QRect& rect) {
+        const FeatureListColumnEdges edges = featureListColumnEdges(rect, panel->columnLayout());
+        const int modeDist = qAbs(pos.x() - edges.modeDividerX);
+        const int hotkeyDist = qAbs(pos.x() - edges.hotkeyDividerX);
+        if (UiResizeHandle::isWithinHorizontalGrab(pos.x(), edges.modeDividerX)
+            && modeDist <= hotkeyDist) {
+            return static_cast<int>(FeatureListResizeHandleId::ModeColumnWidth);
+        }
+        if (UiResizeHandle::isWithinHorizontalGrab(pos.x(), edges.hotkeyDividerX)) {
+            return static_cast<int>(FeatureListResizeHandleId::HotkeyColumnWidth);
+        }
+        return 0;
+    });
+
+    header->setApplyDragProvider([panel, header](int handleId, int deltaX, int deltaY, const QPoint&) {
+        if (handleId == -1) {
+            FeatureListColumnLayout layout = panel->m_headerDragStartLayout;
+            layout.rowHeight =
+                UiResizeHandle::clampListRowHeight(panel->m_headerDragStartLayout.rowHeight + deltaY);
+            panel->setColumnLayout(layout, true);
+            header->syncToLayout();
+            return;
+        }
+
+        FeatureListColumnLayout layout = panel->m_headerDragStartLayout;
+        switch (static_cast<FeatureListResizeHandleId>(handleId)) {
+        case FeatureListResizeHandleId::ModeColumnWidth:
+            layout.modeColumnWidth = qBound(kMinModeColumnWidth,
+                                            panel->m_headerDragStartLayout.modeColumnWidth - deltaX,
+                                            kMaxModeColumnWidth);
+            break;
+        case FeatureListResizeHandleId::HotkeyColumnWidth:
+            layout.hotkeyColumnWidth = qBound(kMinHotkeyColumnWidth,
+                                              panel->m_headerDragStartLayout.hotkeyColumnWidth - deltaX,
+                                              kMaxHotkeyColumnWidth);
+            break;
+        default:
+            return;
+        }
+        panel->setColumnLayout(layout, true);
+        header->syncToLayout();
+    });
+
+    QObject::connect(header, &ListColumnHeaderWidget::dividerDragStarted, panel, [panel]() {
+        panel->m_headerDragStartLayout = panel->columnLayout();
+    });
+
+    QObject::connect(
+        panel,
+        &FeatureListPanel::columnLayoutChanged,
+        header,
+        &ListColumnHeaderWidget::syncToLayout);
+}
+
 void FeatureListPanel::onSelectionChanged() {
     if (Feature* feature = selectedFeature()) {
         m_lastSelectedFeatureId = QString::fromStdString(feature->id());

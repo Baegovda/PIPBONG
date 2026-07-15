@@ -44,6 +44,25 @@ class QTimer;
 
 class QVariantAnimation;
 
+class ListColumnHeaderWidget;
+
+
+
+struct BlockListColumnLayout {
+    int indexWidth = 28;
+    int previewWidth = 38;
+    int actionWidth = 72;
+    int durationWidth = 72;
+    int matchDurationWidth = 72;
+    int attemptsWidth = 58;
+    int returnPrevWidth = 52;
+    int retryWidth = 52;
+    int scoreWidth = 78;
+    int roiCorrectionWidth = 52;
+    int matchWidth = 38;
+    int rowHeight = 36;
+};
+
 
 
 class BlockListWidget : public QTableWidget {
@@ -83,6 +102,12 @@ public:
     void setBlockRowHeight(int height, bool persist = true);
     void saveRowHeight(QSettings& settings, const QString& settingsKey) const;
     void restoreRowHeight(const QSettings& settings, const QString& settingsKey);
+
+    const BlockListColumnLayout& columnLayout() const { return m_columnLayout; }
+    void setColumnLayout(const BlockListColumnLayout& layout, bool persist = true);
+    void saveColumnLayout(QSettings& settings, const QString& settingsKey) const;
+    void restoreColumnLayout(const QSettings& settings, const QString& settingsKey);
+    static void wireListColumnHeader(ListColumnHeaderWidget* header, BlockListWidget* table);
 
     void setBlockCount(int count);
 
@@ -186,6 +211,7 @@ signals:
     void redoRequested();
 
     void rowHeightChanged();
+    void columnLayoutChanged();
 
 
 
@@ -282,7 +308,15 @@ private:
 
     void finishThresholdDrag(QMouseEvent* mouseEvent);
 
+    void applyColumnLayoutToTable();
+    int summaryColumnWidthForViewport(int viewportWidth) const;
+    int totalFixedColumnWidth(bool includeSummaryWidth, int summaryWidth) const;
+
     bool m_roiCorrectionColumnVisible = false;
+    BlockListColumnLayout m_columnLayout;
+    bool m_restoringColumnLayout = false;
+    BlockListColumnLayout m_headerDragStartLayout;
+    ListColumnHeaderWidget* m_columnHeader = nullptr;
 
     bool m_updatingRoiCorrectionItem = false;
 

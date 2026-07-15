@@ -20,7 +20,7 @@
 class QLabel;
 class QPushButton;
 class QSplitter;
-class QHeaderView;
+class ListColumnHeaderWidget;
 class Feature;
 class Block;
 class BlockEditorDialog;
@@ -58,9 +58,8 @@ public:
 
     QSplitter* workflowSplitter() const;
 
-    QHeaderView* blockListHeader() const;
-
     BlockListWidget* blockList() const { return m_blockList; }
+    ListColumnHeaderWidget* blockListColumnHeader() const { return m_blockListHeader; }
 
 signals:
     void workflowModified();
@@ -142,6 +141,7 @@ private:
     qint64 m_loopAverageMs = 0;
     bool m_loopSuccess = true;
     BlockListWidget* m_blockList = nullptr;
+    ListColumnHeaderWidget* m_blockListHeader = nullptr;
     QSplitter* m_workflowSplitter = nullptr;
     QVector<QPushButton*> m_addTypeButtons;
     QPushButton* m_removeAllWaitButton = nullptr;
