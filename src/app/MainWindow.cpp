@@ -547,6 +547,7 @@ MainWindow::MainWindow(QWidget* parent)
         m_profileManager->loadSettings(m_profileManager->activeProfileId()));
     refreshProfileList();
     loadActiveProfile();
+    restoreMemoDialogOpenState();
     refreshFeatureLibraryPanel();
     scheduleProfilePackageSeal();
 
@@ -2103,6 +2104,19 @@ void MainWindow::restoreSelectedFeaturePreference() {
     if (!featureId.isEmpty()) {
         m_featureList->selectFeatureById(featureId);
     }
+}
+
+void MainWindow::restoreMemoDialogOpenState() {
+    if (!QSettings().value(QStringLiteral("memo/open"), false).toBool()) {
+        return;
+    }
+    if (!m_memoDialog) {
+        m_memoDialog = new MemoDialog(this);
+        m_memoDialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(m_memoDialog, &QObject::destroyed, this, [this]() { m_memoDialog = nullptr; });
+    }
+    syncMemoDialogProfile();
+    m_memoDialog->show();
 }
 
 QString MainWindow::selectedFeaturePreferenceKey() const {

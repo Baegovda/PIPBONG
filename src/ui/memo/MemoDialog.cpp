@@ -71,12 +71,18 @@ void MemoDialog::scheduleSave() {
 void MemoDialog::closeEvent(QCloseEvent* event) {
     saveNow();
     persistGeometry();
+    if (event->spontaneous()) {
+        QSettings settings;
+        settings.setValue(QStringLiteral("memo/open"), false);
+    }
     QDialog::closeEvent(event);
 }
 
 void MemoDialog::showEvent(QShowEvent* event) {
     QDialog::showEvent(event);
     restorePersistedGeometry();
+    QSettings settings;
+    settings.setValue(QStringLiteral("memo/open"), true);
 }
 
 void MemoDialog::persistGeometry() {
