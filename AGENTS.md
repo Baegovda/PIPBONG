@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.155` (from `project(PIPBONG VERSION 0.8.155)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.156` (from `project(PIPBONG VERSION 0.8.156)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1176,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.156] - 2026-07-16
+
+### Changed
+
+- **메모장** UI redesigned as a frameless post-it note: warm paper gradient, soft shadow, folded corner, profile caption, borderless editor, header drag-to-move, and minimal close control (`MemoDialog`).
 
 ## [0.8.155] - 2026-07-16
 
