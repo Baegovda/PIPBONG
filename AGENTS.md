@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.118` (from `project(PIPBONG VERSION 0.8.118)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.119` (from `project(PIPBONG VERSION 0.8.119)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -974,7 +974,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 
 | Surface                                                               | Constant / rule                                                                                                      |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `BlockListHeaderView`, `FeatureListHeaderWidget`                    |
+| Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `FeatureListHeaderWidget`; workflow block list uses stock `QHeaderView::Interactive` on all data columns plus a hidden trailing `Stretch` filler column |
 | In-cell horizontal drag slack                                         | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
 | Row-height divider (feature list / workflow block list header bottom) | `kDividerHalfHeightPx` (bottom 10 px); clamp via `clampListRowHeight` (`kMinListRowHeightPx`–`kMaxListRowHeightPx`)  |
 | `QSplitter` handles                                                   | Always call `UiResizeHandle::configureSplitter` (12 px handle + non-collapsible panes) — also via `UiStateManager::registerSplitter` |
@@ -1092,6 +1092,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.119] - 2026-07-15
+
+### Fixed
+
+- Workflow block list column resize: **요약** no longer uses `QHeaderView::Stretch` in the middle of the table (fixes dead handle at **요약|동작 시간** and inverted resize on columns to the right); all data columns are `Interactive` with a hidden trailing `Stretch` filler column absorbing slack (`BlockListWidget`).
+
+### Changed
+
+- Workflow block list column resize uses stock `QHeaderView::Interactive` instead of custom `BlockListHeaderView`; header-bottom row-height drag kept via `QObject` event filter (`BlockListWidget`).
 
 ## [0.8.118] - 2026-07-15
 

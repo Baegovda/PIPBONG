@@ -59,119 +59,74 @@ constexpr int kColRetryAfterNext = 8;
 constexpr int kColScore = 9;
 constexpr int kColRoiCorrection = 10;
 constexpr int kColMatch = 11;
-constexpr int kColumnCount = 12;
+constexpr int kColFiller = 12;
+constexpr int kColumnCount = 13;
 
-class BlockListHeaderView : public QHeaderView {
+class BlockListHeaderRowHeightFilter final : public QObject {
 public:
-    explicit BlockListHeaderView(BlockListWidget* owner)
-        : QHeaderView(Qt::Horizontal, owner)
-        , m_owner(owner) {
-        setMouseTracking(true);
+    explicit BlockListHeaderRowHeightFilter(BlockListWidget* owner, QHeaderView* header)
+        : QObject(header)
+        , m_owner(owner)
+        , m_header(header) {
+        m_header->setMouseTracking(true);
     }
 
 protected:
-    int resizeHandleSectionAt(int x) const {
-        int bestSection = -1;
-        int bestDistance = UiResizeHandle::kDividerHalfWidthPx + 1;
-        for (int visual = 0; visual < count(); ++visual) {
-            const int logical = logicalIndex(visual);
-            if (isSectionHidden(logical)) {
-                continue;
-            }
-            if (sectionResizeMode(logical) != QHeaderView::Interactive) {
-                continue;
-            }
-            const int handleX = sectionViewportPosition(logical) + sectionSize(logical);
-            const int distance = qAbs(x - handleX);
-            if (distance <= UiResizeHandle::kDividerHalfWidthPx && distance < bestDistance) {
-                bestDistance = distance;
-                bestSection = logical;
-            }
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (watched != m_header || !m_owner) {
+            return QObject::eventFilter(watched, event);
         }
-        return bestSection;
-    }
 
-    bool isRowHeightHandle(const QPoint& pos) const {
-        return UiResizeHandle::isWithinBottomGrab(pos.y(), height());
-    }
-
-    void mousePressEvent(QMouseEvent* event) override {
-        if (event->button() == Qt::LeftButton) {
-            if (isRowHeightHandle(event->pos())) {
+        switch (event->type()) {
+        case QEvent::MouseButtonPress: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (mouseEvent->button() == Qt::LeftButton
+                && UiResizeHandle::isWithinBottomGrab(mouseEvent->pos().y(), m_header->height())) {
                 m_resizingRowHeight = true;
-                m_resizingSection = -1;
-                m_resizePressPos = event->globalPosition().toPoint().y();
-                m_resizeStartSize = m_owner ? m_owner->blockRowHeight()
-                                            : UiResizeHandle::kDefaultBlockListRowHeightPx;
-                setCursor(Qt::SizeVerCursor);
-                event->accept();
-                return;
+                m_resizePressPos = mouseEvent->globalPosition().toPoint().y();
+                m_resizeStartSize = m_owner->blockRowHeight();
+                m_header->setCursor(Qt::SizeVerCursor);
+                return true;
             }
-            const int section = resizeHandleSectionAt(event->pos().x());
-            if (section >= 0) {
-                m_resizingRowHeight = false;
-                m_resizingSection = section;
-                m_resizePressPos = event->globalPosition().toPoint().x();
-                m_resizeStartSize = sectionSize(section);
-                event->accept();
-                return;
-            }
+            break;
         }
-        m_resizingSection = -1;
-        m_resizingRowHeight = false;
-        QHeaderView::mousePressEvent(event);
-    }
-
-    void mouseMoveEvent(QMouseEvent* event) override {
-        if (m_resizingRowHeight && (event->buttons() & Qt::LeftButton)) {
-            const int delta = event->globalPosition().toPoint().y() - m_resizePressPos;
-            if (m_owner) {
+        case QEvent::MouseMove: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (m_resizingRowHeight && (mouseEvent->buttons() & Qt::LeftButton)) {
+                const int delta = mouseEvent->globalPosition().toPoint().y() - m_resizePressPos;
                 m_owner->setBlockRowHeight(m_resizeStartSize + delta, true);
+                return true;
             }
-            setCursor(Qt::SizeVerCursor);
-            event->accept();
-            return;
-        }
-        if (m_resizingSection >= 0 && (event->buttons() & Qt::LeftButton)) {
-            const int delta = event->globalPosition().toPoint().x() - m_resizePressPos;
-            resizeSection(m_resizingSection, qMax(minimumSectionSize(), m_resizeStartSize + delta));
-            event->accept();
-            return;
-        }
-
-        QHeaderView::mouseMoveEvent(event);
-        if (m_resizingSection < 0 && !m_resizingRowHeight) {
-            if (isRowHeightHandle(event->pos())) {
-                setCursor(Qt::SizeVerCursor);
-            } else if (resizeHandleSectionAt(event->pos().x()) >= 0) {
-                setCursor(Qt::SplitHCursor);
-            } else {
-                unsetCursor();
+            if (!m_resizingRowHeight) {
+                if (UiResizeHandle::isWithinBottomGrab(mouseEvent->pos().y(), m_header->height())) {
+                    m_header->setCursor(Qt::SizeVerCursor);
+                } else if (m_header->cursor().shape() == Qt::SizeVerCursor) {
+                    m_header->unsetCursor();
+                }
             }
+            break;
         }
-    }
-
-    void mouseReleaseEvent(QMouseEvent* event) override {
-        if (m_resizingRowHeight || m_resizingSection >= 0) {
-            m_resizingRowHeight = false;
-            m_resizingSection = -1;
-            unsetCursor();
-            event->accept();
-            return;
+        case QEvent::MouseButtonRelease:
+            if (m_resizingRowHeight) {
+                m_resizingRowHeight = false;
+                m_header->unsetCursor();
+                return true;
+            }
+            break;
+        case QEvent::Leave:
+            if (!m_resizingRowHeight) {
+                m_header->unsetCursor();
+            }
+            break;
+        default:
+            break;
         }
-        QHeaderView::mouseReleaseEvent(event);
-    }
-
-    void leaveEvent(QEvent* event) override {
-        if (m_resizingSection < 0 && !m_resizingRowHeight) {
-            unsetCursor();
-        }
-        QHeaderView::leaveEvent(event);
+        return QObject::eventFilter(watched, event);
     }
 
 private:
     BlockListWidget* m_owner = nullptr;
-    int m_resizingSection = -1;
+    QHeaderView* m_header = nullptr;
     bool m_resizingRowHeight = false;
     int m_resizePressPos = 0;
     int m_resizeStartSize = 0;
@@ -182,6 +137,7 @@ void applyDefaultBlockListColumnWidths(QTableWidget* table) {
     table->setColumnWidth(kColIndex, 28);
     table->setColumnWidth(kColPreview, kThumbnailSize + 6);
     table->setColumnWidth(kColAction, 72);
+    table->setColumnWidth(kColSummary, 160);
     table->setColumnWidth(kColDuration, 72);
     table->setColumnWidth(kColMatchDuration, 72);
     table->setColumnWidth(kColAttempts, 58);
@@ -197,13 +153,14 @@ void applyBlockListHeaderResizeModes(QHeaderView* header) {
         return;
     }
     header->setMinimumSectionSize(24);
-    header->setStretchLastSection(false);
+    header->setStretchLastSection(true);
     header->setCascadingSectionResizes(false);
     for (int column = 0; column < kColumnCount; ++column) {
-        header->setSectionResizeMode(column,
-                                     column == kColSummary ? QHeaderView::Stretch
-                                                           : QHeaderView::Interactive);
+        header->setSectionResizeMode(
+            column,
+            column == kColFiller ? QHeaderView::Stretch : QHeaderView::Interactive);
     }
+    header->setSectionHidden(kColFiller, true);
 }
 
 void initBlockListColumnHeader(BlockListWidget* table) {
@@ -219,7 +176,8 @@ void initBlockListColumnHeader(BlockListWidget* table) {
                                     BlockListWidget::tr("재시도"),
                                     BlockListWidget::tr("기준/감지"),
                                     BlockListWidget::tr("ROI 보정"),
-                                    BlockListWidget::tr("매칭")});
+                                    BlockListWidget::tr("매칭"),
+                                    QString()});
 
     if (QTableWidgetItem* previewHeader = table->horizontalHeaderItem(kColPreview)) {
         previewHeader->setToolTip(
@@ -961,11 +919,12 @@ private:
 BlockListWidget::BlockListWidget(QWidget* parent)
     : QTableWidget(parent)
     , m_blockRowHeight(UiResizeHandle::kDefaultBlockListRowHeightPx) {
-    setHorizontalHeader(new BlockListHeaderView(this));
-    horizontalHeader()->setDefaultAlignment(Qt::AlignCenter);
-    horizontalHeader()->setSectionsMovable(false);
-    horizontalHeader()->setFirstSectionMovable(false);
     initBlockListColumnHeader(this);
+    QHeaderView* header = horizontalHeader();
+    header->setDefaultAlignment(Qt::AlignCenter);
+    header->setSectionsMovable(false);
+    header->setFirstSectionMovable(false);
+    new BlockListHeaderRowHeightFilter(this, header);
     setIconSize(QSize(kThumbnailSize, kThumbnailSize));
     setItemDelegateForColumn(0, new BlockListChromeRowDelegate(this));
     setItemDelegateForColumn(1, new CenterIconDelegate(this));
@@ -987,6 +946,7 @@ BlockListWidget::BlockListWidget(QWidget* parent)
     setReorderEnabled(true);
     setAlternatingRowColors(false);
     setShowGrid(false);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     m_flashAnimation = new QVariantAnimation(this);
     m_flashAnimation->setStartValue(1.0);
@@ -2263,7 +2223,7 @@ void BlockListWidget::applyIdleRowBackground(int tableRow) {
         && !(selectionModel() && selectionModel()->isRowSelected(tableRow, QModelIndex()));
     const QBrush brush = hovered ? QBrush(UiHoverFeedback::blendListRowHover(rowPalette))
                                  : rowPalette.brush(QPalette::Base);
-    for (int c = 0; c < kColumnCount; ++c) {
+    for (int c = 0; c < kColFiller; ++c) {
         if (QTableWidgetItem* cellItem = item(tableRow, c)) {
             cellItem->setBackground(brush);
         }
@@ -2279,7 +2239,7 @@ void BlockListWidget::applyActiveRowVisuals() {
     for (int tableRow = 0; tableRow < rowCount(); ++tableRow) {
         const int blockRow = blockRowForTableRow(tableRow);
         if (blockRow < 0) {
-            for (int c = 0; c < kColumnCount; ++c) {
+            for (int c = 0; c < kColFiller; ++c) {
                 if (QTableWidgetItem* cellItem = item(tableRow, c)) {
                     cellItem->setBackground(Qt::NoBrush);
                     cellItem->setForeground(rowPalette.brush(QPalette::Text));
@@ -2358,7 +2318,7 @@ void BlockListWidget::applyActiveRowVisuals() {
             useGlassIndex = true;
         }
 
-        for (int c = 0; c < kColumnCount; ++c) {
+        for (int c = 0; c < kColFiller; ++c) {
             QTableWidgetItem* cellItem = this->item(tableRow, c);
             if (!cellItem) {
                 continue;
@@ -2439,7 +2399,7 @@ void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
 
     QModelIndexList indexes = selectedIndexes();
     if (indexes.isEmpty()) {
-        for (int column = 0; column < columnCount(); ++column) {
+        for (int column = 0; column < kColFiller; ++column) {
             indexes << model()->index(sourceRow, column);
         }
     }
@@ -2557,7 +2517,7 @@ void BlockListWidget::updateDragSourceVisuals() {
 
     for (int r = 0; r < rowCount(); ++r) {
         const bool isSource = m_dragSourceRow >= 0 && r == m_dragSourceRow;
-        for (int c = 0; c < kColumnCount; ++c) {
+        for (int c = 0; c < kColFiller; ++c) {
             QTableWidgetItem* item = this->item(r, c);
             if (!item) {
                 continue;
