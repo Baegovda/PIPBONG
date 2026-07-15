@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.138` (from `project(PIPBONG VERSION 0.8.138)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.139` (from `project(PIPBONG VERSION 0.8.139)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1092,6 +1092,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.139] - 2026-07-15
+
+### Changed
+
+- `README.md`: plain concise Korean landing page — removed badge wall, emoji sections, and marketing copy; kept install, usage, build, and warning only.
 
 ## [0.8.138] - 2026-07-15
 
