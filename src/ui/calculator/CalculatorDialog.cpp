@@ -5,6 +5,7 @@
 #include "ui/calculator/FormulaEvaluator.h"
 #include "ui/calculator/SpreadsheetCellColors.h"
 #include "ui/widgets/DragAdjustSpinBox.h"
+#include "ui/widgets/ListDragAutoScroll.h"
 
 #include <nlohmann/json.hpp>
 
@@ -390,6 +391,7 @@ void CalculatorDialog::setupUi() {
     m_table->setItemDelegate(m_cellDelegate);
     m_table->installEventFilter(this);
     m_table->viewport()->installEventFilter(this);
+    m_dragAutoScroll = new ListDragAutoScroll(m_table, this);
     rootLayout->addWidget(m_table, 1);
 
     m_saveTimer = new QTimer(this);
@@ -1050,8 +1052,12 @@ void CalculatorDialog::cancelCellMoveDrag() {
     if (!m_cellMoveDragArmed && !m_cellMoveDragging) {
         return;
     }
+    const bool wasDragging = m_cellMoveDragging;
     m_cellMoveDragArmed = false;
     m_cellMoveDragging = false;
+    if (wasDragging && !m_formulaPickActive) {
+        m_dragAutoScroll->end();
+    }
     if (m_table) {
         m_table->unsetCursor();
         m_table->viewport()->unsetCursor();
@@ -1740,6 +1746,7 @@ void CalculatorDialog::enterFormulaPickMode(FormulaPickSlot slot) {
     }
 
     m_formulaPickActive = true;
+    m_dragAutoScroll->begin();
     m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_table->setSelectionBehavior(QAbstractItemView::SelectItems);
     if (slot == FormulaPickSlot::ArrayRange) {
@@ -1755,6 +1762,7 @@ void CalculatorDialog::exitFormulaPickMode() {
     }
 
     m_formulaPickActive = false;
+    m_dragAutoScroll->end();
     if (m_formulaBuilder) {
         const QSignalBlocker blocker(m_formulaBuilder);
         m_formulaBuilder->endPickMode();
@@ -1809,6 +1817,11 @@ bool CalculatorDialog::eventFilter(QObject* watched, QEvent* event) {
         return QDialog::eventFilter(watched, event);
     }
 
+    if (event->type() == QEvent::MouseMove && isViewport && m_dragAutoScroll->isActive()) {
+        const auto* mouseEvent = static_cast<const QMouseEvent*>(event);
+        m_dragAutoScroll->updateFromViewportPos(mouseEvent->pos());
+    }
+
     if (event->type() == QEvent::MouseButtonRelease && isViewport && m_formulaPickActive) {
         commitFormulaPickFromSelection();
         return false;
@@ -1842,10 +1855,14 @@ bool CalculatorDialog::eventFilter(QObject* watched, QEvent* event) {
                 && (mouseEvent->pos() - m_cellMovePressPos).manhattanLength()
                        >= QApplication::startDragDistance()) {
                 m_cellMoveDragging = true;
+                if (!m_formulaPickActive) {
+                    m_dragAutoScroll->begin();
+                }
                 m_table->viewport()->setCursor(Qt::DragMoveCursor);
                 m_statusLabel->setText(tr("셀 이동: 놓을 위치에서 마우스를 떼세요. Esc로 취소합니다."));
             }
             if (m_cellMoveDragging) {
+                m_dragAutoScroll->updateFromViewportPos(mouseEvent->pos());
                 return true;
             }
         } else if (event->type() == QEvent::MouseButtonRelease) {

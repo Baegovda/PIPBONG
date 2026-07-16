@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.162` (from `project(PIPBONG VERSION 0.8.162)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.163` (from `project(PIPBONG VERSION 0.8.163)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -825,6 +825,7 @@ If POE runs **as administrator**, a non-elevated PIPBONG process may not receive
 | Layer                   | Responsibility                                                                                                                                                                   |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ReorderableListWidget` | Insertion-line indicator, `startDrag` / `dropEvent`, `rowsReordered` + `multiRowsReordered` + `externalItemDropped` signals; multi-select drag reorders as a block               |
+| `ListDragAutoScroll`    | Shared edge auto-scroll + mouse-wheel scroll during drag (`begin`/`end` around `drag->exec`, external drop-target sessions); used by `ReorderableListWidget`, `BlockListWidget`, calculator |
 | Subclass hooks          | `buildDragMimeData`, `acceptsExternalMime`, `canStartDragFromRow`, `minimumDropInsertionIndex`                                                                                   |
 | Persistence             | Parent connects reorder signals → model save → `refresh()` (feature `Project::moveFeature` / `moveFeatures`, library `manifest.json`, profile `ProfileManager::reorderProfiles`) |
 | Cross-panel MIME        | `FeatureDragMime` supports multi-id payloads (`ids` array); drops copy all selected items                                                                                        |
@@ -833,7 +834,7 @@ Subclasses: `FeatureListWidget`, `FeatureLibraryListWidget`, `ProfileListWidget`
 
 **Drag visuals:** `ListDragVisuals` — lifted pixmap on `QDrag`, dashed source slot, snap-in settle on internal reorder and library import drop. Workflow `BlockListWidget` uses the same helpers.
 
-Key files: `src/ui/widgets/ReorderableListWidget.*`, `src/ui/widgets/ListDragVisuals.*`, `src/ui/FeatureDragMime.*`.
+Key files: `src/ui/widgets/ReorderableListWidget.*`, `src/ui/widgets/ListDragVisuals.*`, `src/ui/widgets/ListDragAutoScroll.*`, `src/ui/FeatureDragMime.*`.
 
 ### 8.3 Code conventions
 
@@ -1176,6 +1177,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.163] - 2026-07-16
+
+### Added
+
+- Shared `ListDragAutoScroll` (`src/ui/widgets/ListDragAutoScroll.*`): edge auto-scroll and mouse-wheel scroll during drag sessions — default for `ReorderableListWidget` (feature / library / profile lists, including cross-panel drop targets), `BlockListWidget` (reorder + **구간 반복** range pick), and calculator spreadsheet (formula cell pick + cell move drag).
+
+### Changed
+
+- Workflow block list drag scroll logic refactored onto `ListDragAutoScroll` (same behavior as v0.8.161–0.8.162).
 
 ## [0.8.162] - 2026-07-16
 

@@ -3,6 +3,7 @@
 #include "ui/UiHoverFeedback.h"
 #include "ui/UiResizeHandle.h"
 #include "ui/widgets/ListColumnHeaderWidget.h"
+#include "ui/widgets/ListDragAutoScroll.h"
 
 #include "core/workflow/Block.h"
 #include "core/workflow/LoopExitCondition.h"
@@ -42,7 +43,6 @@
 #include <QTimer>
 #include <QVariantAnimation>
 #include <QEasingCurve>
-#include <QWheelEvent>
 
 #include <climits>
 #include <cmath>
@@ -77,10 +77,6 @@ constexpr int kMinActionColumnWidth = 48;
 constexpr int kMaxActionColumnWidth = 160;
 constexpr int kMinMatchColumnWidth = 28;
 constexpr int kMaxMatchColumnWidth = 80;
-constexpr int kDragAutoScrollEdgeZonePx = 28;
-constexpr int kDragAutoScrollIntervalMs = 16;
-constexpr int kDragAutoScrollMinStepPx = 4;
-constexpr int kDragAutoScrollMaxStepPx = 20;
 
 int blockListColumnWidthFromLayout(const BlockListColumnLayout& layout, int column) {
     switch (column) {
@@ -1127,19 +1123,8 @@ BlockListWidget::BlockListWidget(QWidget* parent)
         }
     });
 
-    m_dragAutoScrollTimer = new QTimer(this);
-    m_dragAutoScrollTimer->setInterval(kDragAutoScrollIntervalMs);
-    connect(m_dragAutoScrollTimer, &QTimer::timeout, this, [this]() {
-        if (m_dragAutoScrollDirection == 0 || !verticalScrollBar()) {
-            stopDragAutoScroll();
-            return;
-        }
-        const int before = verticalScrollBar()->value();
-        scrollDuringBlockDrag(m_dragAutoScrollDirection * m_dragAutoScrollStep);
-        if (verticalScrollBar()->value() == before) {
-            stopDragAutoScroll();
-        }
-    });
+    m_dragAutoScroll = new ListDragAutoScroll(this, this);
+    m_dragAutoScroll->setOnScrolled([this]() { refreshDragScrollDependentUi(); });
 
     m_dropIndicator = new DropInsertionIndicator(viewport());
     m_dropIndicator->hide();
@@ -1825,6 +1810,11 @@ void BlockListWidget::setLoopRegionPickMode(bool active) {
     }
     m_loopRegionPickActive = active;
     cancelLoopRegionPick();
+    if (active) {
+        m_dragAutoScroll->begin();
+    } else {
+        m_dragAutoScroll->end();
+    }
     setDragEnabled(active ? false : m_reorderEnabled);
     setAcceptDrops(active ? false : m_reorderEnabled);
     setDragDropMode((active || !m_reorderEnabled) ? QAbstractItemView::NoDragDrop
@@ -1928,20 +1918,13 @@ void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
 }
 
 bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
-    if (event->type() == QEvent::Wheel && m_reorderEnabled && m_dragSourceRow >= 0
-        && !m_loopRegionPickActive) {
-        auto* wheelEvent = static_cast<QWheelEvent*>(event);
-        const QPoint globalPos = wheelEvent->globalPosition().toPoint();
-        const QRect listGlobalRect(mapToGlobal(QPoint(0, 0)), size());
-        if (listGlobalRect.contains(globalPos) && handleBlockDragWheelScroll(wheelEvent)) {
-            return true;
-        }
-    }
-
     if (watched == viewport()) {
         switch (event->type()) {
         case QEvent::MouseMove: {
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (m_loopRegionPickActive) {
+                m_dragAutoScroll->updateFromViewportPos(mouseEvent->pos());
+            }
             const int tableRow = rowAt(mouseEvent->pos().y());
             updateHoverTableRow(tableRow);
             break;
@@ -1979,6 +1962,7 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
             }
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
             m_loopRegionPickCurrentRow = blockRowAtViewportY(mouseEvent->pos().y());
+            m_dragAutoScroll->updateFromViewportPos(mouseEvent->pos());
             updateLoopRegionPickPreview();
             applyActiveRowVisuals();
             mouseEvent->accept();
@@ -2595,115 +2579,23 @@ void BlockListWidget::scrollReturnToPreviousRowsIntoView() {
     }
 }
 
-void BlockListWidget::updateDragAutoScroll(const QPoint& viewportPos) {
-    if (!m_reorderEnabled || m_dragSourceRow < 0 || !verticalScrollBar()) {
-        stopDragAutoScroll();
-        return;
-    }
-
-    QScrollBar* bar = verticalScrollBar();
-    if (bar->maximum() <= 0) {
-        stopDragAutoScroll();
-        return;
-    }
-
-    const int viewportHeight = viewport()->height();
-    const int y = viewportPos.y();
-    int direction = 0;
-    int step = 0;
-
-    if (y < kDragAutoScrollEdgeZonePx) {
-        direction = -1;
-        const double depth =
-            1.0 - std::clamp(y / static_cast<double>(kDragAutoScrollEdgeZonePx), 0.0, 1.0);
-        step = kDragAutoScrollMinStepPx
-               + static_cast<int>(std::lround((kDragAutoScrollMaxStepPx - kDragAutoScrollMinStepPx)
-                                              * depth));
-    } else if (y > viewportHeight - kDragAutoScrollEdgeZonePx) {
-        direction = 1;
-        const double depth = 1.0
-                             - std::clamp((viewportHeight - y) / static_cast<double>(kDragAutoScrollEdgeZonePx),
-                                          0.0,
-                                          1.0);
-        step = kDragAutoScrollMinStepPx
-               + static_cast<int>(std::lround((kDragAutoScrollMaxStepPx - kDragAutoScrollMinStepPx)
-                                              * depth));
-    }
-
-    if (direction == 0) {
-        stopDragAutoScroll();
-        return;
-    }
-
-    m_dragAutoScrollDirection = direction;
-    m_dragAutoScrollStep = step;
-    if (m_dragAutoScrollTimer && !m_dragAutoScrollTimer->isActive()) {
-        m_dragAutoScrollTimer->start();
-    }
-}
-
-void BlockListWidget::stopDragAutoScroll() {
-    m_dragAutoScrollDirection = 0;
-    m_dragAutoScrollStep = 0;
-    if (m_dragAutoScrollTimer) {
-        m_dragAutoScrollTimer->stop();
-    }
-}
-
-void BlockListWidget::scrollDuringBlockDrag(int deltaPx) {
-    if (m_dragSourceRow < 0 || !verticalScrollBar() || deltaPx == 0) {
-        return;
-    }
-
-    QScrollBar* bar = verticalScrollBar();
-    const int next = std::clamp(bar->value() + deltaPx, bar->minimum(), bar->maximum());
-    if (next == bar->value()) {
-        return;
-    }
-    bar->setValue(next);
-
-    const QPoint local = viewport()->mapFromGlobal(QCursor::pos());
-    const int insertIdx = dropInsertionIndex(local);
-    if (insertIdx != m_dropInsertionIndex) {
-        m_dropInsertionIndex = insertIdx;
-    }
-    updateDropIndicator();
-}
-
-bool BlockListWidget::handleBlockDragWheelScroll(QWheelEvent* wheelEvent) {
-    if (!wheelEvent || !verticalScrollBar()) {
-        return false;
-    }
-
-    int deltaPx = 0;
-    if (!wheelEvent->pixelDelta().isNull()) {
-        deltaPx = -wheelEvent->pixelDelta().y();
-    } else {
-        const int angleY = wheelEvent->angleDelta().y();
-        if (angleY == 0) {
-            return false;
+void BlockListWidget::refreshDragScrollDependentUi() {
+    if (m_dragSourceRow >= 0) {
+        const QPoint local = viewport()->mapFromGlobal(QCursor::pos());
+        const int insertIdx = dropInsertionIndex(local);
+        if (insertIdx != m_dropInsertionIndex) {
+            m_dropInsertionIndex = insertIdx;
         }
-        const int steps = angleY / 120;
-        const int notchSteps = steps != 0 ? steps : (angleY > 0 ? 1 : -1);
-        deltaPx = -notchSteps * verticalScrollBar()->singleStep();
+        updateDropIndicator();
+        return;
     }
 
-    if (deltaPx == 0) {
-        return false;
+    if (m_loopRegionPickActive && m_loopRegionPickDragging) {
+        m_loopRegionPickCurrentRow =
+            blockRowAtViewportY(viewport()->mapFromGlobal(QCursor::pos()).y());
+        updateLoopRegionPickPreview();
+        applyActiveRowVisuals();
     }
-
-    scrollDuringBlockDrag(deltaPx);
-    wheelEvent->accept();
-    return true;
-}
-
-void BlockListWidget::wheelEvent(QWheelEvent* event) {
-    if (m_reorderEnabled && m_dragSourceRow >= 0 && !m_loopRegionPickActive) {
-        if (handleBlockDragWheelScroll(event)) {
-            return;
-        }
-    }
-    QTableWidget::wheelEvent(event);
 }
 
 void BlockListWidget::clearActiveRow() {
@@ -3020,11 +2912,10 @@ void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
     const ListDragVisuals::LiftedPixmap lifted =
         ListDragVisuals::makeLiftedTableRowDrag(this, sourceRow, cursorGlobal);
     ListDragVisuals::applyToDrag(drag, lifted);
-    qApp->installEventFilter(this);
+    m_dragAutoScroll->begin();
     drag->exec(supportedActions, Qt::MoveAction);
-    qApp->removeEventFilter(this);
+    m_dragAutoScroll->end();
 
-    stopDragAutoScroll();
     ListDragVisuals::hideDragSlotPlaceholder(&m_dragSlotPlaceholder);
     clearDropIndicator();
     applyActiveRowVisuals();
@@ -3050,11 +2941,11 @@ void BlockListWidget::dragEnterEvent(QDragEnterEvent* event) {
     if (m_reorderEnabled && event->source() == this && m_dragSourceRow >= 0) {
         m_dropInsertionIndex = dropInsertionIndex(event->position().toPoint());
         updateDropIndicator();
-        updateDragAutoScroll(viewport()->mapFromGlobal(QCursor::pos()));
+        m_dragAutoScroll->updateFromViewportPos(event->position().toPoint());
         event->acceptProposedAction();
         return;
     }
-    stopDragAutoScroll();
+    m_dragAutoScroll->releaseEdgeScroll();
     clearDropIndicator();
     event->ignore();
 }
@@ -3068,17 +2959,17 @@ void BlockListWidget::dragMoveEvent(QDragMoveEvent* event) {
         } else if (m_dropIndicator && m_dropIndicator->isVisible()) {
             updateDropIndicator();
         }
-        updateDragAutoScroll(viewport()->mapFromGlobal(QCursor::pos()));
+        m_dragAutoScroll->updateFromViewportPos(event->position().toPoint());
         event->acceptProposedAction();
         return;
     }
-    stopDragAutoScroll();
+    m_dragAutoScroll->releaseEdgeScroll();
     clearDropIndicator();
     event->ignore();
 }
 
 void BlockListWidget::dragLeaveEvent(QDragLeaveEvent* event) {
-    stopDragAutoScroll();
+    m_dragAutoScroll->releaseEdgeScroll();
     clearDropIndicator();
     QTableWidget::dragLeaveEvent(event);
 }
@@ -3183,7 +3074,7 @@ int BlockListWidget::dropTargetRow(const QPoint& pos) const {
 }
 
 void BlockListWidget::dropEvent(QDropEvent* event) {
-    stopDragAutoScroll();
+    m_dragAutoScroll->releaseEdgeScroll();
     if (!m_reorderEnabled || m_dragSourceRow < 0 || event->source() != this) {
         m_dragSourceRow = -1;
         clearDropIndicator();

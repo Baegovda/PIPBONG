@@ -2,6 +2,8 @@
 
 #include <QListWidget>
 
+class ListDragAutoScroll;
+
 class QDragEnterEvent;
 class QDragLeaveEvent;
 class QDragMoveEvent;
@@ -53,6 +55,7 @@ private:
 
     bool m_reorderEnabled = true;
     bool m_externalDropHover = false;
+    bool m_externalDragScroll = false;
     int m_dragSourceRow = -1;
     int m_pendingReorderFrom = -1;
     int m_pendingReorderTo = -1;
@@ -61,6 +64,7 @@ private:
     int m_dropInsertionIndex = -1;
     QWidget* m_dropIndicator = nullptr;
     QWidget* m_dragSlotPlaceholder = nullptr;
+    ListDragAutoScroll* m_dragAutoScroll = nullptr;
 
     void playDropSettleAtRow(int row);
     QList<int> selectedRowsSorted() const;

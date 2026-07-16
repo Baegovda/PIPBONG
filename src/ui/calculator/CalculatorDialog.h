@@ -21,6 +21,7 @@ class QPushButton;
 class QTableView;
 class QTimer;
 
+class ListDragAutoScroll;
 class SpreadsheetTableView;
 
 class CalculatorDialog : public QDialog {
@@ -107,6 +108,7 @@ private:
     SpreadsheetModel m_model;
     SpreadsheetCellDelegate* m_cellDelegate = nullptr;
     SpreadsheetTableView* m_table = nullptr;
+    ListDragAutoScroll* m_dragAutoScroll = nullptr;
     QComboBox* m_leagueCombo = nullptr;
     QComboBox* m_baseCurrencyCombo = nullptr;
     QPushButton* m_baseCurrencyFavoriteButton = nullptr;

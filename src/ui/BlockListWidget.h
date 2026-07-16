@@ -8,6 +8,8 @@
 
 #include "ui/widgets/DragAdjustSpinMouse.h"
 
+class ListDragAutoScroll;
+
 
 
 #include <QPixmap>
@@ -23,8 +25,6 @@
 #include <QColor>
 
 #include <QKeyEvent>
-
-#include <QWheelEvent>
 
 #include <QTimer>
 
@@ -238,8 +238,6 @@ protected:
 
     void dropEvent(QDropEvent* event) override;
 
-    void wheelEvent(QWheelEvent* event) override;
-
     void resizeEvent(QResizeEvent* event) override;
 
     void showEvent(QShowEvent* event) override;
@@ -264,6 +262,8 @@ private:
 
     void updateHoverTableRow(int tableRow);
 
+    void refreshDragScrollDependentUi();
+
     void applyIdleRowBackground(int tableRow);
 
     void onFlashAnimationValueChanged(const QVariant& value);
@@ -284,14 +284,6 @@ private:
     void startReturnToPreviousFade(int fadeMs);
 
     void scrollReturnToPreviousRowsIntoView();
-
-    void updateDragAutoScroll(const QPoint& viewportPos);
-
-    void stopDragAutoScroll();
-
-    void scrollDuringBlockDrag(int deltaPx);
-
-    bool handleBlockDragWheelScroll(QWheelEvent* wheelEvent);
 
     void updateLoopRegionPickPreview();
 
@@ -382,11 +374,7 @@ private:
 
     QTimer* m_returnFlashHoldTimer = nullptr;
 
-    QTimer* m_dragAutoScrollTimer = nullptr;
-
-    int m_dragAutoScrollDirection = 0;
-
-    int m_dragAutoScrollStep = 0;
+    ListDragAutoScroll* m_dragAutoScroll = nullptr;
 
     int m_flashRow = -1;
 
