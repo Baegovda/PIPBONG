@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.169` (from `project(PIPBONG VERSION 0.8.169)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.170` (from `project(PIPBONG VERSION 0.8.170)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.170] - 2026-07-16
+
+### Changed
+
+- `ListDragAutoScroll` drag sensitivity halved again: edge max step 4→2 px/tick, max-speed overshoot threshold 160→320 px, wheel scale 0.65→0.325 (`ListDragAutoScroll`).
 
 ## [0.8.169] - 2026-07-16
 

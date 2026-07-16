@@ -18,9 +18,11 @@ namespace {
 
 constexpr int kIntervalMs = 24;
 /// Overshoot distance (px) outside the viewport that reaches maximum scroll step.
-constexpr int kOvershootForMaxStepPx = 160;
+constexpr int kOvershootForMaxStepPx = 320;
 constexpr int kMinStepPx = 1;
-constexpr int kMaxStepPx = 4;
+constexpr int kMaxStepPx = 2;
+/// Scales wheel scroll during drag (lower = slower).
+constexpr double kWheelSensitivity = 0.325;
 
 int edgeScrollStepForOvershoot(int overshootPx) {
     if (overshootPx <= 0) {
@@ -192,7 +194,7 @@ bool ListDragAutoScroll::applyWheelSteps(int notchSteps) {
     }
 
     int deltaPx = -notchSteps * wheelPixelsPerNotch(bar);
-    deltaPx = static_cast<int>(std::lround(deltaPx * 0.65));
+    deltaPx = static_cast<int>(std::lround(deltaPx * kWheelSensitivity));
     if (deltaPx == 0) {
         deltaPx = notchSteps > 0 ? -1 : 1;
     }
