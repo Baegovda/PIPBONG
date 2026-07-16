@@ -4243,7 +4243,7 @@ void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* fe
         return;
     }
 
-    appendSessionLog(session, tr("다시 감시하기까지 %1ms 대기").arg(cooldownMs), LogLineKind::Info);
+    appendSessionLog(session, tr("성공 후 %1ms 쿨다운").arg(cooldownMs), LogLineKind::Info);
     const quint64 generation = ++session.triggerCooldownGeneration;
     const std::string featureId = session.featureId;
     QTimer::singleShot(cooldownMs, this, [this, featureId, generation]() {
@@ -4286,11 +4286,15 @@ void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
 
     if (session.triggerPhase == TriggerSessionPhase::RunningAction) {
         logLoopCompletion(session, success, message);
-        if (!success && !session.userStopRequested) {
+        resumePreemptedSessionsForTrigger(session);
+        if (success) {
+            scheduleTriggerCooldown(session, feature);
+            return;
+        }
+        if (!session.userStopRequested) {
             appendSessionLog(session, tr("실행 실패 — 감시를 다시 시작합니다"), LogLineKind::Warning);
         }
-        resumePreemptedSessionsForTrigger(session);
-        scheduleTriggerCooldown(session, feature);
+        launchTriggerMonitor(session, feature, false);
     }
 }
 

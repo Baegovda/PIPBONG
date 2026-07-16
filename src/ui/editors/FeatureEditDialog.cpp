@@ -197,8 +197,8 @@ void FeatureEditDialog::setupUi() {
                              tr("단축키를 누르고 있는 동안 워크플로를 무한 반복합니다. 키를 떼면 중지됩니다."),
                              Qt::ToolTipRole);
     m_modeCombo->setItemData(3,
-                             tr("첫 번째 템플릿 매칭 블록만 상시 감시합니다. 감지되면 워크플로를 1회 실행한 뒤 "
-                                "재감지 대기 시간 후 다시 감시합니다. 단축키로 감시를 켜고 끕니다."),
+                             tr("첫 번째 템플릿 매칭 블록만 상시 감시합니다. 감지되면 워크플로를 1회 실행하고, "
+                                "성공한 뒤 쿨다운 시간이 지나면 다시 감시합니다. 단축키로 감시를 켜고 끕니다."),
                              Qt::ToolTipRole);
     form->addRow(tr("동작 방식"), m_modeCombo);
 
@@ -279,8 +279,10 @@ void FeatureEditDialog::setupUi() {
     m_triggerCooldownSpin->setRange(0, 600000);
     m_triggerCooldownSpin->setSingleStep(kTriggerCooldownStepMs);
     m_triggerCooldownSpin->setToolTip(
-        tr("트리거 발동 후 같은 트리거가 바로 다시 잡히지 않도록 대기하는 시간입니다."));
-    m_triggerCooldownLabel = new QLabel(tr("재감지 대기"), this);
+        tr("워크플로 1회 실행이 성공한 뒤, 다음 트리거 감시를 시작하기 전에 대기하는 시간입니다. "
+           "블록 편집기의 「탐지 재시도」 간격(감시 중 매칭 실패 시 재탐색)과는 별개입니다. "
+           "0ms면 성공 직후 바로 다시 감시합니다."));
+    m_triggerCooldownLabel = new QLabel(tr("쿨다운"), this);
     m_triggerCooldownRow = new QWidget(this);
     auto* triggerCooldownLayout = new QHBoxLayout(m_triggerCooldownRow);
     triggerCooldownLayout->setContentsMargins(0, 0, 0, 0);
