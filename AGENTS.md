@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.174` (from `project(PIPBONG VERSION 0.8.174)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.175` (from `project(PIPBONG VERSION 0.8.175)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.175] - 2026-07-17
+
+### Changed
+
+- Running feature list name glow: replaced harsh full-spectrum rainbow with a slower prism palette (lavender → azure → ice → lilac → rose), chromatic soft glow, and matching left accent bar (`FeatureListPanel`).
 
 ## [0.8.174] - 2026-07-17
 

@@ -302,6 +302,95 @@ void paintFeatureRunButton(QPainter* painter,
     painter->restore();
 }
 
+struct PrismRunningTone {
+    QColor core;
+    QColor coolGlow;
+    QColor warmGlow;
+    qreal shimmer = 1.0;
+};
+
+PrismRunningTone prismRunningTone(int animationPhase, bool selected) {
+    const qreal t = static_cast<qreal>(animationPhase % 96) / 96.0;
+    const qreal shimmer = 0.62 + 0.38 * std::sin(t * 2.0 * M_PI);
+
+    // Curated prism hues — lavender → azure → ice → lilac → rose (no harsh full-spectrum rainbow).
+    static constexpr qreal kPrismHues[] = {252.0, 224.0, 196.0, 268.0, 296.0, 252.0};
+    static constexpr int kPrismHueCount = 5;
+    const qreal pos = std::fmod(t * static_cast<qreal>(kPrismHueCount), static_cast<qreal>(kPrismHueCount));
+    const int index = static_cast<int>(std::floor(pos));
+    const qreal frac = pos - static_cast<qreal>(index);
+
+    auto lerpHue = [](qreal from, qreal to, qreal amount) {
+        qreal delta = to - from;
+        if (delta > 180.0) {
+            delta -= 360.0;
+        } else if (delta < -180.0) {
+            delta += 360.0;
+        }
+        qreal hue = from + delta * amount;
+        while (hue < 0.0) {
+            hue += 360.0;
+        }
+        while (hue >= 360.0) {
+            hue -= 360.0;
+        }
+        return hue;
+    };
+
+    const qreal hue =
+        lerpHue(kPrismHues[index], kPrismHues[index + 1], frac);
+    const int saturation = selected ? 108 : 128;
+    const int value = selected ? 250 : 255;
+
+    PrismRunningTone tone;
+    tone.core = QColor::fromHsv(static_cast<int>(hue), saturation, value);
+    tone.coolGlow = QColor::fromHsv(static_cast<int>(hue + 14.0) % 360, 88, 255);
+    tone.warmGlow = QColor::fromHsv(static_cast<int>(hue + 346.0) % 360, 84, 255);
+    tone.shimmer = shimmer;
+    return tone;
+}
+
+void paintPrismRunningFeatureName(QPainter* painter,
+                                  const QRect& rect,
+                                  const QStyleOptionViewItem& option,
+                                  const QFont& nameFont,
+                                  const QString& elided,
+                                  int animationPhase) {
+    const Qt::Alignment align = Qt::AlignHCenter | Qt::AlignVCenter;
+    const bool selected = option.state & QStyle::State_Selected;
+    const PrismRunningTone prism = prismRunningTone(animationPhase, selected);
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+    painter->setFont(nameFont);
+
+    for (int layer = 3; layer >= 1; --layer) {
+        const int spread = layer;
+        const int alpha = static_cast<int>((24 - layer * 5) * prism.shimmer);
+
+        QColor cool = prism.coolGlow;
+        cool.setAlpha(alpha);
+        painter->setPen(cool);
+        painter->drawText(rect.adjusted(-spread, 0, spread - 1, 0), align, elided);
+
+        QColor warm = prism.warmGlow;
+        warm.setAlpha(alpha);
+        painter->setPen(warm);
+        painter->drawText(rect.adjusted(spread - 1, 0, spread, 0), align, elided);
+    }
+
+    for (int ring = 2; ring >= 0; --ring) {
+        QColor bloom = prism.core;
+        bloom.setAlpha(static_cast<int>((34 - ring * 9) * prism.shimmer));
+        painter->setPen(bloom);
+        painter->drawText(rect.adjusted(-ring, 0, ring, 0), align, elided);
+    }
+
+    painter->setPen(prism.core);
+    painter->drawText(rect, align, elided);
+    painter->restore();
+}
+
 void paintFeatureListRowChrome(QPainter* painter,
                                const QRect& rect,
                                bool selected,
@@ -333,6 +422,10 @@ void paintFeatureListRowChrome(QPainter* painter,
         } else if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
             accent = QColor(214, 168, 72);
             accent.setAlpha(150);
+        } else if (visualKind == FeatureRunVisualKind::ActiveRun) {
+            const PrismRunningTone prism = prismRunningTone(animationPhase, false);
+            accent = prism.core;
+            accent.setAlpha(static_cast<int>(prism.shimmer * 215.0));
         }
         painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()), accent);
     }
@@ -419,21 +512,7 @@ void paintFeatureName(QPainter* painter,
         return;
     }
 
-    const int hue = (animationPhase * 5) % 360;
-    QColor nameColor = QColor::fromHsv(hue, 210, 255);
-    if (option.state & QStyle::State_Selected) {
-        nameColor = QColor::fromHsv(hue, 170, 255);
-    }
-    for (int offset = 2; offset >= 0; --offset) {
-        QColor glow = nameColor;
-        glow.setAlpha(70 - offset * 20);
-        painter->setPen(glow);
-        painter->setFont(nameFont);
-        painter->drawText(rect.adjusted(-offset, 0, offset, 0), align, elided);
-    }
-    painter->setPen(nameColor);
-    painter->setFont(nameFont);
-    painter->drawText(rect, align, elided);
+    paintPrismRunningFeatureName(painter, rect, option, nameFont, elided, animationPhase);
 }
 
 void applyFeatureListPanelStyle(QWidget* panel) {
@@ -1564,7 +1643,7 @@ void FeatureListPanel::onLibrarySelectionChanged() {
 }
 
 void FeatureListPanel::onAnimationTick() {
-    m_animPhase = (m_animPhase + 1) % 72;
+    m_animPhase = (m_animPhase + 1) % 96;
     if (m_list && m_list->viewport()) {
         m_list->viewport()->update();
     }
