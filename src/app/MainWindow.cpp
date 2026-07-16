@@ -719,6 +719,7 @@ void MainWindow::setupUi() {
 
     auto* targetGroup = new QGroupBox(tr("대상 창"), bottomPanel);
     targetGroup->setMinimumHeight(72);
+    targetGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto* targetLayout = new QVBoxLayout(targetGroup);
     targetLayout->setContentsMargins(8, 4, 8, 6);
     targetLayout->setSpacing(4);

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.178` (from `project(PIPBONG VERSION 0.8.178)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.179` (from `project(PIPBONG VERSION 0.8.179)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.179] - 2026-07-17
+
+### Changed
+
+- Target window detail panel reflows when the log/target horizontal splitter resizes: three width bands (comfortable / compact / narrow) re-wrap metadata fields and stack the title badge without clipping; layout rebuilds only when the band changes (`TargetWindowDetailPanel`, `MainWindow`).
 
 ## [0.8.178] - 2026-07-17
 

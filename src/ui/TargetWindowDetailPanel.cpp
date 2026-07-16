@@ -5,10 +5,15 @@
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QResizeEvent>
 #include <QStackedLayout>
 #include <QVBoxLayout>
 
 namespace {
+
+constexpr int kComfortableDetailWidthPx = 440;
+constexpr int kCompactDetailWidthPx = 280;
+constexpr int kDetailHorizontalMarginPx = 20;
 
 QString htmlEscape(const QString& text) {
     QString escaped = text;
@@ -34,7 +39,7 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
     : QFrame(parent) {
     setObjectName(QStringLiteral("targetWindowDetailPanel"));
     setFrameShape(QFrame::NoFrame);
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     setMinimumHeight(48);
     setAttribute(Qt::WA_StyledBackground, true);
 
@@ -59,22 +64,16 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
     detailsLayout->setContentsMargins(10, 8, 10, 8);
     detailsLayout->setSpacing(3);
 
-    auto* titleRow = new QHBoxLayout();
-    titleRow->setContentsMargins(0, 0, 0, 0);
-    titleRow->setSpacing(6);
-
-    m_titleLabel = new QLabel(m_detailsPage);
+    m_titleRowWidget = new QWidget(m_detailsPage);
+    m_titleLabel = new QLabel(m_titleRowWidget);
     m_titleLabel->setObjectName(QStringLiteral("targetWindowDetailTitle"));
     m_titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_titleLabel->setWordWrap(false);
+    m_titleLabel->setWordWrap(true);
 
-    m_statusLabel = new QLabel(m_detailsPage);
+    m_statusLabel = new QLabel(m_titleRowWidget);
     m_statusLabel->setObjectName(QStringLiteral("targetWindowDetailStatus"));
     m_statusLabel->setAlignment(Qt::AlignCenter);
-    m_statusLabel->setMinimumWidth(82);
-
-    titleRow->addWidget(m_titleLabel, 1);
-    titleRow->addWidget(m_statusLabel, 0);
+    m_statusLabel->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
 
     m_primaryLine = new QLabel(m_detailsPage);
     m_primaryLine->setObjectName(QStringLiteral("targetWindowDetailPrimary"));
@@ -88,9 +87,11 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
     m_secondaryLine->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_secondaryLine->setWordWrap(true);
 
-    detailsLayout->addLayout(titleRow);
+    detailsLayout->addWidget(m_titleRowWidget);
     detailsLayout->addWidget(m_primaryLine);
     detailsLayout->addWidget(m_secondaryLine);
+
+    rebuildTitleRowLayout();
 
     stackedLayout->addWidget(m_messagePage);
     stackedLayout->addWidget(m_detailsPage);
@@ -111,6 +112,137 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
 
     updateThemeColors();
     showMessage(tr("'창 지정'으로 대상 창을 선택하세요."));
+    updateAdaptiveLayout();
+}
+
+void TargetWindowDetailPanel::rebuildTitleRowLayout() {
+    if (!m_titleRowWidget || !m_titleLabel || !m_statusLabel) {
+        return;
+    }
+
+    delete m_titleRowWidget->layout();
+    m_titleRowLayout = nullptr;
+
+    const bool horizontalTitle = m_layoutDensity == DetailLayoutDensity::Comfortable;
+    if (horizontalTitle) {
+        auto* row = new QHBoxLayout(m_titleRowWidget);
+        row->setContentsMargins(0, 0, 0, 0);
+        row->setSpacing(6);
+        row->addWidget(m_titleLabel, 1);
+        row->addWidget(m_statusLabel, 0, Qt::AlignVCenter);
+        m_statusLabel->setAlignment(Qt::AlignCenter);
+        m_titleRowLayout = row;
+        return;
+    }
+
+    auto* column = new QVBoxLayout(m_titleRowWidget);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(2);
+    column->addWidget(m_titleLabel);
+    column->addWidget(m_statusLabel, 0, Qt::AlignLeft);
+    m_statusLabel->setAlignment(Qt::AlignCenter);
+    m_titleRowLayout = column;
+}
+
+void TargetWindowDetailPanel::updateAdaptiveLayout() {
+    const int contentWidth = qMax(0, width() - kDetailHorizontalMarginPx);
+    const DetailLayoutDensity newDensity =
+        densityForWidth(contentWidth);
+    const bool titleLayoutChanged =
+        !m_layoutReady || newDensity == DetailLayoutDensity::Comfortable
+        || m_layoutDensity == DetailLayoutDensity::Comfortable;
+    if (newDensity == m_layoutDensity && m_layoutReady && !titleLayoutChanged) {
+        return;
+    }
+
+    m_layoutDensity = newDensity;
+    m_layoutReady = true;
+    if (titleLayoutChanged) {
+        rebuildTitleRowLayout();
+    }
+    refreshVisibleDetailText();
+}
+
+void TargetWindowDetailPanel::refreshVisibleDetailText() {
+    if (m_globalDefaultProfileMode) {
+        refreshGlobalDefaultProfileText();
+    } else if (m_storedTargetBindingMode) {
+        refreshStoredTargetBindingText(m_storedBindingTitle,
+                                       m_storedBindingProcessName,
+                                       m_storedBindingProcessPath);
+    } else if (!m_lastDetailData.hwnd.isEmpty()) {
+        refreshDetailText();
+    }
+}
+
+void TargetWindowDetailPanel::resizeEvent(QResizeEvent* event) {
+    QFrame::resizeEvent(event);
+    updateAdaptiveLayout();
+}
+
+TargetWindowDetailPanel::DetailLayoutDensity TargetWindowDetailPanel::densityForWidth(
+    int contentWidthPx) const {
+    if (contentWidthPx >= kComfortableDetailWidthPx) {
+        return DetailLayoutDensity::Comfortable;
+    }
+    if (contentWidthPx >= kCompactDetailWidthPx) {
+        return DetailLayoutDensity::Compact;
+    }
+    return DetailLayoutDensity::Narrow;
+}
+
+QString TargetWindowDetailPanel::formatFieldsHtml(const QVector<QPair<QString, QString>>& fields,
+                                                  DetailLayoutDensity density,
+                                                  const QColor& muted,
+                                                  const QColor& text) const {
+    if (fields.isEmpty()) {
+        return {};
+    }
+
+    const auto joinField = [&](const QPair<QString, QString>& field) {
+        return captionSpan(field.first, muted) + QLatin1Char(' ') + valueSpan(field.second, text);
+    };
+
+    const QString sep = QStringLiteral(" &nbsp;&middot;&nbsp; ");
+    if (density == DetailLayoutDensity::Comfortable) {
+        QStringList parts;
+        parts.reserve(fields.size());
+        for (const auto& field : fields) {
+            parts.push_back(joinField(field));
+        }
+        return parts.join(sep);
+    }
+
+    if (density == DetailLayoutDensity::Compact) {
+        const int splitAt = (fields.size() + 1) / 2;
+        QString line1;
+        QString line2;
+        for (int i = 0; i < fields.size(); ++i) {
+            const QString chunk = joinField(fields[i]);
+            if (i < splitAt) {
+                if (!line1.isEmpty()) {
+                    line1 += sep;
+                }
+                line1 += chunk;
+            } else {
+                if (!line2.isEmpty()) {
+                    line2 += sep;
+                }
+                line2 += chunk;
+            }
+        }
+        if (line2.isEmpty()) {
+            return line1;
+        }
+        return line1 + QStringLiteral("<br>") + line2;
+    }
+
+    QStringList lines;
+    lines.reserve(fields.size());
+    for (const auto& field : fields) {
+        lines.push_back(joinField(field));
+    }
+    return lines.join(QStringLiteral("<br>"));
 }
 
 void TargetWindowDetailPanel::setLabelTextColor(QLabel* label,
@@ -162,7 +294,6 @@ void TargetWindowDetailPanel::refreshDetailText() {
                                   ? (text.lightness() < 128 ? QColor(0x64, 0xb5, 0xf6)
                                                             : QColor(0x1e, 0x88, 0xe5))
                                   : stateColorFor(m_lastDetailData);
-    const QString sep = QStringLiteral(" &nbsp;&middot;&nbsp; ");
     const QString title = m_lastDetailData.title.isEmpty() ? tr("이름 없는 창") : m_lastDetailData.title;
 
     m_titleLabel->setText(title);
@@ -173,22 +304,19 @@ void TargetWindowDetailPanel::refreshDetailText() {
         "padding: 3px 10px; border-radius: 999px; font-weight: 600; background-color: %1; color: %2;")
                                      .arg(stateColor.name(), badgeText.name()));
 
-    const QString primary =
-        captionSpan(tr("프로세스"), muted) + QLatin1Char(' ')
-        + valueSpan(m_lastDetailData.processName, text) + sep + captionSpan(tr("클래스"), muted)
-        + QLatin1Char(' ') + valueSpan(m_lastDetailData.className, text) + sep
-        + captionSpan(QStringLiteral("HWND"), muted) + QLatin1Char(' ')
-        + valueSpan(m_lastDetailData.hwnd, text);
+    const QVector<QPair<QString, QString>> primaryFields = {
+        {tr("프로세스"), m_lastDetailData.processName},
+        {tr("클래스"), m_lastDetailData.className},
+        {QStringLiteral("HWND"), m_lastDetailData.hwnd},
+    };
+    const QVector<QPair<QString, QString>> secondaryFields = {
+        {tr("창 영역"), m_lastDetailData.frameBounds},
+        {tr("클라이언트"), m_lastDetailData.clientSize},
+        {tr("모니터"), m_lastDetailData.monitor},
+    };
 
-    const QString secondary =
-        captionSpan(tr("창 영역"), muted) + QLatin1Char(' ')
-        + valueSpan(m_lastDetailData.frameBounds, text) + sep + captionSpan(tr("클라이언트"), muted)
-        + QLatin1Char(' ') + valueSpan(m_lastDetailData.clientSize, text) + sep
-        + captionSpan(tr("모니터"), muted) + QLatin1Char(' ')
-        + valueSpan(m_lastDetailData.monitor, text);
-
-    m_primaryLine->setText(primary);
-    m_secondaryLine->setText(secondary);
+    m_primaryLine->setText(formatFieldsHtml(primaryFields, m_layoutDensity, muted, text));
+    m_secondaryLine->setText(formatFieldsHtml(secondaryFields, m_layoutDensity, muted, text));
 }
 
 void TargetWindowDetailPanel::updateThemeColors() {
@@ -298,11 +426,11 @@ void TargetWindowDetailPanel::refreshGlobalDefaultProfileText() {
         "padding: 3px 10px; border-radius: 999px; font-weight: 600; background-color: %1; color: %2;")
                                      .arg(stateColor.name(), badgeText.name()));
 
-    m_primaryLine->setText(
-        captionSpan(tr("대상 창"), muted) + QLatin1Char(' ')
-        + valueSpan(tr("미지정"), text) + QStringLiteral(" &nbsp;&middot;&nbsp; ")
-        + captionSpan(tr("실행 범위"), muted) + QLatin1Char(' ')
-        + valueSpan(tr("전역"), text));
+    const QVector<QPair<QString, QString>> primaryFields = {
+        {tr("대상 창"), tr("미지정")},
+        {tr("실행 범위"), tr("전역")},
+    };
+    m_primaryLine->setText(formatFieldsHtml(primaryFields, m_layoutDensity, muted, text));
 
     m_secondaryLine->setText(valueSpan(tr("모든 프로그램에서 동작하며, 대상 창 설정은 변경할 수 없습니다."), muted));
 }
@@ -353,11 +481,11 @@ void TargetWindowDetailPanel::refreshStoredTargetBindingText(const QString& titl
         "padding: 3px 10px; border-radius: 999px; font-weight: 600; background-color: %1; color: %2;")
                                      .arg(stateColor.name(), badgeText.name()));
 
-    m_primaryLine->setText(
-        captionSpan(tr("프로세스"), muted) + QLatin1Char(' ')
-        + valueSpan(displayProcess, text) + QStringLiteral(" &nbsp;&middot;&nbsp; ")
-        + captionSpan(tr("연결 제목"), muted) + QLatin1Char(' ')
-        + valueSpan(displayTitle, text));
+    const QVector<QPair<QString, QString>> primaryFields = {
+        {tr("프로세스"), displayProcess},
+        {tr("연결 제목"), displayTitle},
+    };
+    m_primaryLine->setText(formatFieldsHtml(primaryFields, m_layoutDensity, muted, text));
 
     m_secondaryLine->setText(
         valueSpan(tr("현재 실행 중인 창이 감지되지 않습니다. 프로그램을 실행하면 자동으로 연결됩니다."),
