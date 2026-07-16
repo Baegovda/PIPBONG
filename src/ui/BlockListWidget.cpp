@@ -1919,6 +1919,16 @@ void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
 }
 
 bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
+    if (event->type() == QEvent::Wheel && m_dragAutoScroll && m_dragAutoScroll->isActive()
+        && !m_loopRegionPickActive) {
+        auto* wheelEvent = static_cast<QWheelEvent*>(event);
+        const QPoint globalPos = wheelEvent->globalPosition().toPoint();
+        const QRect listGlobalRect(mapToGlobal(QPoint(0, 0)), size());
+        if (listGlobalRect.contains(globalPos) && m_dragAutoScroll->handleWheel(wheelEvent)) {
+            return true;
+        }
+    }
+
     if (watched == viewport()) {
         switch (event->type()) {
         case QEvent::MouseMove: {
@@ -2914,7 +2924,9 @@ void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
         ListDragVisuals::makeLiftedTableRowDrag(this, sourceRow, cursorGlobal);
     ListDragVisuals::applyToDrag(drag, lifted);
     m_dragAutoScroll->begin();
+    qApp->installEventFilter(this);
     drag->exec(supportedActions, Qt::MoveAction);
+    qApp->removeEventFilter(this);
     m_dragAutoScroll->end();
 
     ListDragVisuals::hideDragSlotPlaceholder(&m_dragSlotPlaceholder);

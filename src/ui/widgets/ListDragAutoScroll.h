@@ -3,7 +3,11 @@
 #include <QObject>
 #include <QPoint>
 
+#include <QtGlobal>
+
 #include <functional>
+
+class QAbstractNativeEventFilter;
 
 class QAbstractScrollArea;
 class QWheelEvent;
@@ -26,6 +30,9 @@ public:
     void releaseEdgeScroll();
     bool handleWheel(QWheelEvent* wheelEvent);
 
+    QAbstractScrollArea* scrollArea() const { return m_scrollArea; }
+    bool applyWheelSteps(int notchSteps);
+
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 
@@ -41,4 +48,7 @@ private:
     int m_edgeDirection = 0;
     int m_edgeStep = 0;
     bool m_active = false;
+#ifdef Q_OS_WIN
+    QAbstractNativeEventFilter* m_nativeWheelFilter = nullptr;
+#endif
 };
