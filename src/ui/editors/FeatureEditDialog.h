@@ -3,6 +3,7 @@
 #include "app/FeatureHotkeyGate.h"
 #include "core/input/HotkeyBinding.h"
 #include "model/FeatureRunMode.h"
+#include "model/FeatureCaptureTargetScope.h"
 #include "model/UserInputInterruptMode.h"
 
 #include <QDialog>
@@ -29,6 +30,7 @@ public:
                       bool enabled,
                       const HotkeyBinding& hotkey,
                       bool hotkeyAllowExtraModifiers,
+                      FeatureCaptureTargetScope captureTargetScope,
                       FeatureRunMode runMode,
                       int repeatCount,
                       int infiniteExitAfterConsecutiveMisses,
@@ -53,6 +55,7 @@ public:
     bool featureEnabled() const;
     HotkeyBinding hotkey() const;
     bool hotkeyAllowExtraModifiers() const;
+    FeatureCaptureTargetScope captureTargetScope() const;
     FeatureRunMode runMode() const;
     int repeatCount() const;
     int infiniteExitAfterConsecutiveMisses() const;
@@ -101,6 +104,7 @@ private:
     QCheckBox* m_enabledCheck = nullptr;
     QLabel* m_hotkeyLabel = nullptr;
     QCheckBox* m_hotkeyAllowExtraModifiersCheck = nullptr;
+    QComboBox* m_captureTargetScopeCombo = nullptr;
     QComboBox* m_modeCombo = nullptr;
     QLabel* m_repeatCountLabel = nullptr;
     DragAdjustSpinBox* m_repeatSpin = nullptr;

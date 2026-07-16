@@ -2,6 +2,7 @@
 
 #include "core/input/HotkeyBinding.h"
 #include "core/workflow/Workflow.h"
+#include "model/FeatureCaptureTargetScope.h"
 #include "model/FeatureRunMode.h"
 #include "model/UserInputInterruptMode.h"
 
@@ -104,6 +105,9 @@ public:
     bool hotkeyAllowExtraModifiers() const { return m_hotkeyAllowExtraModifiers; }
     void setHotkeyAllowExtraModifiers(bool allow) { m_hotkeyAllowExtraModifiers = allow; }
 
+    FeatureCaptureTargetScope captureTargetScope() const { return m_captureTargetScope; }
+    void setCaptureTargetScope(FeatureCaptureTargetScope scope) { m_captureTargetScope = scope; }
+
     std::unique_ptr<Feature> clone() const;
     /// New feature id; clears hotkey by default (paste / profile copy). Library import passes preserveHotkey.
     std::unique_ptr<Feature> duplicateAsNewInstance(bool preserveHotkey = false) const;
@@ -133,6 +137,7 @@ private:
     int m_loopIntervalMaxMs = 0;
     bool m_loopIntervalRandomRange = false;
     bool m_hotkeyAllowExtraModifiers = false;
+    FeatureCaptureTargetScope m_captureTargetScope = FeatureCaptureTargetScope::Auto;
     HotkeyBinding m_hotkey;
     Workflow m_workflow;
 };

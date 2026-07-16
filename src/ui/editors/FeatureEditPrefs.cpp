@@ -4,6 +4,7 @@
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "core/workflow/blocks/WaitBlock.h"
 #include "model/Feature.h"
+#include "model/FeatureCaptureTargetScope.h"
 #include "model/FeatureRunMode.h"
 #include "model/UserInputInterruptMode.h"
 
@@ -74,6 +75,10 @@ void applySettingsJson(const nlohmann::json& json, Feature& feature) {
     if (json.contains("hotkeyAllowExtraModifiers")) {
         feature.setHotkeyAllowExtraModifiers(json.value("hotkeyAllowExtraModifiers", false));
     }
+    if (json.contains("captureTargetScope")) {
+        feature.setCaptureTargetScope(
+            featureCaptureTargetScopeFromString(json.value("captureTargetScope", "Auto")));
+    }
     if (json.contains("hotkey")) {
         feature.setHotkey(HotkeyBinding::fromJson(json["hotkey"]));
     } else if (json.contains("hotkeyCleared") && json.value("hotkeyCleared", false)) {
@@ -101,6 +106,7 @@ nlohmann::json featureSettingsToJson(const Feature& feature) {
     json["loopIntervalMinMs"] = feature.loopIntervalMinMs();
     json["loopIntervalMaxMs"] = feature.loopIntervalMaxMs();
     json["hotkeyAllowExtraModifiers"] = feature.hotkeyAllowExtraModifiers();
+    json["captureTargetScope"] = featureCaptureTargetScopeToString(feature.captureTargetScope());
     if (feature.hotkey().isEmpty()) {
         json["hotkeyCleared"] = true;
     } else {

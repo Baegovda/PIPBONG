@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.188` (from `project(PIPBONG VERSION 0.8.188)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.189` (from `project(PIPBONG VERSION 0.8.189)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -645,6 +645,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `roiCorrectionExpandPercent`              | `110` (omitted)    | Template-relative corrected search ROI size on loop 2+ when feature `roiCorrection` is on (see ImageFind `roiCorrectionExpandPercent`)                                                                                                          |
 | `editFirstTemplateRoiOnStart`             | `false` (omitted)  | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run                     |
 | `hotkeyAllowExtraModifiers`               | `false` (omitted)  | When `true`, feature hotkey fires even if extra Ctrl/Alt/Shift not in the binding are held (e.g. **F4** binding still runs on **Shift+F4**); default is strict exact modifier match                                                             |
+| `captureTargetScope`                      | `"Auto"` (omitted) | `"MainOnly"` — lock capture/input to profile main target window; `"SubOnly"` — sub target only; `"Auto"` — foreground/visibility heuristic between main and sub (legacy default)                                                                |
 
 `hotkey` is optional. `virtualKey` is Win32 VK code.
 
@@ -1177,6 +1178,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.189] - 2026-07-17
+
+### Added
+
+- Per-feature **캡처 대상** scope in **기능 편집**: **자동 (메인·서브)** / **메인 대상 창만** / **서브 대상 창만**; JSON `captureTargetScope` (`Auto` / `MainOnly` / `SubOnly`, omitted when `Auto`); run session locks capture title via scoped `resolveRunCaptureTargetTitleW` (`FeatureCaptureTargetScope`, `Feature`, `FeatureEditDialog`, `JsonSerializer`, `MainWindow`).
 
 ## [0.8.188] - 2026-07-17
 

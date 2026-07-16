@@ -4,6 +4,7 @@
 #include "app/HotkeyManager.h"
 #include "model/Project.h"
 #include "model/Feature.h"
+#include "model/FeatureCaptureTargetScope.h"
 #include "ui/UiStrings.h"
 #include "ui/UiThemeColors.h"
 #include "ui/widgets/AnimatedTwoWaySwitch.h"
@@ -64,6 +65,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      bool enabled,
                                      const HotkeyBinding& hotkey,
                                      bool hotkeyAllowExtraModifiers,
+                                     FeatureCaptureTargetScope captureTargetScope,
                                      FeatureRunMode runMode,
                                      int repeatCount,
                                      int infiniteExitAfterConsecutiveMisses,
@@ -128,6 +130,11 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     m_editFirstTemplateRoiOnStartCheck->setChecked(editFirstTemplateRoiOnStart);
     m_triggerCooldownSpin->setValue(triggerCooldownSecondsFromMs(triggerCooldownMs));
     m_hotkeyAllowExtraModifiersCheck->setChecked(hotkeyAllowExtraModifiers);
+    const int captureScopeIndex =
+        m_captureTargetScopeCombo->findData(static_cast<int>(captureTargetScope));
+    if (captureScopeIndex >= 0) {
+        m_captureTargetScopeCombo->setCurrentIndex(captureScopeIndex);
+    }
     if (m_loopIntervalMsSpin) {
         m_loopIntervalMsSpin->setValue(snapWaitDelayMs(loopIntervalMs));
     }
@@ -189,6 +196,18 @@ void FeatureEditDialog::setupUi() {
     hotkeyLayout->addWidget(m_hotkeyAllowExtraModifiersCheck);
 
     form->addRow(tr("단축키"), hotkeyRow);
+
+    m_captureTargetScopeCombo = new QComboBox(this);
+    m_captureTargetScopeCombo->addItem(tr("자동 (메인·서브)"),
+                                       static_cast<int>(FeatureCaptureTargetScope::Auto));
+    m_captureTargetScopeCombo->addItem(tr("메인 대상 창만"),
+                                       static_cast<int>(FeatureCaptureTargetScope::MainOnly));
+    m_captureTargetScopeCombo->addItem(tr("서브 대상 창만"),
+                                       static_cast<int>(FeatureCaptureTargetScope::SubOnly));
+    m_captureTargetScopeCombo->setToolTip(
+        tr("이 기능이 화면 캡처·입력에 사용할 대상 창입니다. 프로필의 메인·서브 창 지정과 함께 "
+           "동작합니다. 자동은 포커스·실행 중인 창에 따라 메인 또는 서브를 선택합니다."));
+    form->addRow(tr("캡처 대상"), m_captureTargetScopeCombo);
 
     m_modeCombo = new QComboBox(this);
     m_modeCombo->addItem(tr("N회 반복"), static_cast<int>(FeatureRunMode::RepeatCount));
@@ -653,6 +672,14 @@ HotkeyBinding FeatureEditDialog::hotkey() const {
 
 bool FeatureEditDialog::hotkeyAllowExtraModifiers() const {
     return m_hotkeyAllowExtraModifiersCheck && m_hotkeyAllowExtraModifiersCheck->isChecked();
+}
+
+FeatureCaptureTargetScope FeatureEditDialog::captureTargetScope() const {
+    if (!m_captureTargetScopeCombo) {
+        return FeatureCaptureTargetScope::Auto;
+    }
+    return static_cast<FeatureCaptureTargetScope>(
+        m_captureTargetScopeCombo->currentData().toInt());
 }
 
 FeatureRunMode FeatureEditDialog::runMode() const {

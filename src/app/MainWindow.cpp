@@ -28,6 +28,7 @@
 #include "core/workflow/WorkflowRunner.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "model/Feature.h"
+#include "model/FeatureCaptureTargetScope.h"
 #include "model/Project.h"
 #include "storage/JsonSerializer.h"
 #include "storage/ProjectPackage.h"
@@ -3318,15 +3319,39 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
         return;
     }
 #ifdef _WIN32
-    if (!ProgramSettings::runWithoutTargetWindow() && !ScreenCapture::hasResolvableTargetWindow()) {
-        if (!silentRestoreStart) {
-            QMessageBox::information(
-                this,
-                tr("실행"),
-                tr("대상 창이 지정되지 않았습니다. '창 지정'으로 대상 창을 선택하거나, "
-                   "프로그램 설정에서 '창을 지정하지 않은 상태에서도 동작'을 켜세요."));
+    if (!ProgramSettings::runWithoutTargetWindow()) {
+        const std::wstring captureTitle = resolveRunCaptureTargetTitleW(feature);
+        const FeatureCaptureTargetScope scope = feature->captureTargetScope();
+        if (captureTitle.empty()) {
+            if (!silentRestoreStart) {
+                QString message;
+                if (scope == FeatureCaptureTargetScope::SubOnly) {
+                    message = tr("이 기능은 서브 대상 창에서만 실행됩니다. 프로필 편집에서 서브 대상 창을 "
+                                 "지정하세요.");
+                } else {
+                    message = tr("대상 창이 지정되지 않았습니다. '창 지정'으로 대상 창을 선택하거나, "
+                                 "프로그램 설정에서 '창을 지정하지 않은 상태에서도 동작'을 켜세요.");
+                }
+                QMessageBox::information(this, tr("실행"), message);
+            }
+            return;
         }
-        return;
+        if (!ScreenCapture::hasVisibleWindowMatchingTitle(captureTitle)) {
+            if (!silentRestoreStart) {
+                QString message;
+                if (scope == FeatureCaptureTargetScope::SubOnly) {
+                    message = tr("서브 대상 창을 찾을 수 없습니다. 해당 창이 실행 중인지 확인하세요.");
+                } else if (scope == FeatureCaptureTargetScope::MainOnly) {
+                    message = tr("메인 대상 창을 찾을 수 없습니다. '창 지정'으로 대상 창을 선택하거나, "
+                                 "프로그램 설정에서 '창을 지정하지 않은 상태에서도 동작'을 켜세요.");
+                } else {
+                    message = tr("대상 창을 찾을 수 없습니다. 메인·서브 대상 창이 실행 중인지 확인하거나, "
+                                 "'창 지정'·프로필 편집을 확인하세요.");
+                }
+                QMessageBox::information(this, tr("실행"), message);
+            }
+            return;
+        }
     }
 #endif
 
@@ -3372,7 +3397,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     connectSessionEngine(session);
     m_runSessions.emplace(featureId, std::move(session));
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
-    activeSession.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW();
+    activeSession.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW(feature);
     applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
     const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
     if (!hotkeyHoldStart) {
@@ -5588,7 +5613,7 @@ std::wstring MainWindow::resolveEffectiveTargetTitleW() const {
     return mainTitle;
 }
 
-std::wstring MainWindow::resolveRunCaptureTargetTitleW() const {
+std::wstring MainWindow::resolveAutoRunCaptureTargetTitleW() const {
     const std::wstring mainTitle = currentTargetWindowTitleW();
     if (!m_profileManager || isActiveDefaultProfile()) {
         return mainTitle;
@@ -5641,11 +5666,32 @@ std::wstring MainWindow::resolveRunCaptureTargetTitleW() const {
     return resolveEffectiveTargetTitleW();
 }
 
+std::wstring MainWindow::resolveRunCaptureTargetTitleW(const Feature* feature) const {
+    const FeatureCaptureTargetScope scope =
+        feature ? feature->captureTargetScope() : FeatureCaptureTargetScope::Auto;
+    if (scope == FeatureCaptureTargetScope::MainOnly) {
+        return currentTargetWindowTitleW();
+    }
+    if (scope == FeatureCaptureTargetScope::SubOnly) {
+        if (!m_profileManager || isActiveDefaultProfile()) {
+            return {};
+        }
+        const QString subBinding =
+            m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed();
+        if (subBinding.isEmpty()) {
+            return {};
+        }
+        return subBinding.toStdWString();
+    }
+    return resolveAutoRunCaptureTargetTitleW();
+}
+
 std::wstring MainWindow::sessionCaptureTargetTitleW(const FeatureRunSession& session) const {
     if (!session.lockedCaptureTargetTitle.empty()) {
         return session.lockedCaptureTargetTitle;
     }
-    return resolveRunCaptureTargetTitleW();
+    Feature* feature = m_project ? m_project->featureById(session.featureId) : nullptr;
+    return resolveRunCaptureTargetTitleW(feature);
 }
 
 void MainWindow::applySessionCaptureTarget(const std::wstring& title) const {

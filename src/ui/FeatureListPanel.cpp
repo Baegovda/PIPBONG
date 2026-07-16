@@ -2013,6 +2013,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
                              feature->enabled(),
                              feature->hotkey(),
                              feature->hotkeyAllowExtraModifiers(),
+                             feature->captureTargetScope(),
                              feature->runMode(),
                              feature->repeatCount(),
                              feature->infiniteExitAfterConsecutiveMisses(),
@@ -2040,6 +2041,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setEnabled(dialog.featureEnabled());
     feature->setHotkey(dialog.hotkey());
     feature->setHotkeyAllowExtraModifiers(dialog.hotkeyAllowExtraModifiers());
+    feature->setCaptureTargetScope(dialog.captureTargetScope());
     feature->setRunMode(dialog.runMode());
     feature->setRepeatCount(dialog.repeatCount());
     feature->setInfiniteExitAfterConsecutiveMisses(dialog.infiniteExitAfterConsecutiveMisses());

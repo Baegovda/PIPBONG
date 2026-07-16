@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.188 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.189 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -35,6 +35,7 @@ set(PIPBONG_SOURCES
     src/app/UpdateChecker.cpp
     src/model/Feature.cpp
     src/model/FeatureRunMode.cpp
+    src/model/FeatureCaptureTargetScope.cpp
     src/model/UserInputInterruptMode.cpp
     src/model/Project.cpp
     src/core/RunWarmup.cpp

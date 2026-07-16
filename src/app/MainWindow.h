@@ -282,7 +282,8 @@ private:
     /// Main project title, or active profile's sub title when the foreground window matches it.
     std::wstring resolveEffectiveTargetTitleW() const;
     /// Run/trigger capture target locked at session start (foreground-aware; sub binding supported).
-    std::wstring resolveRunCaptureTargetTitleW() const;
+    std::wstring resolveRunCaptureTargetTitleW(const Feature* feature = nullptr) const;
+    std::wstring resolveAutoRunCaptureTargetTitleW() const;
     std::wstring sessionCaptureTargetTitleW(const FeatureRunSession& session) const;
     void applySessionCaptureTarget(const std::wstring& title) const;
     void syncTargetWindowTitleToCapture();
