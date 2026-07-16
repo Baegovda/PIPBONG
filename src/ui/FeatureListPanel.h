@@ -198,6 +198,10 @@ private:
 
     bool editFeatureAt(int index);
 
+    bool isTriggerSettingsEditableAt(int index) const;
+
+    void updateFeatureEditButtonState();
+
     void applyInlineRename(int row, const QString& name);
 
     void applyColumnLayoutToList();
