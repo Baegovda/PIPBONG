@@ -99,6 +99,8 @@ public:
 
     qint64 triggerCooldownRemainingMs(const QString& featureId) const;
 
+    int triggerCooldownTotalMs(const QString& featureId) const;
+
     void setEditControlsEnabled(bool enabled);
 
     const Feature* projectFeatureById(const QString& featureId) const;

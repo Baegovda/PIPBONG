@@ -180,7 +180,50 @@ QString featureRunModeCompact(FeatureRunMode mode, int repeatCount) {
 
 QString triggerCooldownModeDisplayText(qint64 remainingMs) {
     const int remainSec = static_cast<int>((qMax<qint64>(0, remainingMs) + 999) / 1000);
-    return QStringLiteral("\u25D4%1").arg(remainSec);
+    return QObject::tr("%1초").arg(remainSec);
+}
+
+QRect featureRunButtonHitRect(const QRect& runColumnRect);
+
+void paintTriggerCooldownRunButton(QPainter* painter,
+                                   const QRect& runColumnRect,
+                                   qint64 remainingMs,
+                                   int animationPhase,
+                                   const QColor& accent,
+                                   const QPalette& palette) {
+    const QRect btnRect = featureRunButtonHitRect(runColumnRect);
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+
+    QColor track = palette.color(QPalette::Mid);
+    track.setAlpha(72);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(track);
+    painter->drawEllipse(btnRect);
+
+    QColor spinColor = accent.isValid() ? accent : palette.color(QPalette::Highlight);
+    QPen arcPen(spinColor, qMax(2.0, btnRect.width() * 0.13));
+    arcPen.setCapStyle(Qt::RoundCap);
+    painter->setPen(arcPen);
+    painter->setBrush(Qt::NoBrush);
+    const QRect arcRect = btnRect.adjusted(2, 2, -2, -2);
+    const int startAngle = static_cast<int>(animationPhase * 15 * 16);
+    const int spanAngle = 270 * 16;
+    painter->drawArc(arcRect, startAngle, spanAngle);
+
+    const int remainSec = static_cast<int>((qMax<qint64>(0, remainingMs) + 999) / 1000);
+    QFont font = painter->font();
+    font.setPointSize(qMax(7, btnRect.height() / 3));
+    font.setBold(true);
+    painter->setFont(font);
+    QColor textColor = palette.color(QPalette::WindowText);
+    if (accent.isValid()) {
+        textColor = spinColor;
+    }
+    painter->setPen(textColor);
+    painter->drawText(btnRect, Qt::AlignCenter, QString::number(remainSec));
+
+    painter->restore();
 }
 
 HotkeyBinding hotkeyBindingFromIndex(const QModelIndex& index) {
@@ -881,12 +924,26 @@ public:
         const bool runEnabled =
             featureEnabled && (isRunningFeature || (hasBlocks && !holdMode));
 
-        paintFeatureRunButton(painter,
-                              cols.run,
-                              isRunningFeature,
-                              runEnabled,
-                              opt.palette,
-                              runAccent);
+        const bool triggerCooldownRow =
+            featureEnabled && isRunningFeature && visualKind == FeatureRunVisualKind::TriggerCooldown;
+        const qint64 cooldownRemainingMs =
+            triggerCooldownRow ? m_panel->triggerCooldownRemainingMs(featureId) : -1;
+
+        if (triggerCooldownRow && cooldownRemainingMs >= 0) {
+            paintTriggerCooldownRunButton(painter,
+                                          cols.run,
+                                          cooldownRemainingMs,
+                                          animationPhase,
+                                          triggerAccent.isValid() ? triggerAccent : QColor(),
+                                          opt.palette);
+        } else {
+            paintFeatureRunButton(painter,
+                                  cols.run,
+                                  isRunningFeature,
+                                  runEnabled,
+                                  opt.palette,
+                                  runAccent);
+        }
 
         paintFeatureName(painter,
                          cols.name,
@@ -1564,6 +1621,14 @@ qint64 FeatureListPanel::triggerCooldownRemainingMs(const QString& featureId) co
         return -1;
     }
     return qMax<qint64>(0, it->endsAtEpochMs - QDateTime::currentMSecsSinceEpoch());
+}
+
+int FeatureListPanel::triggerCooldownTotalMs(const QString& featureId) const {
+    const auto it = m_triggerCooldownStates.constFind(featureId);
+    if (it == m_triggerCooldownStates.constEnd()) {
+        return 0;
+    }
+    return it->totalMs;
 }
 
 FeatureRunVisualKind FeatureListPanel::featureRunVisualKind(const QString& featureId) const {

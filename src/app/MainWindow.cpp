@@ -4256,23 +4256,29 @@ void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* fe
     }
 
     session.triggerPhase = TriggerSessionPhase::Cooldown;
+
+    const int cooldownMs = feature->triggerCooldownMs();
+    if (cooldownMs <= 0) {
+        updateRunUiState();
+        if (session.triggerBlockIndex >= 0) {
+            applyRunningBlockVisuals(session, session.triggerBlockIndex,
+                                     BlockListWidget::ExecutionHighlight::Running);
+        }
+        launchTriggerMonitor(session, feature, false);
+        return;
+    }
+
+    session.triggerCooldownTotalMs = cooldownMs;
+    session.triggerCooldownEndsAtEpochMs = QDateTime::currentMSecsSinceEpoch() + cooldownMs;
     updateRunUiState();
     if (session.triggerBlockIndex >= 0) {
         applyRunningBlockVisuals(session, session.triggerBlockIndex,
                                  BlockListWidget::ExecutionHighlight::Running);
     }
 
-    const int cooldownMs = feature->triggerCooldownMs();
-    if (cooldownMs <= 0) {
-        launchTriggerMonitor(session, feature, false);
-        return;
-    }
-
     appendSessionLog(session,
                      tr("성공 후 %1초 쿨다운").arg(triggerCooldownSecondsFromMs(cooldownMs)),
                      LogLineKind::Info);
-    session.triggerCooldownTotalMs = cooldownMs;
-    session.triggerCooldownEndsAtEpochMs = QDateTime::currentMSecsSinceEpoch() + cooldownMs;
     const quint64 generation = ++session.triggerCooldownGeneration;
     const std::string featureId = session.featureId;
     QTimer::singleShot(cooldownMs, this, [this, featureId, generation]() {

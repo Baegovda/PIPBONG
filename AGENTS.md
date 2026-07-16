@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.193` (from `project(PIPBONG VERSION 0.8.193)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.194` (from `project(PIPBONG VERSION 0.8.194)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1178,6 +1178,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.194] - 2026-07-17
+
+### Added
+
+- Feature list **▶** column shows a spinning buffer-style arc with remaining cooldown seconds centered during trigger-mode post-match cooldown (`FeatureListPanel::paintTriggerCooldownRunButton`).
+
+### Changed
+
+- Trigger cooldown countdown in the feature list **방식** column uses readable **`N초`** text instead of `◔N`.
+
+### Fixed
+
+- Trigger cooldown countdown never appeared in the feature list: `scheduleTriggerCooldown` now sets `triggerCooldownEndsAtEpochMs` before `updateRunUiState()` so `setTriggerCooldownStates` receives the end timestamp (`MainWindow`).
 
 ## [0.8.193] - 2026-07-17
 
