@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.171` (from `project(PIPBONG VERSION 0.8.171)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.172` (from `project(PIPBONG VERSION 0.8.172)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.172] - 2026-07-17
+
+### Fixed
+
+- Trigger mode monitoring stopped after a single template-miss poll (unlike N-repeat which keeps polling): `applyFeatureRunPoliciesToContext` no longer applies **연속 감지 실패 시 종료** miss limit during trigger watch; `ImageFindBlock` ignores per-block return-to-previous / retry miss caps while `triggerMonitorBlockIndex` is active; failed watch logs the reason before session end (`MainWindow`, `ImageFindBlock`).
 
 ## [0.8.171] - 2026-07-16
 

@@ -1159,12 +1159,18 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
     int pollAttemptCount = 0;
     int64_t matchWorkMs = 0;
     int effectiveMaxMisses = ctx.imageFindMaxMissAttempts();
-    if (returnToPreviousImageFindOnFailure) {
-        effectiveMaxMisses =
-            std::max(effectiveMaxMisses, std::max(1, returnToPreviousMissLimit));
-    }
-    if (effectiveMaxMisses <= 0 && retryAfterNextActionOnFailure) {
-        effectiveMaxMisses = 1;
+    const bool triggerMonitorPoll = ctx.triggerMonitorBlockIndex() >= 0
+                                    && ctx.activeBlockIndex() == ctx.triggerMonitorBlockIndex();
+    if (triggerMonitorPoll) {
+        effectiveMaxMisses = 0;
+    } else {
+        if (returnToPreviousImageFindOnFailure) {
+            effectiveMaxMisses =
+                std::max(effectiveMaxMisses, std::max(1, returnToPreviousMissLimit));
+        }
+        if (effectiveMaxMisses <= 0 && retryAfterNextActionOnFailure) {
+            effectiveMaxMisses = 1;
+        }
     }
     auto lapStart = std::chrono::steady_clock::now();
     const auto accumulateMatchWork = [&]() {

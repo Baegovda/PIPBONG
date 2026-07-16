@@ -3495,11 +3495,15 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
     session.lockMouseDuringFirstLoopCount = feature->lockMouseDuringFirstLoopCount();
     session.unlockMouseOnBlockFailureCount = feature->unlockMouseOnBlockFailureCount();
 
-    const bool infiniteStyle = session.runningMode == FeatureRunMode::RepeatInfinite
-                             || session.runningMode == FeatureRunMode::Hold
-                             || session.runningMode == FeatureRunMode::Trigger;
     const int exitAfter = feature->infiniteExitAfterConsecutiveMisses();
-    if (infiniteStyle && exitAfter > 0) {
+    const bool triggerMonitoring = session.runningMode == FeatureRunMode::Trigger
+                                   && session.triggerPhase == TriggerSessionPhase::Monitoring;
+    if (triggerMonitoring) {
+        // Trigger watch must poll until a match (or user stop), not fail after one miss.
+        session.sessionContext->setImageFindMaxMissAttempts(0);
+    } else if ((session.runningMode == FeatureRunMode::RepeatInfinite
+                || session.runningMode == FeatureRunMode::Hold)
+               && exitAfter > 0) {
         session.sessionContext->setImageFindMaxMissAttempts(1);
     } else {
         session.sessionContext->setImageFindMaxMissAttempts(0);
@@ -4201,6 +4205,10 @@ void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
             session.sessionContext->setTriggerMonitorBlockIndex(-1);
         }
         if (!success) {
+            if (!message.isEmpty()) {
+                appendSessionLog(session, message, LogLineKind::Warning);
+            }
+            appendSessionLog(session, tr("트리거 감시가 종료되었습니다"), LogLineKind::Warning);
             finishRunSession(session.featureId, false, message);
             return;
         }
