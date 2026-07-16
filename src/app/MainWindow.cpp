@@ -1581,6 +1581,10 @@ void MainWindow::onProgramSettings() {
 }
 
 void MainWindow::onCalculator() {
+    if (m_calculatorDialog && m_calculatorDialog->isVisible()) {
+        m_calculatorDialog->close();
+        return;
+    }
     if (!m_calculatorDialog) {
         m_calculatorDialog = new CalculatorDialog(this);
         m_calculatorDialog->setAttribute(Qt::WA_DeleteOnClose);
@@ -1592,6 +1596,10 @@ void MainWindow::onCalculator() {
 }
 
 void MainWindow::onSpikeWatch() {
+    if (m_spikeWatchDialog && m_spikeWatchDialog->isVisible()) {
+        m_spikeWatchDialog->close();
+        return;
+    }
     if (!m_spikeWatchDialog) {
         m_spikeWatchDialog = new SpikeWatchDialog(this);
         m_spikeWatchDialog->setAttribute(Qt::WA_DeleteOnClose);
@@ -1607,6 +1615,10 @@ void MainWindow::onSpikeWatch() {
 }
 
 void MainWindow::onMemo() {
+    if (m_memoDialog && m_memoDialog->isVisible()) {
+        m_memoDialog->close();
+        return;
+    }
     if (!m_memoDialog) {
         m_memoDialog = new MemoDialog(this);
         m_memoDialog->setAttribute(Qt::WA_DeleteOnClose);
