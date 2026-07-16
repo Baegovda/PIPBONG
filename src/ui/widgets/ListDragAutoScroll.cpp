@@ -17,18 +17,20 @@
 
 namespace {
 
-constexpr int kIntervalMs = 16;
+constexpr int kIntervalMs = 24;
 /// Overshoot distance (px) outside the viewport that reaches maximum scroll step.
-constexpr int kOvershootForMaxStepPx = 96;
+constexpr int kOvershootForMaxStepPx = 160;
 constexpr int kMinStepPx = 1;
-constexpr int kMaxStepPx = 8;
+constexpr int kMaxStepPx = 4;
 
 int edgeScrollStepForOvershoot(int overshootPx) {
     if (overshootPx <= 0) {
         return 0;
     }
     const double t = std::clamp(overshootPx / static_cast<double>(kOvershootForMaxStepPx), 0.0, 1.0);
-    return kMinStepPx + static_cast<int>(std::lround((kMaxStepPx - kMinStepPx) * t));
+    // Quadratic ramp: small overshoot stays slow; speed builds only when far outside.
+    const double eased = t * t;
+    return kMinStepPx + static_cast<int>(std::lround((kMaxStepPx - kMinStepPx) * eased));
 }
 
 #ifdef Q_OS_WIN
