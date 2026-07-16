@@ -2484,9 +2484,13 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     if (session->runningMode == FeatureRunMode::Hold) {
         releaseHoldHotkeyInputToTarget(*session, feature);
     }
-    session->engine->stop();
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
     appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
+    if (!session->engine->isRunning()) {
+        finishRunSession(featureId, session->lastLoopSuccess, QString());
+        return;
+    }
+    session->engine->stop();
 }
 
 void MainWindow::stopAllSessions() {
@@ -4275,7 +4279,11 @@ void MainWindow::runFeature(Feature* feature) {
 }
 
 void MainWindow::onHotkeyTriggered(const QString& featureId) {
-    if (!m_project || shouldSuppressFeatureHotkeyExecution()) {
+    if (!m_project) {
+        return;
+    }
+    if (shouldSuppressFeatureHotkeyExecution()) {
+        notifyFeatureHotkeySuppressed();
         return;
     }
 
@@ -4297,7 +4305,11 @@ void MainWindow::onHotkeyTriggered(const QString& featureId) {
 }
 
 void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
-    if (!m_project || shouldSuppressFeatureHotkeyExecution()) {
+    if (!m_project) {
+        return;
+    }
+    if (shouldSuppressFeatureHotkeyExecution()) {
+        notifyFeatureHotkeySuppressed();
         return;
     }
 
@@ -4374,6 +4386,23 @@ bool MainWindow::shouldSuppressFeatureHotkeyExecution() const {
     }
 #endif
     return false;
+}
+
+void MainWindow::notifyFeatureHotkeySuppressed() {
+    if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
+        showTransientStatus(tr("편집 창이 열려 있으면 기능 단축키를 사용할 수 없습니다."), 2500);
+        return;
+    }
+#ifdef _WIN32
+    const HWND foreground = GetForegroundWindow();
+    if (foreground && IsWindow(foreground)) {
+        DWORD pid = 0;
+        GetWindowThreadProcessId(foreground, &pid);
+        if (pid == GetCurrentProcessId()) {
+            showTransientStatus(tr("대상 프로그램 창을 활성화한 뒤 단축키를 누르세요."), 2500);
+        }
+    }
+#endif
 }
 
 void MainWindow::syncHotkeys() {

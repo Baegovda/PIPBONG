@@ -10,6 +10,8 @@ namespace {
 
 std::atomic<int> g_featureHotkeyBlockCount{0};
 
+constexpr char kFeatureHotkeyGateExemptProperty[] = "pipbong_featureHotkeyGateExempt";
+
 bool anyVisibleAppDialogOpen() {
     if (!QApplication::instance()) {
         return false;
@@ -17,9 +19,14 @@ bool anyVisibleAppDialogOpen() {
     const QWidgetList tops = QApplication::topLevelWidgets();
     for (QWidget* widget : tops) {
         const auto* dialog = qobject_cast<const QDialog*>(widget);
-        if (dialog && dialog->isVisible()) {
-            return true;
+        if (!dialog || !dialog->isVisible()) {
+            continue;
         }
+        // Workflow-independent tools (memo, calculator, CPU watch) stay open while gaming.
+        if (dialog->property(kFeatureHotkeyGateExemptProperty).toBool()) {
+            continue;
+        }
+        return true;
     }
     return false;
 }

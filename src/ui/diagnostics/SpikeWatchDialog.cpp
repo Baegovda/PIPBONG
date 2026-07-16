@@ -51,6 +51,7 @@ QString htmlEscape(const QString& text) {
 
 SpikeWatchDialog::SpikeWatchDialog(QWidget* parent)
     : QDialog(parent) {
+    setProperty("pipbong_featureHotkeyGateExempt", true);
     qRegisterMetaType<CpuSampleSnapshot>("CpuSampleSnapshot");
     qRegisterMetaType<CpuSpikeEvent>("CpuSpikeEvent");
     qRegisterMetaType<CpuSpikeDetectorConfig>("CpuSpikeDetectorConfig");

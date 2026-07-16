@@ -30,6 +30,7 @@ constexpr int kNoteRadius = 10;
 
 MemoDialog::MemoDialog(QWidget* parent)
     : QDialog(parent) {
+    setProperty("pipbong_featureHotkeyGateExempt", true);
     setWindowTitle(tr("메모장"));
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::Window);
     setAttribute(Qt::WA_TranslucentBackground);

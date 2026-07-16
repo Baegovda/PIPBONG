@@ -136,6 +136,7 @@ QString leagueUrlForDisplayName(const QList<PoeNinjaLeagueInfo>& leagues, const 
 
 CalculatorDialog::CalculatorDialog(QWidget* parent)
     : QDialog(parent) {
+    setProperty("pipbong_featureHotkeyGateExempt", true);
     setWindowTitle(tr("시세 계산기"));
     setMinimumSize(920, 560);
     setupUi();

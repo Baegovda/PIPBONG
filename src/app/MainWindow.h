@@ -316,6 +316,7 @@ private:
     void onUserInputInterrupt(const std::string& featureId);
     void syncUserInputInterruptForSession(FeatureRunSession& session, Feature* feature);
     bool shouldSuppressFeatureHotkeyExecution() const;
+    void notifyFeatureHotkeySuppressed();
 
     std::unique_ptr<Project> m_project;
     std::unique_ptr<ProfileManager> m_profileManager;

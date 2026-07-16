@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.172` (from `project(PIPBONG VERSION 0.8.172)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.173` (from `project(PIPBONG VERSION 0.8.173)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.173] - 2026-07-17
+
+### Fixed
+
+- Feature hotkeys did not stop idle run sessions (trigger cooldown, loop-interval wait, etc.): `stopFeatureRun` now calls `finishRunSession` when the workflow engine is not running, so the next hotkey press can start cleanly (`MainWindow`).
+- **메모장** / **계산기** / **CPU 감시** open no longer block global feature hotkeys — only edit/configuration dialogs still gate bindings (`FeatureHotkeyGate`, tool dialogs).
+- Suppressed hotkeys show a short title-bar hint when PIPBONG is focused or a blocking edit dialog is open (`MainWindow::notifyFeatureHotkeySuppressed`).
 
 ## [0.8.172] - 2026-07-17
 
