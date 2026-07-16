@@ -28,6 +28,7 @@
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QSplitterHandle>
 #include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
 #include <QTimer>
@@ -755,6 +756,10 @@ void FeatureListPanel::setupUi() {
     m_featureLibrarySplitter->setCollapsible(1, false);
     m_featureLibrarySplitter->setSizes({320, kMinLibraryPaneCollapsedPx});
     connect(m_featureLibrarySplitter, &QSplitter::splitterMoved, this, [this](int, int) {
+        if (!m_libraryExpanded) {
+            clampFeatureLibrarySplitterSizes();
+            return;
+        }
         clampFeatureLibrarySplitterSizes();
     });
 
@@ -829,17 +834,32 @@ void FeatureListPanel::clampFeatureLibrarySplitterSizes() {
         return;
     }
 
+    updateFeatureLibrarySplitterHandle();
+
     const int handle = m_featureLibrarySplitter->handleWidth();
     const int total = m_featureLibrarySplitter->height();
-    if (total <= handle) {
+    if (total <= 0) {
         return;
     }
 
-    const int available = total - handle;
+    const int available = qMax(0, total - handle);
     const int minTop = qMax(kMinFeatureListPanePx, featurePane->minimumHeight());
     const int minBottom =
         m_libraryExpanded ? qMax(kMinLibraryPaneExpandedPx, libraryPane->minimumHeight())
                           : kMinLibraryPaneCollapsedPx;
+
+    if (!m_libraryExpanded) {
+        const int bottomSize = kMinLibraryPaneCollapsedPx;
+        const int topSize = qMax(minTop, available - bottomSize);
+        QList<int> sizes = m_featureLibrarySplitter->sizes();
+        if (sizes.value(0) == topSize && sizes.value(1) == bottomSize) {
+            return;
+        }
+        QSignalBlocker blocker(m_featureLibrarySplitter);
+        m_featureLibrarySplitter->setSizes({topSize, bottomSize});
+        return;
+    }
+
     if (available < minTop + minBottom) {
         return;
     }
@@ -871,6 +891,7 @@ void FeatureListPanel::applyLibraryDrawerVisibility(bool expanded) {
         m_libraryDrawerHost->setVisible(expanded);
     }
     if (!m_libraryPane) {
+        updateFeatureLibrarySplitterHandle();
         return;
     }
     if (expanded) {
@@ -879,6 +900,26 @@ void FeatureListPanel::applyLibraryDrawerVisibility(bool expanded) {
     } else {
         m_libraryPane->setMinimumHeight(kMinLibraryPaneCollapsedPx);
         m_libraryPane->setMaximumHeight(kMinLibraryPaneCollapsedPx);
+    }
+    updateFeatureLibrarySplitterHandle();
+}
+
+void FeatureListPanel::updateFeatureLibrarySplitterHandle() {
+    if (!m_featureLibrarySplitter) {
+        return;
+    }
+
+    if (m_libraryExpanded) {
+        m_featureLibrarySplitter->setHandleWidth(UiResizeHandle::kSplitterHandleWidthPx);
+        if (QSplitterHandle* handle = m_featureLibrarySplitter->handle(1)) {
+            handle->setEnabled(true);
+        }
+        return;
+    }
+
+    m_featureLibrarySplitter->setHandleWidth(0);
+    if (QSplitterHandle* handle = m_featureLibrarySplitter->handle(1)) {
+        handle->setEnabled(false);
     }
 }
 

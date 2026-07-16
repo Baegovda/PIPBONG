@@ -210,6 +210,7 @@ private:
     QStringList selectedLibraryEntryIds() const;
     void applyLibraryDrawerVisibility(bool expanded);
     void ensureLibraryPaneSizeOnExpand();
+    void updateFeatureLibrarySplitterHandle();
 
     Project* m_project = nullptr;
 
