@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.176` (from `project(PIPBONG VERSION 0.8.176)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.177` (from `project(PIPBONG VERSION 0.8.177)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.177] - 2026-07-17
+
+### Changed
+
+- Workflow panel header: loop count, last/average duration, and success/fail status shown as terminal-style stat chips (`WorkflowRunStatusBar`) instead of a single plain text title line (`WorkflowEditorPanel`).
+
+### Fixed
+
+- Release link: add missing `HintLabel.cpp` to `CMakeLists.txt` (was referenced by multiple dialogs but not compiled).
 
 ## [0.8.176] - 2026-07-17
 

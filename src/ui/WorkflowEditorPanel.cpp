@@ -1,6 +1,7 @@
 #include "ui/WorkflowEditorPanel.h"
 
 #include "ui/widgets/ListColumnHeaderWidget.h"
+#include "ui/widgets/WorkflowRunStatusBar.h"
 
 #include "app/MainWindow.h"
 #include "app/PerfTrace.h"
@@ -592,8 +593,7 @@ WorkflowEditorPanel::WorkflowEditorPanel(QWidget* parent)
 void WorkflowEditorPanel::setupUi() {
     auto* layout = new QVBoxLayout(this);
 
-    m_titleLabel = new QLabel(tr("워크플로우"), this);
-    m_titleLabel->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 14px;"));
+    m_runStatusBar = new WorkflowRunStatusBar(this);
 
     m_blockList = new BlockListWidget(this);
 
@@ -709,7 +709,7 @@ void WorkflowEditorPanel::setupUi() {
 
     workflowLayout->addWidget(m_workflowSplitter, 1);
 
-    layout->addWidget(m_titleLabel);
+    layout->addWidget(m_runStatusBar);
     layout->addWidget(workflowPane, 1);
 
     connect(m_removeAllWaitButton, &QPushButton::clicked, this, &WorkflowEditorPanel::onRemoveAllWaitBlocks);
@@ -1011,23 +1011,21 @@ void WorkflowEditorPanel::setFeature(Feature* feature) {
 }
 
 void WorkflowEditorPanel::updateTitleText() {
-    if (!m_titleLabel) {
+    if (!m_runStatusBar) {
         return;
     }
     if (!m_feature) {
-        m_titleLabel->setText(tr("워크플로우"));
+        m_runStatusBar->setFeatureName(QString());
+        m_runStatusBar->clearLoopTiming();
         return;
     }
 
-    QString title = tr("워크플로우: %1").arg(QString::fromStdString(m_feature->name()));
+    m_runStatusBar->setFeatureName(QString::fromStdString(m_feature->name()));
     if (m_hasLoopTiming) {
-        title += tr("  ·  루프 %1: %2 ms · 평균 %3 ms (%4)")
-                      .arg(m_loopNumber)
-                      .arg(m_loopElapsedMs)
-                      .arg(m_loopAverageMs)
-                      .arg(m_loopSuccess ? tr("성공") : tr("실패"));
+        m_runStatusBar->setLoopTiming(m_loopNumber, m_loopElapsedMs, m_loopAverageMs, m_loopSuccess);
+    } else {
+        m_runStatusBar->clearLoopTiming();
     }
-    m_titleLabel->setText(title);
 }
 
 void WorkflowEditorPanel::setLoopTiming(int loopNumber, qint64 elapsedMs, qint64 averageMs, bool success) {

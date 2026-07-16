@@ -21,6 +21,7 @@ class QLabel;
 class QPushButton;
 class QSplitter;
 class ListColumnHeaderWidget;
+class WorkflowRunStatusBar;
 class Feature;
 class Block;
 class BlockEditorDialog;
@@ -138,7 +139,7 @@ private:
     Feature* m_feature = nullptr;
     QString m_projectDirectory;
 
-    QLabel* m_titleLabel = nullptr;
+    WorkflowRunStatusBar* m_runStatusBar = nullptr;
     bool m_hasLoopTiming = false;
     int m_loopNumber = 0;
     qint64 m_loopElapsedMs = 0;
