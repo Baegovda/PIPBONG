@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.180` (from `project(PIPBONG VERSION 0.8.180)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.181` (from `project(PIPBONG VERSION 0.8.181)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.181] - 2026-07-17
+
+### Fixed
+
+- Trigger mode (and all feature runs) no longer capture the profile **서브 대상 창** when the **주 대상** game window is running: `resolveRunCaptureTargetTitleW` prefers a resolvable main binding over sub; session `lockedCaptureTargetTitle` is fixed at run start and reused for trigger monitor relaunches instead of re-resolving from foreground focus (`FeatureRunSession`, `MainWindow`, `ScreenCapture::hasVisibleWindowMatchingTitle`).
 
 ## [0.8.180] - 2026-07-17
 

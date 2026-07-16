@@ -3386,6 +3386,8 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     connectSessionEngine(session);
     m_runSessions.emplace(featureId, std::move(session));
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
+    activeSession.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW();
+    applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
     const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
     if (!hotkeyHoldStart) {
         selectRunningFeatureForDisplay(feature);
@@ -3527,10 +3529,10 @@ void MainWindow::syncRunSessionContext(FeatureRunSession& session) {
     if (!session.sessionContext) {
         return;
     }
-    // Keep the title chosen at session start (main vs sub auto-detect). Re-resolving on
-    // every repeat would flip back to the main game window after the launcher loses focus.
+    // Keep the title chosen at session start (main vs sub). Re-resolving on every repeat would
+    // flip capture to the launcher when focus changes between trigger cooldown cycles.
     if (session.sessionContext->targetWindowTitle().empty()) {
-        session.sessionContext->setTargetWindowTitle(resolveEffectiveTargetTitleW());
+        session.sessionContext->setTargetWindowTitle(sessionCaptureTargetTitleW(session));
     }
     session.sessionContext->setProjectDirectory(Application::instance()->projectDirectory().toStdString());
 }
@@ -3842,7 +3844,7 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
                                       && session.runningMode == FeatureRunMode::Hold;
 
     if (!repeatIteration) {
-        syncEffectiveTargetWindowTitleToCapture();
+        applySessionCaptureTarget(sessionCaptureTargetTitleW(session));
         session.sessionIteration = 0;
         session.hasLastLoopTiming = false;
         session.totalLoopElapsedMs = 0;
@@ -3905,7 +3907,7 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
 
     configureWorkerFastRepeat(session, feature);
 
-    const std::wstring targetTitle = resolveEffectiveTargetTitleW();
+    const std::wstring targetTitle = sessionCaptureTargetTitleW(session);
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
     const bool skipTargetActivation = session.hotkeyLaunchedSession && !repeatIteration;
     WorkflowEngine* engine = session.engine.get();
@@ -4031,7 +4033,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
     }
 
     if (firstSessionStart) {
-        syncEffectiveTargetWindowTitleToCapture();
+        applySessionCaptureTarget(sessionCaptureTargetTitleW(session));
         session.sessionIteration = 0;
         session.hasLastLoopTiming = false;
         session.totalLoopElapsedMs = 0;
@@ -4063,7 +4065,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
     if (!session.sessionContext) {
         session.sessionContext = std::make_shared<ExecutionContext>();
     }
-    syncEffectiveTargetWindowTitleToCapture();
+    applySessionCaptureTarget(sessionCaptureTargetTitleW(session));
     syncRunSessionContext(session);
     applyFeatureRunPoliciesToContext(session, feature);
     session.sessionContext->setTriggerMonitorBlockIndex(session.triggerBlockIndex);
@@ -4079,7 +4081,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
 
     ensureRunSessionResources(session, feature, session.sessionIteration > 0);
 
-    const std::wstring targetTitle = resolveEffectiveTargetTitleW();
+    const std::wstring targetTitle = sessionCaptureTargetTitleW(session);
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
     WorkflowEngine* engine = session.engine.get();
 
@@ -5510,6 +5512,52 @@ std::wstring MainWindow::resolveEffectiveTargetTitleW() const {
     Q_UNUSED(mainBinding);
 #endif
     return mainTitle;
+}
+
+std::wstring MainWindow::resolveRunCaptureTargetTitleW() const {
+    const std::wstring mainTitle = currentTargetWindowTitleW();
+    if (!m_profileManager || isActiveDefaultProfile()) {
+        return mainTitle;
+    }
+
+    const QString profileId = m_profileManager->activeProfileId();
+    const QString subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
+    const QString mainBinding = QString::fromStdWString(mainTitle).trimmed();
+
+#ifdef _WIN32
+    if (!mainBinding.isEmpty() && ScreenCapture::hasVisibleWindowMatchingTitle(mainTitle)) {
+        return mainTitle;
+    }
+    if (!subBinding.isEmpty()
+        && ScreenCapture::hasVisibleWindowMatchingTitle(subBinding.toStdWString())) {
+        return subBinding.toStdWString();
+    }
+#else
+    Q_UNUSED(subBinding);
+    Q_UNUSED(mainBinding);
+#endif
+    return resolveEffectiveTargetTitleW();
+}
+
+std::wstring MainWindow::sessionCaptureTargetTitleW(const FeatureRunSession& session) const {
+    if (!session.lockedCaptureTargetTitle.empty()) {
+        return session.lockedCaptureTargetTitle;
+    }
+    return resolveRunCaptureTargetTitleW();
+}
+
+void MainWindow::applySessionCaptureTarget(const std::wstring& title) const {
+    QString subBinding;
+    if (m_profileManager && !isActiveDefaultProfile()) {
+        subBinding = m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed();
+    }
+    ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
+    ScreenCapture::setTargetWindowTitle(title);
+#ifdef _WIN32
+    if (HWND hwnd = ScreenCapture::findTargetWindow()) {
+        ScreenCapture::setTargetWindow(hwnd);
+    }
+#endif
 }
 
 void MainWindow::refreshCaptureTargetForEditing() {

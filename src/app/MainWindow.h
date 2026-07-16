@@ -277,6 +277,10 @@ private:
     std::wstring currentTargetWindowTitleW() const;
     /// Main project title, or active profile's sub title when the foreground window matches it.
     std::wstring resolveEffectiveTargetTitleW() const;
+    /// Run/trigger capture target: prefer resolvable main game window when both main and sub are set.
+    std::wstring resolveRunCaptureTargetTitleW() const;
+    std::wstring sessionCaptureTargetTitleW(const FeatureRunSession& session) const;
+    void applySessionCaptureTarget(const std::wstring& title) const;
     void syncTargetWindowTitleToCapture();
     /// Applies resolveEffectiveTargetTitleW() to ScreenCapture (used at feature run start).
     void syncEffectiveTargetWindowTitleToCapture();

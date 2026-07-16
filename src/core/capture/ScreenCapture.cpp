@@ -325,6 +325,33 @@ void ScreenCapture::activateTargetWindow() {
     restoreForegroundWindow(hwnd);
 }
 
+bool ScreenCapture::hasVisibleWindowMatchingTitle(const std::wstring& binding) {
+    if (binding.empty()) {
+        return false;
+    }
+    struct EnumData {
+        std::wstring title;
+        bool found = false;
+    } data{binding, false};
+    EnumWindows(
+        [](HWND hwnd, LPARAM lParam) -> BOOL {
+            auto* enumData = reinterpret_cast<EnumData*>(lParam);
+            if (!IsWindowVisible(hwnd)) {
+                return TRUE;
+            }
+            wchar_t buffer[512]{};
+            GetWindowTextW(hwnd, buffer, 512);
+            const std::wstring title(buffer);
+            if (title.find(enumData->title) != std::wstring::npos) {
+                enumData->found = true;
+                return FALSE;
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&data));
+    return data.found;
+}
+
 void ScreenCapture::warmupCapture() {
     if (HWND hwnd = findTargetWindow()) {
         captureWithScreenBitBlt(hwnd);

@@ -53,6 +53,8 @@ public:
     static bool allowsRunWithoutTargetWindow();
     /// Brings the resolved target window to the foreground for reliable capture during workflow runs.
     static void activateTargetWindow();
+    /// True when a visible top-level window title contains `binding` (case-sensitive substring).
+    static bool hasVisibleWindowMatchingTitle(const std::wstring& binding);
     static void warmupCapture();
 #endif
 
