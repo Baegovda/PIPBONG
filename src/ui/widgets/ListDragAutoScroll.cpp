@@ -45,26 +45,38 @@ void ListDragAutoScroll::begin() {
     }
     m_active = true;
     qApp->installEventFilter(this);
+    m_scrollArea->installEventFilter(this);
+    if (QWidget* viewport = m_scrollArea->viewport()) {
+        viewport->installEventFilter(this);
+    }
+    if (m_edgeTimer) {
+        m_edgeTimer->start();
+    }
 }
 
 void ListDragAutoScroll::end() {
     if (!m_active) {
         return;
     }
-    stopEdgeScroll();
-    m_active = false;
-    qApp->removeEventFilter(this);
+    stopSession();
+}
+
+void ListDragAutoScroll::updateFromGlobalCursor() {
+    if (!m_scrollArea || !m_scrollArea->viewport()) {
+        return;
+    }
+    updateFromViewportPos(m_scrollArea->viewport()->mapFromGlobal(QCursor::pos()));
 }
 
 void ListDragAutoScroll::updateFromViewportPos(const QPoint& viewportPos) {
     if (!m_active || !m_scrollArea || !m_scrollArea->viewport()) {
-        stopEdgeScroll();
+        clearEdgeMotion();
         return;
     }
 
     QScrollBar* bar = m_scrollArea->verticalScrollBar();
     if (!bar || bar->maximum() <= 0) {
-        stopEdgeScroll();
+        clearEdgeMotion();
         return;
     }
 
@@ -83,15 +95,12 @@ void ListDragAutoScroll::updateFromViewportPos(const QPoint& viewportPos) {
 
     const int step = edgeScrollStepForOvershoot(overshootPx);
     if (direction == 0 || step <= 0) {
-        stopEdgeScroll();
+        clearEdgeMotion();
         return;
     }
 
     m_edgeDirection = direction;
     m_edgeStep = step;
-    if (m_edgeTimer && !m_edgeTimer->isActive()) {
-        m_edgeTimer->start();
-    }
 }
 
 bool ListDragAutoScroll::handleWheel(QWheelEvent* wheelEvent) {
@@ -134,7 +143,7 @@ bool ListDragAutoScroll::handleWheel(QWheelEvent* wheelEvent) {
 }
 
 void ListDragAutoScroll::releaseEdgeScroll() {
-    stopEdgeScroll();
+    clearEdgeMotion();
 }
 
 bool ListDragAutoScroll::eventFilter(QObject* watched, QEvent* event) {
@@ -144,12 +153,6 @@ bool ListDragAutoScroll::eventFilter(QObject* watched, QEvent* event) {
     }
 
     auto* wheelEvent = static_cast<QWheelEvent*>(event);
-    const QPoint globalPos = wheelEvent->globalPosition().toPoint();
-    const QRect areaGlobalRect(m_scrollArea->mapToGlobal(QPoint(0, 0)), m_scrollArea->size());
-    if (!areaGlobalRect.contains(globalPos)) {
-        return false;
-    }
-
     if (handleWheel(wheelEvent)) {
         return true;
     }
@@ -177,22 +180,33 @@ void ListDragAutoScroll::scrollBy(int deltaPx) {
     }
 }
 
-void ListDragAutoScroll::stopEdgeScroll() {
+void ListDragAutoScroll::clearEdgeMotion() {
     m_edgeDirection = 0;
     m_edgeStep = 0;
+}
+
+void ListDragAutoScroll::stopSession() {
+    m_active = false;
+    clearEdgeMotion();
     if (m_edgeTimer) {
         m_edgeTimer->stop();
+    }
+    qApp->removeEventFilter(this);
+    if (m_scrollArea) {
+        m_scrollArea->removeEventFilter(this);
+        if (QWidget* viewport = m_scrollArea->viewport()) {
+            viewport->removeEventFilter(this);
+        }
     }
 }
 
 void ListDragAutoScroll::tickEdgeScroll() {
-    if (m_edgeDirection == 0 || !m_scrollArea || !m_scrollArea->viewport()) {
-        stopEdgeScroll();
+    if (!m_active || !m_scrollArea || !m_scrollArea->viewport()) {
+        stopSession();
         return;
     }
 
-    const QPoint viewportPos = m_scrollArea->viewport()->mapFromGlobal(QCursor::pos());
-    updateFromViewportPos(viewportPos);
+    updateFromGlobalCursor();
 
     if (m_edgeDirection == 0 || m_edgeStep <= 0) {
         return;
@@ -200,13 +214,13 @@ void ListDragAutoScroll::tickEdgeScroll() {
 
     QScrollBar* bar = m_scrollArea->verticalScrollBar();
     if (!bar) {
-        stopEdgeScroll();
+        clearEdgeMotion();
         return;
     }
 
     const int before = bar->value();
     scrollBy(m_edgeDirection * m_edgeStep);
     if (bar->value() == before) {
-        stopEdgeScroll();
+        clearEdgeMotion();
     }
 }

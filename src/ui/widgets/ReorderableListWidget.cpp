@@ -245,7 +245,7 @@ void ReorderableListWidget::dragEnterEvent(QDragEnterEvent* event) {
         m_externalDropHover = false;
         m_dropInsertionIndex = dropInsertionIndex(event->position().toPoint());
         updateDropIndicator();
-        m_dragAutoScroll->updateFromViewportPos(event->position().toPoint());
+        m_dragAutoScroll->updateFromGlobalCursor();
         event->acceptProposedAction();
         return;
     }
@@ -257,7 +257,7 @@ void ReorderableListWidget::dragEnterEvent(QDragEnterEvent* event) {
             m_dragAutoScroll->begin();
             m_externalDragScroll = true;
         }
-        m_dragAutoScroll->updateFromViewportPos(event->position().toPoint());
+        m_dragAutoScroll->updateFromGlobalCursor();
         event->acceptProposedAction();
         return;
     }
@@ -276,7 +276,7 @@ void ReorderableListWidget::dragMoveEvent(QDragMoveEvent* event) {
         } else if (m_dropIndicator && m_dropIndicator->isVisible()) {
             updateDropIndicator();
         }
-        m_dragAutoScroll->updateFromViewportPos(event->position().toPoint());
+        m_dragAutoScroll->updateFromGlobalCursor();
         event->acceptProposedAction();
         return;
     }
@@ -289,7 +289,7 @@ void ReorderableListWidget::dragMoveEvent(QDragMoveEvent* event) {
         } else if (m_dropIndicator && m_dropIndicator->isVisible()) {
             updateDropIndicator();
         }
-        m_dragAutoScroll->updateFromViewportPos(event->position().toPoint());
+        m_dragAutoScroll->updateFromGlobalCursor();
         event->acceptProposedAction();
         return;
     }
@@ -303,7 +303,6 @@ void ReorderableListWidget::dragLeaveEvent(QDragLeaveEvent* event) {
         m_dragAutoScroll->end();
         m_externalDragScroll = false;
     }
-    m_dragAutoScroll->releaseEdgeScroll();
     clearDropIndicator();
     m_externalDropHover = false;
     QListWidget::dragLeaveEvent(event);

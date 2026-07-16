@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.164` (from `project(PIPBONG VERSION 0.8.164)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.165` (from `project(PIPBONG VERSION 0.8.165)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.165] - 2026-07-16
+
+### Fixed
+
+- `ListDragAutoScroll` drag autoscroll regression (v0.8.164): poll cursor globally for the whole drag session so edge scroll continues when the pointer leaves the list (`dragLeave` no longer stops it); use `mapFromGlobal(QCursor::pos())` instead of clamped drag-event coordinates for overshoot; restore wheel scroll via scroll-area/viewport/`qApp` filters and `BlockListWidget::wheelEvent` (`ListDragAutoScroll`, `ReorderableListWidget`, `BlockListWidget`, `CalculatorDialog`).
 
 ## [0.8.164] - 2026-07-16
 

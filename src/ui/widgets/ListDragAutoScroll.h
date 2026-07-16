@@ -22,6 +22,7 @@ public:
     void end();
 
     void updateFromViewportPos(const QPoint& viewportPos);
+    void updateFromGlobalCursor();
     void releaseEdgeScroll();
     bool handleWheel(QWheelEvent* wheelEvent);
 
@@ -30,7 +31,8 @@ protected:
 
 private:
     void scrollBy(int deltaPx);
-    void stopEdgeScroll();
+    void clearEdgeMotion();
+    void stopSession();
     void tickEdgeScroll();
 
     QAbstractScrollArea* m_scrollArea = nullptr;

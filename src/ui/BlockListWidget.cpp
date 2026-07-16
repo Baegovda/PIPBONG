@@ -17,6 +17,7 @@
 #include <QMimeData>
 #include <QSettings>
 #include <QStyle>
+#include <QWheelEvent>
 #include <QDragLeaveEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
@@ -1923,7 +1924,7 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
         case QEvent::MouseMove: {
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
             if (m_loopRegionPickActive) {
-                m_dragAutoScroll->updateFromViewportPos(mouseEvent->pos());
+                m_dragAutoScroll->updateFromGlobalCursor();
             }
             const int tableRow = rowAt(mouseEvent->pos().y());
             updateHoverTableRow(tableRow);
@@ -1962,7 +1963,7 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
             }
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
             m_loopRegionPickCurrentRow = blockRowAtViewportY(mouseEvent->pos().y());
-            m_dragAutoScroll->updateFromViewportPos(mouseEvent->pos());
+            m_dragAutoScroll->updateFromGlobalCursor();
             updateLoopRegionPickPreview();
             applyActiveRowVisuals();
             mouseEvent->accept();
@@ -2941,7 +2942,7 @@ void BlockListWidget::dragEnterEvent(QDragEnterEvent* event) {
     if (m_reorderEnabled && event->source() == this && m_dragSourceRow >= 0) {
         m_dropInsertionIndex = dropInsertionIndex(event->position().toPoint());
         updateDropIndicator();
-        m_dragAutoScroll->updateFromViewportPos(event->position().toPoint());
+        m_dragAutoScroll->updateFromGlobalCursor();
         event->acceptProposedAction();
         return;
     }
@@ -2959,7 +2960,7 @@ void BlockListWidget::dragMoveEvent(QDragMoveEvent* event) {
         } else if (m_dropIndicator && m_dropIndicator->isVisible()) {
             updateDropIndicator();
         }
-        m_dragAutoScroll->updateFromViewportPos(event->position().toPoint());
+        m_dragAutoScroll->updateFromGlobalCursor();
         event->acceptProposedAction();
         return;
     }
@@ -2969,9 +2970,15 @@ void BlockListWidget::dragMoveEvent(QDragMoveEvent* event) {
 }
 
 void BlockListWidget::dragLeaveEvent(QDragLeaveEvent* event) {
-    m_dragAutoScroll->releaseEdgeScroll();
     clearDropIndicator();
     QTableWidget::dragLeaveEvent(event);
+}
+
+void BlockListWidget::wheelEvent(QWheelEvent* event) {
+    if (m_dragAutoScroll->isActive() && m_dragAutoScroll->handleWheel(event)) {
+        return;
+    }
+    QTableWidget::wheelEvent(event);
 }
 
 int BlockListWidget::dropInsertionIndex(const QPoint& pos) const {

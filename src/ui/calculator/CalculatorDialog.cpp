@@ -1819,7 +1819,7 @@ bool CalculatorDialog::eventFilter(QObject* watched, QEvent* event) {
 
     if (event->type() == QEvent::MouseMove && isViewport && m_dragAutoScroll->isActive()) {
         const auto* mouseEvent = static_cast<const QMouseEvent*>(event);
-        m_dragAutoScroll->updateFromViewportPos(mouseEvent->pos());
+        m_dragAutoScroll->updateFromGlobalCursor();
     }
 
     if (event->type() == QEvent::MouseButtonRelease && isViewport && m_formulaPickActive) {
@@ -1862,7 +1862,7 @@ bool CalculatorDialog::eventFilter(QObject* watched, QEvent* event) {
                 m_statusLabel->setText(tr("셀 이동: 놓을 위치에서 마우스를 떼세요. Esc로 취소합니다."));
             }
             if (m_cellMoveDragging) {
-                m_dragAutoScroll->updateFromViewportPos(mouseEvent->pos());
+                m_dragAutoScroll->updateFromGlobalCursor();
                 return true;
             }
         } else if (event->type() == QEvent::MouseButtonRelease) {
