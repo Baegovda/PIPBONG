@@ -128,9 +128,13 @@ void ExecutionContext::resetStop() {
     m_paused.store(false);
     m_detectionFailedThisRun = false;
     m_nestingDepth = 0;
-    clearLastMatch();
-    clearLastMatchAttempt();
-    clearConsumedMatchRegions();
+    // Trigger action reuses the monitor's last match via imageFindPrimedBlockIndex.
+    // resetStop runs again in WorkflowEngine before blocks execute — do not wipe that handoff.
+    if (m_imageFindPrimedBlockIndex < 0) {
+        clearLastMatch();
+        clearLastMatchAttempt();
+        clearConsumedMatchRegions();
+    }
 }
 
 void ExecutionContext::setPaused(bool paused) {

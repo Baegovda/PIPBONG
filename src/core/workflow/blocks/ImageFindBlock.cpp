@@ -1138,17 +1138,15 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                                     && ctx.activeBlockIndex() == ctx.triggerMonitorBlockIndex();
 
     if (ctx.consumeImageFindPrimedBlockIndex(ctx.activeBlockIndex())) {
-        BlockResult result;
-        if (!ctx.hasLastMatch()) {
-            result.success = false;
-            result.message = "트리거 상태 오류";
+        if (ctx.hasLastMatch()) {
+            BlockResult result;
+            result.success = true;
+            result.message = "트리거 조건 충족";
+            ctx.reportProgress(BlockProgressKind::ImageFindSuccess);
+            ctx.log(result.message);
             return result;
         }
-        result.success = true;
-        result.message = "트리거 조건 충족";
-        ctx.reportProgress(BlockProgressKind::ImageFindSuccess);
-        ctx.log(result.message);
-        return result;
+        ctx.log("트리거 매칭 재시도");
     }
 
     if (!triggerMonitorPoll) {

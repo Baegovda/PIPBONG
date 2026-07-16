@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.182` (from `project(PIPBONG VERSION 0.8.182)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.183` (from `project(PIPBONG VERSION 0.8.183)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.183] - 2026-07-17
+
+### Fixed
+
+- Trigger mode action phase no longer fails instantly with **트리거 상태 오류** (~1 ms): `ExecutionContext::resetStop()` preserves `lastMatch` when `imageFindPrimedBlockIndex` is set for the monitor→action handoff; `ImageFindBlock` falls back to a normal poll if primed state is stale instead of hard-failing (`ExecutionContext`, `ImageFindBlock`).
 
 ## [0.8.182] - 2026-07-17
 
