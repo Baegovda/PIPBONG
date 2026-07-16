@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QSet>
 #include <QWidget>
 
@@ -37,6 +38,12 @@ struct FeatureListColumnLayout {
 };
 
 
+
+enum class FeatureRunVisualKind {
+    ActiveRun,
+    TriggerWatch,
+    TriggerCooldown
+};
 
 class FeatureListPanel : public QWidget {
 
@@ -78,6 +85,10 @@ public:
     int animationPhase() const { return m_animPhase; }
 
     void setRunningFeatureIds(const QSet<QString>& featureIds);
+
+    void setFeatureRunVisualKinds(const QHash<QString, FeatureRunVisualKind>& kinds);
+
+    FeatureRunVisualKind featureRunVisualKind(const QString& featureId) const;
 
     void setEditControlsEnabled(bool enabled);
 
@@ -227,6 +238,8 @@ private:
     QTimer* m_animTimer = nullptr;
 
     QSet<QString> m_runningFeatureIds;
+
+    QHash<QString, FeatureRunVisualKind> m_featureRunVisualKinds;
 
     QString m_lastSelectedFeatureId;
 

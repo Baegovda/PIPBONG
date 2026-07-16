@@ -13,6 +13,7 @@
 #endif
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -25,6 +26,7 @@ constexpr UINT_PTR kTimerId = 1;
 constexpr UINT kTimerMs = 33;
 constexpr UINT kHideForCaptureMsg = WM_APP + 42;
 constexpr ULONGLONG kDefaultMatchPulseLifetimeMs = 460;
+constexpr ULONGLONG kTriggerScanPulseLifetimeMs = 1200;
 constexpr size_t kMaxActivePulses = 16;
 struct Pulse {
     int clientX = 0;
@@ -60,6 +62,9 @@ void destroyOverlayWindow() {
 ULONGLONG pulseLifetimeMs(RunPointerFeedbackKind kind) {
     if (kind == RunPointerFeedbackKind::Click) {
         return static_cast<ULONGLONG>(PointerFeedbackSettings::click().displayDurationMs);
+    }
+    if (kind == RunPointerFeedbackKind::TriggerScan) {
+        return kTriggerScanPulseLifetimeMs;
     }
     return kDefaultMatchPulseLifetimeMs;
 }
@@ -152,6 +157,35 @@ void strokeRing(uint32_t* bits,
     }
 }
 
+void renderTriggerScanPulse(uint32_t* pixels,
+                            int width,
+                            int height,
+                            const Pulse& pulse,
+                            ULONGLONG age,
+                            ULONGLONG lifetimeMs) {
+    const float t = static_cast<float>(age) / static_cast<float>(lifetimeMs);
+    const float fade = 1.0f - t;
+    const int centerX = pulse.clientX;
+    const int centerY = pulse.clientY;
+    const uint8_t r = 72;
+    const uint8_t g = 210;
+    const uint8_t b = 236;
+
+    const uint8_t coreAlpha = static_cast<uint8_t>(std::clamp(fade * 88.0f, 0.0f, 88.0f));
+    fillCircle(pixels, width, height, centerX, centerY, 3, coreAlpha, r, g, b);
+
+    const int radius = 6 + static_cast<int>(t * 36.0f);
+    const uint8_t ringAlpha = static_cast<uint8_t>(std::clamp((1.0f - t) * 150.0f, 0.0f, 150.0f));
+    strokeRing(pixels, width, height, centerX, centerY, radius, 2, ringAlpha, r, g, b);
+
+    const float lagT = std::clamp((age - 140ULL) / static_cast<float>(lifetimeMs), 0.0f, 1.0f);
+    if (lagT > 0.0f) {
+        const int lagRadius = 8 + static_cast<int>(lagT * 44.0f);
+        const uint8_t lagAlpha = static_cast<uint8_t>(std::clamp((1.0f - lagT) * 110.0f, 0.0f, 110.0f));
+        strokeRing(pixels, width, height, centerX, centerY, lagRadius, 2, lagAlpha, r, g, b);
+    }
+}
+
 void renderMatchPulse(uint32_t* pixels,
                       int width,
                       int height,
@@ -207,6 +241,9 @@ int pulseRenderMarginPx(const Pulse& pulse) {
     if (pulse.kind == RunPointerFeedbackKind::Click) {
         const auto& settings = PointerFeedbackSettings::click();
         return settings.maxExpandRadius + settings.coreSize + settings.ringThickness + 12;
+    }
+    if (pulse.kind == RunPointerFeedbackKind::TriggerScan) {
+        return 56;
     }
     return 40;
 }
@@ -324,6 +361,8 @@ void renderOverlayFrame() {
 
         if (pulse.kind == RunPointerFeedbackKind::Click) {
             renderClickPulse(pixels, width, height, localPulse, age, lifetime);
+        } else if (pulse.kind == RunPointerFeedbackKind::TriggerScan) {
+            renderTriggerScanPulse(pixels, width, height, localPulse, age, lifetime);
         } else {
             renderMatchPulse(pixels, width, height, localPulse, age, lifetime);
         }
@@ -476,6 +515,17 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
             if (existing.kind == RunPointerFeedbackKind::Click) {
                 existing.clientX = clientX;
                 existing.clientY = clientY;
+                renderOverlayFrame();
+                return;
+            }
+        }
+    }
+    if (kind == RunPointerFeedbackKind::TriggerScan) {
+        for (Pulse& existing : g_state->pulses) {
+            if (existing.kind == RunPointerFeedbackKind::TriggerScan) {
+                existing.clientX = clientX;
+                existing.clientY = clientY;
+                existing.startMs = nowMs();
                 renderOverlayFrame();
                 return;
             }

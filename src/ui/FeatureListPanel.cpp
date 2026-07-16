@@ -43,6 +43,7 @@
 #include <QLineEdit>
 #include <QAbstractItemView>
 #include <climits>
+#include <cmath>
 namespace {
 constexpr int kRowSeparatorHeight = 1;
 constexpr int kSelectionBarWidth = 3;
@@ -306,6 +307,8 @@ void paintFeatureListRowChrome(QPainter* painter,
                                bool selected,
                                bool running,
                                bool hovered,
+                               FeatureRunVisualKind visualKind,
+                               int animationPhase,
                                const QPalette& palette) {
     QColor rowBg = palette.color(QPalette::Base);
     if (selected) {
@@ -322,8 +325,16 @@ void paintFeatureListRowChrome(QPainter* painter,
         painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()),
                           palette.color(QPalette::Highlight));
     } else if (running) {
-        painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()),
-                          palette.color(QPalette::Highlight));
+        QColor accent = palette.color(QPalette::Highlight);
+        if (visualKind == FeatureRunVisualKind::TriggerWatch) {
+            const qreal pulse = 0.45 + 0.55 * std::sin(animationPhase * M_PI / 30.0);
+            accent = QColor(56, 188, 214);
+            accent.setAlpha(static_cast<int>(pulse * 255.0));
+        } else if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
+            accent = QColor(214, 168, 72);
+            accent.setAlpha(150);
+        }
+        painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()), accent);
     }
 
     QColor separator = palette.color(QPalette::Mid);
@@ -334,11 +345,31 @@ void paintFeatureListRowChrome(QPainter* painter,
     painter->fillRect(QRect(rect.left(), rect.bottom(), rect.width(), kRowSeparatorHeight), separator);
 }
 
+void paintTriggerWatchRadarGlyph(QPainter* painter, const QRect& rect, int animationPhase) {
+    const QPoint center(rect.right() - 10, rect.center().y());
+    const qreal spin = animationPhase * 7.0;
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+    painter->translate(center);
+    painter->rotate(spin);
+    QPen sweepPen(QColor(72, 210, 236, 170), 1.6);
+    painter->setPen(sweepPen);
+    painter->setBrush(Qt::NoBrush);
+    painter->drawArc(QRect(-7, -7, 14, 14), 30 * 16, 120 * 16);
+    const qreal pulse = 0.35 + 0.65 * std::sin(animationPhase * M_PI / 24.0);
+    QColor core(96, 220, 244, static_cast<int>(pulse * 220.0));
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(core);
+    painter->drawEllipse(QPoint(0, 0), 3, 3);
+    painter->restore();
+}
+
 void paintFeatureName(QPainter* painter,
                       const QRect& rect,
                       const QStyleOptionViewItem& option,
                       const QString& name,
                       bool runningGlow,
+                      FeatureRunVisualKind visualKind,
                       int animationPhase) {
     QFont nameFont = option.font;
     if (runningGlow) {
@@ -355,6 +386,39 @@ void paintFeatureName(QPainter* painter,
         painter->drawText(rect, align, elided);
         return;
     }
+
+    if (visualKind == FeatureRunVisualKind::TriggerWatch) {
+        const qreal pulse = 0.55 + 0.45 * std::sin(animationPhase * M_PI / 30.0);
+        QColor nameColor(88, 214, 238);
+        if (option.state & QStyle::State_Selected) {
+            nameColor = QColor(120, 228, 248);
+        }
+        for (int ring = 2; ring >= 0; --ring) {
+            QColor glow = nameColor;
+            glow.setAlpha(static_cast<int>((55 - ring * 14) * pulse));
+            painter->setPen(glow);
+            painter->setFont(nameFont);
+            const int spread = 1 + ring;
+            painter->drawText(rect.adjusted(-spread, 0, spread, 0), align, elided);
+        }
+        nameColor.setAlpha(static_cast<int>(pulse * 255.0));
+        painter->setPen(nameColor);
+        painter->setFont(nameFont);
+        painter->drawText(rect, align, elided);
+        paintTriggerWatchRadarGlyph(painter, rect, animationPhase);
+        return;
+    }
+
+    if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
+        const qreal pulse = 0.4 + 0.35 * std::sin(animationPhase * M_PI / 18.0);
+        QColor nameColor(214, 176, 88);
+        nameColor.setAlpha(static_cast<int>(pulse * 255.0));
+        painter->setPen(nameColor);
+        painter->setFont(nameFont);
+        painter->drawText(rect, align, elided);
+        return;
+    }
+
     const int hue = (animationPhase * 5) % 360;
     QColor nameColor = QColor::fromHsv(hue, 210, 255);
     if (option.state & QStyle::State_Selected) {
@@ -552,7 +616,14 @@ public:
             return;
         }
 
-        paintFeatureListRowChrome(painter, opt.rect, selected, isRunning, hovered, opt.palette);
+        paintFeatureListRowChrome(painter,
+                                  opt.rect,
+                                  selected,
+                                  isRunning,
+                                  hovered,
+                                  m_panel->featureRunVisualKind(featureId),
+                                  m_panel->animationPhase(),
+                                  opt.palette);
         if (!featureEnabled) {
             QColor disabledOverlay = opt.palette.color(QPalette::Mid);
             disabledOverlay.setAlpha(48);
@@ -578,6 +649,7 @@ public:
                          opt,
                          featureName,
                          featureEnabled && isRunning && !featureName.isEmpty() && !isDragSource,
+                         m_panel->featureRunVisualKind(featureId),
                          m_panel->animationPhase());
 
         QFont secondaryFont = opt.font;
@@ -1206,6 +1278,7 @@ void FeatureListPanel::setRunningFeatureIds(const QSet<QString>& featureIds) {
     m_runningFeatureIds = featureIds;
     if (m_runningFeatureIds.isEmpty()) {
         m_animPhase = 0;
+        m_featureRunVisualKinds.clear();
         if (m_animTimer) {
             m_animTimer->stop();
         }
@@ -1216,6 +1289,17 @@ void FeatureListPanel::setRunningFeatureIds(const QSet<QString>& featureIds) {
     if (m_list && m_list->viewport()) {
         m_list->viewport()->update();
     }
+}
+
+void FeatureListPanel::setFeatureRunVisualKinds(const QHash<QString, FeatureRunVisualKind>& kinds) {
+    m_featureRunVisualKinds = kinds;
+    if (m_list && m_list->viewport()) {
+        m_list->viewport()->update();
+    }
+}
+
+FeatureRunVisualKind FeatureListPanel::featureRunVisualKind(const QString& featureId) const {
+    return m_featureRunVisualKinds.value(featureId, FeatureRunVisualKind::ActiveRun);
 }
 QString FeatureListPanel::runningFeatureId() const {
     if (m_runningFeatureIds.isEmpty()) {

@@ -3,6 +3,7 @@
 enum class RunPointerFeedbackKind {
     MatchSuccess,
     MatchMiss,
+    TriggerScan,
     Click
 };
 

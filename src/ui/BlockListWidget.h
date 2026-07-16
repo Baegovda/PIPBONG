@@ -83,6 +83,10 @@ public:
 
         Running,
 
+        TriggerWatch,
+
+        TriggerCooldown,
+
         ImageFindMiss,
 
         Success,
@@ -263,6 +267,8 @@ private:
 
     void applyActiveRowVisuals();
 
+    void syncAmbientAnimationTimer();
+
     void updateHoverTableRow(int tableRow);
 
     void refreshDragScrollDependentUi();
@@ -376,6 +382,10 @@ private:
     QVariantAnimation* m_flashAnimation = nullptr;
 
     QTimer* m_returnFlashHoldTimer = nullptr;
+
+    QTimer* m_ambientAnimTimer = nullptr;
+
+    int m_ambientAnimPhase = 0;
 
     ListDragAutoScroll* m_dragAutoScroll = nullptr;
 

@@ -69,6 +69,7 @@
 #include <QMimeData>
 #include <QFileIconProvider>
 #include <QGroupBox>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
@@ -480,6 +481,31 @@ QString profileDisplayName(ProfileManager* profileManager, const QString& profil
         }
     }
     return profileId;
+}
+
+bool isTriggerMonitoring(const FeatureRunSession& session) {
+    return session.runningMode == FeatureRunMode::Trigger
+        && session.triggerPhase == TriggerSessionPhase::Monitoring;
+}
+
+BlockListWidget::ExecutionHighlight mapTriggerBlockHighlight(const FeatureRunSession& session,
+                                                             int blockIndex,
+                                                             BlockListWidget::ExecutionHighlight highlight) {
+    if (session.runningMode != FeatureRunMode::Trigger || blockIndex != session.triggerBlockIndex) {
+        return highlight;
+    }
+    if (session.triggerPhase == TriggerSessionPhase::Monitoring) {
+        if (highlight == BlockListWidget::ExecutionHighlight::Running
+            || highlight == BlockListWidget::ExecutionHighlight::ImageFindMiss) {
+            return BlockListWidget::ExecutionHighlight::TriggerWatch;
+        }
+    } else if (session.triggerPhase == TriggerSessionPhase::Cooldown) {
+        if (highlight == BlockListWidget::ExecutionHighlight::Running
+            || highlight == BlockListWidget::ExecutionHighlight::ImageFindMiss) {
+            return BlockListWidget::ExecutionHighlight::TriggerCooldown;
+        }
+    }
+    return highlight;
 }
 
 QString libraryEntryDisplayName(FeatureLibraryManager* libraryManager, const QString& entryId) {
@@ -2315,10 +2341,12 @@ bool MainWindow::isDisplayedRunningFeature(const FeatureRunSession* session) con
 void MainWindow::applyRunningBlockVisuals(FeatureRunSession& session,
                                           int index,
                                           BlockListWidget::ExecutionHighlight highlight) {
+    const BlockListWidget::ExecutionHighlight mapped =
+        mapTriggerBlockHighlight(session, index, highlight);
     session.runningBlockIndex = index;
-    session.runningBlockHighlight = highlight;
+    session.runningBlockHighlight = mapped;
     if (isDisplayedRunningFeature(&session)) {
-        m_workflowEditor->setActiveBlockIndex(index, highlight);
+        m_workflowEditor->setActiveBlockIndex(index, mapped);
     }
 }
 
@@ -2426,6 +2454,26 @@ void MainWindow::connectSessionEngine(FeatureRunSession& session) {
 void MainWindow::updateRunUiState() {
     if (m_featureList) {
         m_featureList->setRunningFeatureIds(runningFeatureIds());
+        QHash<QString, FeatureRunVisualKind> visualKinds;
+        for (const auto& entry : m_runSessions) {
+            const QString featureId = QString::fromStdString(entry.first);
+            if (entry.second.runningMode != FeatureRunMode::Trigger || !entry.second.repeatSession) {
+                visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
+                continue;
+            }
+            switch (entry.second.triggerPhase) {
+            case TriggerSessionPhase::Monitoring:
+                visualKinds.insert(featureId, FeatureRunVisualKind::TriggerWatch);
+                break;
+            case TriggerSessionPhase::Cooldown:
+                visualKinds.insert(featureId, FeatureRunVisualKind::TriggerCooldown);
+                break;
+            case TriggerSessionPhase::RunningAction:
+                visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
+                break;
+            }
+        }
+        m_featureList->setFeatureRunVisualKinds(visualKinds);
     }
 
     Feature* selected = m_featureList ? m_featureList->selectedFeature() : nullptr;
@@ -4051,6 +4099,11 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
 #endif
         return run;
     });
+
+    if (session.triggerBlockIndex >= 0) {
+        applyRunningBlockVisuals(session, session.triggerBlockIndex,
+                                 BlockListWidget::ExecutionHighlight::Running);
+    }
 }
 
 void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* feature) {
@@ -4061,6 +4114,7 @@ void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* fea
     pauseOtherSessionsForTrigger(session);
 
     session.triggerPhase = TriggerSessionPhase::RunningAction;
+    updateRunUiState();
     if (session.sessionContext) {
         session.sessionContext->setTriggerMonitorBlockIndex(-1);
         session.sessionContext->setImageFindPrimedBlockIndex(session.triggerBlockIndex);
@@ -4172,6 +4226,10 @@ void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* fe
 
     session.triggerPhase = TriggerSessionPhase::Cooldown;
     updateRunUiState();
+    if (session.triggerBlockIndex >= 0) {
+        applyRunningBlockVisuals(session, session.triggerBlockIndex,
+                                 BlockListWidget::ExecutionHighlight::Running);
+    }
 
     const int cooldownMs = feature->triggerCooldownMs();
     if (cooldownMs <= 0) {
@@ -4830,6 +4888,9 @@ void MainWindow::onBlockProgress(int index, BlockProgressKind kind) {
 
     switch (kind) {
     case BlockProgressKind::ImageFindMiss:
+        if (isTriggerMonitoring(*session)) {
+            break;
+        }
         if (isDisplayedRunningFeature(session) && m_workflowEditor->isBlockMatchSuccessCommitted(index)) {
             break;
         }
@@ -4862,10 +4923,13 @@ void MainWindow::onBlockMatchResult(int index,
         return;
     }
     if (hasClientPoint && session && session->pointerVisualFeedback) {
-        WorkflowMatchFeedbackOverlay::pulseAtClientPoint(
-            clientX,
-            clientY,
-            matched ? RunPointerFeedbackKind::MatchSuccess : RunPointerFeedbackKind::MatchMiss);
+        RunPointerFeedbackKind kind = RunPointerFeedbackKind::MatchMiss;
+        if (matched) {
+            kind = RunPointerFeedbackKind::MatchSuccess;
+        } else if (isTriggerMonitoring(*session)) {
+            kind = RunPointerFeedbackKind::TriggerScan;
+        }
+        WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
     }
 
     if (!session || !isDisplayedRunningFeature(session)) {

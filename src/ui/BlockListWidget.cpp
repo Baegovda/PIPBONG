@@ -28,6 +28,7 @@
 #include <QLabel>
 #include <QIcon>
 #include <QKeyEvent>
+#include <cmath>
 #include <functional>
 #include <QMouseEvent>
 #include <QObject>
@@ -515,6 +516,13 @@ GlassColors glassColorsFor(BlockListWidget::ExecutionHighlight highlight,
     switch (highlight) {
     case BlockListWidget::ExecutionHighlight::Running:
         colors.tint = QColor(255, 196, 92);
+        break;
+    case BlockListWidget::ExecutionHighlight::TriggerWatch:
+        colors.tint = QColor(64, 198, 224);
+        break;
+    case BlockListWidget::ExecutionHighlight::TriggerCooldown:
+        colors.tint = QColor(214, 168, 72);
+        colors.intensity = qMin(1.0, colors.intensity * 0.82);
         break;
     case BlockListWidget::ExecutionHighlight::ImageFindMiss:
         colors.tint = QColor(228, 88, 102);
@@ -2108,6 +2116,12 @@ BlockListWidget::ExecutionHighlight BlockListWidget::rowVisualHighlight(int row)
         if (m_activeHighlight == ExecutionHighlight::Running) {
             return ExecutionHighlight::Running;
         }
+        if (m_activeHighlight == ExecutionHighlight::TriggerWatch) {
+            return ExecutionHighlight::TriggerWatch;
+        }
+        if (m_activeHighlight == ExecutionHighlight::TriggerCooldown) {
+            return ExecutionHighlight::TriggerCooldown;
+        }
         if (m_activeHighlight == ExecutionHighlight::ImageFindMiss) {
             if (m_flashRow == row && m_flashKind == ExecutionHighlight::ImageFindMiss
                 && m_flashIntensity > 0.0) {
@@ -2514,7 +2528,29 @@ void BlockListWidget::setActiveRow(int row, ExecutionHighlight highlight) {
     } else if (effectiveHighlight == ExecutionHighlight::Failed && row >= 0) {
         triggerRowFlash(row, ExecutionHighlight::Failed, kFailedFlashMs);
     }
+    syncAmbientAnimationTimer();
     applyActiveRowVisuals();
+}
+
+void BlockListWidget::syncAmbientAnimationTimer() {
+    const bool needsAmbient = m_activeHighlight == ExecutionHighlight::TriggerWatch
+        || m_activeHighlight == ExecutionHighlight::TriggerCooldown;
+    if (!m_ambientAnimTimer) {
+        m_ambientAnimTimer = new QTimer(this);
+        m_ambientAnimTimer->setInterval(50);
+        connect(m_ambientAnimTimer, &QTimer::timeout, this, [this]() {
+            m_ambientAnimPhase = (m_ambientAnimPhase + 1) % 120;
+            applyActiveRowVisuals();
+        });
+    }
+    if (needsAmbient) {
+        if (!m_ambientAnimTimer->isActive()) {
+            m_ambientAnimTimer->start();
+        }
+    } else {
+        m_ambientAnimTimer->stop();
+        m_ambientAnimPhase = 0;
+    }
 }
 
 void BlockListWidget::notifyImageFindRetry(int row) {
@@ -2680,6 +2716,14 @@ qreal BlockListWidget::rowGlassIntensity(int row, ExecutionHighlight highlight) 
     if (highlight == ExecutionHighlight::Running) {
         return kRunningGlassIntensity;
     }
+    if (highlight == ExecutionHighlight::TriggerWatch) {
+        const qreal pulse = 0.55 + 0.45 * std::sin(m_ambientAnimPhase * M_PI / 30.0);
+        return kRunningGlassIntensity * pulse;
+    }
+    if (highlight == ExecutionHighlight::TriggerCooldown) {
+        const qreal pulse = 0.4 + 0.3 * std::sin(m_ambientAnimPhase * M_PI / 18.0);
+        return kRunningGlassIntensity * 0.85 * pulse;
+    }
     if (m_flashKind == highlight && m_flashIntensity > 0.0
         && (m_flashRow == row || m_flashRowSecondary == row)) {
         if (highlight == ExecutionHighlight::ReturnToPrevious) {
@@ -2785,6 +2829,12 @@ void BlockListWidget::applyActiveRowVisuals() {
             switch (m_activeHighlight) {
             case ExecutionHighlight::Running:
                 indexText = QStringLiteral("▶ %1").arg(blockRow + 1);
+                break;
+            case ExecutionHighlight::TriggerWatch:
+                indexText = QStringLiteral("◎ %1").arg(blockRow + 1);
+                break;
+            case ExecutionHighlight::TriggerCooldown:
+                indexText = QStringLiteral("◔ %1").arg(blockRow + 1);
                 break;
             case ExecutionHighlight::ImageFindMiss:
                 indexText = QStringLiteral("⌕ %1").arg(blockRow + 1);
