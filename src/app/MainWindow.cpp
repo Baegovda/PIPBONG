@@ -2793,6 +2793,9 @@ bool MainWindow::removeFeatureFromProfile(const QString& profileId, const QStrin
     if (isFeatureRunning(featureId.toStdString())) {
         stopFeatureRun(featureId.toStdString());
     }
+    if (m_profileManager) {
+        m_profileManager->updateTriggerArmedFeature(profileId, featureId, false);
+    }
 
     if (profileId == m_profileManager->activeProfileId()) {
         if (!m_project) {
@@ -3322,24 +3325,31 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     if (!feature->enabled()) {
         return;
     }
+    const bool silentRestoreStart = m_suppressTriggerArmedPersist;
     if (feature->workflow().blocks().empty()) {
-        QMessageBox::information(this, tr("실행"), tr("선택한 기능에 블록이 없습니다."));
+        if (!silentRestoreStart) {
+            QMessageBox::information(this, tr("실행"), tr("선택한 기능에 블록이 없습니다."));
+        }
         return;
     }
     if (feature->runMode() == FeatureRunMode::Trigger
         && WorkflowRunner::firstImageFindBlockIndex(feature->workflow()) < 0) {
-        QMessageBox::information(this,
-                                 tr("실행"),
-                                 tr("트리거 모드에는 템플릿이 지정된 템플릿 매칭 블록이 최소 하나 필요합니다."));
+        if (!silentRestoreStart) {
+            QMessageBox::information(this,
+                                     tr("실행"),
+                                     tr("트리거 모드에는 템플릿이 지정된 템플릿 매칭 블록이 최소 하나 필요합니다."));
+        }
         return;
     }
 #ifdef _WIN32
     if (!ProgramSettings::runWithoutTargetWindow() && !ScreenCapture::hasResolvableTargetWindow()) {
-        QMessageBox::information(
-            this,
-            tr("실행"),
-            tr("대상 창이 지정되지 않았습니다. '창 지정'으로 대상 창을 선택하거나, "
-               "프로그램 설정에서 '창을 지정하지 않은 상태에서도 동작'을 켜세요."));
+        if (!silentRestoreStart) {
+            QMessageBox::information(
+                this,
+                tr("실행"),
+                tr("대상 창이 지정되지 않았습니다. '창 지정'으로 대상 창을 선택하거나, "
+                   "프로그램 설정에서 '창을 지정하지 않은 상태에서도 동작'을 켜세요."));
+        }
         return;
     }
 #endif
@@ -3396,6 +3406,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
         return;
     }
     if (feature->runMode() == FeatureRunMode::Trigger) {
+        persistTriggerArmedState(QString::fromStdString(featureId), true);
         launchTriggerMonitor(activeSession, feature, true);
         return;
     }
@@ -4330,6 +4341,10 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
         restoreRunStartCursorPosition(*session);
     }
 
+    if (session && session->runningMode == FeatureRunMode::Trigger && session->userStopRequested) {
+        persistTriggerArmedState(QString::fromStdString(featureId), false);
+    }
+
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
     m_fastRepeatUiCoalesce.erase(featureId);
     m_runSessions.erase(featureId);
@@ -4344,6 +4359,80 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
 
 void MainWindow::runFeature(Feature* feature) {
     startFeatureRun(feature);
+}
+
+void MainWindow::persistTriggerArmedState(const QString& featureId, bool armed) {
+    if (m_suppressTriggerArmedPersist || !m_profileManager || featureId.isEmpty()) {
+        return;
+    }
+    m_profileManager->updateTriggerArmedFeature(m_profileManager->activeProfileId(), featureId, armed);
+}
+
+void MainWindow::scheduleRestorePersistedTriggerSessions() {
+    QTimer::singleShot(0, this, &MainWindow::restorePersistedTriggerSessions);
+}
+
+void MainWindow::restorePersistedTriggerSessions() {
+    if (!m_profileManager || !m_project) {
+        return;
+    }
+
+    const QString profileId = m_profileManager->activeProfileId();
+    const QStringList armedIds = m_profileManager->triggerArmedFeatureIds(profileId);
+    if (armedIds.isEmpty()) {
+        return;
+    }
+
+    QStringList keptIds;
+    keptIds.reserve(armedIds.size());
+    m_suppressTriggerArmedPersist = true;
+    for (const QString& featureId : armedIds) {
+        Feature* feature = m_project->featureById(featureId.toStdString());
+        if (!feature || !feature->enabled() || feature->runMode() != FeatureRunMode::Trigger
+            || WorkflowRunner::firstImageFindBlockIndex(feature->workflow()) < 0) {
+            continue;
+        }
+        keptIds.append(featureId);
+        if (isFeatureRunning(featureId.toStdString())) {
+            continue;
+        }
+        startFeatureRun(feature, false);
+    }
+    m_suppressTriggerArmedPersist = false;
+
+    if (keptIds != armedIds) {
+        m_profileManager->setTriggerArmedFeatureIds(profileId, keptIds);
+    }
+}
+
+void MainWindow::prunePersistedTriggerArmedFeatures() {
+    if (!m_profileManager || !m_project) {
+        return;
+    }
+
+    const QString profileId = m_profileManager->activeProfileId();
+    const QStringList armedIds = m_profileManager->triggerArmedFeatureIds(profileId);
+    if (armedIds.isEmpty()) {
+        return;
+    }
+
+    QStringList keptIds;
+    keptIds.reserve(armedIds.size());
+    for (const QString& featureId : armedIds) {
+        Feature* feature = m_project->featureById(featureId.toStdString());
+        if (!feature || !feature->enabled() || feature->runMode() != FeatureRunMode::Trigger
+            || WorkflowRunner::firstImageFindBlockIndex(feature->workflow()) < 0) {
+            if (isFeatureRunning(featureId.toStdString())) {
+                stopFeatureRun(featureId.toStdString());
+            }
+            continue;
+        }
+        keptIds.append(featureId);
+    }
+
+    if (keptIds != armedIds) {
+        m_profileManager->setTriggerArmedFeatureIds(profileId, keptIds);
+    }
 }
 
 void MainWindow::onHotkeyTriggered(const QString& featureId) {
@@ -4515,6 +4604,7 @@ void MainWindow::syncHotkeys() {
                       .arg(QString::fromStdString(failure.featureName)),
                   LogLineKind::Error);
     }
+    prunePersistedTriggerArmedFeatures();
 }
 
 void MainWindow::onStopWorkflow() {
@@ -5100,6 +5190,7 @@ void MainWindow::loadActiveProfile(bool quiet) {
         loadProjectFromFile(projectPath, quiet);
         Application::instance()->setProjectDirectory(m_profileManager->activeProjectDirectory());
         updateTargetWindowControlsForActiveProfile();
+        scheduleRestorePersistedTriggerSessions();
         return;
     }
 
@@ -5124,6 +5215,7 @@ void MainWindow::loadActiveProfile(bool quiet) {
     }
     updateTargetWindowControlsForActiveProfile();
     autoSaveProject(quiet);
+    scheduleRestorePersistedTriggerSessions();
 }
 
 void MainWindow::refreshProfileList() {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 /// Program-wide preferences persisted in QSettings (not project JSON).
 class ProgramSettings {
@@ -19,6 +20,8 @@ public:
         /// Secondary detection window (e.g. game launcher) — title substring for auto-switch / run target.
         QString subTargetWindowTitle;
         QString subLinkedTargetProcessPath;
+        /// Feature ids with trigger mode left armed (monitoring) across restart/profile switch.
+        QStringList triggerArmedFeatureIds;
     };
 
     static bool autoSelectRunningFeature();

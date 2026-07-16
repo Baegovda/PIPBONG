@@ -79,7 +79,14 @@ public:
     bool saveSettings(const QString& id,
                       const ProgramSettings::ProfileSettings& settings,
                       bool replaceLinkedProcessPath = false,
-                      bool replaceSubLinkedProcessPath = false) const;
+                      bool replaceSubLinkedProcessPath = false,
+                      bool replaceTriggerArmedFeatureIds = false) const;
+
+    QStringList triggerArmedFeatureIds(const QString& id) const;
+    bool setTriggerArmedFeatureIds(const QString& id, const QStringList& featureIds) const;
+    bool updateTriggerArmedFeature(const QString& profileId,
+                                   const QString& featureId,
+                                   bool armed) const;
 
     /// Resolves the profile whose linked target-window title best matches the foreground title.
     /// Returns the default profile when nothing matches or the title is empty.

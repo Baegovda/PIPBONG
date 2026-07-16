@@ -573,6 +573,16 @@ ProgramSettings::ProfileSettings ProfileManager::loadSettings(const QString& id)
         root.value(QStringLiteral("subTargetWindowTitle")).toString(settings.subTargetWindowTitle);
     settings.subLinkedTargetProcessPath =
         root.value(QStringLiteral("subLinkedTargetProcessPath")).toString(settings.subLinkedTargetProcessPath);
+    settings.triggerArmedFeatureIds.clear();
+    const QJsonValue armedValue = root.value(QStringLiteral("triggerArmedFeatureIds"));
+    if (armedValue.isArray()) {
+        for (const QJsonValue& entry : armedValue.toArray()) {
+            const QString featureId = entry.toString().trimmed();
+            if (!featureId.isEmpty()) {
+                settings.triggerArmedFeatureIds.append(featureId);
+            }
+        }
+    }
     m_settingsCache[id] = settings;
     m_settingsFileMtime[id] = mtime;
     return settings;
@@ -581,7 +591,8 @@ ProgramSettings::ProfileSettings ProfileManager::loadSettings(const QString& id)
 bool ProfileManager::saveSettings(const QString& id,
                                   const ProgramSettings::ProfileSettings& settings,
                                   bool replaceLinkedProcessPath,
-                                  bool replaceSubLinkedProcessPath) const {
+                                  bool replaceSubLinkedProcessPath,
+                                  bool replaceTriggerArmedFeatureIds) const {
     QDir().mkpath(profileDirectory(id));
     ProgramSettings::ProfileSettings toWrite = settings;
     // Callers that snapshot QSettings-backed options often omit the exe path.
@@ -600,6 +611,9 @@ bool ProfileManager::saveSettings(const QString& id,
             toWrite.subTargetWindowTitle = previousSubTitle;
         }
     }
+    if (!replaceTriggerArmedFeatureIds) {
+        toWrite.triggerArmedFeatureIds = loadSettings(id).triggerArmedFeatureIds;
+    }
     QJsonObject root;
     root.insert(QStringLiteral("version"), 1);
     root.insert(QStringLiteral("autoSelectRunningFeature"), toWrite.autoSelectRunningFeature);
@@ -615,6 +629,15 @@ bool ProfileManager::saveSettings(const QString& id,
     if (!toWrite.subLinkedTargetProcessPath.isEmpty()) {
         root.insert(QStringLiteral("subLinkedTargetProcessPath"), toWrite.subLinkedTargetProcessPath);
     }
+    if (replaceTriggerArmedFeatureIds || !toWrite.triggerArmedFeatureIds.isEmpty()) {
+        QJsonArray armedArray;
+        for (const QString& featureId : toWrite.triggerArmedFeatureIds) {
+            if (!featureId.isEmpty()) {
+                armedArray.append(featureId);
+            }
+        }
+        root.insert(QStringLiteral("triggerArmedFeatureIds"), armedArray);
+    }
     QFile file(QDir(profileDirectory(id)).filePath(QString::fromLatin1(kSettingsFileName)));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return false;
@@ -624,6 +647,38 @@ bool ProfileManager::saveSettings(const QString& id,
     m_settingsCache[id] = toWrite;
     m_settingsFileMtime[id] = writtenInfo.lastModified().toMSecsSinceEpoch();
     return true;
+}
+
+QStringList ProfileManager::triggerArmedFeatureIds(const QString& id) const {
+    return loadSettings(id).triggerArmedFeatureIds;
+}
+
+bool ProfileManager::setTriggerArmedFeatureIds(const QString& id, const QStringList& featureIds) const {
+    ProgramSettings::ProfileSettings settings = loadSettings(id);
+    settings.triggerArmedFeatureIds = featureIds;
+    return saveSettings(id, settings, false, false, true);
+}
+
+bool ProfileManager::updateTriggerArmedFeature(const QString& profileId,
+                                               const QString& featureId,
+                                               bool armed) const {
+    if (profileId.isEmpty() || featureId.isEmpty()) {
+        return false;
+    }
+    ProgramSettings::ProfileSettings settings = loadSettings(profileId);
+    QStringList ids = settings.triggerArmedFeatureIds;
+    if (armed) {
+        if (!ids.contains(featureId)) {
+            ids.append(featureId);
+        }
+    } else {
+        ids.removeAll(featureId);
+    }
+    if (ids == settings.triggerArmedFeatureIds) {
+        return true;
+    }
+    settings.triggerArmedFeatureIds = ids;
+    return saveSettings(profileId, settings, false, false, true);
 }
 
 QString ProfileManager::profileIdForForegroundTitle(const QString& foregroundTitle) const {

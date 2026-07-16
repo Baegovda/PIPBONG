@@ -262,6 +262,10 @@ private:
                                      const QString& message);
     void pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession);
     void resumePreemptedSessionsForTrigger(FeatureRunSession& triggerSession);
+    void persistTriggerArmedState(const QString& featureId, bool armed);
+    void scheduleRestorePersistedTriggerSessions();
+    void restorePersistedTriggerSessions();
+    void prunePersistedTriggerArmedFeatures();
     void runFeature(Feature* feature);
     bool isDisplayedRunningFeature(const FeatureRunSession* session) const;
     void applyRunningBlockVisuals(FeatureRunSession& session,
@@ -389,6 +393,7 @@ private:
     QString m_lastPersistedProfileSettingsProfileId;
     ProgramSettings::ProfileSettings m_lastPersistedProfileSettings{};
     bool m_restoringGlobalUiHistory = false;
+    bool m_suppressTriggerArmedPersist = false;
     std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;

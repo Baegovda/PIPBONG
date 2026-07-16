@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.185` (from `project(PIPBONG VERSION 0.8.185)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.186` (from `project(PIPBONG VERSION 0.8.186)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -502,7 +502,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Active profile manifest | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/manifest.json` (`activeProfileId`, `defaultProfileId`, unlimited profile list)                                                                                                                                                                                                      |
 | Profile project file    | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/project.json` via `ProfileManager`                                                                                                                                                                                                                                      |
 | Profile package mirror  | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}.pipbong` — ZIP archive of the profile workspace (`project.json`, `templates/`, `profile-settings.json`, optional `linked-target-icon.png`); updated on debounced auto-save / shutdown; unpacked when workspace is missing (`ProjectPackage`, `ProfileManager`) |
-| Profile settings file   | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`, `linkedTargetProcessPath` for persisted target-program icon when the window is not running, `subTargetWindowTitle` / `subLinkedTargetProcessPath` for an optional secondary detection window such as a game launcher) |
+| Profile settings file   | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/profile-settings.json` for profile-scoped execution options (`autoSelectRunningFeature`, `pinTargetWindowToScreenCenter`, `imageFindCaptureMode`, `runWithoutTargetWindow`, `linkedTargetProcessPath` for persisted target-program icon when the window is not running, `subTargetWindowTitle` / `subLinkedTargetProcessPath` for an optional secondary detection window such as a game launcher, `triggerArmedFeatureIds` for trigger-mode features left monitoring across restart/profile switch) |
 | Linked target icon      | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/linked-target-icon.png` — cached exe icon when the linked program is uninstalled or not running (`ProfileManager::cacheLinkedTargetIcon`) |
 | Templates               | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/templates/*.png`                                                                                                                                                                                                                                                        |
 | Manual save/open        | File menu; last path in `QSettings` key `project/lastFile`                                                                                                                                                                                                                                                                   |
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.186] - 2026-07-17
+
+### Added
+
+- Trigger mode armed/stopped state persists per profile in `profile-settings.json` as `triggerArmedFeatureIds`; restored on app startup and profile switch (`ProfileManager`, `MainWindow::restorePersistedTriggerSessions`); cleared only on explicit user stop, feature delete, or when the feature is no longer trigger-capable.
 
 ## [0.8.185] - 2026-07-17
 
