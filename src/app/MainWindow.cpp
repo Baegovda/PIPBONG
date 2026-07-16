@@ -1200,16 +1200,6 @@ void MainWindow::showFromTray() {
 }
 
 void MainWindow::requestApplicationQuit() {
-    if (hasAnyRunningSession()) {
-        const auto reply = QMessageBox::question(this,
-                                                 tr("종료"),
-                                                 tr("워크플로가 실행 중입니다. 종료하시겠습니까?"),
-                                                 QMessageBox::Yes | QMessageBox::No,
-                                                 QMessageBox::No);
-        if (reply != QMessageBox::Yes) {
-            return;
-        }
-    }
     m_forceQuit = true;
     close();
 }
@@ -2047,20 +2037,6 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         hideToTray();
         event->ignore();
         return;
-    }
-
-    if (!m_forceQuit && hasAnyRunningSession()) {
-        const auto reply = QMessageBox::question(
-            this,
-            tr("종료"),
-            tr("워크플로가 실행 중입니다. 종료하시겠습니까?"),
-            QMessageBox::Yes | QMessageBox::No,
-            QMessageBox::No);
-        if (reply != QMessageBox::Yes) {
-            event->ignore();
-            return;
-        }
-        m_forceQuit = true;
     }
 
     prepareForShutdown();
