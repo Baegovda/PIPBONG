@@ -1134,6 +1134,9 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
     const HWND targetWindow = nullptr;
 #endif
 
+    const bool triggerMonitorPoll = ctx.triggerMonitorBlockIndex() >= 0
+                                    && ctx.activeBlockIndex() == ctx.triggerMonitorBlockIndex();
+
     if (ctx.consumeImageFindPrimedBlockIndex(ctx.activeBlockIndex())) {
         BlockResult result;
         if (!ctx.hasLastMatch()) {
@@ -1148,10 +1151,11 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         return result;
     }
 
-    const int blockIndex = ctx.activeBlockIndex();
-    if (const std::optional<BlockResult> replay = tryReplayRememberedPositionForLoop(
-            ctx, rememberMultiMatchPositions, targetWindow, threshold, 0, 0)) {
-        return *replay;
+    if (!triggerMonitorPoll) {
+        if (const std::optional<BlockResult> replay = tryReplayRememberedPositionForLoop(
+                ctx, rememberMultiMatchPositions, targetWindow, threshold, 0, 0)) {
+            return *replay;
+        }
     }
 
     const MatchOptions options = matchOptions();
@@ -1159,8 +1163,6 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
     int pollAttemptCount = 0;
     int64_t matchWorkMs = 0;
     int effectiveMaxMisses = ctx.imageFindMaxMissAttempts();
-    const bool triggerMonitorPoll = ctx.triggerMonitorBlockIndex() >= 0
-                                    && ctx.activeBlockIndex() == ctx.triggerMonitorBlockIndex();
     if (triggerMonitorPoll) {
         effectiveMaxMisses = 0;
     } else {
@@ -1185,7 +1187,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         const std::vector<CaptureRegion> pollRegions =
             physicalCustomPollRegions(runtimeSearchArea, runtimeWindowPercentRegions);
 
-        if (pollAttemptCount == 1) {
+        if (pollAttemptCount == 1 && !triggerMonitorPoll) {
             const CaptureRegion overlayLegacy =
                 pollRegions.empty() ? CaptureRegion{} : pollRegions.front();
             std::vector<CaptureRegion> overlayRegions = pollRegions;
@@ -1202,6 +1204,9 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         lapStart = std::chrono::steady_clock::now();
 
         WorkflowMatchFeedbackOverlay::hideBeforeCapture();
+        if (triggerMonitorPoll) {
+            WorkflowRoiFlashOverlay::dismissAll();
+        }
 
         if (ctx.shouldStop()) {
             accumulateMatchWork();

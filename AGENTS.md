@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.175` (from `project(PIPBONG VERSION 0.8.175)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.176` (from `project(PIPBONG VERSION 0.8.176)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.176] - 2026-07-17
+
+### Fixed
+
+- Trigger mode watch polling failed to match templates that worked in N-repeat runs: always activate the target window before monitor capture (no hotkey skip), refresh capture HWND binding on every monitor relaunch, reset corrected/remembered ROI session state between watch cycles, skip ROI flash overlay and remembered-position replay during trigger watch (`MainWindow`, `ImageFindBlock`).
 
 ## [0.8.175] - 2026-07-17
 

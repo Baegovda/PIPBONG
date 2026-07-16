@@ -4062,24 +4062,28 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
     if (!session.sessionContext) {
         session.sessionContext = std::make_shared<ExecutionContext>();
     }
+    syncEffectiveTargetWindowTitleToCapture();
     syncRunSessionContext(session);
     applyFeatureRunPoliciesToContext(session, feature);
     session.sessionContext->setTriggerMonitorBlockIndex(session.triggerBlockIndex);
     session.sessionContext->setImageFindPrimedBlockIndex(-1);
     session.sessionContext->clearConsumedMatchRegions();
+    session.sessionContext->clearCorrectedRois();
+    session.sessionContext->clearRememberedPositions();
     session.sessionContext->clearLastMatch();
     session.sessionContext->clearLastMatchAttempt();
+    session.sessionContext->setSuppressRepeatUi(false);
+    session.sessionContext->setRunLoopNumber(1);
     syncUserInputInterruptForSession(session, feature);
 
     ensureRunSessionResources(session, feature, session.sessionIteration > 0);
 
     const std::wstring targetTitle = resolveEffectiveTargetTitleW();
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
-    const bool skipTargetActivation = session.hotkeyLaunchedSession && firstSessionStart;
     WorkflowEngine* engine = session.engine.get();
 
     Feature* featurePtr = feature;
-    engine->runPrepared([this, featurePtr, &session, targetTitle, projectDir, skipTargetActivation]() {
+    engine->runPrepared([this, featurePtr, &session, targetTitle, projectDir]() {
         PreparedWorkflowRun run;
         run.workflow = session.sessionWorkflow;
         if (!run.workflow) {
@@ -4093,9 +4097,8 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
         run.context->setTriggerMonitorBlockIndex(session.triggerBlockIndex);
         run.context->setImageFindPrimedBlockIndex(-1);
 #ifdef _WIN32
-        if (!skipTargetActivation) {
-            ScreenCapture::activateTargetWindow();
-        }
+        // Trigger watch must capture the real game frame — same as a normal workflow run.
+        ScreenCapture::activateTargetWindow();
 #endif
         return run;
     });
