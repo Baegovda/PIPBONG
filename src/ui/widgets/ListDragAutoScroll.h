@@ -44,6 +44,7 @@ private:
     std::function<void()> m_onScrolled;
     class QTimer* m_edgeTimer = nullptr;
     int m_edgeDirection = 0;
-    int m_edgeStep = 0;
+    double m_edgeStep = 0.0;
+    double m_edgeScrollCarry = 0.0;
     bool m_active = false;
 };

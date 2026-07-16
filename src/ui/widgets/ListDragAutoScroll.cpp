@@ -19,19 +19,20 @@ namespace {
 constexpr int kIntervalMs = 24;
 /// Overshoot distance (px) outside the viewport that reaches maximum scroll step.
 constexpr int kOvershootForMaxStepPx = 320;
-constexpr int kMinStepPx = 1;
-constexpr int kMaxStepPx = 2;
+/// Edge scroll speed per tick (fractional; accumulated before applying to scrollbar).
+constexpr double kMinEdgeStepPx = 0.15;
+constexpr double kMaxEdgeStepPx = 2.0;
 /// Scales wheel scroll during drag (lower = slower).
 constexpr double kWheelSensitivity = 0.325;
 
-int edgeScrollStepForOvershoot(int overshootPx) {
+double edgeScrollStepForOvershoot(int overshootPx) {
     if (overshootPx <= 0) {
-        return 0;
+        return 0.0;
     }
     const double t = std::clamp(overshootPx / static_cast<double>(kOvershootForMaxStepPx), 0.0, 1.0);
-    // Quadratic ramp: small overshoot stays slow; speed builds only when far outside.
-    const double eased = t * t;
-    return kMinStepPx + static_cast<int>(std::lround((kMaxStepPx - kMinStepPx) * eased));
+    // Cubic ramp: minimum crawl stays very slow; speed builds only when far outside.
+    const double eased = t * t * t;
+    return kMinEdgeStepPx + (kMaxEdgeStepPx - kMinEdgeStepPx) * eased;
 }
 
 int wheelPixelsPerNotch(const QScrollBar* bar) {
@@ -173,8 +174,8 @@ void ListDragAutoScroll::updateFromViewportPos(const QPoint& viewportPos) {
         overshootPx = y - viewportHeight + 1;
     }
 
-    const int step = edgeScrollStepForOvershoot(overshootPx);
-    if (direction == 0 || step <= 0) {
+    const double step = edgeScrollStepForOvershoot(overshootPx);
+    if (direction == 0 || step <= 0.0) {
         clearEdgeMotion();
         return;
     }
@@ -274,7 +275,8 @@ void ListDragAutoScroll::scrollBy(int deltaPx) {
 
 void ListDragAutoScroll::clearEdgeMotion() {
     m_edgeDirection = 0;
-    m_edgeStep = 0;
+    m_edgeStep = 0.0;
+    m_edgeScrollCarry = 0.0;
 }
 
 void ListDragAutoScroll::stopSession() {
@@ -303,7 +305,7 @@ void ListDragAutoScroll::tickEdgeScroll() {
 
     updateFromGlobalCursor();
 
-    if (m_edgeDirection == 0 || m_edgeStep <= 0) {
+    if (m_edgeDirection == 0 || m_edgeStep <= 0.0) {
         return;
     }
 
@@ -313,8 +315,15 @@ void ListDragAutoScroll::tickEdgeScroll() {
         return;
     }
 
+    m_edgeScrollCarry += m_edgeDirection * m_edgeStep;
+    const int deltaPx = static_cast<int>(std::trunc(m_edgeScrollCarry));
+    if (deltaPx == 0) {
+        return;
+    }
+    m_edgeScrollCarry -= static_cast<double>(deltaPx);
+
     const int before = bar->value();
-    scrollBy(m_edgeDirection * m_edgeStep);
+    scrollBy(deltaPx);
     if (bar->value() == before) {
         clearEdgeMotion();
     }
