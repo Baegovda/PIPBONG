@@ -65,11 +65,11 @@ constexpr int kMaxEnableColumnWidth = 48;
 constexpr int kMinRunColumnWidth = 20;
 constexpr int kMaxRunColumnWidth = 40;
 
-// Refined warm amber tones for trigger mode — same family as normal run highlight, not neon cyan.
-constexpr QColor kTriggerWatchWash(218, 182, 108);
-constexpr QColor kTriggerCooldownWash(182, 174, 156);
-constexpr QColor kTriggerWatchAccent(208, 174, 106);
-constexpr QColor kTriggerCooldownAccent(168, 160, 144);
+// Refined jade-teal for trigger mode — distinct from normal run blue and active-run prism.
+constexpr QColor kTriggerWatchWash(132, 186, 172);
+constexpr QColor kTriggerCooldownWash(138, 144, 152);
+constexpr QColor kTriggerWatchAccent(78, 168, 148);
+constexpr QColor kTriggerCooldownAccent(118, 126, 136);
 struct FeatureListColumnRects {
     QRect enable;
     QRect run;
@@ -552,7 +552,7 @@ void paintFeatureListRowChrome(QPainter* painter,
         gradient.setColorAt(0.65, washFade);
         gradient.setColorAt(1.0, Qt::transparent);
         painter->fillRect(inner, gradient);
-        QColor edge(255, 246, 228, watch ? static_cast<int>(14 + pulse * 10) : 10);
+        QColor edge(228, 242, 238, watch ? static_cast<int>(14 + pulse * 10) : 10);
         painter->fillRect(QRect(inner.left(), inner.top(), inner.width(), 1), edge);
     }
 

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.183` (from `project(PIPBONG VERSION 0.8.183)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.184` (from `project(PIPBONG VERSION 0.8.184)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.184] - 2026-07-17
+
+### Changed
+
+- Trigger mode feature-list run/enable accents and row chrome use refined jade-teal instead of warm amber/gold; workflow block-list trigger watch/cooldown glass tints and target-window scan ring updated to match (`FeatureListPanel`, `BlockListWidget`, `WorkflowMatchFeedbackOverlay`).
 
 ## [0.8.183] - 2026-07-17
 

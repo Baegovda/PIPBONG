@@ -167,9 +167,9 @@ void renderTriggerScanPulse(uint32_t* pixels,
     const float fade = 1.0f - t;
     const int centerX = pulse.clientX;
     const int centerY = pulse.clientY;
-    const uint8_t r = 214;
-    const uint8_t g = 178;
-    const uint8_t b = 104;
+    const uint8_t r = 88;
+    const uint8_t g = 172;
+    const uint8_t b = 156;
 
     const uint8_t coreAlpha = static_cast<uint8_t>(std::clamp(fade * 52.0f, 0.0f, 52.0f));
     fillCircle(pixels, width, height, centerX, centerY, 3, coreAlpha, r, g, b);

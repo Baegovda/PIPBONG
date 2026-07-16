@@ -518,10 +518,10 @@ GlassColors glassColorsFor(BlockListWidget::ExecutionHighlight highlight,
         colors.tint = QColor(255, 196, 92);
         break;
     case BlockListWidget::ExecutionHighlight::TriggerWatch:
-        colors.tint = QColor(234, 194, 114);
+        colors.tint = QColor(128, 188, 172);
         break;
     case BlockListWidget::ExecutionHighlight::TriggerCooldown:
-        colors.tint = QColor(190, 180, 158);
+        colors.tint = QColor(140, 146, 154);
         colors.intensity = qMin(1.0, colors.intensity * 0.75);
         break;
     case BlockListWidget::ExecutionHighlight::ImageFindMiss:
