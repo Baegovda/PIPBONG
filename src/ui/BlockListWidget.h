@@ -24,6 +24,8 @@
 
 #include <QKeyEvent>
 
+#include <QWheelEvent>
+
 #include <QTimer>
 
 
@@ -236,6 +238,8 @@ protected:
 
     void dropEvent(QDropEvent* event) override;
 
+    void wheelEvent(QWheelEvent* event) override;
+
     void resizeEvent(QResizeEvent* event) override;
 
     void showEvent(QShowEvent* event) override;
@@ -284,6 +288,10 @@ private:
     void updateDragAutoScroll(const QPoint& viewportPos);
 
     void stopDragAutoScroll();
+
+    void scrollDuringBlockDrag(int deltaPx);
+
+    bool handleBlockDragWheelScroll(QWheelEvent* wheelEvent);
 
     void updateLoopRegionPickPreview();
 

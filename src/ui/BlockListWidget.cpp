@@ -42,6 +42,7 @@
 #include <QTimer>
 #include <QVariantAnimation>
 #include <QEasingCurve>
+#include <QWheelEvent>
 
 #include <climits>
 #include <cmath>
@@ -1133,22 +1134,10 @@ BlockListWidget::BlockListWidget(QWidget* parent)
             stopDragAutoScroll();
             return;
         }
-        QScrollBar* bar = verticalScrollBar();
-        const int next = std::clamp(bar->value() + m_dragAutoScrollDirection * m_dragAutoScrollStep,
-                                    bar->minimum(),
-                                    bar->maximum());
-        if (next == bar->value()) {
+        const int before = verticalScrollBar()->value();
+        scrollDuringBlockDrag(m_dragAutoScrollDirection * m_dragAutoScrollStep);
+        if (verticalScrollBar()->value() == before) {
             stopDragAutoScroll();
-            return;
-        }
-        bar->setValue(next);
-        if (m_dragSourceRow >= 0) {
-            const QPoint local = viewport()->mapFromGlobal(QCursor::pos());
-            const int insertIdx = dropInsertionIndex(local);
-            if (insertIdx != m_dropInsertionIndex) {
-                m_dropInsertionIndex = insertIdx;
-            }
-            updateDropIndicator();
         }
     });
 
@@ -1939,6 +1928,16 @@ void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
 }
 
 bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
+    if (event->type() == QEvent::Wheel && m_reorderEnabled && m_dragSourceRow >= 0
+        && !m_loopRegionPickActive) {
+        auto* wheelEvent = static_cast<QWheelEvent*>(event);
+        const QPoint globalPos = wheelEvent->globalPosition().toPoint();
+        const QRect listGlobalRect(mapToGlobal(QPoint(0, 0)), size());
+        if (listGlobalRect.contains(globalPos) && handleBlockDragWheelScroll(wheelEvent)) {
+            return true;
+        }
+    }
+
     if (watched == viewport()) {
         switch (event->type()) {
         case QEvent::MouseMove: {
@@ -2651,6 +2650,62 @@ void BlockListWidget::stopDragAutoScroll() {
     }
 }
 
+void BlockListWidget::scrollDuringBlockDrag(int deltaPx) {
+    if (m_dragSourceRow < 0 || !verticalScrollBar() || deltaPx == 0) {
+        return;
+    }
+
+    QScrollBar* bar = verticalScrollBar();
+    const int next = std::clamp(bar->value() + deltaPx, bar->minimum(), bar->maximum());
+    if (next == bar->value()) {
+        return;
+    }
+    bar->setValue(next);
+
+    const QPoint local = viewport()->mapFromGlobal(QCursor::pos());
+    const int insertIdx = dropInsertionIndex(local);
+    if (insertIdx != m_dropInsertionIndex) {
+        m_dropInsertionIndex = insertIdx;
+    }
+    updateDropIndicator();
+}
+
+bool BlockListWidget::handleBlockDragWheelScroll(QWheelEvent* wheelEvent) {
+    if (!wheelEvent || !verticalScrollBar()) {
+        return false;
+    }
+
+    int deltaPx = 0;
+    if (!wheelEvent->pixelDelta().isNull()) {
+        deltaPx = -wheelEvent->pixelDelta().y();
+    } else {
+        const int angleY = wheelEvent->angleDelta().y();
+        if (angleY == 0) {
+            return false;
+        }
+        const int steps = angleY / 120;
+        const int notchSteps = steps != 0 ? steps : (angleY > 0 ? 1 : -1);
+        deltaPx = -notchSteps * verticalScrollBar()->singleStep();
+    }
+
+    if (deltaPx == 0) {
+        return false;
+    }
+
+    scrollDuringBlockDrag(deltaPx);
+    wheelEvent->accept();
+    return true;
+}
+
+void BlockListWidget::wheelEvent(QWheelEvent* event) {
+    if (m_reorderEnabled && m_dragSourceRow >= 0 && !m_loopRegionPickActive) {
+        if (handleBlockDragWheelScroll(event)) {
+            return;
+        }
+    }
+    QTableWidget::wheelEvent(event);
+}
+
 void BlockListWidget::clearActiveRow() {
     setActiveRow(-1, ExecutionHighlight::None);
 }
@@ -2965,7 +3020,9 @@ void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
     const ListDragVisuals::LiftedPixmap lifted =
         ListDragVisuals::makeLiftedTableRowDrag(this, sourceRow, cursorGlobal);
     ListDragVisuals::applyToDrag(drag, lifted);
+    qApp->installEventFilter(this);
     drag->exec(supportedActions, Qt::MoveAction);
+    qApp->removeEventFilter(this);
 
     stopDragAutoScroll();
     ListDragVisuals::hideDragSlotPlaceholder(&m_dragSlotPlaceholder);
