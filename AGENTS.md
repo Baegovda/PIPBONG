@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.181` (from `project(PIPBONG VERSION 0.8.181)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.182` (from `project(PIPBONG VERSION 0.8.182)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.182] - 2026-07-17
+
+### Fixed
+
+- Feature/trigger run capture target no longer forces the main game window when a profile **서브 대상 창** is configured: `resolveRunCaptureTargetTitleW` uses foreground sub when focused, otherwise prefers a resolvable sub binding (e.g. hotkey from PIPBONG) before main; session `lockedCaptureTargetTitle` still prevents cooldown relaunch drift (`MainWindow`).
 
 ## [0.8.181] - 2026-07-17
 

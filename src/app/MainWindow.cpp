@@ -5522,18 +5522,46 @@ std::wstring MainWindow::resolveRunCaptureTargetTitleW() const {
 
     const QString profileId = m_profileManager->activeProfileId();
     const QString subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
-    const QString mainBinding = QString::fromStdWString(mainTitle).trimmed();
-
-#ifdef _WIN32
-    if (!mainBinding.isEmpty() && ScreenCapture::hasVisibleWindowMatchingTitle(mainTitle)) {
+    if (subBinding.isEmpty()) {
         return mainTitle;
     }
-    if (!subBinding.isEmpty()
-        && ScreenCapture::hasVisibleWindowMatchingTitle(subBinding.toStdWString())) {
+
+    const QString mainBinding = QString::fromStdWString(mainTitle).trimmed();
+    if (mainBinding.isEmpty()) {
         return subBinding.toStdWString();
     }
+
+#ifdef _WIN32
+    QString foregroundTitle;
+    HWND hwnd = GetForegroundWindow();
+    if (hwnd && IsWindow(hwnd)) {
+        hwnd = GetAncestor(hwnd, GA_ROOT);
+        if (hwnd && IsWindow(hwnd)) {
+            wchar_t titleBuffer[512]{};
+            GetWindowTextW(hwnd, titleBuffer, 512);
+            foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+        }
+    }
+
+    const bool subHit = !foregroundTitle.isEmpty()
+                        && foregroundTitle.contains(subBinding, Qt::CaseInsensitive);
+    const bool mainHit = !foregroundTitle.isEmpty()
+                         && foregroundTitle.contains(mainBinding, Qt::CaseInsensitive);
+    if (subHit && (!mainHit || subBinding.length() >= mainBinding.length())) {
+        return subBinding.toStdWString();
+    }
+    if (mainHit) {
+        return mainTitle;
+    }
+
+    // PIPBONG / other foreground: prefer resolvable sub when the profile has a sub binding.
+    if (ScreenCapture::hasVisibleWindowMatchingTitle(subBinding.toStdWString())) {
+        return subBinding.toStdWString();
+    }
+    if (ScreenCapture::hasVisibleWindowMatchingTitle(mainTitle)) {
+        return mainTitle;
+    }
 #else
-    Q_UNUSED(subBinding);
     Q_UNUSED(mainBinding);
 #endif
     return resolveEffectiveTargetTitleW();
