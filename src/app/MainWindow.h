@@ -284,7 +284,8 @@ private:
     /// Run/trigger capture target locked at session start (foreground-aware; sub binding supported).
     std::wstring resolveRunCaptureTargetTitleW(const Feature* feature = nullptr) const;
     std::wstring resolveAutoRunCaptureTargetTitleW() const;
-    std::wstring sessionCaptureTargetTitleW(const FeatureRunSession& session) const;
+    void refreshSessionCaptureTarget(FeatureRunSession& session);
+    std::wstring sessionCaptureTargetTitleW(FeatureRunSession& session);
     void applySessionCaptureTarget(const std::wstring& title) const;
     void syncTargetWindowTitleToCapture();
     /// Applies resolveEffectiveTargetTitleW() to ScreenCapture (used at feature run start).

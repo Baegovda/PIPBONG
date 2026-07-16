@@ -226,6 +226,9 @@ std::wstring ScreenCapture::subTargetWindowTitle() {
 
 #ifdef _WIN32
 HWND ScreenCapture::findTargetWindow() {
+    if (s_targetWindow && !IsWindow(s_targetWindow)) {
+        s_targetWindow = nullptr;
+    }
     if (s_targetWindow && IsWindow(s_targetWindow)) {
         return s_targetWindow;
     }
@@ -842,6 +845,9 @@ cv::Mat ScreenCapture::captureScreenRect(int screenX, int screenY, int width, in
 #ifdef _WIN32
 ScreenCapture::WindowBounds ScreenCapture::getWindowBounds(HWND hwnd) {
     WindowBounds bounds;
+    if (!hwnd || !IsWindow(hwnd)) {
+        return bounds;
+    }
 
     RECT dwmRect{};
     if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &dwmRect, sizeof(dwmRect)))) {
@@ -868,6 +874,9 @@ ScreenCapture::WindowBounds ScreenCapture::getWindowBounds(HWND hwnd) {
 }
 
 cv::Mat ScreenCapture::captureWithPrintWindow(HWND hwnd, UINT flags) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return {};
+    }
     RECT rect{};
     if (!GetClientRect(hwnd, &rect)) {
         return {};
@@ -921,6 +930,9 @@ cv::Mat ScreenCapture::captureWithClientBitBlt(HWND hwnd) {
 }
 
 cv::Mat ScreenCapture::captureWithScreenBitBlt(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return {};
+    }
     if (IsIconic(hwnd)) {
         return {};
     }

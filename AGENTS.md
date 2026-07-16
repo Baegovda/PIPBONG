@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.192` (from `project(PIPBONG VERSION 0.8.192)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.193` (from `project(PIPBONG VERSION 0.8.193)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1178,6 +1178,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.193] - 2026-07-17
+
+### Fixed
+
+- Crash when the main target window closed and the sub target (launcher) should take over: UI thread no longer rewrites global `ScreenCapture` state during active feature runs (`updateTargetWindowDetails`, `syncTargetWindowCenterPin`); **자동 (메인·서브)** sessions migrate capture to the sub window when the locked main window disappears without flipping on mere focus changes during trigger cooldown (`refreshSessionCaptureTarget`, trigger poll refresh); stale/destroyed `HWND` guards in `findTargetWindow`, `getWindowBounds`, `captureWithScreenBitBlt`, `captureWithPrintWindow`.
 
 ## [0.8.192] - 2026-07-17
 

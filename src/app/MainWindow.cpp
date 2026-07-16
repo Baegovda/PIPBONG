@@ -3556,11 +3556,7 @@ void MainWindow::syncRunSessionContext(FeatureRunSession& session) {
     if (!session.sessionContext) {
         return;
     }
-    // Keep the title chosen at session start (main vs sub). Re-resolving on every repeat would
-    // flip capture to the launcher when focus changes between trigger cooldown cycles.
-    if (session.sessionContext->targetWindowTitle().empty()) {
-        session.sessionContext->setTargetWindowTitle(sessionCaptureTargetTitleW(session));
-    }
+    session.sessionContext->setTargetWindowTitle(sessionCaptureTargetTitleW(session));
     session.sessionContext->setProjectDirectory(Application::instance()->projectDirectory().toStdString());
 }
 
@@ -4900,7 +4896,7 @@ void MainWindow::applyTargetWindowCenterPin(bool enabled) {
 
 void MainWindow::syncTargetWindowCenterPin() {
 #ifdef _WIN32
-    if (!ProgramSettings::pinTargetWindowToScreenCenter()) {
+    if (!ProgramSettings::pinTargetWindowToScreenCenter() || hasAnyRunningSession()) {
         return;
     }
     if (TargetWindowCenterPin::sync()) {
@@ -5110,7 +5106,18 @@ void MainWindow::onBlockImageFindAttempt(int index,
                                          double detectedConfidence,
                                          bool matched) {
     FeatureRunSession* session = sessionForEngine(sender());
-    if (!session || !isDisplayedRunningFeature(session)) {
+    if (!session) {
+        return;
+    }
+    if (session->runningMode == FeatureRunMode::Trigger
+        && session->triggerPhase == TriggerSessionPhase::Monitoring) {
+        refreshSessionCaptureTarget(*session);
+        applySessionCaptureTarget(sessionCaptureTargetTitleW(*session));
+        if (session->sessionContext) {
+            session->sessionContext->setTargetWindowTitle(session->lockedCaptureTargetTitle);
+        }
+    }
+    if (!isDisplayedRunningFeature(session)) {
         return;
     }
     m_workflowEditor->setBlockImageFindAttemptCount(index, attemptCount);
@@ -5705,12 +5712,46 @@ std::wstring MainWindow::resolveRunCaptureTargetTitleW(const Feature* feature) c
     return resolveAutoRunCaptureTargetTitleW();
 }
 
-std::wstring MainWindow::sessionCaptureTargetTitleW(const FeatureRunSession& session) const {
+std::wstring MainWindow::sessionCaptureTargetTitleW(FeatureRunSession& session) {
+    refreshSessionCaptureTarget(session);
     if (!session.lockedCaptureTargetTitle.empty()) {
         return session.lockedCaptureTargetTitle;
     }
     Feature* feature = m_project ? m_project->featureById(session.featureId) : nullptr;
     return resolveRunCaptureTargetTitleW(feature);
+}
+
+void MainWindow::refreshSessionCaptureTarget(FeatureRunSession& session) {
+    Feature* feature = m_project ? m_project->featureById(session.featureId) : nullptr;
+    if (!feature) {
+        return;
+    }
+
+    const FeatureCaptureTargetScope scope = feature->captureTargetScope();
+    if (scope != FeatureCaptureTargetScope::Auto) {
+        if (session.lockedCaptureTargetTitle.empty()) {
+            session.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW(feature);
+        }
+        return;
+    }
+
+    const std::wstring resolved = resolveRunCaptureTargetTitleW(feature);
+    if (resolved.empty()) {
+        return;
+    }
+
+#ifdef _WIN32
+    const bool lockedMissing =
+        !session.lockedCaptureTargetTitle.empty()
+        && !ScreenCapture::hasVisibleWindowMatchingTitle(session.lockedCaptureTargetTitle);
+    if (session.lockedCaptureTargetTitle.empty() || lockedMissing) {
+        session.lockedCaptureTargetTitle = resolved;
+    }
+#else
+    if (session.lockedCaptureTargetTitle.empty()) {
+        session.lockedCaptureTargetTitle = resolved;
+    }
+#endif
 }
 
 void MainWindow::applySessionCaptureTarget(const std::wstring& title) const {
@@ -5719,6 +5760,9 @@ void MainWindow::applySessionCaptureTarget(const std::wstring& title) const {
         subBinding = m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed();
     }
     ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
+#ifdef _WIN32
+    ScreenCapture::setTargetWindow(nullptr);
+#endif
     ScreenCapture::setTargetWindowTitle(title);
 #ifdef _WIN32
     if (HWND hwnd = ScreenCapture::findTargetWindow()) {
@@ -5887,6 +5931,28 @@ void MainWindow::updateTargetWindowDetails() {
         m_profileManager
             ? m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed()
             : QString();
+
+    // While a feature session is running, do not rewrite global ScreenCapture target state from the
+    // UI thread — the worker owns it. Rewriting here when the main window closes and the sub
+    // launcher appears raced trigger polling and could terminate the process.
+    if (hasAnyRunningSession()) {
+        ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
+        if (savedTitle.isEmpty() && subBinding.isEmpty()) {
+            m_targetWindowDetailPanel->showMessage(tr("'창 지정'으로 대상 창을 선택하세요."));
+        } else {
+            QString processPath;
+            QString processName;
+            if (m_profileManager) {
+                const QString profileId = m_profileManager->activeProfileId();
+                processPath = m_profileManager->linkedTargetProcessPath(profileId);
+                processName = processPath.isEmpty() ? QString() : QFileInfo(processPath).fileName();
+            }
+            const QString displayTitle = savedTitle.isEmpty() ? subBinding : savedTitle;
+            m_targetWindowDetailPanel->showStoredTargetBinding(displayTitle, processName, processPath);
+        }
+        return;
+    }
+
     syncTargetWindowTitleToCapture();
 
     HWND hwnd = ScreenCapture::targetWindow();
