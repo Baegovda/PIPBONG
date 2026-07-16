@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.160` (from `project(PIPBONG VERSION 0.8.160)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.161` (from `project(PIPBONG VERSION 0.8.161)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1176,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.161] - 2026-07-16
+
+### Added
+
+- Workflow block list drag-reorder auto-scroll: holding a dragged row near the top or bottom edge of the list scrolls the viewport so long workflows can be reordered without releasing the drag (`BlockListWidget`).
 
 ## [0.8.160] - 2026-07-16
 

@@ -281,6 +281,10 @@ private:
 
     void scrollReturnToPreviousRowsIntoView();
 
+    void updateDragAutoScroll(const QPoint& viewportPos);
+
+    void stopDragAutoScroll();
+
     void updateLoopRegionPickPreview();
 
     void updateLoopRegionChrome();
@@ -369,6 +373,12 @@ private:
     QVariantAnimation* m_flashAnimation = nullptr;
 
     QTimer* m_returnFlashHoldTimer = nullptr;
+
+    QTimer* m_dragAutoScrollTimer = nullptr;
+
+    int m_dragAutoScrollDirection = 0;
+
+    int m_dragAutoScrollStep = 0;
 
     int m_flashRow = -1;
 
