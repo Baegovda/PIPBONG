@@ -26,7 +26,7 @@ constexpr UINT_PTR kTimerId = 1;
 constexpr UINT kTimerMs = 33;
 constexpr UINT kHideForCaptureMsg = WM_APP + 42;
 constexpr ULONGLONG kDefaultMatchPulseLifetimeMs = 460;
-constexpr ULONGLONG kTriggerScanPulseLifetimeMs = 1200;
+constexpr ULONGLONG kTriggerScanPulseLifetimeMs = 1400;
 constexpr size_t kMaxActivePulses = 16;
 struct Pulse {
     int clientX = 0;
@@ -167,21 +167,21 @@ void renderTriggerScanPulse(uint32_t* pixels,
     const float fade = 1.0f - t;
     const int centerX = pulse.clientX;
     const int centerY = pulse.clientY;
-    const uint8_t r = 72;
-    const uint8_t g = 210;
-    const uint8_t b = 236;
+    const uint8_t r = 214;
+    const uint8_t g = 178;
+    const uint8_t b = 104;
 
-    const uint8_t coreAlpha = static_cast<uint8_t>(std::clamp(fade * 88.0f, 0.0f, 88.0f));
+    const uint8_t coreAlpha = static_cast<uint8_t>(std::clamp(fade * 52.0f, 0.0f, 52.0f));
     fillCircle(pixels, width, height, centerX, centerY, 3, coreAlpha, r, g, b);
 
-    const int radius = 6 + static_cast<int>(t * 36.0f);
-    const uint8_t ringAlpha = static_cast<uint8_t>(std::clamp((1.0f - t) * 150.0f, 0.0f, 150.0f));
+    const int radius = 5 + static_cast<int>(t * 28.0f);
+    const uint8_t ringAlpha = static_cast<uint8_t>(std::clamp((1.0f - t) * 88.0f, 0.0f, 88.0f));
     strokeRing(pixels, width, height, centerX, centerY, radius, 2, ringAlpha, r, g, b);
 
-    const float lagT = std::clamp((age - 140ULL) / static_cast<float>(lifetimeMs), 0.0f, 1.0f);
+    const float lagT = std::clamp((age - 180ULL) / static_cast<float>(lifetimeMs), 0.0f, 1.0f);
     if (lagT > 0.0f) {
-        const int lagRadius = 8 + static_cast<int>(lagT * 44.0f);
-        const uint8_t lagAlpha = static_cast<uint8_t>(std::clamp((1.0f - lagT) * 110.0f, 0.0f, 110.0f));
+        const int lagRadius = 7 + static_cast<int>(lagT * 34.0f);
+        const uint8_t lagAlpha = static_cast<uint8_t>(std::clamp((1.0f - lagT) * 58.0f, 0.0f, 58.0f));
         strokeRing(pixels, width, height, centerX, centerY, lagRadius, 2, lagAlpha, r, g, b);
     }
 }

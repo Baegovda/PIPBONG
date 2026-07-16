@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.179` (from `project(PIPBONG VERSION 0.8.179)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.180` (from `project(PIPBONG VERSION 0.8.180)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.180] - 2026-07-17
+
+### Changed
+
+- Trigger mode visual feedback refined to warm amber tones aligned with normal run highlight: removed neon cyan radar glyph and loud breathing text; feature list uses subtle champagne row wash and soft accent bar; workflow block list **◎** / **◔** glass tint matches running amber family at lower intensity for cooldown; target-window trigger scan rings use muted gold instead of bright cyan (`FeatureListPanel`, `BlockListWidget`, `WorkflowMatchFeedbackOverlay`).
 
 ## [0.8.179] - 2026-07-17
 

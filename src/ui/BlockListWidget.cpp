@@ -518,11 +518,11 @@ GlassColors glassColorsFor(BlockListWidget::ExecutionHighlight highlight,
         colors.tint = QColor(255, 196, 92);
         break;
     case BlockListWidget::ExecutionHighlight::TriggerWatch:
-        colors.tint = QColor(64, 198, 224);
+        colors.tint = QColor(234, 194, 114);
         break;
     case BlockListWidget::ExecutionHighlight::TriggerCooldown:
-        colors.tint = QColor(214, 168, 72);
-        colors.intensity = qMin(1.0, colors.intensity * 0.82);
+        colors.tint = QColor(190, 180, 158);
+        colors.intensity = qMin(1.0, colors.intensity * 0.75);
         break;
     case BlockListWidget::ExecutionHighlight::ImageFindMiss:
         colors.tint = QColor(228, 88, 102);
@@ -2717,12 +2717,12 @@ qreal BlockListWidget::rowGlassIntensity(int row, ExecutionHighlight highlight) 
         return kRunningGlassIntensity;
     }
     if (highlight == ExecutionHighlight::TriggerWatch) {
-        const qreal pulse = 0.55 + 0.45 * std::sin(m_ambientAnimPhase * M_PI / 30.0);
+        const qreal pulse = 0.94 + 0.06 * std::sin(m_ambientAnimPhase * M_PI / 36.0);
         return kRunningGlassIntensity * pulse;
     }
     if (highlight == ExecutionHighlight::TriggerCooldown) {
-        const qreal pulse = 0.4 + 0.3 * std::sin(m_ambientAnimPhase * M_PI / 18.0);
-        return kRunningGlassIntensity * 0.85 * pulse;
+        const qreal pulse = 0.82 + 0.14 * std::sin(m_ambientAnimPhase * M_PI / 24.0);
+        return kRunningGlassIntensity * 0.74 * pulse;
     }
     if (m_flashKind == highlight && m_flashIntensity > 0.0
         && (m_flashRow == row || m_flashRowSecondary == row)) {

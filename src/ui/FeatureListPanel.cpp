@@ -64,6 +64,12 @@ constexpr int kMinEnableColumnWidth = 22;
 constexpr int kMaxEnableColumnWidth = 48;
 constexpr int kMinRunColumnWidth = 20;
 constexpr int kMaxRunColumnWidth = 40;
+
+// Refined warm amber tones for trigger mode — same family as normal run highlight, not neon cyan.
+constexpr QColor kTriggerWatchWash(218, 182, 108);
+constexpr QColor kTriggerCooldownWash(182, 174, 156);
+constexpr QColor kTriggerWatchAccent(208, 174, 106);
+constexpr QColor kTriggerCooldownAccent(168, 160, 144);
 struct FeatureListColumnRects {
     QRect enable;
     QRect run;
@@ -531,18 +537,38 @@ void paintFeatureListRowChrome(QPainter* painter,
     }
     painter->fillRect(rect, rowBg);
 
+    if (running && visualKind != FeatureRunVisualKind::ActiveRun) {
+        const bool watch = visualKind == FeatureRunVisualKind::TriggerWatch;
+        const qreal pulse = 0.5 + 0.5 * std::sin(animationPhase * M_PI / (watch ? 36.0 : 24.0));
+        const QColor washBase = watch ? kTriggerWatchWash : kTriggerCooldownWash;
+        const int washAlpha = watch ? static_cast<int>(12 + pulse * 14) : static_cast<int>(8 + pulse * 8);
+        QColor wash = washBase;
+        wash.setAlpha(washAlpha);
+        const QRect inner = rect.adjusted(1, 2, -1, -2);
+        QLinearGradient gradient(inner.topLeft(), inner.bottomRight());
+        gradient.setColorAt(0.0, wash);
+        QColor washFade = wash;
+        washFade.setAlpha(washAlpha / 3);
+        gradient.setColorAt(0.65, washFade);
+        gradient.setColorAt(1.0, Qt::transparent);
+        painter->fillRect(inner, gradient);
+        QColor edge(255, 246, 228, watch ? static_cast<int>(14 + pulse * 10) : 10);
+        painter->fillRect(QRect(inner.left(), inner.top(), inner.width(), 1), edge);
+    }
+
     if (selected) {
         painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()),
                           palette.color(QPalette::Highlight));
     } else if (running) {
         QColor accent = palette.color(QPalette::Highlight);
         if (visualKind == FeatureRunVisualKind::TriggerWatch) {
-            const qreal pulse = 0.45 + 0.55 * std::sin(animationPhase * M_PI / 30.0);
-            accent = QColor(56, 188, 214);
-            accent.setAlpha(static_cast<int>(pulse * 255.0));
+            const qreal pulse = 0.72 + 0.28 * std::sin(animationPhase * M_PI / 36.0);
+            accent = kTriggerWatchAccent;
+            accent.setAlpha(static_cast<int>(pulse * 190.0));
         } else if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
-            accent = QColor(214, 168, 72);
-            accent.setAlpha(150);
+            const qreal pulse = 0.55 + 0.25 * std::sin(animationPhase * M_PI / 24.0);
+            accent = kTriggerCooldownAccent;
+            accent.setAlpha(static_cast<int>(pulse * 150.0));
         } else if (visualKind == FeatureRunVisualKind::ActiveRun) {
             const PrismRunningTone prism = prismRunningTone(animationPhase, false);
             accent = prism.core;
@@ -557,25 +583,6 @@ void paintFeatureListRowChrome(QPainter* painter,
     }
     separator.setAlpha(80);
     painter->fillRect(QRect(rect.left(), rect.bottom(), rect.width(), kRowSeparatorHeight), separator);
-}
-
-void paintTriggerWatchRadarGlyph(QPainter* painter, const QRect& rect, int animationPhase) {
-    const QPoint center(rect.right() - 10, rect.center().y());
-    const qreal spin = animationPhase * 7.0;
-    painter->save();
-    painter->setRenderHint(QPainter::Antialiasing, true);
-    painter->translate(center);
-    painter->rotate(spin);
-    QPen sweepPen(QColor(72, 210, 236, 170), 1.6);
-    painter->setPen(sweepPen);
-    painter->setBrush(Qt::NoBrush);
-    painter->drawArc(QRect(-7, -7, 14, 14), 30 * 16, 120 * 16);
-    const qreal pulse = 0.35 + 0.65 * std::sin(animationPhase * M_PI / 24.0);
-    QColor core(96, 220, 244, static_cast<int>(pulse * 220.0));
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(core);
-    painter->drawEllipse(QPoint(0, 0), 3, 3);
-    painter->restore();
 }
 
 void paintFeatureName(QPainter* painter,
@@ -602,33 +609,30 @@ void paintFeatureName(QPainter* painter,
     }
 
     if (visualKind == FeatureRunVisualKind::TriggerWatch) {
-        const qreal pulse = 0.55 + 0.45 * std::sin(animationPhase * M_PI / 30.0);
-        QColor nameColor(88, 214, 238);
-        if (option.state & QStyle::State_Selected) {
-            nameColor = QColor(120, 228, 248);
+        const qreal pulse = 0.88 + 0.12 * std::sin(animationPhase * M_PI / 36.0);
+        QColor nameColor = baseText;
+        if (selected) {
+            nameColor = option.palette.color(QPalette::HighlightedText);
         }
-        for (int ring = 2; ring >= 0; --ring) {
-            QColor glow = nameColor;
-            glow.setAlpha(static_cast<int>((55 - ring * 14) * pulse));
-            painter->setPen(glow);
-            painter->setFont(nameFont);
-            const int spread = 1 + ring;
-            painter->drawText(rect.adjusted(-spread, 0, spread, 0), align, elided);
-        }
-        nameColor.setAlpha(static_cast<int>(pulse * 255.0));
-        painter->setPen(nameColor);
+        QColor glow = kTriggerWatchWash;
+        glow.setAlpha(static_cast<int>(24 * pulse));
         painter->setFont(nameFont);
+        painter->setPen(glow);
+        painter->drawText(rect.adjusted(-1, 0, 1, 0), align, elided);
+        painter->setPen(nameColor);
         painter->drawText(rect, align, elided);
-        paintTriggerWatchRadarGlyph(painter, rect, animationPhase);
         return;
     }
 
     if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
-        const qreal pulse = 0.4 + 0.35 * std::sin(animationPhase * M_PI / 18.0);
-        QColor nameColor(214, 176, 88);
+        const qreal pulse = 0.82 + 0.18 * std::sin(animationPhase * M_PI / 24.0);
+        QColor nameColor = baseText;
+        if (selected) {
+            nameColor = option.palette.color(QPalette::HighlightedText);
+        }
         nameColor.setAlpha(static_cast<int>(pulse * 255.0));
-        painter->setPen(nameColor);
         painter->setFont(nameFont);
+        painter->setPen(nameColor);
         painter->drawText(rect, align, elided);
         return;
     }
@@ -836,7 +840,23 @@ public:
             featureEnabled && isRunning && visualKind == FeatureRunVisualKind::ActiveRun;
         const PrismRunningTone prismTone =
             prismRow ? prismRunningTone(animationPhase, selected) : PrismRunningTone{};
-        const QColor* runAccent = prismRow ? &prismTone.core : nullptr;
+        QColor triggerAccent;
+        const QColor* runAccent = nullptr;
+        if (prismRow) {
+            runAccent = &prismTone.core;
+        } else if (featureEnabled && isRunning) {
+            if (visualKind == FeatureRunVisualKind::TriggerWatch) {
+                const qreal pulse = 0.72 + 0.28 * std::sin(animationPhase * M_PI / 36.0);
+                triggerAccent = kTriggerWatchAccent;
+                triggerAccent.setAlpha(static_cast<int>(pulse * 200.0));
+                runAccent = &triggerAccent;
+            } else if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
+                const qreal pulse = 0.55 + 0.25 * std::sin(animationPhase * M_PI / 24.0);
+                triggerAccent = kTriggerCooldownAccent;
+                triggerAccent.setAlpha(static_cast<int>(pulse * 165.0));
+                runAccent = &triggerAccent;
+            }
+        }
 
         paintFeatureEnableToggle(painter, cols.enable, featureEnabled, opt.palette, runAccent);
 
@@ -869,6 +889,9 @@ public:
         if (prismRow) {
             modeColor = prismTone.core;
             modeColor.setAlpha(selected ? 230 : 205);
+        } else if (featureEnabled && isRunning && runAccent != nullptr) {
+            modeColor = *runAccent;
+            modeColor.setAlpha(selected ? 210 : 185);
         }
         drawCellText(painter,
                      cols.mode,
