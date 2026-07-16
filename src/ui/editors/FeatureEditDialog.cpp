@@ -205,9 +205,9 @@ void FeatureEditDialog::setupUi() {
     m_captureTargetScopeCombo->addItem(tr("서브 대상 창만"),
                                        static_cast<int>(FeatureCaptureTargetScope::SubOnly));
     m_captureTargetScopeCombo->setToolTip(
-        tr("이 기능이 화면 캡처·입력에 사용할 대상 창입니다. 프로필의 메인·서브 창 지정과 함께 "
-           "동작합니다. 자동은 포커스·실행 중인 창에 따라 메인 또는 서브를 선택합니다."));
-    form->addRow(tr("캡처 대상"), m_captureTargetScopeCombo);
+        tr("이 기능이 동작할 대상 창입니다. 프로필의 메인·서브 창 지정과 함께 사용합니다. "
+           "자동은 포커스·실행 중인 창에 따라 메인 또는 서브를 선택합니다."));
+    form->addRow(tr("대상 창"), m_captureTargetScopeCombo);
 
     m_modeCombo = new QComboBox(this);
     m_modeCombo->addItem(tr("N회 반복"), static_cast<int>(FeatureRunMode::RepeatCount));
