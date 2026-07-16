@@ -37,6 +37,9 @@ class ScreenCapture {
 public:
     static void setTargetWindowTitle(const std::wstring& title);
     static std::wstring targetWindowTitle();
+    /// Optional secondary binding (profile sub-target); used when the main title cannot be resolved.
+    static void setSubTargetWindowTitle(const std::wstring& title);
+    static std::wstring subTargetWindowTitle();
 
 #ifdef _WIN32
     static HWND findTargetWindow();
@@ -157,6 +160,7 @@ private:
 #endif
 
     static std::wstring s_targetTitle;
+    static std::wstring s_subTargetTitle;
 #ifdef _WIN32
     static HWND s_targetWindow;
     static HWND s_foregroundHintHwnd;

@@ -2,6 +2,7 @@
 
 #include "ui/widgets/ListColumnHeaderWidget.h"
 
+#include "app/MainWindow.h"
 #include "app/PerfTrace.h"
 #include "core/workflow/BlockFactory.h"
 #include "core/workflow/blocks/ClickBlock.h"
@@ -1185,6 +1186,9 @@ void WorkflowEditorPanel::addBlockOfType(BlockType type) {
             imageFind->pollIntervalMs = lastImageFindPollIntervalMs();
         }
     }
+    if (auto* mainWindow = qobject_cast<MainWindow*>(window())) {
+        mainWindow->refreshCaptureTargetForEditing();
+    }
     BlockEditorDialog dialog(draft.get(), m_projectDirectory, this);
     if (m_feature) {
         dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()) + 1,
@@ -1713,6 +1717,9 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
     }
 
     Block* block = m_feature->workflow().blocks()[row].get();
+    if (auto* mainWindow = qobject_cast<MainWindow*>(window())) {
+        mainWindow->refreshCaptureTargetForEditing();
+    }
     BlockEditorDialog dialog(block, m_projectDirectory, this);
     dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()), row);
     dialog.setRoiCorrectionUiPolicy(m_feature->roiCorrection(), m_feature->roiCorrectionSessionEligible());

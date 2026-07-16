@@ -183,6 +183,7 @@ bool runWithoutTargetWindowEnabled() {
 #endif
 
 std::wstring ScreenCapture::s_targetTitle;
+std::wstring ScreenCapture::s_subTargetTitle;
 #ifdef _WIN32
 HWND ScreenCapture::s_targetWindow = nullptr;
 HWND ScreenCapture::s_foregroundHintHwnd = nullptr;
@@ -208,46 +209,81 @@ std::wstring ScreenCapture::targetWindowTitle() {
     return s_targetTitle;
 }
 
+void ScreenCapture::setSubTargetWindowTitle(const std::wstring& title) {
+#ifdef _WIN32
+    if (s_subTargetTitle != title) {
+        s_subTargetTitle = title;
+        s_targetWindow = nullptr;
+        return;
+    }
+#endif
+    s_subTargetTitle = title;
+}
+
+std::wstring ScreenCapture::subTargetWindowTitle() {
+    return s_subTargetTitle;
+}
+
 #ifdef _WIN32
 HWND ScreenCapture::findTargetWindow() {
     if (s_targetWindow && IsWindow(s_targetWindow)) {
         return s_targetWindow;
     }
 
-    if (s_foregroundHintHwnd && IsWindow(s_foregroundHintHwnd) && !s_targetTitle.empty()
-        && GetTickCount64() - s_foregroundHintMs < 500) {
+    const auto foregroundHintFor = [](const std::wstring& binding) -> HWND {
+        if (binding.empty() || !s_foregroundHintHwnd || !IsWindow(s_foregroundHintHwnd)
+            || GetTickCount64() - s_foregroundHintMs >= 500) {
+            return nullptr;
+        }
         wchar_t buffer[512]{};
         GetWindowTextW(s_foregroundHintHwnd, buffer, 512);
         const std::wstring title(buffer);
-        if (title.find(s_targetTitle) != std::wstring::npos) {
-            s_targetWindow = s_foregroundHintHwnd;
-            return s_targetWindow;
+        if (title.find(binding) != std::wstring::npos) {
+            return s_foregroundHintHwnd;
         }
-    }
+        return nullptr;
+    };
 
-    struct EnumData {
-        std::wstring title;
-        HWND result = nullptr;
-    } data{s_targetTitle, nullptr};
-
-    EnumWindows(
-        [](HWND hwnd, LPARAM lParam) -> BOOL {
-            auto* enumData = reinterpret_cast<EnumData*>(lParam);
-            if (!IsWindowVisible(hwnd)) {
+    const auto enumBySubstring = [](const std::wstring& binding) -> HWND {
+        if (binding.empty()) {
+            return nullptr;
+        }
+        struct EnumData {
+            std::wstring title;
+            HWND result = nullptr;
+        } data{binding, nullptr};
+        EnumWindows(
+            [](HWND hwnd, LPARAM lParam) -> BOOL {
+                auto* enumData = reinterpret_cast<EnumData*>(lParam);
+                if (!IsWindowVisible(hwnd)) {
+                    return TRUE;
+                }
+                wchar_t buffer[512]{};
+                GetWindowTextW(hwnd, buffer, 512);
+                const std::wstring title(buffer);
+                if (title.find(enumData->title) != std::wstring::npos) {
+                    enumData->result = hwnd;
+                    return FALSE;
+                }
                 return TRUE;
-            }
-            wchar_t buffer[512]{};
-            GetWindowTextW(hwnd, buffer, 512);
-            std::wstring title(buffer);
-            if (title.find(enumData->title) != std::wstring::npos) {
-                enumData->result = hwnd;
-                return FALSE;
-            }
-            return TRUE;
-        },
-        reinterpret_cast<LPARAM>(&data));
+            },
+            reinterpret_cast<LPARAM>(&data));
+        return data.result;
+    };
 
-    s_targetWindow = data.result;
+    if (HWND hint = foregroundHintFor(s_targetTitle)) {
+        s_targetWindow = hint;
+        return s_targetWindow;
+    }
+    if (HWND found = enumBySubstring(s_targetTitle)) {
+        s_targetWindow = found;
+        return s_targetWindow;
+    }
+    if (HWND subHint = foregroundHintFor(s_subTargetTitle)) {
+        s_targetWindow = subHint;
+        return s_targetWindow;
+    }
+    s_targetWindow = enumBySubstring(s_subTargetTitle);
     return s_targetWindow;
 }
 
@@ -268,7 +304,7 @@ bool ScreenCapture::hasResolvableTargetWindow() {
     if (s_targetWindow && IsWindow(s_targetWindow)) {
         return true;
     }
-    if (s_targetTitle.empty()) {
+    if (s_targetTitle.empty() && s_subTargetTitle.empty()) {
         return false;
     }
     return findTargetWindow() != nullptr;

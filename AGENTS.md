@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.159` (from `project(PIPBONG VERSION 0.8.159)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.160` (from `project(PIPBONG VERSION 0.8.160)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1176,6 +1176,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.160] - 2026-07-16
+
+### Fixed
+
+- Sub-target window (**서브 창으로 지정**) now resolves for template capture, ROI preview, and ImageFind match test when the main game window is not running or when the sub window is focused: `ScreenCapture` falls back to the sub title binding; `MainWindow::syncTargetWindowTitleToCapture` syncs both bindings before block editor open (`ScreenCapture`, `MainWindow`, `WorkflowEditorPanel`).
 
 ## [0.8.159] - 2026-07-16
 

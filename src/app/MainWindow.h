@@ -73,6 +73,8 @@ public:
     ~MainWindow() override;
 
     void ensureInitialWindowPlacement();
+    /// Refreshes main/sub target bindings in ScreenCapture before block editors or overlays open.
+    void refreshCaptureTargetForEditing();
 
 protected:
     void closeEvent(QCloseEvent* event) override;

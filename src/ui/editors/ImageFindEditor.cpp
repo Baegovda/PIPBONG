@@ -785,7 +785,7 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
             QMessageBox::warning(this,
                                  tr("ROI 미리보기"),
                                  tr("대상 창을 찾을 수 없습니다.\n"
-                                    "메인 창에서 먼저 '창 지정'을 사용하세요."));
+                                    "메인 창에서 '창 지정' 또는 '창 목록'의 '서브 창으로 지정'을 사용하세요."));
         }
         return;
     }
@@ -995,7 +995,7 @@ void ImageFindEditor::onRemoveTemplate() {
 void ImageFindEditor::startRoiPick() {
 #ifdef _WIN32
     if (!ScreenCapture::findTargetWindow()) {
-        QMessageBox::warning(this, tr("추가"), tr("대상 창을 찾을 수 없습니다. 먼저 '창 지정'을 사용하세요."));
+        QMessageBox::warning(this, tr("추가"), tr("대상 창을 찾을 수 없습니다. '창 지정' 또는 '서브 창으로 지정'을 사용하세요."));
         return;
     }
 #endif

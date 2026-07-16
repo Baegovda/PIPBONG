@@ -454,7 +454,7 @@ void ScreenRegionOverlay::startPick(QWidget* hostWidget,
         QMessageBox::warning(messageBoxParent(hostWidget),
                              QObject::tr("템플릿 캡처"),
                              QObject::tr("대상 창을 찾을 수 없습니다.\n"
-                                         "메인 창에서 먼저 '창 지정'을 사용하세요."));
+                                         "메인 창에서 '창 지정' 또는 '창 목록'의 '서브 창으로 지정'을 사용하세요."));
         if (onComplete) {
             onComplete(false, {});
         }
