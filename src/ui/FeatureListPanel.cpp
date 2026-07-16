@@ -218,14 +218,26 @@ QRect featureEnableToggleHitRect(const QRect& enableColumnRect) {
 void paintFeatureEnableToggle(QPainter* painter,
                               const QRect& enableColumnRect,
                               bool enabled,
-                              const QPalette& palette) {
+                              const QPalette& palette,
+                              const QColor* runningAccent = nullptr) {
     const QRect box = featureEnableToggleHitRect(enableColumnRect);
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing, true);
 
     const QColor content = primaryContentTextColor(palette, false);
-    const QColor accent = content.lightness() < 128 ? QColor(0x4a, 0x90, 0xd9) : QColor(0x1e, 0x88, 0xe5);
+    QColor accent = content.lightness() < 128 ? QColor(0x4a, 0x90, 0xd9) : QColor(0x1e, 0x88, 0xe5);
+    if (runningAccent && runningAccent->isValid()) {
+        accent = *runningAccent;
+    }
     const QColor muted = content.lightness() < 128 ? QColor(0x8a, 0x96, 0xa8) : QColor(0x90, 0x9a, 0xaa);
+
+    if (enabled && runningAccent && runningAccent->isValid()) {
+        QColor ring = *runningAccent;
+        ring.setAlpha(72);
+        painter->setPen(QPen(ring, 1.2));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawEllipse(box.adjusted(-2, -2, 2, 2));
+    }
 
     if (enabled) {
         painter->setPen(Qt::NoPen);
@@ -266,7 +278,8 @@ void paintFeatureRunButton(QPainter* painter,
                            const QRect& runColumnRect,
                            bool showStop,
                            bool enabled,
-                           const QPalette& palette) {
+                           const QPalette& palette,
+                           const QColor* runningAccent = nullptr) {
     const QRect btnRect = featureRunButtonHitRect(runColumnRect);
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing, true);
@@ -274,8 +287,19 @@ void paintFeatureRunButton(QPainter* painter,
     QColor fill = enabled ? palette.color(QPalette::Highlight) : palette.color(QPalette::Mid);
     if (!enabled) {
         fill.setAlpha(120);
+    } else if (showStop && runningAccent && runningAccent->isValid()) {
+        fill = *runningAccent;
+        fill.setAlpha(static_cast<int>(qBound(150, fill.alpha() > 0 ? fill.alpha() : 220, 255)));
     } else if (showStop) {
         fill = fill.darker(108);
+    }
+
+    if (showStop && runningAccent && runningAccent->isValid()) {
+        QColor glow = *runningAccent;
+        glow.setAlpha(48);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(glow);
+        painter->drawRoundedRect(btnRect.adjusted(-2, -2, 2, 2), 6, 6);
     }
 
     painter->setPen(QPen(enabled ? fill.darker(125) : palette.color(QPalette::Dark), 1.0));
@@ -350,6 +374,105 @@ PrismRunningTone prismRunningTone(int animationPhase, bool selected) {
     return tone;
 }
 
+void paintPrismActiveRunRowChrome(QPainter* painter,
+                                  const QRect& rect,
+                                  bool selected,
+                                  bool hovered,
+                                  int animationPhase,
+                                  const QPalette& palette) {
+    const PrismRunningTone prism = prismRunningTone(animationPhase, selected);
+    const PrismRunningTone prismShift = prismRunningTone((animationPhase + 28) % 96, selected);
+    const qreal t = static_cast<qreal>(animationPhase % 96) / 96.0;
+
+    const QRect card = rect.adjusted(2, 1, -2, -kRowSeparatorHeight);
+    QPainterPath cardPath;
+    cardPath.addRoundedRect(card, 6, 6);
+
+    QColor baseBg = palette.color(QPalette::Base);
+    if (selected) {
+        const QColor highlight = palette.color(QPalette::Highlight);
+        baseBg = QColor(baseBg.red() + (highlight.red() - baseBg.red()) / 5,
+                        baseBg.green() + (highlight.green() - baseBg.green()) / 5,
+                        baseBg.blue() + (highlight.blue() - baseBg.blue()) / 5);
+    } else if (hovered) {
+        baseBg = UiHoverFeedback::blendListRowHover(palette);
+    }
+    baseBg = QColor((baseBg.red() * 5 + prism.core.red()) / 6,
+                    (baseBg.green() * 5 + prism.core.green()) / 6,
+                    (baseBg.blue() * 5 + prism.core.blue()) / 6);
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+    painter->setClipRect(rect);
+
+    for (int ring = 2; ring >= 0; --ring) {
+        const int spread = 1 + ring;
+        QColor halo = prism.coolGlow;
+        halo.setAlpha(static_cast<int>((18 - ring * 5) * prism.shimmer));
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(halo);
+        painter->drawRoundedRect(card.adjusted(-spread, -spread, spread, spread), 6 + spread, 6 + spread);
+    }
+
+    painter->fillPath(cardPath, baseBg);
+
+    QLinearGradient wash(card.topLeft(), card.topRight());
+    QColor washLeft = prism.coolGlow;
+    washLeft.setAlpha(static_cast<int>(34 * prism.shimmer));
+    QColor washMid = prism.core;
+    washMid.setAlpha(static_cast<int>(46 * prism.shimmer));
+    QColor washRight = prismShift.warmGlow;
+    washRight.setAlpha(static_cast<int>(30 * prism.shimmer));
+    wash.setColorAt(0.0, washLeft);
+    wash.setColorAt(0.42, washMid);
+    wash.setColorAt(1.0, washRight);
+    painter->fillPath(cardPath, wash);
+
+    QRadialGradient radial(card.center(), qMax(card.width(), card.height()) * 0.58);
+    QColor bloom = prism.core;
+    bloom.setAlpha(static_cast<int>(26 * prism.shimmer));
+    radial.setColorAt(0.0, bloom);
+    bloom.setAlpha(0);
+    radial.setColorAt(1.0, bloom);
+    painter->fillPath(cardPath, radial);
+
+    const qreal sheenT = std::fmod(t * 1.18 + 0.06, 1.0);
+    const int sheenCenterX = card.left() + static_cast<int>(card.width() * sheenT);
+    QLinearGradient sheen(sheenCenterX - 52, card.top(), sheenCenterX + 52, card.top());
+    sheen.setColorAt(0.0, QColor(255, 255, 255, 0));
+    sheen.setColorAt(0.5, QColor(255, 255, 255, static_cast<int>(20 * prism.shimmer)));
+    sheen.setColorAt(1.0, QColor(255, 255, 255, 0));
+    painter->fillPath(cardPath, sheen);
+
+    QLinearGradient topGlass(card.topLeft(), QPoint(card.left(), card.top() + card.height() / 2));
+    topGlass.setColorAt(0.0, QColor(255, 255, 255, static_cast<int>(14 * prism.shimmer)));
+    topGlass.setColorAt(1.0, QColor(255, 255, 255, 0));
+    painter->fillPath(cardPath, topGlass);
+
+    QColor borderColor = prism.core;
+    borderColor.setAlpha(static_cast<int>(88 + 72 * prism.shimmer));
+    painter->setPen(QPen(borderColor, 1.0));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawPath(cardPath);
+
+    const QRect accentBar(card.left(), card.top(), kSelectionBarWidth, card.height());
+    QLinearGradient accentGrad(accentBar.topLeft(), accentBar.bottomLeft());
+    QColor accentTop = prism.coolGlow;
+    accentTop.setAlpha(255);
+    QColor accentBottom = prism.warmGlow;
+    accentBottom.setAlpha(255);
+    accentGrad.setColorAt(0.0, accentTop);
+    accentGrad.setColorAt(1.0, accentBottom);
+    painter->fillRect(accentBar, accentGrad);
+
+    if (selected) {
+        painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()),
+                          palette.color(QPalette::Highlight));
+    }
+
+    painter->restore();
+}
+
 void paintPrismRunningFeatureName(QPainter* painter,
                                   const QRect& rect,
                                   const QStyleOptionViewItem& option,
@@ -364,29 +487,16 @@ void paintPrismRunningFeatureName(QPainter* painter,
     painter->setRenderHint(QPainter::Antialiasing, true);
     painter->setFont(nameFont);
 
-    for (int layer = 3; layer >= 1; --layer) {
-        const int spread = layer;
-        const int alpha = static_cast<int>((24 - layer * 5) * prism.shimmer);
+    QColor shadow = prism.core;
+    shadow.setAlpha(static_cast<int>(42 * prism.shimmer));
+    painter->setPen(shadow);
+    painter->drawText(rect.adjusted(0, 1, 0, 1), align, elided);
 
-        QColor cool = prism.coolGlow;
-        cool.setAlpha(alpha);
-        painter->setPen(cool);
-        painter->drawText(rect.adjusted(-spread, 0, spread - 1, 0), align, elided);
-
-        QColor warm = prism.warmGlow;
-        warm.setAlpha(alpha);
-        painter->setPen(warm);
-        painter->drawText(rect.adjusted(spread - 1, 0, spread, 0), align, elided);
+    QColor foreground(236, 244, 252);
+    if (selected) {
+        foreground = QColor(255, 255, 255);
     }
-
-    for (int ring = 2; ring >= 0; --ring) {
-        QColor bloom = prism.core;
-        bloom.setAlpha(static_cast<int>((34 - ring * 9) * prism.shimmer));
-        painter->setPen(bloom);
-        painter->drawText(rect.adjusted(-ring, 0, ring, 0), align, elided);
-    }
-
-    painter->setPen(prism.core);
+    painter->setPen(foreground);
     painter->drawText(rect, align, elided);
     painter->restore();
 }
@@ -399,6 +509,17 @@ void paintFeatureListRowChrome(QPainter* painter,
                                FeatureRunVisualKind visualKind,
                                int animationPhase,
                                const QPalette& palette) {
+    if (running && visualKind == FeatureRunVisualKind::ActiveRun) {
+        paintPrismActiveRunRowChrome(painter, rect, selected, hovered, animationPhase, palette);
+        QColor separator = palette.color(QPalette::Mid);
+        if (darkThemeFromPalette(palette) && separator.lightness() < 90) {
+            separator = separator.lighter(130);
+        }
+        separator.setAlpha(80);
+        painter->fillRect(QRect(rect.left(), rect.bottom(), rect.width(), kRowSeparatorHeight), separator);
+        return;
+    }
+
     QColor rowBg = palette.color(QPalette::Base);
     if (selected) {
         const QColor highlight = palette.color(QPalette::Highlight);
@@ -709,7 +830,15 @@ public:
             painter->fillRect(opt.rect, disabledOverlay);
         }
 
-        paintFeatureEnableToggle(painter, cols.enable, featureEnabled, opt.palette);
+        const FeatureRunVisualKind visualKind = m_panel->featureRunVisualKind(featureId);
+        const int animationPhase = m_panel->animationPhase();
+        const bool prismRow =
+            featureEnabled && isRunning && visualKind == FeatureRunVisualKind::ActiveRun;
+        const PrismRunningTone prismTone =
+            prismRow ? prismRunningTone(animationPhase, selected) : PrismRunningTone{};
+        const QColor* runAccent = prismRow ? &prismTone.core : nullptr;
+
+        paintFeatureEnableToggle(painter, cols.enable, featureEnabled, opt.palette, runAccent);
 
         const bool isRunningFeature = isRunning;
         const bool holdMode =
@@ -717,24 +846,30 @@ public:
         const bool hasBlocks = feature && !feature->workflow().blocks().empty();
         const bool runEnabled =
             featureEnabled && (isRunningFeature || (hasBlocks && !holdMode));
+
         paintFeatureRunButton(painter,
                               cols.run,
                               isRunningFeature,
                               runEnabled,
-                              opt.palette);
+                              opt.palette,
+                              runAccent);
 
         paintFeatureName(painter,
                          cols.name,
                          opt,
                          featureName,
                          featureEnabled && isRunning && !featureName.isEmpty() && !isDragSource,
-                         m_panel->featureRunVisualKind(featureId),
-                         m_panel->animationPhase());
+                         visualKind,
+                         animationPhase);
 
         QFont secondaryFont = opt.font;
         secondaryFont.setPointSize(qMax(secondaryFont.pointSize() - 1, 8));
         const QColor dragMuted = featureListMutedTextColor(opt.palette);
-        const QColor modeColor = featureEnabled ? mutedColor : dragMuted;
+        QColor modeColor = featureEnabled ? mutedColor : dragMuted;
+        if (prismRow) {
+            modeColor = prismTone.core;
+            modeColor.setAlpha(selected ? 230 : 205);
+        }
         drawCellText(painter,
                      cols.mode,
                      modeText,

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.177` (from `project(PIPBONG VERSION 0.8.177)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.178` (from `project(PIPBONG VERSION 0.8.178)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.178] - 2026-07-17
+
+### Changed
+
+- Feature list running highlight: prism shimmer/glow now covers the full row card (gradient wash, sheen sweep, border halo, accent bar) instead of animating only the feature name text; run/stop button, enable toggle, and mode column pick up matching prism accents (`FeatureListPanel`).
 
 ## [0.8.177] - 2026-07-17
 
