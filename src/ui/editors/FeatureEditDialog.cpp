@@ -23,6 +23,8 @@
 #include <QPushButton>
 #include <QShowEvent>
 #include <QStackedWidget>
+
+#include <algorithm>
 #include "ui/widgets/DragAdjustSpinBox.h"
 #include <QVBoxLayout>
 
@@ -124,7 +126,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     m_roiCorrectionCheck->setChecked(roiCorrection);
     m_roiCorrectionExpandSpin->setValue(snapRoiCorrectionExpandPercent(roiCorrectionExpandPercent));
     m_editFirstTemplateRoiOnStartCheck->setChecked(editFirstTemplateRoiOnStart);
-    m_triggerCooldownSpin->setValue(snapTriggerCooldownMs(triggerCooldownMs));
+    m_triggerCooldownSpin->setValue(triggerCooldownSecondsFromMs(triggerCooldownMs));
     m_hotkeyAllowExtraModifiersCheck->setChecked(hotkeyAllowExtraModifiers);
     if (m_loopIntervalMsSpin) {
         m_loopIntervalMsSpin->setValue(snapWaitDelayMs(loopIntervalMs));
@@ -276,22 +278,23 @@ void FeatureEditDialog::setupUi() {
            "무한 반복·N회 반복(2회 이상)·홀드에서 사용합니다."));
 
     m_triggerCooldownSpin = new DragAdjustSpinBox(this);
-    m_triggerCooldownSpin->setRange(0, 600000);
-    m_triggerCooldownSpin->setSingleStep(kTriggerCooldownStepMs);
+    m_triggerCooldownSpin->setRange(0, kTriggerCooldownMaxSeconds);
+    m_triggerCooldownSpin->setSingleStep(1);
     m_triggerCooldownSpin->setToolTip(
-        tr("워크플로 1회 실행이 성공한 뒤, 다음 트리거 감시를 시작하기 전에 대기하는 시간입니다. "
+        tr("워크플로 1회 실행이 성공한 뒤, 다음 트리거 감시를 시작하기 전에 대기하는 시간(초)입니다. "
            "블록 편집기의 「탐지 재시도」 간격(감시 중 매칭 실패 시 재탐색)과는 별개입니다. "
-           "0ms면 성공 직후 바로 다시 감시합니다."));
+           "0초면 성공 직후 바로 다시 감시합니다."));
     m_triggerCooldownLabel = new QLabel(tr("쿨다운"), this);
     m_triggerCooldownRow = new QWidget(this);
     auto* triggerCooldownLayout = new QHBoxLayout(m_triggerCooldownRow);
     triggerCooldownLayout->setContentsMargins(0, 0, 0, 0);
     triggerCooldownLayout->setSpacing(4);
     triggerCooldownLayout->addWidget(m_triggerCooldownSpin);
-    triggerCooldownLayout->addWidget(new QLabel(QStringLiteral("ms"), m_triggerCooldownRow));
+    triggerCooldownLayout->addWidget(new QLabel(tr("초"), m_triggerCooldownRow));
     form->addRow(m_triggerCooldownLabel, m_triggerCooldownRow);
     connect(m_triggerCooldownSpin, &QAbstractSpinBox::editingFinished, this, [this]() {
-        m_triggerCooldownSpin->setValue(snapTriggerCooldownMs(m_triggerCooldownSpin->value()));
+        m_triggerCooldownSpin->setValue(
+            std::clamp(m_triggerCooldownSpin->value(), 0, kTriggerCooldownMaxSeconds));
     });
 
     m_userInputInterruptCombo = new QComboBox(this);
@@ -711,7 +714,7 @@ bool FeatureEditDialog::editFirstTemplateRoiOnStart() const {
 }
 
 int FeatureEditDialog::triggerCooldownMs() const {
-    return snapTriggerCooldownMs(m_triggerCooldownSpin->value());
+    return triggerCooldownMsFromSeconds(m_triggerCooldownSpin->value());
 }
 
 int FeatureEditDialog::loopIntervalMs() const {

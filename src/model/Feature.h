@@ -8,9 +8,12 @@
 #include <memory>
 #include <string>
 
-constexpr int kTriggerCooldownStepMs = 5;
+constexpr int kTriggerCooldownStepMs = 1000;
 constexpr int kDefaultTriggerCooldownMs = 1000;
+constexpr int kTriggerCooldownMaxSeconds = 600;
 int snapTriggerCooldownMs(int ms);
+int triggerCooldownSecondsFromMs(int ms);
+int triggerCooldownMsFromSeconds(int seconds);
 
 class Feature {
 public:

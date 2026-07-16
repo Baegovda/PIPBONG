@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.186` (from `project(PIPBONG VERSION 0.8.186)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.187` (from `project(PIPBONG VERSION 0.8.187)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -629,7 +629,7 @@ Sbm1.0/                        # repo root (local workspace)
 | ----------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `runMode`                                 | `"RepeatCount"`    | `Hold`, `RepeatInfinite`, `RepeatCount`, `Trigger` (legacy `"Toggle"` loads as `RepeatCount`)                                                                                                                                                   |
 | `repeatCount`                             | `1`                | Used when `runMode` is `RepeatCount`                                                                                                                                                                                                            |
-| `triggerCooldownMs`                       | `1000`             | After a **successful** trigger workflow run in `Trigger` mode, wait this many ms before resuming monitor (5 ms step, `0` = immediate); not the ImageFind block `pollIntervalMs` retry gap; omitted when default |
+| `triggerCooldownMs`                       | `1000`             | After a **successful** trigger workflow run in `Trigger` mode, wait this many ms before resuming monitor (1 s step in UI, stored as ms; `0` = immediate); not the ImageFind block `pollIntervalMs` retry gap; omitted when default |
 | `infiniteExitAfterConsecutiveMisses`      | `0` (omitted)      | When `> 0` with `RepeatInfinite` or `Hold`, stop after this many consecutive loop iterations where template matching fails                                                                                                                      |
 | `loopIntervalMs`                          | `0` (omitted)      | Fixed delay between loop iterations for `RepeatInfinite` / `Hold` / `RepeatCount` (5 ms step); omitted when `0` and not using random range                                                                                                      |
 | `loopIntervalRandomRange`                 | `false` (omitted)  | When `true` with `RepeatInfinite` / `Hold` / `RepeatCount`, wait a random duration between `loopIntervalMinMs` and `loopIntervalMaxMs` before the next loop                                                                                      |
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.187] - 2026-07-17
+
+### Changed
+
+- Trigger mode **쿨다운** editor uses seconds (0–600, 1 s step) instead of milliseconds; JSON still stores `triggerCooldownMs`; feature list tooltip and run log show seconds (`FeatureEditDialog`, `Feature`, `FeatureListPanel`, `MainWindow`).
 
 ## [0.8.186] - 2026-07-17
 

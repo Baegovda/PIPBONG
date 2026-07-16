@@ -4,6 +4,7 @@
 #include "core/workflow/blocks/WaitBlock.h"
 
 #include <algorithm>
+#include <cmath>
 #include <random>
 
 #include <QUuid>
@@ -13,7 +14,18 @@ int snapTriggerCooldownMs(int ms) {
         return 0;
     }
     const int snapped = (ms / kTriggerCooldownStepMs) * kTriggerCooldownStepMs;
-    return std::min(snapped, 600000);
+    return std::min(snapped, kTriggerCooldownMaxSeconds * 1000);
+}
+
+int triggerCooldownSecondsFromMs(int ms) {
+    const int snappedMs = snapTriggerCooldownMs(ms);
+    return std::clamp(static_cast<int>(std::lround(snappedMs / 1000.0)),
+                      0,
+                      kTriggerCooldownMaxSeconds);
+}
+
+int triggerCooldownMsFromSeconds(int seconds) {
+    return snapTriggerCooldownMs(seconds * 1000);
 }
 
 void Feature::setLoopIntervalMs(int ms) {

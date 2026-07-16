@@ -1844,7 +1844,8 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
         tooltip += tr(" (%1회)").arg(feature.repeatCount());
     }
     if (feature.runMode() == FeatureRunMode::Trigger) {
-        tooltip += QStringLiteral("\n") + tr("쿨다운: %1 ms").arg(feature.triggerCooldownMs());
+        tooltip += QStringLiteral("\n")
+                   + tr("쿨다운: %1초").arg(triggerCooldownSecondsFromMs(feature.triggerCooldownMs()));
     }
     if (feature.infiniteExitAfterConsecutiveMisses() > 0) {
         tooltip += QStringLiteral("\n")

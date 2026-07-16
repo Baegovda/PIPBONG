@@ -4254,7 +4254,9 @@ void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* fe
         return;
     }
 
-    appendSessionLog(session, tr("성공 후 %1ms 쿨다운").arg(cooldownMs), LogLineKind::Info);
+    appendSessionLog(session,
+                     tr("성공 후 %1초 쿨다운").arg(triggerCooldownSecondsFromMs(cooldownMs)),
+                     LogLineKind::Info);
     const quint64 generation = ++session.triggerCooldownGeneration;
     const std::string featureId = session.featureId;
     QTimer::singleShot(cooldownMs, this, [this, featureId, generation]() {
