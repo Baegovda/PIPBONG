@@ -11,10 +11,19 @@
 
 namespace {
 
-constexpr int kEdgeZonePx = 28;
 constexpr int kIntervalMs = 16;
-constexpr int kMinStepPx = 4;
-constexpr int kMaxStepPx = 20;
+/// Overshoot distance (px) outside the viewport that reaches maximum scroll step.
+constexpr int kOvershootForMaxStepPx = 96;
+constexpr int kMinStepPx = 1;
+constexpr int kMaxStepPx = 8;
+
+int edgeScrollStepForOvershoot(int overshootPx) {
+    if (overshootPx <= 0) {
+        return 0;
+    }
+    const double t = std::clamp(overshootPx / static_cast<double>(kOvershootForMaxStepPx), 0.0, 1.0);
+    return kMinStepPx + static_cast<int>(std::lround((kMaxStepPx - kMinStepPx) * t));
+}
 
 } // namespace
 
@@ -62,25 +71,18 @@ void ListDragAutoScroll::updateFromViewportPos(const QPoint& viewportPos) {
     const int viewportHeight = m_scrollArea->viewport()->height();
     const int y = viewportPos.y();
     int direction = 0;
-    int step = 0;
+    int overshootPx = 0;
 
-    if (y < kEdgeZonePx) {
+    if (y < 0) {
         direction = -1;
-        const double depth =
-            1.0 - std::clamp(y / static_cast<double>(kEdgeZonePx), 0.0, 1.0);
-        step = kMinStepPx
-               + static_cast<int>(std::lround((kMaxStepPx - kMinStepPx) * depth));
-    } else if (y > viewportHeight - kEdgeZonePx) {
+        overshootPx = -y;
+    } else if (y >= viewportHeight) {
         direction = 1;
-        const double depth = 1.0
-                             - std::clamp((viewportHeight - y) / static_cast<double>(kEdgeZonePx),
-                                          0.0,
-                                          1.0);
-        step = kMinStepPx
-               + static_cast<int>(std::lround((kMaxStepPx - kMinStepPx) * depth));
+        overshootPx = y - viewportHeight + 1;
     }
 
-    if (direction == 0) {
+    const int step = edgeScrollStepForOvershoot(overshootPx);
+    if (direction == 0 || step <= 0) {
         stopEdgeScroll();
         return;
     }
@@ -114,6 +116,13 @@ bool ListDragAutoScroll::handleWheel(QWheelEvent* wheelEvent) {
         const int notchSteps = steps != 0 ? steps : (angleY > 0 ? 1 : -1);
         deltaPx = -notchSteps * bar->singleStep();
     }
+
+    if (deltaPx == 0) {
+        return false;
+    }
+
+    // Gentler than stock wheel while a drag session owns scrolling.
+    deltaPx = static_cast<int>(std::lround(deltaPx * 0.65));
 
     if (deltaPx == 0) {
         return false;
@@ -177,8 +186,15 @@ void ListDragAutoScroll::stopEdgeScroll() {
 }
 
 void ListDragAutoScroll::tickEdgeScroll() {
-    if (m_edgeDirection == 0 || !m_scrollArea) {
+    if (m_edgeDirection == 0 || !m_scrollArea || !m_scrollArea->viewport()) {
         stopEdgeScroll();
+        return;
+    }
+
+    const QPoint viewportPos = m_scrollArea->viewport()->mapFromGlobal(QCursor::pos());
+    updateFromViewportPos(viewportPos);
+
+    if (m_edgeDirection == 0 || m_edgeStep <= 0) {
         return;
     }
 
