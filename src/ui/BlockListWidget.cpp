@@ -1922,9 +1922,7 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
     if (event->type() == QEvent::Wheel && m_dragAutoScroll && m_dragAutoScroll->isActive()
         && !m_loopRegionPickActive) {
         auto* wheelEvent = static_cast<QWheelEvent*>(event);
-        const QPoint globalPos = wheelEvent->globalPosition().toPoint();
-        const QRect listGlobalRect(mapToGlobal(QPoint(0, 0)), size());
-        if (listGlobalRect.contains(globalPos) && m_dragAutoScroll->handleWheel(wheelEvent)) {
+        if (m_dragAutoScroll->handleWheel(wheelEvent)) {
             return true;
         }
     }

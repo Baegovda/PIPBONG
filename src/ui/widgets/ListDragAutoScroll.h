@@ -7,8 +7,6 @@
 
 #include <functional>
 
-class QAbstractNativeEventFilter;
-
 class QAbstractScrollArea;
 class QWheelEvent;
 
@@ -48,7 +46,4 @@ private:
     int m_edgeDirection = 0;
     int m_edgeStep = 0;
     bool m_active = false;
-#ifdef Q_OS_WIN
-    QAbstractNativeEventFilter* m_nativeWheelFilter = nullptr;
-#endif
 };

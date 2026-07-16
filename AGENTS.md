@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.168` (from `project(PIPBONG VERSION 0.8.168)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.169` (from `project(PIPBONG VERSION 0.8.169)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1177,6 +1177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.169] - 2026-07-16
+
+### Fixed
+
+- Workflow block list drag-reorder: mouse wheel scroll while gripping a row now works reliably on Windows — `ListDragAutoScroll` uses a low-level `WH_MOUSE_LL` hook for `WM_MOUSEWHEEL` during `QDrag::exec()` (Qt native/event filters do not receive wheel messages in the drag loop); wheel step uses page-based pixels instead of `singleStep` 1; block-list `qApp` filter no longer requires the cursor over the table rect (`ListDragAutoScroll`, `BlockListWidget`).
 
 ## [0.8.168] - 2026-07-16
 

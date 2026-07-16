@@ -1,6 +1,5 @@
 #include "ui/widgets/ListDragAutoScroll.h"
 
-#include <QAbstractNativeEventFilter>
 #include <QAbstractScrollArea>
 #include <QApplication>
 #include <QCursor>
@@ -33,49 +32,72 @@ int edgeScrollStepForOvershoot(int overshootPx) {
     return kMinStepPx + static_cast<int>(std::lround((kMaxStepPx - kMinStepPx) * eased));
 }
 
+int wheelPixelsPerNotch(const QScrollBar* bar) {
+    if (!bar) {
+        return 32;
+    }
+    int pixels = bar->singleStep();
+    if (pixels < 16) {
+        const int page = bar->pageStep();
+        pixels = page > 0 ? std::max(16, page / 3) : 32;
+    }
+    return pixels;
+}
+
 #ifdef Q_OS_WIN
-class ListDragWheelNativeFilter final : public QAbstractNativeEventFilter {
-public:
-    explicit ListDragWheelNativeFilter(ListDragAutoScroll* owner)
-        : m_owner(owner) {}
+ListDragAutoScroll* g_dragWheelTarget = nullptr;
+HHOOK g_dragWheelHook = nullptr;
+int g_dragWheelHookRefs = 0;
 
-    bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override {
-        Q_UNUSED(result);
-        if (!m_owner || !m_owner->isActive()) {
-            return false;
-        }
-        if (eventType != "windows_generic_MSG" && eventType != "windows_dispatcher_MSG") {
-            return false;
-        }
-
-        auto* msg = static_cast<MSG*>(message);
-        if (msg->message != WM_MOUSEWHEEL) {
-            return false;
-        }
-
-        QAbstractScrollArea* area = m_owner->scrollArea();
-        if (!area) {
-            return false;
-        }
-
-        const QPoint globalPos(GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam));
-        const QRect areaRect(area->mapToGlobal(QPoint(0, 0)), area->size());
-        if (!areaRect.contains(globalPos)) {
-            return false;
-        }
-
-        const short wheelDelta = GET_WHEEL_DELTA_WPARAM(msg->wParam);
-        if (wheelDelta == 0) {
-            return false;
-        }
-
-        const int notchSteps = static_cast<int>(wheelDelta) / WHEEL_DELTA;
-        return m_owner->applyWheelSteps(notchSteps);
+LRESULT CALLBACK dragWheelMouseHookProc(int code, WPARAM wParam, LPARAM lParam) {
+    if (code < 0) {
+        return CallNextHookEx(g_dragWheelHook, code, wParam, lParam);
     }
 
-private:
-    ListDragAutoScroll* m_owner = nullptr;
-};
+    if (wParam == WM_MOUSEWHEEL && g_dragWheelTarget && g_dragWheelTarget->isActive()) {
+        const auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
+        if (info && !(info->flags & LLMHF_INJECTED)) {
+            const short wheelDelta = GET_WHEEL_DELTA_WPARAM(info->mouseData);
+            if (wheelDelta != 0) {
+                const int notchSteps = static_cast<int>(wheelDelta) / WHEEL_DELTA;
+                if (g_dragWheelTarget->applyWheelSteps(notchSteps)) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    return CallNextHookEx(g_dragWheelHook, code, wParam, lParam);
+}
+
+void installDragWheelHook(ListDragAutoScroll* target) {
+    if (!target) {
+        return;
+    }
+    g_dragWheelTarget = target;
+    if (g_dragWheelHookRefs == 0) {
+        g_dragWheelHook =
+            SetWindowsHookExW(WH_MOUSE_LL, dragWheelMouseHookProc, GetModuleHandleW(nullptr), 0);
+        if (!g_dragWheelHook) {
+            return;
+        }
+    }
+    ++g_dragWheelHookRefs;
+}
+
+void uninstallDragWheelHook(ListDragAutoScroll* target) {
+    if (g_dragWheelTarget == target) {
+        g_dragWheelTarget = nullptr;
+    }
+    if (g_dragWheelHookRefs <= 0) {
+        return;
+    }
+    --g_dragWheelHookRefs;
+    if (g_dragWheelHookRefs == 0 && g_dragWheelHook) {
+        UnhookWindowsHookEx(g_dragWheelHook);
+        g_dragWheelHook = nullptr;
+    }
+}
 #endif
 
 } // namespace
@@ -103,10 +125,7 @@ void ListDragAutoScroll::begin() {
         viewport->installEventFilter(this);
     }
 #ifdef Q_OS_WIN
-    if (!m_nativeWheelFilter) {
-        m_nativeWheelFilter = new ListDragWheelNativeFilter(this);
-        qApp->installNativeEventFilter(m_nativeWheelFilter);
-    }
+    installDragWheelHook(this);
 #endif
     if (m_edgeTimer) {
         m_edgeTimer->start();
@@ -172,14 +191,15 @@ bool ListDragAutoScroll::applyWheelSteps(int notchSteps) {
         return false;
     }
 
-    int deltaPx = -notchSteps * bar->singleStep();
+    int deltaPx = -notchSteps * wheelPixelsPerNotch(bar);
     deltaPx = static_cast<int>(std::lround(deltaPx * 0.65));
     if (deltaPx == 0) {
-        return false;
+        deltaPx = notchSteps > 0 ? -1 : 1;
     }
 
+    const int before = bar->value();
     scrollBy(deltaPx);
-    return true;
+    return bar->value() != before;
 }
 
 bool ListDragAutoScroll::handleWheel(QWheelEvent* wheelEvent) {
@@ -190,11 +210,9 @@ bool ListDragAutoScroll::handleWheel(QWheelEvent* wheelEvent) {
     int notchSteps = 0;
     if (!wheelEvent->pixelDelta().isNull()) {
         QScrollBar* bar = m_scrollArea->verticalScrollBar();
-        if (!bar || bar->singleStep() <= 0) {
-            return false;
-        }
+        const int pixelsPerNotch = wheelPixelsPerNotch(bar);
         const int deltaPx = -wheelEvent->pixelDelta().y();
-        notchSteps = deltaPx / bar->singleStep();
+        notchSteps = deltaPx / pixelsPerNotch;
         if (notchSteps == 0 && deltaPx != 0) {
             notchSteps = deltaPx > 0 ? 1 : -1;
         }
@@ -264,11 +282,7 @@ void ListDragAutoScroll::stopSession() {
         m_edgeTimer->stop();
     }
 #ifdef Q_OS_WIN
-    if (m_nativeWheelFilter) {
-        qApp->removeNativeEventFilter(m_nativeWheelFilter);
-        delete m_nativeWheelFilter;
-        m_nativeWheelFilter = nullptr;
-    }
+    uninstallDragWheelHook(this);
 #endif
     qApp->removeEventFilter(this);
     if (m_scrollArea) {
