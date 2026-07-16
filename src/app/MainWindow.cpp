@@ -60,6 +60,7 @@
 #include <QCoreApplication>
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -2452,6 +2453,20 @@ void MainWindow::updateRunUiState() {
             }
         }
         m_featureList->setFeatureRunVisualKinds(visualKinds);
+
+        QHash<QString, FeatureTriggerCooldownState> cooldownStates;
+        for (const auto& entry : m_runSessions) {
+            if (entry.second.runningMode != FeatureRunMode::Trigger
+                || entry.second.triggerPhase != TriggerSessionPhase::Cooldown
+                || entry.second.triggerCooldownEndsAtEpochMs <= 0) {
+                continue;
+            }
+            FeatureTriggerCooldownState state;
+            state.endsAtEpochMs = entry.second.triggerCooldownEndsAtEpochMs;
+            state.totalMs = entry.second.triggerCooldownTotalMs;
+            cooldownStates.insert(QString::fromStdString(entry.first), state);
+        }
+        m_featureList->setTriggerCooldownStates(cooldownStates);
     }
 
     Feature* selected = m_featureList ? m_featureList->selectedFeature() : nullptr;
@@ -4074,6 +4089,8 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
     }
 
     session.triggerPhase = TriggerSessionPhase::Monitoring;
+    session.triggerCooldownEndsAtEpochMs = 0;
+    session.triggerCooldownTotalMs = 0;
     if (!session.sessionContext) {
         session.sessionContext = std::make_shared<ExecutionContext>();
     }
@@ -4258,6 +4275,8 @@ void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* fe
     appendSessionLog(session,
                      tr("성공 후 %1초 쿨다운").arg(triggerCooldownSecondsFromMs(cooldownMs)),
                      LogLineKind::Info);
+    session.triggerCooldownTotalMs = cooldownMs;
+    session.triggerCooldownEndsAtEpochMs = QDateTime::currentMSecsSinceEpoch() + cooldownMs;
     const quint64 generation = ++session.triggerCooldownGeneration;
     const std::string featureId = session.featureId;
     QTimer::singleShot(cooldownMs, this, [this, featureId, generation]() {

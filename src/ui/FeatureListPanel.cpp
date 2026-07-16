@@ -16,6 +16,7 @@
 #include "app/FeatureHotkeyGate.h"
 #include <QApplication>
 #include <QCursor>
+#include <QDateTime>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
@@ -175,6 +176,11 @@ QString featureRunModeCompact(FeatureRunMode mode, int repeatCount) {
         return repeatCount <= 1 ? QStringLiteral("\u00d71") : QStringLiteral("\u00d7%1").arg(repeatCount);
     }
     return QStringLiteral("\u00d71");
+}
+
+QString triggerCooldownModeDisplayText(qint64 remainingMs) {
+    const int remainSec = static_cast<int>((qMax<qint64>(0, remainingMs) + 999) / 1000);
+    return QStringLiteral("\u25D4%1").arg(remainSec);
 }
 
 HotkeyBinding hotkeyBindingFromIndex(const QModelIndex& index) {
@@ -788,7 +794,7 @@ public:
         const FeatureListColumnRects cols = featureListColumnRects(opt.rect, m_panel->columnLayout());
         const QString featureId = index.data(kFeatureIdRole).toString();
         const QString featureName = index.data(kFeatureNameRole).toString();
-        const QString modeText = index.data(kRunModeDisplayRole).toString();
+        QString modeText = index.data(kRunModeDisplayRole).toString();
         const HotkeyBinding hotkeyBinding = hotkeyBindingFromIndex(index);
         const bool hasHotkey = !hotkeyBinding.isEmpty();
         const bool isRunning = m_panel->isFeatureRunning(featureId);
@@ -836,6 +842,14 @@ public:
 
         const FeatureRunVisualKind visualKind = m_panel->featureRunVisualKind(featureId);
         const int animationPhase = m_panel->animationPhase();
+        if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
+            const qint64 remainingMs = m_panel->triggerCooldownRemainingMs(featureId);
+            if (remainingMs >= 0) {
+                modeText = triggerCooldownModeDisplayText(remainingMs);
+            }
+        } else if (visualKind == FeatureRunVisualKind::TriggerWatch) {
+            modeText = QStringLiteral("\u25CE");
+        }
         const bool prismRow =
             featureEnabled && isRunning && visualKind == FeatureRunVisualKind::ActiveRun;
         const PrismRunningTone prismTone =
@@ -1534,6 +1548,22 @@ void FeatureListPanel::setFeatureRunVisualKinds(const QHash<QString, FeatureRunV
         m_list->viewport()->update();
     }
     updateFeatureEditButtonState();
+}
+
+void FeatureListPanel::setTriggerCooldownStates(
+    const QHash<QString, FeatureTriggerCooldownState>& states) {
+    m_triggerCooldownStates = states;
+    if (m_list && m_list->viewport()) {
+        m_list->viewport()->update();
+    }
+}
+
+qint64 FeatureListPanel::triggerCooldownRemainingMs(const QString& featureId) const {
+    const auto it = m_triggerCooldownStates.constFind(featureId);
+    if (it == m_triggerCooldownStates.constEnd() || it->endsAtEpochMs <= 0) {
+        return -1;
+    }
+    return qMax<qint64>(0, it->endsAtEpochMs - QDateTime::currentMSecsSinceEpoch());
 }
 
 FeatureRunVisualKind FeatureListPanel::featureRunVisualKind(const QString& featureId) const {

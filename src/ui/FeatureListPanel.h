@@ -45,6 +45,11 @@ enum class FeatureRunVisualKind {
     TriggerCooldown
 };
 
+struct FeatureTriggerCooldownState {
+    qint64 endsAtEpochMs = 0;
+    int totalMs = 0;
+};
+
 class FeatureListPanel : public QWidget {
 
     Q_OBJECT
@@ -88,7 +93,11 @@ public:
 
     void setFeatureRunVisualKinds(const QHash<QString, FeatureRunVisualKind>& kinds);
 
+    void setTriggerCooldownStates(const QHash<QString, FeatureTriggerCooldownState>& states);
+
     FeatureRunVisualKind featureRunVisualKind(const QString& featureId) const;
+
+    qint64 triggerCooldownRemainingMs(const QString& featureId) const;
 
     void setEditControlsEnabled(bool enabled);
 
@@ -244,6 +253,8 @@ private:
     QSet<QString> m_runningFeatureIds;
 
     QHash<QString, FeatureRunVisualKind> m_featureRunVisualKinds;
+
+    QHash<QString, FeatureTriggerCooldownState> m_triggerCooldownStates;
 
     QString m_lastSelectedFeatureId;
 

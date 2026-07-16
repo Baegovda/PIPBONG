@@ -69,6 +69,9 @@ struct FeatureRunSession {
     TriggerSessionPhase triggerPhase = TriggerSessionPhase::None;
     int triggerBlockIndex = -1;
     quint64 triggerCooldownGeneration = 0;
+    /// Epoch ms when the current trigger cooldown ends; 0 when not in cooldown.
+    qint64 triggerCooldownEndsAtEpochMs = 0;
+    int triggerCooldownTotalMs = 0;
     std::vector<TriggerPreemptedSession> triggerPreemptedSessions;
     bool triggerPreemptSavedCursor = false;
     int triggerPreemptCursorScreenX = 0;

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.191` (from `project(PIPBONG VERSION 0.8.191)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.192` (from `project(PIPBONG VERSION 0.8.192)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1178,6 +1178,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.192] - 2026-07-17
+
+### Added
+
+- Feature list **방식** column shows live trigger cooldown countdown (`◔N` seconds remaining) while trigger mode is in the post-match cooldown phase; **◎** during trigger watch (`FeatureRunSession` cooldown end timestamp, `FeatureListPanel`, `MainWindow::updateRunUiState`).
 
 ## [0.8.191] - 2026-07-17
 
