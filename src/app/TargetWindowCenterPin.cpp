@@ -15,7 +15,10 @@
 bool TargetWindowCenterPin::sync() {
 #ifdef _WIN32
     HWND hwnd = ScreenCapture::targetWindow();
-    if (!hwnd || !IsWindow(hwnd)) {
+    if (!hwnd || !IsWindow(hwnd) || IsIconic(hwnd)) {
+        if (hwnd) {
+            ScreenCapture::setTargetWindow(nullptr);
+        }
         hwnd = ScreenCapture::findTargetWindow();
         if (hwnd) {
             ScreenCapture::setTargetWindow(hwnd);

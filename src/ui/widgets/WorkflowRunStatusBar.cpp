@@ -42,6 +42,9 @@ WorkflowRunStatusBar::WorkflowRunStatusBar(QWidget* parent)
     m_featureNameLabel->setObjectName(QStringLiteral("workflowRunStatusFeatureName"));
     m_featureNameLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
 
+    m_modeChip = makeStatChip(this, QStringLiteral("workflowRunStatusMode"));
+    m_modeChip->setVisible(false);
+
     m_statsRow = new QWidget(this);
     m_statsRow->setObjectName(QStringLiteral("workflowRunStatsRow"));
     auto* statsLayout = new QHBoxLayout(m_statsRow);
@@ -61,12 +64,56 @@ WorkflowRunStatusBar::WorkflowRunStatusBar(QWidget* parent)
     row->addWidget(m_promptLabel, 0, Qt::AlignVCenter);
     row->addWidget(m_captionLabel, 0, Qt::AlignVCenter);
     row->addWidget(m_featureNameLabel, 0, Qt::AlignVCenter);
+    row->addWidget(m_modeChip, 0, Qt::AlignVCenter);
     row->addStretch(1);
     row->addWidget(m_statsRow, 0, Qt::AlignVCenter);
 
     applyTerminalChrome();
+    clearRunMode();
     clearLoopTiming();
     setFeatureName(QString());
+}
+
+void WorkflowRunStatusBar::setRunMode(FeatureRunMode mode, int repeatCount) {
+    if (!m_modeChip) {
+        return;
+    }
+    QString text;
+    QString tooltip;
+    switch (mode) {
+    case FeatureRunMode::Hold:
+        text = tr("홀드");
+        tooltip = tr("단축키를 누르고 있는 동안 워크플로를 반복합니다.");
+        break;
+    case FeatureRunMode::RepeatInfinite:
+        text = tr("무한 반복");
+        tooltip = tr("워크플로를 중지할 때까지 무한 반복합니다.");
+        break;
+    case FeatureRunMode::Trigger:
+        text = tr("트리거");
+        tooltip = tr("첫 템플릿 매칭을 감시하다가 성공 시 워크플로를 1회 실행합니다.");
+        break;
+    case FeatureRunMode::RepeatCount:
+        if (repeatCount <= 1) {
+            text = tr("N회 반복");
+        } else {
+            text = tr("N회 반복 ×%1").arg(repeatCount);
+        }
+        tooltip = tr("워크플로를 지정한 횟수만큼 반복합니다.");
+        break;
+    }
+    m_modeChip->setText(text);
+    m_modeChip->setToolTip(tooltip);
+    m_modeChip->setVisible(!text.isEmpty());
+}
+
+void WorkflowRunStatusBar::clearRunMode() {
+    if (!m_modeChip) {
+        return;
+    }
+    m_modeChip->clear();
+    m_modeChip->setToolTip(QString());
+    m_modeChip->setVisible(false);
 }
 
 void WorkflowRunStatusBar::applyTerminalChrome() {
@@ -94,6 +141,16 @@ void WorkflowRunStatusBar::applyTerminalChrome() {
         "  font-size: 13px;"
         "  font-weight: 600;"
         "  padding-left: 2px;"
+        "}"
+        "QLabel#workflowRunStatusMode {"
+        "  color: #d2a8ff;"
+        "  background-color: #21262d;"
+        "  border: 1px solid #8957e5;"
+        "  border-radius: 6px;"
+        "  padding: 3px 8px;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "  letter-spacing: 0.2px;"
         "}"
         "QLabel#workflowRunStatLoop {"
         "  color: #79c0ff;"

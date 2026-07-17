@@ -1016,11 +1016,13 @@ void WorkflowEditorPanel::updateTitleText() {
     }
     if (!m_feature) {
         m_runStatusBar->setFeatureName(QString());
+        m_runStatusBar->clearRunMode();
         m_runStatusBar->clearLoopTiming();
         return;
     }
 
     m_runStatusBar->setFeatureName(QString::fromStdString(m_feature->name()));
+    m_runStatusBar->setRunMode(m_feature->runMode(), m_feature->repeatCount());
     if (m_hasLoopTiming) {
         m_runStatusBar->setLoopTiming(m_loopNumber, m_loopElapsedMs, m_loopAverageMs, m_loopSuccess);
     } else {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "model/FeatureRunMode.h"
+
 #include <QFrame>
 
 class QLabel;
@@ -11,6 +13,8 @@ public:
     explicit WorkflowRunStatusBar(QWidget* parent = nullptr);
 
     void setFeatureName(const QString& name);
+    void setRunMode(FeatureRunMode mode, int repeatCount);
+    void clearRunMode();
     void setLoopTiming(int loopNumber, qint64 elapsedMs, qint64 averageMs, bool success);
     void clearLoopTiming();
 
@@ -21,6 +25,7 @@ private:
     QLabel* m_promptLabel = nullptr;
     QLabel* m_captionLabel = nullptr;
     QLabel* m_featureNameLabel = nullptr;
+    QLabel* m_modeChip = nullptr;
     QWidget* m_statsRow = nullptr;
     QLabel* m_loopChip = nullptr;
     QLabel* m_lastChip = nullptr;

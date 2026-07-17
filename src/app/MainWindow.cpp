@@ -4900,11 +4900,38 @@ void MainWindow::applyTargetWindowCenterPin(bool enabled) {
     m_targetWindowCenterPinTimer->stop();
 }
 
+void MainWindow::prepareCenterPinTargetWindow() {
+#ifdef _WIN32
+    syncTargetWindowTitleToCapture();
+    ScreenCapture::setTargetWindow(nullptr);
+
+    const std::wstring pinTitle = resolveAutoRunCaptureTargetTitleW();
+    if (!pinTitle.empty()) {
+        ScreenCapture::setTargetWindowTitle(pinTitle);
+    }
+
+    HWND hwnd = ScreenCapture::findTargetWindow();
+    if (hwnd && IsWindow(hwnd) && IsIconic(hwnd)) {
+        ScreenCapture::setTargetWindow(nullptr);
+        hwnd = nullptr;
+    }
+    if (!hwnd || !IsWindow(hwnd)) {
+        hwnd = ScreenCapture::findTargetWindow();
+    }
+    if (hwnd && IsWindow(hwnd) && !IsIconic(hwnd)) {
+        ScreenCapture::setTargetWindow(hwnd);
+    }
+#else
+    syncTargetWindowTitleToCapture();
+#endif
+}
+
 void MainWindow::syncTargetWindowCenterPin() {
 #ifdef _WIN32
     if (!ProgramSettings::pinTargetWindowToScreenCenter() || hasAnyRunningSession()) {
         return;
     }
+    prepareCenterPinTargetWindow();
     if (TargetWindowCenterPin::sync()) {
         updateTargetWindowDetails();
     }

@@ -288,6 +288,7 @@ private:
     std::wstring sessionCaptureTargetTitleW(FeatureRunSession& session);
     void applySessionCaptureTarget(const std::wstring& title) const;
     void syncTargetWindowTitleToCapture();
+    void prepareCenterPinTargetWindow();
     /// Applies resolveEffectiveTargetTitleW() to ScreenCapture (used at feature run start).
     void syncEffectiveTargetWindowTitleToCapture();
     void saveSelectedFeaturePreference();
