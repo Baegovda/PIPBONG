@@ -66,6 +66,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      const HotkeyBinding& hotkey,
                                      bool hotkeyAllowExtraModifiers,
                                      FeatureCaptureTargetScope captureTargetScope,
+                                     bool requireScopedTargetForeground,
                                      FeatureRunMode runMode,
                                      int repeatCount,
                                      int infiniteExitAfterConsecutiveMisses,
@@ -135,6 +136,10 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     if (captureScopeIndex >= 0) {
         m_captureTargetScopeCombo->setCurrentIndex(captureScopeIndex);
     }
+    if (m_requireScopedTargetForegroundCheck) {
+        m_requireScopedTargetForegroundCheck->setChecked(requireScopedTargetForeground);
+    }
+    updateScopedTargetForegroundUi();
     if (m_loopIntervalMsSpin) {
         m_loopIntervalMsSpin->setValue(snapWaitDelayMs(loopIntervalMs));
     }
@@ -208,6 +213,13 @@ void FeatureEditDialog::setupUi() {
         tr("이 기능이 동작할 대상 창입니다. 프로필의 메인·서브 창 지정과 함께 사용합니다. "
            "자동은 포커스·실행 중인 창에 따라 메인 또는 서브를 선택합니다."));
     form->addRow(tr("대상 창"), m_captureTargetScopeCombo);
+
+    m_requireScopedTargetForegroundCheck =
+        new QCheckBox(tr("지정한 대상 창이 활성(포커스)일 때만 동작"), this);
+    m_requireScopedTargetForegroundCheck->setToolTip(
+        tr("메인 대상 창만·서브 대상 창만을 선택했을 때 사용합니다. 체크하면 해당 창이 "
+           "포커스되어 있지 않을 때는 감시·실행을 하지 않습니다."));
+    form->addRow(QString(), m_requireScopedTargetForegroundCheck);
 
     m_modeCombo = new QComboBox(this);
     m_modeCombo->addItem(tr("N회 반복"), static_cast<int>(FeatureRunMode::RepeatCount));
@@ -425,6 +437,8 @@ void FeatureEditDialog::setupUi() {
     });
     connect(m_modeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this](int) { updateModeDependentUi(); });
+    connect(m_captureTargetScopeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int) { updateScopedTargetForegroundUi(); });
     connect(m_repeatSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             [this](int) { updateModeDependentUi(); });
     connect(m_infiniteExitCheck, &QCheckBox::toggled, this, [this](bool) { updateModeDependentUi(); });
@@ -452,6 +466,19 @@ void FeatureEditDialog::updateCaptureUi() {
         updateHotkeyDisplay();
         applyHotkeyLabelIdleStyle();
     }
+}
+
+void FeatureEditDialog::updateScopedTargetForegroundUi() {
+    if (!m_requireScopedTargetForegroundCheck || !m_captureTargetScopeCombo) {
+        return;
+    }
+    const auto scope = static_cast<FeatureCaptureTargetScope>(
+        m_captureTargetScopeCombo->currentData().toInt());
+    const bool fixedScope = scope != FeatureCaptureTargetScope::Auto;
+    if (!fixedScope && m_requireScopedTargetForegroundCheck->isChecked()) {
+        m_requireScopedTargetForegroundCheck->setChecked(false);
+    }
+    m_requireScopedTargetForegroundCheck->setEnabled(fixedScope);
 }
 
 void FeatureEditDialog::startHotkeyCapture() {
@@ -680,6 +707,10 @@ FeatureCaptureTargetScope FeatureEditDialog::captureTargetScope() const {
     }
     return static_cast<FeatureCaptureTargetScope>(
         m_captureTargetScopeCombo->currentData().toInt());
+}
+
+bool FeatureEditDialog::requireScopedTargetForeground() const {
+    return m_requireScopedTargetForegroundCheck && m_requireScopedTargetForegroundCheck->isChecked();
 }
 
 FeatureRunMode FeatureEditDialog::runMode() const {

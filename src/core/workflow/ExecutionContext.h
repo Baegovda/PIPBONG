@@ -73,6 +73,11 @@ public:
     /// Waits while paused until resumed or stopped; returns false when stopped.
     bool waitWhilePaused();
 
+    using ScopedTargetPollGate = std::function<bool()>;
+    void setScopedTargetPollGate(ScopedTargetPollGate gate);
+    void clearScopedTargetPollGate();
+    bool scopedTargetPollAllowed() const;
+
     void setImageFindMaxMissAttempts(int attempts);
     int imageFindMaxMissAttempts() const;
 
@@ -237,6 +242,7 @@ private:
     std::unordered_map<int, RememberedImageFindPositions> m_rememberedPositionsByBlockIndex;
     std::wstring m_targetWindowTitle;
     std::string m_projectDirectory;
+    ScopedTargetPollGate m_scopedTargetPollGate;
 #ifdef _WIN32
     bool m_runKeyboardSessionActive = false;
     SessionModifierSnapshot m_runKeyboardSessionStart;

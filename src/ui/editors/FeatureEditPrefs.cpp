@@ -79,6 +79,9 @@ void applySettingsJson(const nlohmann::json& json, Feature& feature) {
         feature.setCaptureTargetScope(
             featureCaptureTargetScopeFromString(json.value("captureTargetScope", "Auto")));
     }
+    if (json.contains("requireScopedTargetForeground")) {
+        feature.setRequireScopedTargetForeground(json.value("requireScopedTargetForeground", false));
+    }
     if (json.contains("hotkey")) {
         feature.setHotkey(HotkeyBinding::fromJson(json["hotkey"]));
     } else if (json.contains("hotkeyCleared") && json.value("hotkeyCleared", false)) {
@@ -107,6 +110,9 @@ nlohmann::json featureSettingsToJson(const Feature& feature) {
     json["loopIntervalMaxMs"] = feature.loopIntervalMaxMs();
     json["hotkeyAllowExtraModifiers"] = feature.hotkeyAllowExtraModifiers();
     json["captureTargetScope"] = featureCaptureTargetScopeToString(feature.captureTargetScope());
+    if (feature.requireScopedTargetForeground()) {
+        json["requireScopedTargetForeground"] = true;
+    }
     if (feature.hotkey().isEmpty()) {
         json["hotkeyCleared"] = true;
     } else {

@@ -284,6 +284,10 @@ private:
     /// Run/trigger capture target locked at session start (foreground-aware; sub binding supported).
     std::wstring resolveRunCaptureTargetTitleW(const Feature* feature = nullptr) const;
     std::wstring resolveAutoRunCaptureTargetTitleW() const;
+    bool scopedTargetForegroundActive(const Feature* feature) const;
+    bool deferRunUntilScopedTargetForeground(FeatureRunSession& session, Feature* feature);
+    void scheduleScopedTargetForegroundResumePoll();
+    void resumeWaitingScopedTargetForegroundSessions();
     void refreshSessionCaptureTarget(FeatureRunSession& session);
     std::wstring sessionCaptureTargetTitleW(FeatureRunSession& session);
     void applySessionCaptureTarget(const std::wstring& title) const;
@@ -401,4 +405,5 @@ private:
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;
     QElapsedTimer m_pendingDefaultProfileSwitchTimer;
+    bool m_scopedTargetForegroundResumePending = false;
 };

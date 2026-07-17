@@ -81,4 +81,5 @@ struct FeatureRunSession {
     int loopsSinceLastLogPublish = 0;
     /// Capture target title locked at session start (main vs sub); reused for trigger relaunches.
     std::wstring lockedCaptureTargetTitle;
+    bool waitingForScopedTargetForeground = false;
 };

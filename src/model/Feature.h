@@ -108,6 +108,10 @@ public:
     FeatureCaptureTargetScope captureTargetScope() const { return m_captureTargetScope; }
     void setCaptureTargetScope(FeatureCaptureTargetScope scope) { m_captureTargetScope = scope; }
 
+    /// When true with MainOnly/SubOnly scope, polls and workflow runs only while that window is foreground.
+    bool requireScopedTargetForeground() const { return m_requireScopedTargetForeground; }
+    void setRequireScopedTargetForeground(bool require) { m_requireScopedTargetForeground = require; }
+
     std::unique_ptr<Feature> clone() const;
     /// New feature id; clears hotkey by default (paste / profile copy). Library import passes preserveHotkey.
     std::unique_ptr<Feature> duplicateAsNewInstance(bool preserveHotkey = false) const;
@@ -138,6 +142,7 @@ private:
     bool m_loopIntervalRandomRange = false;
     bool m_hotkeyAllowExtraModifiers = false;
     FeatureCaptureTargetScope m_captureTargetScope = FeatureCaptureTargetScope::Auto;
+    bool m_requireScopedTargetForeground = false;
     HotkeyBinding m_hotkey;
     Workflow m_workflow;
 };

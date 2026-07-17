@@ -1862,6 +1862,7 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
         auto* msg = static_cast<MSG*>(message);
         if (msg->message == kForegroundProfileSyncMessage) {
             syncProfileToForegroundWindow();
+            resumeWaitingScopedTargetForegroundSessions();
             *result = 0;
             return true;
         }
@@ -3592,6 +3593,22 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
     session.sessionContext->setFeatureRoiCorrectionExpandPercent(
         feature->roiCorrectionExpandPercent());
     session.sessionContext->setRunLoopNumber(session.sessionIteration + 1);
+
+    if (feature->requireScopedTargetForeground()
+        && feature->captureTargetScope() != FeatureCaptureTargetScope::Auto) {
+        QPointer<MainWindow> self(this);
+        const std::string featureId = session.featureId;
+        session.sessionContext->setScopedTargetPollGate([self, featureId]() {
+            if (!self) {
+                return true;
+            }
+            Feature* activeFeature =
+                self->m_project ? self->m_project->featureById(featureId) : nullptr;
+            return self->scopedTargetForegroundActive(activeFeature);
+        });
+    } else {
+        session.sessionContext->clearScopedTargetPollGate();
+    }
 }
 
 void MainWindow::accumulateLoopCompletionStats(FeatureRunSession& session,
@@ -3863,6 +3880,10 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         return;
     }
 
+    if (deferRunUntilScopedTargetForeground(session, feature)) {
+        return;
+    }
+
     const bool hotkeyHoldFirstStart = !repeatIteration && session.hotkeyLaunchedSession
                                       && session.runningMode == FeatureRunMode::Hold;
 
@@ -4126,7 +4147,9 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
         run.context->setImageFindPrimedBlockIndex(-1);
 #ifdef _WIN32
         // Trigger watch must capture the real game frame — same as a normal workflow run.
-        ScreenCapture::activateTargetWindow();
+        if (run.context->scopedTargetPollAllowed()) {
+            ScreenCapture::activateTargetWindow();
+        }
 #endif
         return run;
     });
@@ -5539,6 +5562,7 @@ void MainWindow::syncProfileToForegroundWindow() {
 #else
     Q_UNUSED(this);
 #endif
+    resumeWaitingScopedTargetForegroundSessions();
 }
 
 void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
@@ -5743,6 +5767,125 @@ std::wstring MainWindow::resolveRunCaptureTargetTitleW(const Feature* feature) c
         return subBinding.toStdWString();
     }
     return resolveAutoRunCaptureTargetTitleW();
+}
+
+bool MainWindow::scopedTargetForegroundActive(const Feature* feature) const {
+    if (!feature || !feature->requireScopedTargetForeground()) {
+        return true;
+    }
+    const FeatureCaptureTargetScope scope = feature->captureTargetScope();
+    if (scope == FeatureCaptureTargetScope::Auto) {
+        return true;
+    }
+
+#ifdef _WIN32
+    HWND hwnd = GetForegroundWindow();
+    if (!hwnd || !IsWindow(hwnd)) {
+        return false;
+    }
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == GetCurrentProcessId()) {
+        return false;
+    }
+    hwnd = GetAncestor(hwnd, GA_ROOT);
+    if (!hwnd || !IsWindow(hwnd)) {
+        return false;
+    }
+    wchar_t titleBuffer[512]{};
+    GetWindowTextW(hwnd, titleBuffer, 512);
+    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+    if (foregroundTitle.isEmpty()) {
+        return false;
+    }
+
+    const QString mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
+    QString subBinding;
+    if (m_profileManager && !isActiveDefaultProfile()) {
+        subBinding =
+            m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed();
+    }
+
+    if (scope == FeatureCaptureTargetScope::SubOnly) {
+        return windowTitleMatchesSubTarget(foregroundTitle, mainBinding, subBinding);
+    }
+    if (scope == FeatureCaptureTargetScope::MainOnly) {
+        return windowTitleMatchesMainBinding(foregroundTitle, mainBinding);
+    }
+#else
+    Q_UNUSED(feature);
+#endif
+    return true;
+}
+
+bool MainWindow::deferRunUntilScopedTargetForeground(FeatureRunSession& session, Feature* feature) {
+    if (!feature || !feature->requireScopedTargetForeground()
+        || feature->captureTargetScope() == FeatureCaptureTargetScope::Auto) {
+        session.waitingForScopedTargetForeground = false;
+        return false;
+    }
+    if (scopedTargetForegroundActive(feature)) {
+        session.waitingForScopedTargetForeground = false;
+        return false;
+    }
+    session.waitingForScopedTargetForeground = true;
+    scheduleScopedTargetForegroundResumePoll();
+    return true;
+}
+
+void MainWindow::scheduleScopedTargetForegroundResumePoll() {
+    if (m_scopedTargetForegroundResumePending) {
+        return;
+    }
+    m_scopedTargetForegroundResumePending = true;
+    QTimer::singleShot(200, this, [this]() {
+        m_scopedTargetForegroundResumePending = false;
+        resumeWaitingScopedTargetForegroundSessions();
+    });
+}
+
+void MainWindow::resumeWaitingScopedTargetForegroundSessions() {
+    if (!m_project) {
+        return;
+    }
+
+    bool stillWaiting = false;
+    for (auto& entry : m_runSessions) {
+        FeatureRunSession& session = entry.second;
+        if (!session.waitingForScopedTargetForeground) {
+            continue;
+        }
+
+        Feature* feature = m_project->featureById(session.featureId);
+        if (!feature) {
+            session.waitingForScopedTargetForeground = false;
+            continue;
+        }
+        if (!scopedTargetForegroundActive(feature)) {
+            stillWaiting = true;
+            continue;
+        }
+
+        session.waitingForScopedTargetForeground = false;
+        if (session.engine && session.engine->isRunning()) {
+            continue;
+        }
+
+        if (session.runningMode == FeatureRunMode::Trigger) {
+            if (session.triggerPhase == TriggerSessionPhase::Cooldown
+                || session.triggerPhase == TriggerSessionPhase::RunningAction) {
+                continue;
+            }
+            launchTriggerMonitor(session, feature, false);
+            continue;
+        }
+
+        launchWorkflowRun(session, feature, session.sessionIteration > 0);
+    }
+
+    if (stillWaiting) {
+        scheduleScopedTargetForegroundResumePoll();
+    }
 }
 
 std::wstring MainWindow::sessionCaptureTargetTitleW(FeatureRunSession& session) {

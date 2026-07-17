@@ -89,6 +89,9 @@ nlohmann::json featureToJsonImpl(const Feature& feature) {
     if (feature.captureTargetScope() != FeatureCaptureTargetScope::Auto) {
         json["captureTargetScope"] = featureCaptureTargetScopeToString(feature.captureTargetScope());
     }
+    if (feature.requireScopedTargetForeground()) {
+        json["requireScopedTargetForeground"] = true;
+    }
     return json;
 }
 
@@ -128,6 +131,7 @@ void featureFromJsonImpl(const nlohmann::json& json, Feature& feature) {
     feature.setHotkeyAllowExtraModifiers(json.value("hotkeyAllowExtraModifiers", false));
     feature.setCaptureTargetScope(
         featureCaptureTargetScopeFromString(json.value("captureTargetScope", "Auto")));
+    feature.setRequireScopedTargetForeground(json.value("requireScopedTargetForeground", false));
     feature.workflow().clear();
     if (json.contains("workflow")) {
         JsonSerializer::workflowFromJson(json["workflow"], feature.workflow());

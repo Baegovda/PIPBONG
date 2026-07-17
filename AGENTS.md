@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.195` (from `project(PIPBONG VERSION 0.8.195)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.196` (from `project(PIPBONG VERSION 0.8.196)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -646,6 +646,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `editFirstTemplateRoiOnStart`             | `false` (omitted)  | When `true`, before the first run of a session, show editable ROI overlay on the first workflow ImageFind block that has templates and custom ROIs; **확인** saves ROI to the block and starts the run; Esc cancels the run                     |
 | `hotkeyAllowExtraModifiers`               | `false` (omitted)  | When `true`, feature hotkey fires even if extra Ctrl/Alt/Shift not in the binding are held (e.g. **F4** binding still runs on **Shift+F4**); default is strict exact modifier match                                                             |
 | `captureTargetScope`                      | `"Auto"` (omitted) | `"MainOnly"` — feature runs against profile main target window only; `"SubOnly"` — sub target only; `"Auto"` — foreground/visibility heuristic between main and sub (legacy default)                                                                |
+| `requireScopedTargetForeground`           | `false` (omitted)  | When `true` with `MainOnly` or `SubOnly`, polls and workflow runs only while that scoped window is the foreground target (not PIPBONG); trigger watch sleeps between polls when inactive (`Feature`, `FeatureEditDialog`, `ExecutionContext`, `ImageFindBlock`, `MainWindow`) |
 
 `hotkey` is optional. `virtualKey` is Win32 VK code.
 
@@ -1178,6 +1179,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.196] - 2026-07-17
+
+### Added
+
+- Feature **기능 편집** option **지정한 대상 창이 활성(포커스)일 때만 동작**: when checked with **메인 대상 창만** or **서브 대상 창만**, workflow runs and trigger/ImageFind polls pause until that window is foreground; JSON `requireScopedTargetForeground` (`Feature`, `FeatureEditDialog`, `JsonSerializer`, `ExecutionContext::scopedTargetPollGate`, `ImageFindBlock`, `MainWindow::scopedTargetForegroundActive`).
 
 ## [0.8.195] - 2026-07-17
 

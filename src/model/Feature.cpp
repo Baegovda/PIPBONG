@@ -111,6 +111,7 @@ std::unique_ptr<Feature> Feature::clone() const {
     copy->m_loopIntervalRandomRange = m_loopIntervalRandomRange;
     copy->m_hotkeyAllowExtraModifiers = m_hotkeyAllowExtraModifiers;
     copy->m_captureTargetScope = m_captureTargetScope;
+    copy->m_requireScopedTargetForeground = m_requireScopedTargetForeground;
     copy->m_hotkey = m_hotkey;
     copy->m_workflow.assignFrom(m_workflow);
     return copy;
@@ -141,6 +142,7 @@ std::unique_ptr<Feature> Feature::duplicateAsNewInstance(bool preserveHotkey) co
     copy->m_loopIntervalRandomRange = m_loopIntervalRandomRange;
     copy->m_hotkeyAllowExtraModifiers = m_hotkeyAllowExtraModifiers;
     copy->m_captureTargetScope = m_captureTargetScope;
+    copy->m_requireScopedTargetForeground = m_requireScopedTargetForeground;
     copy->m_hotkey = preserveHotkey ? m_hotkey : HotkeyBinding{};
     copy->m_workflow.assignFrom(m_workflow);
     return copy;

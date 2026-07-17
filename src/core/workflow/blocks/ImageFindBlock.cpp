@@ -1181,6 +1181,19 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
     };
 
     while (true) {
+        if (!ctx.scopedTargetPollAllowed()) {
+            if (!sleepUnlessStopped(ctx, pollIntervalMs)) {
+                accumulateMatchWork();
+                BlockResult result;
+                result.success = false;
+                result.message = "사용자가 중지함";
+                result.imageFindMatchDurationMs = matchWorkMs;
+                result.imageFindPollAttempts = pollAttemptCount;
+                return result;
+            }
+            continue;
+        }
+
         ++pollAttemptCount;
         const std::vector<CaptureRegion> pollRegions =
             physicalCustomPollRegions(runtimeSearchArea, runtimeWindowPercentRegions);

@@ -184,6 +184,18 @@ bool ExecutionContext::waitWhilePaused() {
     return !shouldStop();
 }
 
+void ExecutionContext::setScopedTargetPollGate(ScopedTargetPollGate gate) {
+    m_scopedTargetPollGate = std::move(gate);
+}
+
+void ExecutionContext::clearScopedTargetPollGate() {
+    m_scopedTargetPollGate = nullptr;
+}
+
+bool ExecutionContext::scopedTargetPollAllowed() const {
+    return !m_scopedTargetPollGate || m_scopedTargetPollGate();
+}
+
 void ExecutionContext::setImageFindMaxMissAttempts(int attempts) {
     m_imageFindMaxMissAttempts = attempts < 0 ? 0 : attempts;
 }

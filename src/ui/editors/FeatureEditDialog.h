@@ -31,6 +31,7 @@ public:
                       const HotkeyBinding& hotkey,
                       bool hotkeyAllowExtraModifiers,
                       FeatureCaptureTargetScope captureTargetScope,
+                      bool requireScopedTargetForeground,
                       FeatureRunMode runMode,
                       int repeatCount,
                       int infiniteExitAfterConsecutiveMisses,
@@ -56,6 +57,7 @@ public:
     HotkeyBinding hotkey() const;
     bool hotkeyAllowExtraModifiers() const;
     FeatureCaptureTargetScope captureTargetScope() const;
+    bool requireScopedTargetForeground() const;
     FeatureRunMode runMode() const;
     int repeatCount() const;
     int infiniteExitAfterConsecutiveMisses() const;
@@ -84,6 +86,7 @@ private:
     void setupUi();
     void updateHotkeyDisplay();
     void updateCaptureUi();
+    void updateScopedTargetForegroundUi();
     void updateHotkeyOptionUi();
     void updateModeDependentUi();
     void updateLoopIntervalInputUi();
@@ -105,6 +108,7 @@ private:
     QLabel* m_hotkeyLabel = nullptr;
     QCheckBox* m_hotkeyAllowExtraModifiersCheck = nullptr;
     QComboBox* m_captureTargetScopeCombo = nullptr;
+    QCheckBox* m_requireScopedTargetForegroundCheck = nullptr;
     QComboBox* m_modeCombo = nullptr;
     QLabel* m_repeatCountLabel = nullptr;
     DragAdjustSpinBox* m_repeatSpin = nullptr;
