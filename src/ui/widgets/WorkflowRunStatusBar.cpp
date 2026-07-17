@@ -61,10 +61,10 @@ WorkflowRunStatusBar::WorkflowRunStatusBar(QWidget* parent)
     statsLayout->addWidget(m_averageChip);
     statsLayout->addWidget(m_statusChip);
 
+    row->addWidget(m_modeChip, 0, Qt::AlignVCenter);
     row->addWidget(m_promptLabel, 0, Qt::AlignVCenter);
     row->addWidget(m_captionLabel, 0, Qt::AlignVCenter);
     row->addWidget(m_featureNameLabel, 0, Qt::AlignVCenter);
-    row->addWidget(m_modeChip, 0, Qt::AlignVCenter);
     row->addStretch(1);
     row->addWidget(m_statsRow, 0, Qt::AlignVCenter);
 

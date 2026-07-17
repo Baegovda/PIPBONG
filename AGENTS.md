@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.196` (from `project(PIPBONG VERSION 0.8.196)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.197` (from `project(PIPBONG VERSION 0.8.197)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1179,6 +1179,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.197] - 2026-07-17
+
+### Changed
+
+- Workflow panel status bar: **동작 방식** chip (**홀드** / **무한 반복** / **트리거** / **N회 반복**) is shown leftmost before **▸ 워크플로우** and the feature name (`WorkflowRunStatusBar`).
 
 ## [0.8.196] - 2026-07-17
 
