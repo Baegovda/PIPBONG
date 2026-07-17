@@ -594,6 +594,12 @@ void WorkflowEditorPanel::setupUi() {
     auto* layout = new QVBoxLayout(this);
 
     m_runStatusBar = new WorkflowRunStatusBar(this);
+    connect(m_runStatusBar, &WorkflowRunStatusBar::runToggleRequested, this, [this]() {
+        if (!m_feature) {
+            return;
+        }
+        emit featureRunRequested(QString::fromStdString(m_feature->id()));
+    });
 
     m_blockList = new BlockListWidget(this);
 
@@ -1018,6 +1024,7 @@ void WorkflowEditorPanel::updateTitleText() {
         m_runStatusBar->setFeatureName(QString());
         m_runStatusBar->clearRunMode();
         m_runStatusBar->clearLoopTiming();
+        m_runStatusBar->setRunButtonState(false, false);
         return;
     }
 
@@ -1027,6 +1034,14 @@ void WorkflowEditorPanel::updateTitleText() {
         m_runStatusBar->setLoopTiming(m_loopNumber, m_loopElapsedMs, m_loopAverageMs, m_loopSuccess);
     } else {
         m_runStatusBar->clearLoopTiming();
+    }
+}
+
+void WorkflowEditorPanel::setRunStatusButtonState(bool showStop,
+                                                  bool enabled,
+                                                  const QString& disabledToolTip) {
+    if (m_runStatusBar) {
+        m_runStatusBar->setRunButtonState(showStop, enabled, disabledToolTip);
     }
 }
 

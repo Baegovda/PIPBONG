@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.197` (from `project(PIPBONG VERSION 0.8.197)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.198` (from `project(PIPBONG VERSION 0.8.198)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1179,6 +1179,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.198] - 2026-07-17
+
+### Changed
+
+- Workflow panel status bar order: **▶/■ 실행** → **워크플로우** → **동작 방식** chip → feature name → loop stats (`WorkflowRunStatusBar`).
+- Status bar leading **▶/■** is now a real run/stop button (same toggle as the feature list ▶ column); disabled with tooltip for Hold mode and empty workflows (`WorkflowRunStatusBar`, `WorkflowEditorPanel`, `MainWindow`).
 
 ## [0.8.197] - 2026-07-17
 

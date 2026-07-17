@@ -55,6 +55,7 @@ public:
                                                 int retryAfterNextCount);
     void setLoopTiming(int loopNumber, qint64 elapsedMs, qint64 averageMs, bool success);
     void clearLoopTiming();
+    void setRunStatusButtonState(bool showStop, bool enabled, const QString& disabledToolTip = QString());
     void persistRunFeedbackForCurrentFeature();
 
     QSplitter* workflowSplitter() const;
@@ -65,6 +66,7 @@ public:
 
 signals:
     void workflowModified();
+    void featureRunRequested(const QString& featureId);
 
 protected:
     void resizeEvent(QResizeEvent* event) override;

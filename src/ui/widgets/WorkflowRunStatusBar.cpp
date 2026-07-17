@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
+#include <QToolButton>
 
 namespace {
 
@@ -32,18 +33,25 @@ WorkflowRunStatusBar::WorkflowRunStatusBar(QWidget* parent)
     row->setContentsMargins(10, 6, 10, 6);
     row->setSpacing(8);
 
-    m_promptLabel = new QLabel(QStringLiteral("▸"), this);
-    m_promptLabel->setObjectName(QStringLiteral("workflowRunStatusPrompt"));
+    m_runButton = new QToolButton(this);
+    m_runButton->setObjectName(QStringLiteral("workflowRunStatusRunButton"));
+    m_runButton->setText(QStringLiteral("▶"));
+    m_runButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    m_runButton->setAutoRaise(false);
+    m_runButton->setCursor(Qt::PointingHandCursor);
+    m_runButton->setFixedSize(22, 22);
+    m_runButton->setToolTip(tr("기능 실행 / 중지"));
+    connect(m_runButton, &QToolButton::clicked, this, &WorkflowRunStatusBar::runToggleRequested);
 
     m_captionLabel = new QLabel(tr("워크플로우"), this);
     m_captionLabel->setObjectName(QStringLiteral("workflowRunStatusCaption"));
 
+    m_modeChip = makeStatChip(this, QStringLiteral("workflowRunStatusMode"));
+    m_modeChip->setVisible(false);
+
     m_featureNameLabel = new QLabel(tr("—"), this);
     m_featureNameLabel->setObjectName(QStringLiteral("workflowRunStatusFeatureName"));
     m_featureNameLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-
-    m_modeChip = makeStatChip(this, QStringLiteral("workflowRunStatusMode"));
-    m_modeChip->setVisible(false);
 
     m_statsRow = new QWidget(this);
     m_statsRow->setObjectName(QStringLiteral("workflowRunStatsRow"));
@@ -61,14 +69,15 @@ WorkflowRunStatusBar::WorkflowRunStatusBar(QWidget* parent)
     statsLayout->addWidget(m_averageChip);
     statsLayout->addWidget(m_statusChip);
 
-    row->addWidget(m_modeChip, 0, Qt::AlignVCenter);
-    row->addWidget(m_promptLabel, 0, Qt::AlignVCenter);
+    row->addWidget(m_runButton, 0, Qt::AlignVCenter);
     row->addWidget(m_captionLabel, 0, Qt::AlignVCenter);
+    row->addWidget(m_modeChip, 0, Qt::AlignVCenter);
     row->addWidget(m_featureNameLabel, 0, Qt::AlignVCenter);
     row->addStretch(1);
     row->addWidget(m_statsRow, 0, Qt::AlignVCenter);
 
     applyTerminalChrome();
+    setRunButtonState(false, false);
     clearRunMode();
     clearLoopTiming();
     setFeatureName(QString());
@@ -116,19 +125,85 @@ void WorkflowRunStatusBar::clearRunMode() {
     m_modeChip->setVisible(false);
 }
 
+void WorkflowRunStatusBar::setRunButtonState(bool showStop, bool enabled, const QString& disabledToolTip) {
+    m_runButtonShowStop = showStop;
+    m_runButtonEnabled = enabled;
+    if (!m_runButton) {
+        return;
+    }
+    m_runButton->setText(showStop ? QStringLiteral("■") : QStringLiteral("▶"));
+    m_runButton->setEnabled(enabled);
+    if (enabled) {
+        m_runButton->setToolTip(showStop ? tr("실행 중지") : tr("기능 실행"));
+    } else if (!disabledToolTip.isEmpty()) {
+        m_runButton->setToolTip(disabledToolTip);
+    } else {
+        m_runButton->setToolTip(tr("기능 실행 / 중지"));
+    }
+    refreshRunButtonChrome();
+}
+
+void WorkflowRunStatusBar::refreshRunButtonChrome() {
+    if (!m_runButton) {
+        return;
+    }
+    if (!m_runButtonEnabled) {
+        m_runButton->setStyleSheet(QStringLiteral(
+            "QToolButton#workflowRunStatusRunButton {"
+            "  color: #8b949e;"
+            "  background-color: #21262d;"
+            "  border: 1px solid #30363d;"
+            "  border-radius: 4px;"
+            "  font-size: 11px;"
+            "  font-weight: 700;"
+            "  padding: 0;"
+            "}"));
+        return;
+    }
+    if (m_runButtonShowStop) {
+        m_runButton->setStyleSheet(QStringLiteral(
+            "QToolButton#workflowRunStatusRunButton {"
+            "  color: #ffffff;"
+            "  background-color: #238636;"
+            "  border: 1px solid #2ea043;"
+            "  border-radius: 4px;"
+            "  font-size: 10px;"
+            "  font-weight: 700;"
+            "  padding: 0;"
+            "}"
+            "QToolButton#workflowRunStatusRunButton:hover {"
+            "  background-color: #2ea043;"
+            "}"
+            "QToolButton#workflowRunStatusRunButton:pressed {"
+            "  background-color: #196c2e;"
+            "}"));
+        return;
+    }
+    m_runButton->setStyleSheet(QStringLiteral(
+        "QToolButton#workflowRunStatusRunButton {"
+        "  color: #ffffff;"
+        "  background-color: #1f6feb;"
+        "  border: 1px solid #388bfd;"
+        "  border-radius: 4px;"
+        "  font-size: 11px;"
+        "  font-weight: 700;"
+        "  padding: 0;"
+        "  padding-left: 1px;"
+        "}"
+        "QToolButton#workflowRunStatusRunButton:hover {"
+        "  background-color: #388bfd;"
+        "}"
+        "QToolButton#workflowRunStatusRunButton:pressed {"
+        "  background-color: #1158c7;"
+        "}"));
+}
+
 void WorkflowRunStatusBar::applyTerminalChrome() {
     setStyleSheet(QStringLiteral(
         "QFrame#workflowRunStatusBar {"
         "  background-color: #161b22;"
         "  border: 1px solid #30363d;"
         "  border-radius: 8px;"
-        "}"
-        "QLabel#workflowRunStatusPrompt {"
-        "  color: #58a6ff;"
-        "  font-family: 'Cascadia Mono', 'Consolas', 'D2Coding', monospace;"
-        "  font-size: 13px;"
-        "  font-weight: 700;"
-        "  padding-right: 2px;"
         "}"
         "QLabel#workflowRunStatusCaption {"
         "  color: #8b949e;"
@@ -182,6 +257,7 @@ void WorkflowRunStatusBar::applyTerminalChrome() {
         "  font-size: 11px;"
         "}"
         ));
+    refreshRunButtonChrome();
 }
 
 void WorkflowRunStatusBar::refreshStatsVisibility() {

@@ -1099,6 +1099,7 @@ void MainWindow::connectSignals() {
             Qt::DirectConnection);
 
     connect(m_workflowEditor, &WorkflowEditorPanel::workflowModified, this, &MainWindow::onProjectModified);
+    connect(m_workflowEditor, &WorkflowEditorPanel::featureRunRequested, this, &MainWindow::onFeatureRunRequested);
 
     connect(m_exitButton, &QPushButton::clicked, this, &MainWindow::onExitRequested);
     connect(m_settingsButton, &QPushButton::clicked, this, &MainWindow::onProgramSettings);
@@ -2480,6 +2481,24 @@ void MainWindow::updateRunUiState() {
     }
     if (m_workflowEditor) {
         m_workflowEditor->setEditingEnabled(!m_libraryPreviewFeature && !selectedRunning);
+
+        bool runBtnEnabled = false;
+        bool showStop = false;
+        QString disabledTip;
+        if (selected && !m_libraryPreviewFeature) {
+            showStop = selectedRunning;
+            const bool holdMode = selected->runMode() == FeatureRunMode::Hold;
+            const bool hasBlocks = !selected->workflow().blocks().empty();
+            runBtnEnabled = selected->enabled() && (selectedRunning || (hasBlocks && !holdMode));
+            if (holdMode && !selectedRunning) {
+                disabledTip = tr("홀드 방식은 단축키를 누르고 있는 동안 워크플로가 무한 반복됩니다. 키를 떼면 중지됩니다.");
+            } else if (!hasBlocks && !selectedRunning) {
+                disabledTip = tr("선택한 기능에 블록이 없습니다.");
+            } else if (!selected->enabled() && !selectedRunning) {
+                disabledTip = tr("기능이 비활성화되어 있습니다.");
+            }
+        }
+        m_workflowEditor->setRunStatusButtonState(showStop, runBtnEnabled, disabledTip);
     }
 
     if (hasAnyRunningSession()) {
