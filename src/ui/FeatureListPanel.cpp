@@ -1053,6 +1053,7 @@ void FeatureListPanel::setupUi() {
     m_list->setContextMenuPolicy(Qt::CustomContextMenu);
     m_list->setSpacing(0);
     m_list->setItemDelegate(new FeatureListItemDelegate(this));
+    m_list->setRowDragEnabledPredicate([this](int row) { return isFeatureEditableAt(row); });
     connect(m_list, &FeatureListWidget::featureRowsReordered, this, &FeatureListPanel::onFeatureRowsReordered);
     connect(m_list, &ReorderableListWidget::multiRowsReordered, this, &FeatureListPanel::onFeatureMultiRowsReordered);
     connect(m_list, &FeatureListWidget::featureDropped, this, &FeatureListPanel::featureDropped);
@@ -1701,10 +1702,9 @@ void FeatureListPanel::updateReorderEnabled() {
     if (!m_list) {
         return;
     }
-    const bool enabled = !hasAnyActiveWorkflowRun();
-    m_list->setReorderEnabled(enabled);
+    m_list->setReorderEnabled(true);
     if (m_libraryList) {
-        m_libraryList->setTransferEnabled(enabled);
+        m_libraryList->setTransferEnabled(true);
     }
 }
 
@@ -1889,7 +1889,7 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
 }
 
 void FeatureListPanel::onLibraryRowsReordered(int fromRow, int toRow) {
-    if (!m_libraryList || fromRow == toRow || hasAnyActiveWorkflowRun()) {
+    if (!m_libraryList || fromRow == toRow) {
         return;
     }
     emit libraryEntriesReordered(fromRow, toRow);
@@ -1899,7 +1899,7 @@ void FeatureListPanel::onLibraryRowsReordered(int fromRow, int toRow) {
 }
 
 void FeatureListPanel::onLibraryMultiRowsReordered(const QList<int>& selectedRows, int insertIndex) {
-    if (!m_libraryList || selectedRows.isEmpty() || hasAnyActiveWorkflowRun()) {
+    if (!m_libraryList || selectedRows.isEmpty()) {
         return;
     }
     emit libraryEntriesMultiReordered(selectedRows, insertIndex);

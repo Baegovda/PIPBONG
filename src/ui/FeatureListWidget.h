@@ -2,6 +2,8 @@
 
 #include "ui/widgets/ReorderableListWidget.h"
 
+#include <functional>
+
 class QKeyEvent;
 class QMimeData;
 
@@ -14,6 +16,8 @@ public:
 
     void setActiveProfileId(const QString& profileId) { m_activeProfileId = profileId; }
     QString activeProfileId() const { return m_activeProfileId; }
+
+    void setRowDragEnabledPredicate(std::function<bool(int row)> predicate);
 
 signals:
     void featureRowsReordered(int fromRow, int toRow);
@@ -32,4 +36,5 @@ protected:
 
 private:
     QString m_activeProfileId;
+    std::function<bool(int row)> m_rowDragEnabledPredicate;
 };

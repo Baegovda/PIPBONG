@@ -2616,7 +2616,7 @@ void MainWindow::updateRunUiState() {
     const bool selectedActiveWorkflow =
         selected && isFeatureInActiveWorkflowRun(selected->id());
     if (m_profileList) {
-        m_profileList->setFeatureDropEnabled(canTransferFeatures());
+        m_profileList->setFeatureDropEnabled(true);
     }
     if (m_workflowEditor) {
         m_workflowEditor->setEditingEnabled(!m_libraryPreviewFeature && !selectedActiveWorkflow);
@@ -2933,7 +2933,10 @@ void MainWindow::onDeleteLibraryEntriesRequested(const QStringList& entryIds) {
 }
 
 bool MainWindow::canTransferFeatures() const {
-    return !hasAnyRunningSession();
+    // Library import, profile copy-drop, and save-to-library do not conflict with other
+    // features' sessions (including trigger watch). Per-feature guards apply when editing
+    // a feature that is in an active workflow burst.
+    return true;
 }
 
 bool MainWindow::removeFeatureFromProfile(const QString& profileId, const QString& featureId) {

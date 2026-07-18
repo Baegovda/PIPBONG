@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.215` (from `project(PIPBONG VERSION 0.8.215)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.216` (from `project(PIPBONG VERSION 0.8.216)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1188,6 +1188,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.216] - 2026-07-18
+
+### Fixed
+
+- Cross-profile feature copy-drop, library import/save drag, and library drawer reorder no longer blocked when any feature session exists (including trigger **감시**): `canTransferFeatures()` always allows transfers; profile list drop target stays enabled (`MainWindow`, `FeatureListPanel`).
+- Feature list and library list reorder/transfer no longer gated on `hasAnyActiveWorkflowRun()` — only per-row drag is blocked for features in an active workflow burst (`FeatureListPanel`, `FeatureListWidget::setRowDragEnabledPredicate`).
 
 ## [0.8.215] - 2026-07-18
 

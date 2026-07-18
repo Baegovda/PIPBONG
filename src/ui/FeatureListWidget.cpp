@@ -59,12 +59,19 @@ bool FeatureListWidget::canStartDragFromRow(int row) const {
     if (!ReorderableListWidget::canStartDragFromRow(row)) {
         return false;
     }
+    if (m_rowDragEnabledPredicate && !m_rowDragEnabledPredicate(row)) {
+        return false;
+    }
     QListWidgetItem* item = this->item(row);
     if (!item) {
         return false;
     }
     const QString featureId = item->data(Qt::UserRole).toString();
     return !featureId.isEmpty() && !m_activeProfileId.isEmpty();
+}
+
+void FeatureListWidget::setRowDragEnabledPredicate(std::function<bool(int row)> predicate) {
+    m_rowDragEnabledPredicate = std::move(predicate);
 }
 
 QMimeData* FeatureListWidget::buildDragMimeData(int row) const {
