@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.203` (from `project(PIPBONG VERSION 0.8.203)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.204` (from `project(PIPBONG VERSION 0.8.204)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1187,6 +1187,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.204] - 2026-07-18
+
+### Fixed
+
+- Profile switch crash `QThread: Destroyed while thread is still running`: `WorkflowEngine::stopAndWait` no longer deletes the worker after a timed `wait()` when the thread is still running; profile switch uses the default stop wait instead of a 250 ms cap (`WorkflowEngine`, `MainWindow::stopAllSessionsForProfileSwitch`).
+- Target window detail panel no longer calls `QFont::setPointSizeF(-1)` when applying pixel-sized labels (removes repeated `setPointSizeF` warnings on profile refresh).
 
 ## [0.8.203] - 2026-07-18
 

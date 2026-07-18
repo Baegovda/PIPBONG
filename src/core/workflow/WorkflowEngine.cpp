@@ -343,7 +343,11 @@ void WorkflowEngine::stopAndWait(int timeoutMs) {
     }
 
     if (worker && worker->isRunning()) {
-        worker->wait(timeoutMs);
+        const int boundedMs = timeoutMs > 0 ? timeoutMs : 5000;
+        if (!worker->wait(boundedMs) && worker->isRunning()) {
+            // Never delete a QThread while it is still running (Qt aborts with a fatal).
+            worker->wait();
+        }
     }
 
     {

@@ -254,7 +254,6 @@ void TargetWindowDetailPanel::setLabelTextColor(QLabel* label,
     }
 
     QFont font = label->font();
-    font.setPointSizeF(-1);
     font.setPixelSize(fontSizePx);
     font.setBold(bold);
     label->setFont(font);

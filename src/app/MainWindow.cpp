@@ -2630,7 +2630,7 @@ void MainWindow::stopAllSessionsForProfileSwitch() {
             if (entry.second.runningMode == FeatureRunMode::Hold) {
                 releaseHoldHotkeyInputToTarget(entry.second, feature);
             }
-            entry.second.engine->stopAndWait(250);
+            entry.second.engine->stopAndWait();
         }
         restoreRunStartCursorPosition(entry.second);
     }
