@@ -1391,6 +1391,10 @@ bool MainWindow::isEarlyLoopMouseLockWindow(const FeatureRunSession& session) co
     if (session.lockMouseDuringFirstLoopCount <= 0 || session.earlyLoopMouseLockReleased) {
         return false;
     }
+    if (session.runningMode == FeatureRunMode::Trigger
+        && session.triggerPhase != TriggerSessionPhase::RunningAction) {
+        return false;
+    }
     const int loopNumber = session.sessionContext ? session.sessionContext->runLoopNumber()
                                                   : session.sessionIteration + 1;
     return loopNumber <= session.lockMouseDuringFirstLoopCount;
@@ -4251,11 +4255,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
         session.earlyLoopMouseLockFailureCount = 0;
         captureRunStartCursorPosition(session);
         captureFeatureMouseLockPosition(session);
-        if (session.lockMouseDuringFirstLoopCount > 0) {
-            syncEarlyLoopMouseLock(session);
-        } else {
-            engageFeatureMouseLock(session);
-        }
+        engageFeatureMouseLock(session);
         if (isDisplayedRunningFeature(&session)) {
             syncLoopTimingToWorkflowEditor(&session);
             m_workflowEditor->clearBlockMatchResults();
@@ -4269,6 +4269,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
         session.triggerMonitorUiInitialized = true;
     }
 
+    releaseEarlyLoopMouseLockIfEngaged(session);
     session.triggerPhase = TriggerSessionPhase::Monitoring;
     session.triggerCooldownEndsAtEpochMs = 0;
     session.triggerCooldownTotalMs = 0;
@@ -4343,7 +4344,7 @@ void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* fea
         session.sessionContext->setImageFindPrimedBlockIndex(session.triggerBlockIndex);
     }
     appendSessionLog(session, tr("화면에서 찾음 — 워크플로 실행"), LogLineKind::Success);
-    launchWorkflowRun(session, feature, session.sessionIteration > 0);
+    launchWorkflowRun(session, feature, false);
 }
 
 void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession) {

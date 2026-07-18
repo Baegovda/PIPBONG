@@ -352,7 +352,8 @@ void FeatureEditDialog::setupUi() {
     m_earlyLoopMouseLockCheck = new QCheckBox(tr("초기 루프 마우스 잠금"), this);
     m_earlyLoopMouseLockCheck->setToolTip(
         tr("처음 N회 루프 동안 마우스를 직전 템플릿 매칭 위치에 고정해 커서가 어긋나지 않게 합니다. "
-           "매칭 성공마다 잠금 위치가 갱신됩니다. 잠금 구간 안에서 어떤 블록이든 실패가 누적되면 해제됩니다."));
+           "매칭 성공마다 잠금 위치가 갱신됩니다. 잠금 구간 안에서 어떤 블록이든 실패가 누적되면 해제됩니다. "
+           "트리거 모드에서는 감시·쿨다운 중에는 잠기지 않고, 매칭 후 워크플로 동작 페이즈에서만 적용됩니다."));
     form->addRow(QString(), m_earlyLoopMouseLockCheck);
 
     m_earlyLoopMouseLockDetailsRow = new QWidget(this);

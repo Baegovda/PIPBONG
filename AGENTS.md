@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.216` (from `project(PIPBONG VERSION 0.8.216)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.217` (from `project(PIPBONG VERSION 0.8.217)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1188,6 +1188,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.217] - 2026-07-19
+
+### Fixed
+
+- Trigger mode **초기 루프 마우스 잠금** no longer clips the cursor during **감시** or **쿨다운**: early-loop lock applies only in the **동작** phase after a template match; monitor start uses center/current-position locks only; re-entering monitor releases any engaged early lock; each trigger action run resets as loop 1 (`MainWindow::isEarlyLoopMouseLockWindow`, `launchTriggerMonitor`, `launchTriggerActionRun`).
+
+### Changed
+
+- **기능 편집** **초기 루프 마우스 잠금** tooltip clarifies trigger mode applies the lock only during the post-match workflow run, not while watching (`FeatureEditDialog`).
 
 ## [0.8.216] - 2026-07-18
 
