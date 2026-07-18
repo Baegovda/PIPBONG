@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.198` (from `project(PIPBONG VERSION 0.8.198)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.199` (from `project(PIPBONG VERSION 0.8.199)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1179,6 +1179,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.199] - 2026-07-18
+
+### Fixed
+
+- Profile auto-switch no longer flips to the default profile when Alt+Tabbing from a linked target window back to PIPBONG: defer unmatched→default while Alt is held or the foreground title is empty; re-validate before default fallback; restore the last linked profile when PIPBONG gains focus shortly after an automatic default switch; receive foreground WinEvents for the PIPBONG process (`MainWindow::syncProfileToForegroundWindow`).
 
 ## [0.8.198] - 2026-07-17
 

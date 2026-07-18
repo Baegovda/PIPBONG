@@ -405,5 +405,7 @@ private:
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;
     QElapsedTimer m_pendingDefaultProfileSwitchTimer;
+    QString m_lastLinkedForegroundProfileId;
+    QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;
     bool m_scopedTargetForegroundResumePending = false;
 };

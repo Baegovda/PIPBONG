@@ -141,6 +141,9 @@ bool isShellTransientForegroundWindow(HWND hwnd) {
         L"ForegroundStaging",
         L"MultitaskingViewFrame",
         L"XamlExplorerHostIslandWindow",
+        L"TaskSwitcherWnd",
+        L"Xaml_Window",
+        L"Windows.UI.Core.CoreWindow",
         L"Shell_TrayWnd",
         L"Shell_SecondaryTrayWnd",
         L"NotifyIconOverflowWindow",
@@ -153,6 +156,20 @@ bool isShellTransientForegroundWindow(HWND hwnd) {
         }
     }
     return false;
+}
+
+bool isAltTabModifierHeld() {
+    return (GetAsyncKeyState(VK_MENU) & 0x8000) != 0 || (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0
+           || (GetAsyncKeyState(VK_RMENU) & 0x8000) != 0;
+}
+
+bool isPipbongProcessForeground(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return false;
+    }
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    return pid == GetCurrentProcessId();
 }
 
 bool applyNativeAlwaysOnTop(QWidget* window, bool enabled) {
@@ -588,7 +605,7 @@ MainWindow::MainWindow(QWidget* parent)
                         foregroundWindowEventProc,
                         0,
                         0,
-                        WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+                        WINEVENT_OUTOFCONTEXT);
 #endif
 
     updateWindowTitle();
@@ -5501,6 +5518,14 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         syncProfileListSelection();
         return false;
     }
+    if (!automatic) {
+        if (m_profileManager->isDefaultProfile(profileId)) {
+            m_lastLinkedForegroundProfileId.clear();
+            m_recentAutomaticDefaultProfileSwitchTimer.invalidate();
+        } else {
+            m_lastLinkedForegroundProfileId = profileId;
+        }
+    }
     {
         PIPBONG_PERF_SCOPE("switchToProfile.loadActiveProfile");
         loadActiveProfile(true);
@@ -5530,11 +5555,16 @@ void MainWindow::syncProfileToForegroundWindow() {
         return;
     }
 
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    // Alt+Tab back to PIPBONG (or any of our dialogs/tray popups): keep the current profile.
-    if (pid == GetCurrentProcessId()) {
+    if (isPipbongProcessForeground(hwnd)) {
         m_pendingDefaultProfileSwitchTimer.invalidate();
+        constexpr int kRestoreLinkedProfileWindowMs = 2500;
+        if (!m_lastLinkedForegroundProfileId.isEmpty()
+            && m_profileManager->activeProfileId() == m_profileManager->defaultProfileId()
+            && m_lastLinkedForegroundProfileId != m_profileManager->defaultProfileId()
+            && m_recentAutomaticDefaultProfileSwitchTimer.isValid()
+            && m_recentAutomaticDefaultProfileSwitchTimer.elapsed() < kRestoreLinkedProfileWindowMs) {
+            switchToProfile(m_lastLinkedForegroundProfileId, true);
+        }
         return;
     }
 
@@ -5543,13 +5573,26 @@ void MainWindow::syncProfileToForegroundWindow() {
         return;
     }
     if (isShellTransientForegroundWindow(hwnd)) {
+        m_pendingDefaultProfileSwitchTimer.invalidate();
         return;
     }
 
     wchar_t titleBuffer[512]{};
     GetWindowTextW(hwnd, titleBuffer, 512);
     const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+    if (foregroundTitle.isEmpty()) {
+        m_pendingDefaultProfileSwitchTimer.invalidate();
+        return;
+    }
+    if (isAltTabModifierHeld()) {
+        m_pendingDefaultProfileSwitchTimer.invalidate();
+        return;
+    }
+
     const QString targetProfileId = m_profileManager->profileIdForForegroundTitle(foregroundTitle);
+    if (targetProfileId != m_profileManager->defaultProfileId()) {
+        m_lastLinkedForegroundProfileId = targetProfileId;
+    }
     if (targetProfileId == m_profileManager->activeProfileId()) {
         m_pendingDefaultProfileSwitchTimer.invalidate();
         return;
@@ -5570,6 +5613,24 @@ void MainWindow::syncProfileToForegroundWindow() {
         if (m_pendingDefaultProfileSwitchTimer.elapsed() < kDefaultFallbackStableMs) {
             return;
         }
+        HWND currentForeground = GetForegroundWindow();
+        if (!currentForeground || !IsWindow(currentForeground)
+            || isPipbongProcessForeground(currentForeground)) {
+            m_pendingDefaultProfileSwitchTimer.invalidate();
+            return;
+        }
+        currentForeground = GetAncestor(currentForeground, GA_ROOT);
+        if (!currentForeground || !IsWindow(currentForeground)
+            || isShellTransientForegroundWindow(currentForeground) || isAltTabModifierHeld()) {
+            m_pendingDefaultProfileSwitchTimer.invalidate();
+            return;
+        }
+        wchar_t currentTitleBuffer[512]{};
+        GetWindowTextW(currentForeground, currentTitleBuffer, 512);
+        if (QString::fromWCharArray(currentTitleBuffer).trimmed().isEmpty()) {
+            m_pendingDefaultProfileSwitchTimer.invalidate();
+            return;
+        }
     } else {
         m_pendingDefaultProfileSwitchTimer.invalidate();
     }
@@ -5577,6 +5638,11 @@ void MainWindow::syncProfileToForegroundWindow() {
     ScreenCapture::setForegroundHintWindow(hwnd);
     ScreenCapture::setTargetWindow(hwnd);
 
+    if (fallingBackToDefault) {
+        m_recentAutomaticDefaultProfileSwitchTimer.start();
+    } else {
+        m_recentAutomaticDefaultProfileSwitchTimer.invalidate();
+    }
     switchToProfile(targetProfileId, true);
 #else
     Q_UNUSED(this);
