@@ -211,6 +211,8 @@ private:
 
     bool isTriggerSettingsEditableAt(int index) const;
 
+    bool isFeatureEditableAt(int index) const;
+
     void updateFeatureEditButtonState();
 
     void applyInlineRename(int row, const QString& name);

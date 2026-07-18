@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.210` (from `project(PIPBONG VERSION 0.8.210)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.211` (from `project(PIPBONG VERSION 0.8.211)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1188,6 +1188,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.211] - 2026-07-18
+
+### Fixed
+
+- Feature list double-click / **편집** no longer blocked when another feature has an active session (e.g. trigger **감시**): `isFeatureEditableAt` allows editing any non-running feature; trigger watch/cooldown row still editable per existing rule (`FeatureListPanel`).
 
 ## [0.8.210] - 2026-07-18
 

@@ -2100,16 +2100,32 @@ bool FeatureListPanel::isTriggerSettingsEditableAt(int index) const {
     return kind == FeatureRunVisualKind::TriggerWatch || kind == FeatureRunVisualKind::TriggerCooldown;
 }
 
+bool FeatureListPanel::isFeatureEditableAt(int index) const {
+    if (m_editControlsEnabled) {
+        return true;
+    }
+    if (isTriggerSettingsEditableAt(index)) {
+        return true;
+    }
+    if (!m_project || index < 0 || index >= static_cast<int>(m_project->features().size())) {
+        return false;
+    }
+    const Feature* feature = m_project->featureAt(index);
+    if (!feature) {
+        return false;
+    }
+    return !isFeatureRunning(QString::fromStdString(feature->id()));
+}
+
 void FeatureListPanel::updateFeatureEditButtonState() {
     if (!m_editButton) {
         return;
     }
-    const int index = selectedIndex();
-    m_editButton->setEnabled(m_editControlsEnabled || isTriggerSettingsEditableAt(index));
+    m_editButton->setEnabled(isFeatureEditableAt(selectedIndex()));
 }
 
 bool FeatureListPanel::editFeatureAt(int index) {
-    if (!m_editControlsEnabled && !isTriggerSettingsEditableAt(index)) {
+    if (!isFeatureEditableAt(index)) {
         return false;
     }
     if (!m_project || index < 0 || index >= static_cast<int>(m_project->features().size())) {
@@ -2279,8 +2295,7 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
     menu.addAction(tr("이름 바꾸기"), this, &FeatureListPanel::onInlineRenameRequested)
         ->setEnabled(m_editControlsEnabled);
     menu.addAction(tr("편집"), this, &FeatureListPanel::onEditFeature)
-        ->setEnabled(m_editControlsEnabled
-                     || (feature && isTriggerSettingsEditableAt(m_list->row(item))));
+        ->setEnabled(isFeatureEditableAt(m_list->row(item)));
     menu.addAction(tr("복사"), this, &FeatureListPanel::onCopyFeature);
     menu.addAction(tr("붙여넣기"), this, &FeatureListPanel::onPasteFeature)
         ->setEnabled(m_editControlsEnabled && m_clipboardFeature != nullptr);
