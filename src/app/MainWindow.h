@@ -237,7 +237,9 @@ private:
     void hideToTray();
     void showFromTray();
     void requestApplicationQuit();
-    void startFeatureRun(Feature* feature, bool fromHotkey = false);
+    void startFeatureRun(Feature* feature,
+                         bool fromHotkey = false,
+                         bool skipTargetActivationOnStart = false);
     bool tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Feature* feature);
     void selectRunningFeatureForDisplay(Feature* feature);
     void launchWorkflowRun(FeatureRunSession& session, Feature* feature, bool repeatIteration = false);

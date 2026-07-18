@@ -59,6 +59,10 @@ public:
     static int logMaxLines();
     static void setLogMaxLines(int lines);
 
+    /// When enabled, switching the active profile activates the linked target window.
+    static bool focusTargetWindowOnProfileSelect();
+    static void setFocusTargetWindowOnProfileSelect(bool enabled);
+
     /// Snapshot/apply the profile-scoped subset of settings.
     static ProfileSettings profileSettings();
     static void applyProfileSettings(const ProfileSettings& settings);

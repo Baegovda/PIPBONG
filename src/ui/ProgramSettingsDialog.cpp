@@ -54,6 +54,13 @@ void ProgramSettingsDialog::setupUi() {
         ProgramSettings::autoSelectRunningFeature());
 
     addCheckWithHint(
+        m_focusTargetWindowOnProfileSelectCheck,
+        tr("프로필 선택 시 대상 창으로 포커스 이동"),
+        tr("프로필 목록에서 프로필을 바꿀 때 연결된 메인·서브 대상 창을 앞으로 가져옵니다. "
+           "끄면 PIPBONG에 머무른 채로 프로필만 전환합니다."),
+        ProgramSettings::focusTargetWindowOnProfileSelect());
+
+    addCheckWithHint(
         m_launchAtWindowsStartupCheck,
         tr("Windows 시작 시 PIPBONG 자동 실행"),
         tr("Windows에 로그인하면 PIPBONG이 자동으로 실행됩니다."),
@@ -237,6 +244,8 @@ void ProgramSettingsDialog::setupUi() {
     localizeDialogButtons(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
         ProgramSettings::setAutoSelectRunningFeature(m_autoSelectRunningFeatureCheck->isChecked());
+        ProgramSettings::setFocusTargetWindowOnProfileSelect(
+            m_focusTargetWindowOnProfileSelectCheck->isChecked());
         ProgramSettings::setLaunchAtWindowsStartup(m_launchAtWindowsStartupCheck->isChecked());
         ProgramSettings::setCloseToTray(m_closeToTrayCheck->isChecked());
         ProgramSettings::setAutoInstallUpdates(m_autoInstallUpdatesCheck->isChecked());

@@ -3347,7 +3347,7 @@ void MainWindow::selectRunningFeatureForDisplay(Feature* feature) {
     m_featureList->selectFeatureById(featureId);
 }
 
-void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
+void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTargetActivationOnStart) {
     if (!feature) {
         return;
     }
@@ -3423,6 +3423,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey) {
     session.featureId = featureId;
     session.engine = std::make_unique<WorkflowEngine>(this);
     session.userStopRequested = false;
+    session.skipTargetActivationOnStart = skipTargetActivationOnStart;
     session.runningMode = feature->runMode();
     session.hotkeyLaunchedSession = fromHotkey;
     session.repeatSession = session.runningMode == FeatureRunMode::RepeatInfinite
@@ -3989,7 +3990,8 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
 
     const std::wstring targetTitle = sessionCaptureTargetTitleW(session);
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
-    const bool skipTargetActivation = session.hotkeyLaunchedSession && !repeatIteration;
+    const bool skipTargetActivation =
+        (session.hotkeyLaunchedSession || session.skipTargetActivationOnStart) && !repeatIteration;
     WorkflowEngine* engine = session.engine.get();
 
     // The workflow cannot be edited while its session is running. Reuse the session
@@ -4168,7 +4170,8 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
     WorkflowEngine* engine = session.engine.get();
 
     Feature* featurePtr = feature;
-    engine->runPrepared([this, featurePtr, &session, targetTitle, projectDir]() {
+    const bool skipTargetActivation = session.skipTargetActivationOnStart;
+    engine->runPrepared([this, featurePtr, &session, targetTitle, projectDir, skipTargetActivation]() {
         PreparedWorkflowRun run;
         run.workflow = session.sessionWorkflow;
         if (!run.workflow) {
@@ -4183,7 +4186,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
         run.context->setImageFindPrimedBlockIndex(-1);
 #ifdef _WIN32
         // Trigger watch must capture the real game frame — same as a normal workflow run.
-        if (run.context->scopedTargetPollAllowed()) {
+        if (run.context->scopedTargetPollAllowed() && !skipTargetActivation) {
             ScreenCapture::activateTargetWindow();
         }
 #endif
@@ -4479,7 +4482,8 @@ void MainWindow::restorePersistedTriggerSessions() {
         if (isFeatureRunning(featureId.toStdString())) {
             continue;
         }
-        startFeatureRun(feature, false);
+        const bool skipActivation = !ProgramSettings::focusTargetWindowOnProfileSelect();
+        startFeatureRun(feature, false, skipActivation);
     }
     m_suppressTriggerArmedPersist = false;
 
@@ -5541,6 +5545,14 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
                                         : profile->name)
                                  : QString();
         showTransientStatus(tr("프로필 전환: %1").arg(name), 1200);
+#ifdef _WIN32
+        if (ProgramSettings::focusTargetWindowOnProfileSelect() && !isActiveDefaultProfile()) {
+            syncTargetWindowTitleToCapture();
+            if (ScreenCapture::findTargetWindow()) {
+                ScreenCapture::activateTargetWindow();
+            }
+        }
+#endif
     }
     return true;
 }

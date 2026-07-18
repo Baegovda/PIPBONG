@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.199` (from `project(PIPBONG VERSION 0.8.199)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.200` (from `project(PIPBONG VERSION 0.8.200)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -507,7 +507,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Templates               | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/templates/*.png`                                                                                                                                                                                                                                                        |
 | Manual save/open        | File menu; last path in `QSettings` key `project/lastFile`                                                                                                                                                                                                                                                                   |
 | Debounce                | 800 ms after edits; also on window close                                                                                                                                                                                                                                                                                     |
-| Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, `program/logMaxLines`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog                               |
+| Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, `program/logMaxLines`, `program/focusTargetWindowOnProfileSelect`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog                               |
 | Calculator sheet        | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry`                                                                                                                                                                                                                        |
 | CPU spike watch         | `QSettings` — `spikewatch/geometry`, `spikewatch/sectionSplitter`, `spikewatch/intervalMs`, thresholds, `topN`, `deltaMargin` (not in `project.json`)                                                                                                                                                                    |
 | Profile memo            | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/memo.txt` — plain UTF-8 text per profile; included in `.pipbong` package mirror; dialog geometry in `QSettings` `memo/geometry`; per-profile open/closed state in `memo/open/{profileId}`                                                                                                                                          |
@@ -1179,6 +1179,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.200] - 2026-07-18
+
+### Added
+
+- Program settings **프로필 선택 시 대상 창으로 포커스 이동** (`program/focusTargetWindowOnProfileSelect`, default on): manual profile switch activates the linked target window; when off, profile restore skips target activation for resumed trigger sessions (`ProgramSettings`, `ProgramSettingsDialog`, `MainWindow::switchToProfile`, `restorePersistedTriggerSessions`, `FeatureRunSession::skipTargetActivationOnStart`).
 
 ## [0.8.199] - 2026-07-18
 

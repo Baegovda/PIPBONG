@@ -39,6 +39,8 @@ struct FeatureRunSession {
     std::shared_ptr<ExecutionContext> sessionContext;
     int sessionIteration = 0;
     bool hotkeyLaunchedSession = false;
+    /// Skip the first workflow/trigger target-window activation (profile restore without focus steal).
+    bool skipTargetActivationOnStart = false;
     bool pointerVisualFeedback = true;
     bool restoreMousePositionOnEnd = false;
     bool lockMouseToScreenCenterDuringRun = false;

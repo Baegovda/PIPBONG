@@ -17,6 +17,8 @@ constexpr const char* kPinTargetWindowToScreenCenterKey = "program/pinTargetWind
 constexpr const char* kImageFindCaptureModeKey = "program/imageFindCaptureMode";
 constexpr const char* kRunWithoutTargetWindowKey = "program/runWithoutTargetWindow";
 constexpr const char* kLogMaxLinesKey = "program/logMaxLines";
+constexpr const char* kFocusTargetWindowOnProfileSelectKey =
+    "program/focusTargetWindowOnProfileSelect";
 
 } // namespace
 
@@ -148,6 +150,16 @@ void ProgramSettings::setLogMaxLines(int lines) {
     }
     QSettings settings;
     settings.setValue(kLogMaxLinesKey, lines);
+}
+
+bool ProgramSettings::focusTargetWindowOnProfileSelect() {
+    QSettings settings;
+    return settings.value(kFocusTargetWindowOnProfileSelectKey, true).toBool();
+}
+
+void ProgramSettings::setFocusTargetWindowOnProfileSelect(bool enabled) {
+    QSettings settings;
+    settings.setValue(kFocusTargetWindowOnProfileSelectKey, enabled);
 }
 
 ProgramSettings::ProfileSettings ProgramSettings::profileSettings() {
