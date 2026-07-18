@@ -73,6 +73,7 @@ public:
     ~MainWindow() override;
 
     void ensureInitialWindowPlacement();
+    void showPendingCrashReportIfAny();
     /// Refreshes main/sub target bindings in ScreenCapture before block editors or overlays open.
     void refreshCaptureTargetForEditing();
 

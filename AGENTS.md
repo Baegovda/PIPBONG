@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.202` (from `project(PIPBONG VERSION 0.8.202)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.203` (from `project(PIPBONG VERSION 0.8.203)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -438,8 +438,8 @@ Sbm1.0/                        # repo root (local workspace)
 | `src/core/workflow/`                   | `WorkflowEngine`, `Workflow`, `ExecutionContext`, block types               |
 | `src/core/poeninja/`                   | `PoeNinjaClient` — unofficial poe.ninja PoE2 Currency Exchange API          |
 | `src/ui/calculator/`                   | `CalculatorDialog`, `SpreadsheetModel` — 시세 계산기 (workflow-independent) |
-| `src/core/diagnostics/`                | `SystemCpuSampler`, `ProcessCpuSampler`, `CpuSpikeDetector`, `CpuMonitorWorker` |
-| `src/ui/diagnostics/`                  | `SpikeWatchDialog` — CPU 스파이크 감시 (workflow-independent) |
+| `src/core/diagnostics/`                | `SystemCpuSampler`, `ProcessCpuSampler`, `CpuSpikeDetector`, `CpuMonitorWorker`, `CrashReporter` |
+| `src/ui/diagnostics/`                  | `SpikeWatchDialog` — CPU 스파이크 감시; `CrashReportDialog` — crash report viewer |
 | `src/ui/memo/`                         | `MemoDialog` — 프로필별 메모장 |
 | `src/storage/ProfileMemoStore.*`       | Per-profile `memo.txt` read/write |
 | `src/ui/`                              | `FeatureListPanel`, `WorkflowEditorPanel`, `BlockListWidget`, editors       |
@@ -511,6 +511,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Calculator sheet        | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry`                                                                                                                                                                                                                        |
 | CPU spike watch         | `QSettings` — `spikewatch/geometry`, `spikewatch/sectionSplitter`, `spikewatch/intervalMs`, thresholds, `topN`, `deltaMargin` (not in `project.json`)                                                                                                                                                                    |
 | Profile memo            | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/memo.txt` — plain UTF-8 text per profile; included in `.pipbong` package mirror; dialog geometry in `QSettings` `memo/geometry`; per-profile open/closed state in `memo/open/{profileId}`                                                                                                                                          |
+| Crash reports           | `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{timestamp}/` — `report.txt`, `recent_log.txt`, optional `crash.dmp`; `pending.txt` in crash root triggers startup dialog until dismissed                                                                                                                                                                                                               |
 
 ### 5.8 poe.ninja economy calculator
 
@@ -534,6 +535,13 @@ Sbm1.0/                        # repo root (local workspace)
 - **Content:** plain-text `QTextEdit` per active profile; auto-saves to `profiles/{profileId}/memo.txt` (600 ms debounce, flush on close and profile switch).
 - **Profile switch:** `MainWindow::syncMemoDialogProfile` saves the previous profile memo and loads the new profile when the dialog is open or on next open.
 - **Persistence:** profile workspace `memo.txt` (travels with `.pipbong` export); window geometry in `QSettings` `memo/geometry`; per-profile open/closed state in `memo/open/{profileId}` (restored on startup and profile switch).
+
+### 5.11 Crash reporting (diagnostics)
+
+- **Install:** `CrashReporter::install()` in `main.cpp` immediately after `QApplication` construction — Win32 unhandled-exception filter, `std::terminate` / purecall / invalid-parameter handlers, and Qt `qInstallMessageHandler` ring buffer (~800 lines).
+- **On crash:** writes a timestamped folder under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{yyyyMMdd_HHmmss}/` with `report.txt` (version, exception code, stack frames, recent Qt log), `recent_log.txt`, optional `crash.dmp` (minidump via dynamically loaded `Dbghelp.dll`); `pending.txt` in the crash root points at the folder for next-startup UI. Retains the last 10 crash folders.
+- **Startup:** `MainWindow::showPendingCrashReportIfAny()` after first show opens modal `CrashReportDialog` when `pending.txt` exists; dismiss clears the marker.
+- **Manual:** title bar **도움말 → 오류 보고서** opens the latest saved `report.txt` (or shows a short status when none exist). Dialog offers **복사** and **폴더 열기**.
 
 ---
 
@@ -1179,6 +1187,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.203] - 2026-07-18
+
+### Added
+
+- Crash reporting: on fatal error writes `report.txt`, `recent_log.txt`, and optional `crash.dmp` under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/`; next launch shows **이전 실행 오류 보고서** with copy and open-folder actions; **도움말 → 오류 보고서** reopens the latest report (`CrashReporter`, `CrashReportDialog`, `main.cpp`, `MainWindow`).
 
 ## [0.8.202] - 2026-07-18
 

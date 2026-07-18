@@ -39,7 +39,9 @@
 #include "ui/TargetWindowDetailPanel.h"
 #include "ui/TargetWindowHighlightOverlay.h"
 #include "app/UpdateChecker.h"
+#include "core/diagnostics/CrashReporter.h"
 #include "ui/AppHelpDialog.h"
+#include "ui/diagnostics/CrashReportDialog.h"
 #include "ui/CustomTitleBar.h"
 #include "ui/ProfileListWidget.h"
 #include "ui/widgets/ReorderableListWidget.h"
@@ -638,6 +640,10 @@ void MainWindow::ensureInitialWindowPlacement() {
     }
 }
 
+void MainWindow::showPendingCrashReportIfAny() {
+    CrashReportDialog::showPendingIfAny(this);
+}
+
 void MainWindow::setupUi() {
     setWindowTitle(QStringLiteral("PIPBONG %1").arg(QCoreApplication::applicationVersion()));
     setWindowFlag(Qt::FramelessWindowHint, true);
@@ -990,6 +996,20 @@ void MainWindow::setupMenus() {
 
     auto* helpMenu = bar->addMenu(tr("도움말(&H)"));
     helpMenu->addAction(tr("PIPBONG 도움말(&H)..."), this, [this]() { AppHelpDialog::showHelp(this); });
+    helpMenu->addAction(tr("오류 보고서(&R)..."), this, [this]() {
+        const QString folder = CrashReporter::latestReportDirectory();
+        if (folder.isEmpty()) {
+            showTransientStatus(tr("저장된 오류 보고서가 없습니다."), 3000);
+            return;
+        }
+        QFile reportFile(QDir(folder).filePath(QStringLiteral("report.txt")));
+        if (!reportFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            showTransientStatus(tr("오류 보고서를 열 수 없습니다."), 3000);
+            return;
+        }
+        CrashReportDialog dialog(QString::fromUtf8(reportFile.readAll()), folder, this);
+        dialog.exec();
+    });
     helpMenu->addSeparator();
     helpMenu->addAction(tr("PIPBONG 정보(&A)..."), this, [this]() { AppHelpDialog::showAbout(this); });
 }
