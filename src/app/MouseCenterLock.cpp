@@ -28,6 +28,7 @@ int g_windowOffsetY = 0;
 bool g_appliedOurClip = false;
 bool g_savedPreLockClip = false;
 RECT g_preLockClipRect{};
+int g_syntheticPointerDepth = 0;
 
 // ClipCursor is process-wide. Games (e.g. MOBAs) clip the cursor to the client area;
 // calling ClipCursor(nullptr) from PIPBONG clears that clip even when we never engaged
@@ -116,7 +117,7 @@ void beginLock(LockAnchor anchor) {
 }
 
 LRESULT CALLBACK mouseHookProc(int code, WPARAM wParam, LPARAM lParam) {
-    if (code != HC_ACTION || g_refCount <= 0) {
+    if (code != HC_ACTION || g_refCount <= 0 || g_syntheticPointerDepth > 0) {
         return CallNextHookEx(g_mouseHook, code, wParam, lParam);
     }
 
@@ -255,6 +256,24 @@ bool MouseCenterLock::isAnchoredToTargetWindow() {
 void MouseCenterLock::refreshAnchoredPosition() {
 #ifdef _WIN32
     refreshAnchoredLockPoint(false);
+#else
+    (void)0;
+#endif
+}
+
+void MouseCenterLock::beginSyntheticPointerOperation() {
+#ifdef _WIN32
+    ++g_syntheticPointerDepth;
+#else
+    (void)0;
+#endif
+}
+
+void MouseCenterLock::endSyntheticPointerOperation() {
+#ifdef _WIN32
+    if (g_syntheticPointerDepth > 0) {
+        --g_syntheticPointerDepth;
+    }
 #else
     (void)0;
 #endif

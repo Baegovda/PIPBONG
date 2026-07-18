@@ -1,5 +1,6 @@
 #include "core/input/InputSimulator.h"
 
+#include "app/MouseCenterLock.h"
 #include "core/workflow/ExecutionContext.h"
 
 #ifdef _WIN32
@@ -28,6 +29,11 @@ constexpr int kCursorPositionTolerancePx = 2;
 constexpr int kCursorPositionMaxAttempts = 5;
 
 thread_local ExecutionContext* g_activeExecutionContext = nullptr;
+
+struct SyntheticPointerGuard {
+    SyntheticPointerGuard() { MouseCenterLock::beginSyntheticPointerOperation(); }
+    ~SyntheticPointerGuard() { MouseCenterLock::endSyntheticPointerOperation(); }
+};
 
 void trackSyntheticKey(int virtualKey, bool down) {
     if (!g_activeExecutionContext) {
@@ -776,6 +782,7 @@ void releaseAppliedModifiers(const AppliedKeyModifiers& applied,
 
 void InputSimulator::moveMouse(int screenX, int screenY) {
 #ifdef _WIN32
+    const SyntheticPointerGuard syntheticPointerGuard;
     setCursorScreenPos(screenX, screenY);
 #endif
 }
@@ -846,6 +853,7 @@ void InputSimulator::clickAt(int screenX,
                              int count,
                              KeyModifiers mods) {
 #ifdef _WIN32
+    const SyntheticPointerGuard syntheticPointerGuard;
     if (action == ClickAction::MoveOnly) {
         moveAt(screenX, screenY);
         return;
@@ -1010,6 +1018,7 @@ void InputSimulator::clickAtMatchScreen(int screenX,
                                         int count,
                                         KeyModifiers mods) {
 #ifdef _WIN32
+    const SyntheticPointerGuard syntheticPointerGuard;
     if (action == ClickAction::MoveOnly) {
         moveCursorToScreenIfNeeded(screenX, screenY, action);
         return;
@@ -1091,6 +1100,8 @@ void InputSimulator::clickAtClient(HWND hwnd,
     if (!hwnd || !IsWindow(hwnd)) {
         return;
     }
+
+    const SyntheticPointerGuard syntheticPointerGuard;
 
     // Keep clicks inside the client area so the cursor does not jump outside the game.
     RECT client{};

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.217` (from `project(PIPBONG VERSION 0.8.217)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.218` (from `project(PIPBONG VERSION 0.8.218)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1188,6 +1188,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.218] - 2026-07-19
+
+### Fixed
+
+- **초기 루프 마우스 잠금** no longer swallows workflow **마우스** blocks: low-level mouse-lock hook is suspended during PIPBONG `SetCursorPos`/click injection so synthetic moves are not snapped back to the lock point (`MouseCenterLock::beginSyntheticPointerOperation`, `InputSimulator`).
+- Mouse-lock reconcile re-applies early-loop clip for sessions that use only **초기 루프 마우스 잠금** (no center/current-position lock), not only when those other locks are enabled (`MainWindow::reconcileMouseLocksFromRunningSessions`).
 
 ## [0.8.217] - 2026-07-19
 

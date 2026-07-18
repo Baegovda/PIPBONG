@@ -1530,7 +1530,7 @@ void MainWindow::reconcileMouseLocksFromRunningSessions() {
     }
     for (const auto& entry : m_runSessions) {
         const FeatureRunSession& session = entry.second;
-        if (!isFeatureSessionActive(session) || !hasFeatureMouseLock(session)) {
+        if (!isFeatureSessionActive(session)) {
             continue;
         }
         if (session.sessionContext && session.sessionContext->isPaused()) {
@@ -1539,6 +1539,9 @@ void MainWindow::reconcileMouseLocksFromRunningSessions() {
         FeatureRunSession& mutableSession = m_runSessions.at(entry.first);
         if (isEarlyLoopMouseLockWindow(mutableSession)) {
             engageEarlyLoopMouseLockAtBestPoint(mutableSession);
+            continue;
+        }
+        if (!hasFeatureMouseLock(session)) {
             continue;
         }
         if (mutableSession.lockMouseToCurrentPositionDuringRun) {

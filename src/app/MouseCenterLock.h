@@ -15,4 +15,8 @@ public:
     static bool isActive();
     static bool isAnchoredToTargetWindow();
     static void refreshAnchoredPosition();
+
+    /// Suppresses the low-level mouse hook while PIPBONG moves/clicks via SetCursorPos/SendInput.
+    static void beginSyntheticPointerOperation();
+    static void endSyntheticPointerOperation();
 };
