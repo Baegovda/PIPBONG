@@ -10,10 +10,11 @@ public:
 
     explicit CrashReportDialog(const QString& reportText,
                                const QString& folderPath,
-                               QWidget* parent = nullptr);
+                               QWidget* parent = nullptr,
+                               bool immediateCrash = false);
 
 private:
-    void setupUi(const QString& reportText, const QString& folderPath);
+    void setupUi(const QString& reportText, const QString& folderPath, bool immediateCrash);
 
     QString m_folderPath;
 };

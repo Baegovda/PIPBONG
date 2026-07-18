@@ -9,14 +9,17 @@
 #include "core/diagnostics/CrashReporter.h"
 
 #include "PipbongVersion.h"
+#include "ui/diagnostics/CrashReportDialog.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
+#include <QMetaObject>
 #include <QStandardPaths>
 #include <QTextStream>
+#include <QThread>
 #include <QUrl>
 
 #include <algorithm>
@@ -33,6 +36,12 @@ namespace {
 constexpr int kMaxRecentLogLines = 800;
 constexpr int kMaxRetainedCrashFolders = 10;
 constexpr wchar_t kPendingFileName[] = L"pending.txt";
+constexpr wchar_t kCrashReportViewerArg[] = L"--crash-report";
+
+struct CrashArtifacts {
+    QString folderPath;
+    QString reportText;
+};
 
 std::mutex g_logMutex;
 std::deque<QString> g_recentLogLines;
@@ -40,7 +49,10 @@ QtMessageHandler g_previousQtHandler = nullptr;
 std::atomic<bool> g_writingCrashReport{false};
 
 #ifdef _WIN32
-QString writeCrashArtifacts(const QString& reason, EXCEPTION_POINTERS* exceptionInfo, CONTEXT* fallbackContext);
+CrashArtifacts writeCrashArtifacts(const QString& reason,
+                                   EXCEPTION_POINTERS* exceptionInfo,
+                                   CONTEXT* fallbackContext);
+void presentCrashReport(const CrashArtifacts& artifacts, bool allowInProcessUi);
 #endif
 
 #ifdef _WIN32
@@ -97,9 +109,13 @@ void qtMessageHandler(QtMsgType type, const QMessageLogContext& context, const Q
     if (type == QtFatalMsg) {
 #ifdef _WIN32
         if (!g_writingCrashReport.exchange(true)) {
-            CONTEXT context{};
-            RtlCaptureContext(&context);
-            writeCrashArtifacts(QStringLiteral("Qt fatal message"), nullptr, &context);
+            CONTEXT contextRecord{};
+            RtlCaptureContext(&contextRecord);
+            const QString reason =
+                QStringLiteral("Qt fatal message: %1").arg(message);
+            const CrashArtifacts artifacts =
+                writeCrashArtifacts(reason, nullptr, &contextRecord);
+            presentCrashReport(artifacts, true);
         }
 #endif
     }
@@ -125,6 +141,75 @@ QString makeCrashFolderName() {
 }
 
 #ifdef _WIN32
+QString currentExecutablePath() {
+    if (QCoreApplication::instance()) {
+        return QCoreApplication::applicationFilePath();
+    }
+    wchar_t pathBuffer[MAX_PATH]{};
+    const DWORD length = GetModuleFileNameW(nullptr, pathBuffer, MAX_PATH);
+    if (length == 0) {
+        return QString();
+    }
+    return QString::fromWCharArray(pathBuffer, static_cast<int>(length));
+}
+
+void launchDetachedCrashReportViewer(const QString& folderPath) {
+    const QString executablePath = currentExecutablePath();
+    if (executablePath.isEmpty() || folderPath.isEmpty()) {
+        return;
+    }
+
+    QString commandLine = QStringLiteral("\"%1\" %2 \"%3\"")
+                              .arg(executablePath, QString::fromWCharArray(kCrashReportViewerArg), folderPath);
+    std::wstring nativeCommand = commandLine.toStdWString();
+
+    STARTUPINFOW startupInfo{};
+    startupInfo.cb = sizeof(startupInfo);
+    PROCESS_INFORMATION processInfo{};
+    const BOOL created = CreateProcessW(nullptr,
+                                        nativeCommand.data(),
+                                        nullptr,
+                                        nullptr,
+                                        FALSE,
+                                        DETACHED_PROCESS,
+                                        nullptr,
+                                        nullptr,
+                                        &startupInfo,
+                                        &processInfo);
+    if (!created) {
+        return;
+    }
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
+}
+
+void showCrashReportDialogOnGuiThread(const QString& reportText, const QString& folderPath) {
+    CrashReportDialog dialog(reportText, folderPath, nullptr, true);
+    dialog.exec();
+    CrashReporter::dismissPendingReport();
+}
+
+void presentCrashReport(const CrashArtifacts& artifacts, bool allowInProcessUi) {
+    if (artifacts.reportText.trimmed().isEmpty()) {
+        return;
+    }
+
+    QCoreApplication* app = QCoreApplication::instance();
+    if (allowInProcessUi && app) {
+        const auto showOnGuiThread = [reportText = artifacts.reportText, folderPath = artifacts.folderPath]() {
+            showCrashReportDialogOnGuiThread(reportText, folderPath);
+        };
+        if (QThread::currentThread() == app->thread()) {
+            showOnGuiThread();
+        } else {
+            QMetaObject::invokeMethod(app, showOnGuiThread, Qt::BlockingQueuedConnection);
+        }
+        return;
+    }
+
+    launchDetachedCrashReportViewer(artifacts.folderPath);
+}
+
 QString exceptionCodeName(DWORD code) {
     switch (code) {
     case EXCEPTION_ACCESS_VIOLATION:
@@ -229,7 +314,6 @@ QString buildCrashReportText(const QString& reason,
         lines.append(QStringLiteral("app: %1").arg(QCoreApplication::applicationFilePath()));
     }
 
-#ifdef _WIN32
     if (exceptionInfo && exceptionInfo->ExceptionRecord) {
         const auto* record = exceptionInfo->ExceptionRecord;
         lines.append(QStringLiteral("exception: %1 at 0x%2")
@@ -244,7 +328,6 @@ QString buildCrashReportText(const QString& reason,
                              .arg(record->ExceptionInformation[1], 16, 16, QLatin1Char('0')));
         }
     }
-#endif
 
     lines.append(QString());
     lines.append(QStringLiteral("--- stack trace ---"));
@@ -286,17 +369,20 @@ void pruneOldCrashFolders(const QString& rootPath) {
     }
 }
 
-QString writeCrashArtifacts(const QString& reason, EXCEPTION_POINTERS* exceptionInfo, CONTEXT* fallbackContext) {
+CrashArtifacts writeCrashArtifacts(const QString& reason,
+                                   EXCEPTION_POINTERS* exceptionInfo,
+                                   CONTEXT* fallbackContext) {
+    CrashArtifacts artifacts;
     const QString root = crashRootDirectoryPath();
-    const QString folderPath = QDir(root).filePath(makeCrashFolderName());
-    QDir().mkpath(folderPath);
+    artifacts.folderPath = QDir(root).filePath(makeCrashFolderName());
+    QDir().mkpath(artifacts.folderPath);
 
-    const QString reportPath = QDir(folderPath).filePath(QStringLiteral("report.txt"));
-    const QString dumpPath = QDir(folderPath).filePath(QStringLiteral("crash.dmp"));
-    const QString logPath = QDir(folderPath).filePath(QStringLiteral("recent_log.txt"));
+    const QString reportPath = QDir(artifacts.folderPath).filePath(QStringLiteral("report.txt"));
+    const QString dumpPath = QDir(artifacts.folderPath).filePath(QStringLiteral("crash.dmp"));
+    const QString logPath = QDir(artifacts.folderPath).filePath(QStringLiteral("recent_log.txt"));
 
-    const QString reportText = buildCrashReportText(reason, exceptionInfo, fallbackContext);
-    writeTextFile(reportPath, reportText);
+    artifacts.reportText = buildCrashReportText(reason, exceptionInfo, fallbackContext);
+    writeTextFile(reportPath, artifacts.reportText);
 
     {
         std::lock_guard<std::mutex> lock(g_logMutex);
@@ -308,22 +394,22 @@ QString writeCrashArtifacts(const QString& reason, EXCEPTION_POINTERS* exception
         writeTextFile(logPath, logLines.join(QLatin1Char('\n')));
     }
 
-#ifdef _WIN32
     if (!writeMiniDump(dumpPath, exceptionInfo)) {
         QFile(dumpPath).remove();
     }
-#endif
 
-    writeTextFile(pendingMarkerPath(), folderPath + QLatin1Char('\n'));
+    writeTextFile(pendingMarkerPath(), artifacts.folderPath + QLatin1Char('\n'));
     pruneOldCrashFolders(root);
-    return folderPath;
+    return artifacts;
 }
 
 LONG WINAPI unhandledExceptionFilter(EXCEPTION_POINTERS* exceptionInfo) {
     if (g_writingCrashReport.exchange(true)) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
-    writeCrashArtifacts(QStringLiteral("unhandled SEH exception"), exceptionInfo, nullptr);
+    const CrashArtifacts artifacts =
+        writeCrashArtifacts(QStringLiteral("unhandled SEH exception"), exceptionInfo, nullptr);
+    presentCrashReport(artifacts, false);
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -332,32 +418,62 @@ void terminateHandler() {
         std::abort();
     }
 
-#ifdef _WIN32
     CONTEXT context{};
     RtlCaptureContext(&context);
-    writeCrashArtifacts(QStringLiteral("std::terminate"), nullptr, &context);
-#else
-    writeCrashArtifacts(QStringLiteral("std::terminate"), nullptr, nullptr);
-#endif
+    const CrashArtifacts artifacts =
+        writeCrashArtifacts(QStringLiteral("std::terminate"), nullptr, &context);
+    presentCrashReport(artifacts, QCoreApplication::instance() != nullptr);
     std::abort();
 }
 
 void purecallHandler() {
     if (!g_writingCrashReport.exchange(true)) {
-        writeCrashArtifacts(QStringLiteral("_purecall"), nullptr, nullptr);
+        const CrashArtifacts artifacts = writeCrashArtifacts(QStringLiteral("_purecall"), nullptr, nullptr);
+        presentCrashReport(artifacts, false);
     }
     std::abort();
 }
 
 void invalidParameterHandler(const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, uintptr_t) {
     if (!g_writingCrashReport.exchange(true)) {
-        writeCrashArtifacts(QStringLiteral("invalid parameter handler"), nullptr, nullptr);
+        const CrashArtifacts artifacts =
+            writeCrashArtifacts(QStringLiteral("invalid parameter handler"), nullptr, nullptr);
+        presentCrashReport(artifacts, false);
     }
     std::abort();
 }
 #endif // _WIN32
 
 } // namespace
+
+bool CrashReporter::runViewerModeIfRequested() {
+#ifdef _WIN32
+    const QStringList args = QCoreApplication::arguments();
+    const int flagIndex = args.indexOf(QString::fromWCharArray(kCrashReportViewerArg));
+    if (flagIndex < 0 || flagIndex + 1 >= args.size()) {
+        return false;
+    }
+
+    CrashReportSummary summary;
+    summary.folderPath = args.at(flagIndex + 1);
+    summary.reportFilePath = QDir(summary.folderPath).filePath(QStringLiteral("report.txt"));
+    summary.dumpFilePath = QDir(summary.folderPath).filePath(QStringLiteral("crash.dmp"));
+
+    QFile reportFile(summary.reportFilePath);
+    if (reportFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        summary.reportText = QString::fromUtf8(reportFile.readAll());
+    }
+
+    if (!summary.reportText.trimmed().isEmpty()) {
+        showCrashReportDialogOnGuiThread(summary.reportText, summary.folderPath);
+    } else {
+        dismissPendingReport();
+    }
+    return true;
+#else
+    return false;
+#endif
+}
 
 void CrashReporter::install() {
 #ifdef _WIN32

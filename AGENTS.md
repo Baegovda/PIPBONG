@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.204` (from `project(PIPBONG VERSION 0.8.204)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.205` (from `project(PIPBONG VERSION 0.8.205)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -539,8 +539,8 @@ Sbm1.0/                        # repo root (local workspace)
 ### 5.11 Crash reporting (diagnostics)
 
 - **Install:** `CrashReporter::install()` in `main.cpp` immediately after `QApplication` construction — Win32 unhandled-exception filter, `std::terminate` / purecall / invalid-parameter handlers, and Qt `qInstallMessageHandler` ring buffer (~800 lines).
-- **On crash:** writes a timestamped folder under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{yyyyMMdd_HHmmss}/` with `report.txt` (version, exception code, stack frames, recent Qt log), `recent_log.txt`, optional `crash.dmp` (minidump via dynamically loaded `Dbghelp.dll`); `pending.txt` in the crash root points at the folder for next-startup UI. Retains the last 10 crash folders.
-- **Startup:** `MainWindow::showPendingCrashReportIfAny()` after first show opens modal `CrashReportDialog` when `pending.txt` exists; dismiss clears the marker.
+- **On crash:** writes a timestamped folder under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{yyyyMMdd_HHmmss}/` with `report.txt` (version, exception code, stack frames, recent Qt log), `recent_log.txt`, optional `crash.dmp` (minidump via dynamically loaded `Dbghelp.dll`); `pending.txt` in the crash root points at the folder. Retains the last 10 crash folders.
+- **Immediate UI:** Qt fatal messages show modal `CrashReportDialog` on the GUI thread before exit; SEH / CRT handlers spawn a detached `PIPBONG.exe --crash-report <folder>` viewer when in-process UI is unsafe. Startup `showPendingCrashReportIfAny()` remains a fallback when the immediate viewer did not run.
 - **Manual:** title bar **도움말 → 오류 보고서** opens the latest saved `report.txt` (or shows a short status when none exist). Dialog offers **복사** and **폴더 열기**.
 
 ---
@@ -1187,6 +1187,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.205] - 2026-07-18
+
+### Changed
+
+- Crash report dialog shows immediately when a fatal error occurs (Qt fatal on the GUI thread, or a detached `PIPBONG.exe --crash-report` viewer for SEH/CRT crashes) instead of only on the next launch; next-startup pending dialog remains as fallback (`CrashReporter`, `CrashReportDialog`, `main.cpp`).
 
 ## [0.8.204] - 2026-07-18
 

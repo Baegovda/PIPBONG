@@ -11,6 +11,10 @@ struct CrashReportSummary {
 
 class CrashReporter {
 public:
+    /// When argv contains `--crash-report <folder>`, shows the report dialog and returns true.
+    /// Call before install() / MainWindow construction.
+    static bool runViewerModeIfRequested();
+
     /// Install Win32/Qt handlers. Call once after QApplication construction.
     static void install();
 

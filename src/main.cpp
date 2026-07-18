@@ -8,6 +8,9 @@ int main(int argc, char* argv[]) {
     Application::ensureDpiAwareness();
     QLocale::setDefault(QLocale(QLocale::Korean, QLocale::SouthKorea));
     Application app(argc, argv);
+    if (CrashReporter::runViewerModeIfRequested()) {
+        return 0;
+    }
     CrashReporter::install();
     MainWindow window;
     window.ensureInitialWindowPlacement();

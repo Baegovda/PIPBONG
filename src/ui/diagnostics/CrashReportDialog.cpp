@@ -30,19 +30,22 @@ void CrashReportDialog::showPendingIfAny(QWidget* parent) {
 
 CrashReportDialog::CrashReportDialog(const QString& reportText,
                                      const QString& folderPath,
-                                     QWidget* parent)
+                                     QWidget* parent,
+                                     bool immediateCrash)
     : QDialog(parent)
     , m_folderPath(folderPath) {
-    setWindowTitle(tr("이전 실행 오류 보고서"));
+    setWindowTitle(immediateCrash ? tr("오류 보고서") : tr("이전 실행 오류 보고서"));
     setModal(true);
     resize(760, 520);
-    setupUi(reportText, folderPath);
+    setupUi(reportText, folderPath, immediateCrash);
 }
 
-void CrashReportDialog::setupUi(const QString& reportText, const QString& folderPath) {
+void CrashReportDialog::setupUi(const QString& reportText, const QString& folderPath, bool immediateCrash) {
     auto* layout = new QVBoxLayout(this);
 
-    auto* title = new QLabel(tr("이전 실행에서 오류가 발생했습니다."), this);
+    auto* title = new QLabel(immediateCrash ? tr("오류가 발생했습니다.")
+                                            : tr("이전 실행에서 오류가 발생했습니다."),
+                             this);
     QFont titleFont = title->font();
     titleFont.setBold(true);
     title->setFont(titleFont);
