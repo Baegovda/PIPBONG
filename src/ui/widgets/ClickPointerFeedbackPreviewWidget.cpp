@@ -51,6 +51,11 @@ void ClickPointerFeedbackPreviewWidget::setSettings(const ClickPointerFeedbackSe
     update();
 }
 
+void ClickPointerFeedbackPreviewWidget::setDetectionPreview(bool enabled) {
+    m_detectionPreview = enabled;
+    restartAnimation();
+}
+
 void ClickPointerFeedbackPreviewWidget::restartAnimation() {
     m_startMs = QDateTime::currentMSecsSinceEpoch();
     if (!m_timer->isActive()) {
@@ -99,6 +104,10 @@ void ClickPointerFeedbackPreviewWidget::paintEvent(QPaintEvent* event) {
 
     std::vector<uint32_t> pixels(static_cast<size_t>(frame.width()) * static_cast<size_t>(frame.height()), 0u);
     const qint64 age = qMax<qint64>(0, QDateTime::currentMSecsSinceEpoch() - m_startMs);
+    const bool previewSuccess =
+        !m_detectionPreview || ((age / qMax(1, m_settings.displayDurationMs)) % 2) == 0;
+    const QColor coreColor = m_detectionPreview ? detectionCoreColor(m_settings, previewSuccess) : QColor();
+    const QColor ringColor = m_detectionPreview ? detectionRingColor(m_settings, previewSuccess) : QColor();
     renderClickPointerFeedbackFrame(pixels.data(),
                                     frame.width(),
                                     frame.height(),
@@ -106,7 +115,9 @@ void ClickPointerFeedbackPreviewWidget::paintEvent(QPaintEvent* event) {
                                     centerY - frame.top(),
                                     static_cast<uint64_t>(age),
                                     static_cast<uint64_t>(m_settings.displayDurationMs),
-                                    m_settings);
+                                    m_settings,
+                                    coreColor,
+                                    ringColor);
     if (image.bytesPerLine() == frame.width() * static_cast<int>(sizeof(uint32_t))) {
         std::memcpy(image.bits(), pixels.data(), pixels.size() * sizeof(uint32_t));
     } else {
@@ -125,5 +136,5 @@ void ClickPointerFeedbackPreviewWidget::paintEvent(QPaintEvent* event) {
     painter.setFont(caption);
     painter.drawText(frame.adjusted(10, 8, -10, -8),
                      Qt::AlignTop | Qt::AlignLeft,
-                     tr("미리보기"));
+                     m_detectionPreview ? tr("미리보기 (성공/실패 교차)") : tr("미리보기"));
 }

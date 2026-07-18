@@ -52,6 +52,18 @@ void setFormRowVisible(QWidget* label, QWidget* field, bool visible) {
     }
 }
 
+void setColorButtonStyle(QPushButton* button, const QColor& color) {
+    if (!button) {
+        return;
+    }
+    button->setText(color.name(QColor::HexRgb).toUpper());
+    button->setStyleSheet(
+        QStringLiteral("QPushButton { background-color: %1; color: %2; border: 1px solid palette(mid);"
+                       " padding: 4px 10px; min-height: 24px; border-radius: 4px; }")
+            .arg(color.name(QColor::HexRgb),
+                 color.lightness() > 140 ? QStringLiteral("#111318") : QStringLiteral("#f5f7fa")));
+}
+
 } // namespace
 
 QString ClickPointerFeedbackSettingsDialog::shapeDisplayName(ClickPointerFeedbackShape shape) {
@@ -77,7 +89,6 @@ QString ClickPointerFeedbackSettingsDialog::settingsSummary(const ClickPointerFe
 
 ClickPointerFeedbackSettingsDialog::ClickPointerFeedbackSettingsDialog(QWidget* parent)
     : QDialog(parent) {
-    setWindowTitle(tr("실행 위치 피드백 애니메이션"));
     setModal(true);
     resize(640, 560);
     setupUi();
@@ -89,6 +100,22 @@ ClickPointerFeedbackSettingsDialog::ClickPointerFeedbackSettingsDialog(QWidget* 
     });
 }
 
+void ClickPointerFeedbackSettingsDialog::setDialogKind(PointerFeedbackDialogKind kind) {
+    m_dialogKind = kind;
+    if (m_dialogKind == PointerFeedbackDialogKind::Detection) {
+        setWindowTitle(tr("감지 피드백"));
+        if (m_preview) {
+            m_preview->setDetectionPreview(true);
+        }
+    } else {
+        setWindowTitle(tr("실행 위치 피드백 애니메이션"));
+        if (m_preview) {
+            m_preview->setDetectionPreview(false);
+        }
+    }
+    applyDialogKindUi();
+}
+
 void ClickPointerFeedbackSettingsDialog::setPersistToGlobalSettingsOnAccept(bool persist) {
     m_persistToGlobalSettingsOnAccept = persist;
 }
@@ -97,9 +124,9 @@ void ClickPointerFeedbackSettingsDialog::setupUi() {
     auto* outerLayout = new QVBoxLayout(this);
     outerLayout->setSpacing(12);
 
-    auto* hint = new HintLabel(
-        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 대상 창에 표시되는 포인터 애니메이션입니다."),
-        this);
+    auto* hint = new HintLabel(QString(), this);
+    m_hintLabel = hint;
+    hint->setObjectName(QStringLiteral("feedbackDialogHint"));
     hint->setWordWrap(true);
     outerLayout->addWidget(hint);
 
@@ -174,11 +201,48 @@ void ClickPointerFeedbackSettingsDialog::setupUi() {
                           static_cast<int>(ClickPointerFeedbackShape::Square));
     lookForm->addRow(makeFormLabel(tr("모양"), lookGroup), m_shapeCombo);
 
+    m_clickColorLabel = makeFormLabel(tr("색상"), lookGroup);
     m_colorButton = new QPushButton(lookGroup);
     m_colorButton->setCursor(Qt::PointingHandCursor);
     m_colorButton->setToolTip(tr("클릭 피드백 색상 선택"));
     connect(m_colorButton, &QPushButton::clicked, this, &ClickPointerFeedbackSettingsDialog::onPickColor);
-    lookForm->addRow(makeFormLabel(tr("색상"), lookGroup), m_colorButton);
+    lookForm->addRow(m_clickColorLabel, m_colorButton);
+
+    m_successCoreColorLabel = makeFormLabel(tr("성공 · 중심"), lookGroup);
+    m_successCoreColorButton = new QPushButton(lookGroup);
+    m_successCoreColorButton->setCursor(Qt::PointingHandCursor);
+    connect(m_successCoreColorButton,
+            &QPushButton::clicked,
+            this,
+            &ClickPointerFeedbackSettingsDialog::onPickSuccessCoreColor);
+    lookForm->addRow(m_successCoreColorLabel, m_successCoreColorButton);
+
+    m_successRingColorLabel = makeFormLabel(tr("성공 · 링"), lookGroup);
+    m_successRingColorButton = new QPushButton(lookGroup);
+    m_successRingColorButton->setCursor(Qt::PointingHandCursor);
+    connect(m_successRingColorButton,
+            &QPushButton::clicked,
+            this,
+            &ClickPointerFeedbackSettingsDialog::onPickSuccessRingColor);
+    lookForm->addRow(m_successRingColorLabel, m_successRingColorButton);
+
+    m_missCoreColorLabel = makeFormLabel(tr("실패 · 중심"), lookGroup);
+    m_missCoreColorButton = new QPushButton(lookGroup);
+    m_missCoreColorButton->setCursor(Qt::PointingHandCursor);
+    connect(m_missCoreColorButton,
+            &QPushButton::clicked,
+            this,
+            &ClickPointerFeedbackSettingsDialog::onPickMissCoreColor);
+    lookForm->addRow(m_missCoreColorLabel, m_missCoreColorButton);
+
+    m_missRingColorLabel = makeFormLabel(tr("실패 · 링"), lookGroup);
+    m_missRingColorButton = new QPushButton(lookGroup);
+    m_missRingColorButton->setCursor(Qt::PointingHandCursor);
+    connect(m_missRingColorButton,
+            &QPushButton::clicked,
+            this,
+            &ClickPointerFeedbackSettingsDialog::onPickMissRingColor);
+    lookForm->addRow(m_missRingColorLabel, m_missRingColorButton);
 
     m_maxAlphaSpin = new DragAdjustSpinBox(lookGroup);
     m_maxAlphaSpin->setRange(40, 255);
@@ -261,6 +325,8 @@ void ClickPointerFeedbackSettingsDialog::setupUi() {
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     outerLayout->addWidget(buttons);
+
+    applyDialogKindUi();
 }
 
 void ClickPointerFeedbackSettingsDialog::loadFromSettings(const ClickPointerFeedbackSettings& settings) {
@@ -269,7 +335,11 @@ void ClickPointerFeedbackSettingsDialog::loadFromSettings(const ClickPointerFeed
     const int shapeIndex = m_shapeCombo->findData(static_cast<int>(settings.shape));
     m_shapeCombo->setCurrentIndex(shapeIndex >= 0 ? shapeIndex : 0);
     m_color = settings.color;
-    updateColorButton();
+    m_successCoreColor = settings.successCoreColor;
+    m_successRingColor = settings.successRingColor;
+    m_missCoreColor = settings.missCoreColor;
+    m_missRingColor = settings.missRingColor;
+    updateColorButtons();
     m_coreSizeSpin->setValue(settings.coreSize);
     m_maxExpandSpin->setValue(settings.maxExpandRadius);
     m_ringCountSpin->setValue(settings.ringCount);
@@ -288,6 +358,10 @@ ClickPointerFeedbackSettings ClickPointerFeedbackSettingsDialog::readDraftFromUi
     settings.animationSpeed = m_speedSpin->value();
     settings.shape = static_cast<ClickPointerFeedbackShape>(m_shapeCombo->currentData().toInt());
     settings.color = m_color;
+    settings.successCoreColor = m_successCoreColor;
+    settings.successRingColor = m_successRingColor;
+    settings.missCoreColor = m_missCoreColor;
+    settings.missRingColor = m_missRingColor;
     settings.coreSize = m_coreSizeSpin->value();
     settings.maxExpandRadius = m_maxExpandSpin->value();
     settings.ringCount = m_ringCountSpin->value();
@@ -316,13 +390,55 @@ void ClickPointerFeedbackSettingsDialog::updateFieldVisibility() {
     setFormRowVisible(m_coreSizeLabel, m_coreSizeField, usesCore);
 }
 
-void ClickPointerFeedbackSettingsDialog::updateColorButton() {
-    m_colorButton->setText(m_color.name(QColor::HexRgb).toUpper());
-    m_colorButton->setStyleSheet(
-        QStringLiteral("QPushButton { background-color: %1; color: %2; border: 1px solid palette(mid);"
-                       " padding: 4px 10px; min-height: 24px; border-radius: 4px; }")
-            .arg(m_color.name(QColor::HexRgb),
-                 m_color.lightness() > 140 ? QStringLiteral("#111318") : QStringLiteral("#f5f7fa")));
+void ClickPointerFeedbackSettingsDialog::applyDialogKindUi() {
+    if (m_hintLabel) {
+        if (m_dialogKind == PointerFeedbackDialogKind::Detection) {
+            m_hintLabel->setText(tr("기능 편집의 실행 위치 표시가 켜진 기능에서 템플릿 감지 시 대상 창에 표시되는 애니메이션입니다. "
+                                   "성공·실패마다 중심·링 색상을 따로 지정할 수 있습니다."));
+        } else {
+            m_hintLabel->setText(tr("기능 편집의 실행 위치 표시가 켜진 기능에서 마우스 클릭 시 대상 창에 표시되는 애니메이션입니다."));
+        }
+    }
+
+    const bool detection = m_dialogKind == PointerFeedbackDialogKind::Detection;
+    if (m_clickColorLabel) {
+        m_clickColorLabel->setVisible(!detection);
+    }
+    if (m_colorButton) {
+        m_colorButton->setVisible(!detection);
+    }
+    if (m_successCoreColorLabel) {
+        m_successCoreColorLabel->setVisible(detection);
+    }
+    if (m_successCoreColorButton) {
+        m_successCoreColorButton->setVisible(detection);
+    }
+    if (m_successRingColorLabel) {
+        m_successRingColorLabel->setVisible(detection);
+    }
+    if (m_successRingColorButton) {
+        m_successRingColorButton->setVisible(detection);
+    }
+    if (m_missCoreColorLabel) {
+        m_missCoreColorLabel->setVisible(detection);
+    }
+    if (m_missCoreColorButton) {
+        m_missCoreColorButton->setVisible(detection);
+    }
+    if (m_missRingColorLabel) {
+        m_missRingColorLabel->setVisible(detection);
+    }
+    if (m_missRingColorButton) {
+        m_missRingColorButton->setVisible(detection);
+    }
+}
+
+void ClickPointerFeedbackSettingsDialog::updateColorButtons() {
+    setColorButtonStyle(m_colorButton, m_color);
+    setColorButtonStyle(m_successCoreColorButton, m_successCoreColor);
+    setColorButtonStyle(m_successRingColorButton, m_successRingColor);
+    setColorButtonStyle(m_missCoreColorButton, m_missCoreColor);
+    setColorButtonStyle(m_missRingColorButton, m_missRingColor);
 }
 
 void ClickPointerFeedbackSettingsDialog::onPickColor() {
@@ -332,7 +448,63 @@ void ClickPointerFeedbackSettingsDialog::onPickColor() {
         return;
     }
     m_color = picked;
-    updateColorButton();
+    updateColorButtons();
+    applyDraftToPreview();
+    if (m_preview) {
+        m_preview->restartAnimation();
+    }
+}
+
+void ClickPointerFeedbackSettingsDialog::onPickSuccessCoreColor() {
+    const QColor picked = QColorDialog::getColor(m_successCoreColor, this, tr("성공 · 중심 색상"),
+                                                 QColorDialog::DontUseNativeDialog);
+    if (!picked.isValid()) {
+        return;
+    }
+    m_successCoreColor = picked;
+    updateColorButtons();
+    applyDraftToPreview();
+    if (m_preview) {
+        m_preview->restartAnimation();
+    }
+}
+
+void ClickPointerFeedbackSettingsDialog::onPickSuccessRingColor() {
+    const QColor picked = QColorDialog::getColor(m_successRingColor, this, tr("성공 · 링 색상"),
+                                                 QColorDialog::DontUseNativeDialog);
+    if (!picked.isValid()) {
+        return;
+    }
+    m_successRingColor = picked;
+    updateColorButtons();
+    applyDraftToPreview();
+    if (m_preview) {
+        m_preview->restartAnimation();
+    }
+}
+
+void ClickPointerFeedbackSettingsDialog::onPickMissCoreColor() {
+    const QColor picked = QColorDialog::getColor(m_missCoreColor, this, tr("실패 · 중심 색상"),
+                                                 QColorDialog::DontUseNativeDialog);
+    if (!picked.isValid()) {
+        return;
+    }
+    m_missCoreColor = picked;
+    updateColorButtons();
+    applyDraftToPreview();
+    if (m_preview) {
+        m_preview->restartAnimation();
+    }
+}
+
+void ClickPointerFeedbackSettingsDialog::onPickMissRingColor() {
+    const QColor picked = QColorDialog::getColor(m_missRingColor, this, tr("실패 · 링 색상"),
+                                                 QColorDialog::DontUseNativeDialog);
+    if (!picked.isValid()) {
+        return;
+    }
+    m_missRingColor = picked;
+    updateColorButtons();
     applyDraftToPreview();
     if (m_preview) {
         m_preview->restartAnimation();

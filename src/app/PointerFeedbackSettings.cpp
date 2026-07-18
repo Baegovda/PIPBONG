@@ -33,7 +33,48 @@ QColor readColor(const QSettings& settings, const QString& key, const QColor& fa
     return parsed.isValid() ? parsed : fallback;
 }
 
+QColor readOptionalColor(const QSettings& settings, const QString& key) {
+    const QVariant stored = settings.value(key);
+    if (!stored.isValid()) {
+        return {};
+    }
+    const QColor parsed(stored.toString());
+    return parsed.isValid() ? parsed : QColor();
+}
+
+void writeOptionalColor(QSettings& settings, const QString& key, const QColor& color) {
+    if (color.isValid()) {
+        settings.setValue(key, color.name(QColor::HexRgb));
+    } else {
+        settings.remove(key);
+    }
+}
+
+QColor readJsonColor(const nlohmann::json& json, const char* key, const QColor& fallback) {
+    if (!json.contains(key)) {
+        return fallback;
+    }
+    const QColor parsed(QString::fromStdString(json[key].get<std::string>()));
+    return parsed.isValid() ? parsed : fallback;
+}
+
 } // namespace
+
+QColor resolvedClickCoreColor(const ClickPointerFeedbackSettings& settings) {
+    return settings.coreColor.isValid() ? settings.coreColor : settings.color;
+}
+
+QColor resolvedClickRingColor(const ClickPointerFeedbackSettings& settings) {
+    return settings.ringColor.isValid() ? settings.ringColor : settings.color;
+}
+
+QColor detectionCoreColor(const ClickPointerFeedbackSettings& settings, bool success) {
+    return success ? settings.successCoreColor : settings.missCoreColor;
+}
+
+QColor detectionRingColor(const ClickPointerFeedbackSettings& settings, bool success) {
+    return success ? settings.successRingColor : settings.missRingColor;
+}
 
 ClickPointerFeedbackSettings PointerFeedbackSettings::defaultClick() {
     return ClickPointerFeedbackSettings{};
@@ -47,6 +88,18 @@ ClickPointerFeedbackSettings clampClickPointerFeedback(const ClickPointerFeedbac
     result.shape = clampShape(static_cast<int>(result.shape));
     if (!result.color.isValid()) {
         result.color = defaults.color;
+    }
+    if (!result.successCoreColor.isValid()) {
+        result.successCoreColor = defaults.successCoreColor;
+    }
+    if (!result.successRingColor.isValid()) {
+        result.successRingColor = defaults.successRingColor;
+    }
+    if (!result.missCoreColor.isValid()) {
+        result.missCoreColor = defaults.missCoreColor;
+    }
+    if (!result.missRingColor.isValid()) {
+        result.missRingColor = defaults.missRingColor;
     }
     result.coreSize = clampInt(result.coreSize, 2, 16);
     result.maxExpandRadius = clampInt(result.maxExpandRadius, 8, 80);
@@ -69,10 +122,25 @@ ClickPointerFeedbackSettings clickPointerFeedbackFromJson(const nlohmann::json& 
         result.shape = clampShape(json["shape"].get<int>());
     }
     if (json.contains("color")) {
-        const QColor parsed(QString::fromStdString(json["color"].get<std::string>()));
-        if (parsed.isValid()) {
-            result.color = parsed;
-        }
+        result.color = readJsonColor(json, "color", defaults.color);
+    }
+    if (json.contains("coreColor")) {
+        result.coreColor = readJsonColor(json, "coreColor", {});
+    }
+    if (json.contains("ringColor")) {
+        result.ringColor = readJsonColor(json, "ringColor", {});
+    }
+    if (json.contains("successCoreColor")) {
+        result.successCoreColor = readJsonColor(json, "successCoreColor", defaults.successCoreColor);
+    }
+    if (json.contains("successRingColor")) {
+        result.successRingColor = readJsonColor(json, "successRingColor", defaults.successRingColor);
+    }
+    if (json.contains("missCoreColor")) {
+        result.missCoreColor = readJsonColor(json, "missCoreColor", defaults.missCoreColor);
+    }
+    if (json.contains("missRingColor")) {
+        result.missRingColor = readJsonColor(json, "missRingColor", defaults.missRingColor);
     }
     if (json.contains("coreSize")) {
         result.coreSize = json["coreSize"].get<int>();
@@ -94,7 +162,7 @@ ClickPointerFeedbackSettings clickPointerFeedbackFromJson(const nlohmann::json& 
 
 nlohmann::json clickPointerFeedbackToJson(const ClickPointerFeedbackSettings& settings) {
     const ClickPointerFeedbackSettings clamped = clampClickPointerFeedback(settings);
-    return nlohmann::json{
+    nlohmann::json json{
         {"displayDurationMs", clamped.displayDurationMs},
         {"animationSpeed", clamped.animationSpeed},
         {"shape", static_cast<int>(clamped.shape)},
@@ -104,7 +172,18 @@ nlohmann::json clickPointerFeedbackToJson(const ClickPointerFeedbackSettings& se
         {"ringCount", clamped.ringCount},
         {"ringThickness", clamped.ringThickness},
         {"maxAlpha", clamped.maxAlpha},
+        {"successCoreColor", clamped.successCoreColor.name(QColor::HexRgb).toStdString()},
+        {"successRingColor", clamped.successRingColor.name(QColor::HexRgb).toStdString()},
+        {"missCoreColor", clamped.missCoreColor.name(QColor::HexRgb).toStdString()},
+        {"missRingColor", clamped.missRingColor.name(QColor::HexRgb).toStdString()},
     };
+    if (clamped.coreColor.isValid()) {
+        json["coreColor"] = clamped.coreColor.name(QColor::HexRgb).toStdString();
+    }
+    if (clamped.ringColor.isValid()) {
+        json["ringColor"] = clamped.ringColor.name(QColor::HexRgb).toStdString();
+    }
+    return json;
 }
 
 ClickPointerFeedbackSettings PointerFeedbackSettings::click() {
@@ -128,6 +207,24 @@ ClickPointerFeedbackSettings PointerFeedbackSettings::click() {
                                              static_cast<int>(defaults.shape))
                                   .toInt());
     result.color = readColor(settings, QString::fromLatin1("%1color").arg(kClickPrefix), defaults.color);
+    result.coreColor = readOptionalColor(settings, QString::fromLatin1("%1coreColor").arg(kClickPrefix));
+    result.ringColor = readOptionalColor(settings, QString::fromLatin1("%1ringColor").arg(kClickPrefix));
+    result.successCoreColor =
+        readColor(settings,
+                  QString::fromLatin1("%1successCoreColor").arg(kClickPrefix),
+                  defaults.successCoreColor);
+    result.successRingColor =
+        readColor(settings,
+                  QString::fromLatin1("%1successRingColor").arg(kClickPrefix),
+                  defaults.successRingColor);
+    result.missCoreColor =
+        readColor(settings,
+                  QString::fromLatin1("%1missCoreColor").arg(kClickPrefix),
+                  defaults.missCoreColor);
+    result.missRingColor =
+        readColor(settings,
+                  QString::fromLatin1("%1missRingColor").arg(kClickPrefix),
+                  defaults.missRingColor);
     result.coreSize = clampInt(settings.value(QString::fromLatin1("%1coreSize").arg(kClickPrefix),
                                               defaults.coreSize)
                                    .toInt(),
@@ -166,6 +263,16 @@ void PointerFeedbackSettings::setClick(const ClickPointerFeedbackSettings& setti
     qsettings.setValue(QString::fromLatin1("%1animationSpeed").arg(kClickPrefix), clamped.animationSpeed);
     qsettings.setValue(QString::fromLatin1("%1shape").arg(kClickPrefix), static_cast<int>(clamped.shape));
     qsettings.setValue(QString::fromLatin1("%1color").arg(kClickPrefix), clamped.color.name(QColor::HexRgb));
+    writeOptionalColor(qsettings, QString::fromLatin1("%1coreColor").arg(kClickPrefix), clamped.coreColor);
+    writeOptionalColor(qsettings, QString::fromLatin1("%1ringColor").arg(kClickPrefix), clamped.ringColor);
+    qsettings.setValue(QString::fromLatin1("%1successCoreColor").arg(kClickPrefix),
+                       clamped.successCoreColor.name(QColor::HexRgb));
+    qsettings.setValue(QString::fromLatin1("%1successRingColor").arg(kClickPrefix),
+                       clamped.successRingColor.name(QColor::HexRgb));
+    qsettings.setValue(QString::fromLatin1("%1missCoreColor").arg(kClickPrefix),
+                       clamped.missCoreColor.name(QColor::HexRgb));
+    qsettings.setValue(QString::fromLatin1("%1missRingColor").arg(kClickPrefix),
+                       clamped.missRingColor.name(QColor::HexRgb));
     qsettings.setValue(QString::fromLatin1("%1coreSize").arg(kClickPrefix), clamped.coreSize);
     qsettings.setValue(QString::fromLatin1("%1maxExpandRadius").arg(kClickPrefix), clamped.maxExpandRadius);
     qsettings.setValue(QString::fromLatin1("%1ringCount").arg(kClickPrefix), clamped.ringCount);

@@ -232,6 +232,13 @@ void renderClickPulse(uint32_t* pixels,
                       const Pulse& pulse,
                       ULONGLONG age,
                       ULONGLONG lifetimeMs) {
+    const bool success = pulse.kind == RunPointerFeedbackKind::MatchSuccess;
+    const QColor coreColor = pulse.useCustomFeedbackStyle && pulse.kind != RunPointerFeedbackKind::Click
+                                 ? detectionCoreColor(pulse.clickSettings, success)
+                                 : QColor();
+    const QColor ringColor = pulse.useCustomFeedbackStyle && pulse.kind != RunPointerFeedbackKind::Click
+                                 ? detectionRingColor(pulse.clickSettings, success)
+                                 : QColor();
     renderClickPointerFeedbackFrame(pixels,
                                     width,
                                     height,
@@ -239,7 +246,9 @@ void renderClickPulse(uint32_t* pixels,
                                     pulse.clientY,
                                     age,
                                     lifetimeMs,
-                                    pulse.clickSettings);
+                                    pulse.clickSettings,
+                                    coreColor,
+                                    ringColor);
 }
 
 int pulseRenderMarginPx(const Pulse& pulse) {

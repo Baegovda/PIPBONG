@@ -341,7 +341,7 @@ void FeatureEditDialog::setupUi() {
     m_pointerVisualFeedbackCheck =
         new QCheckBox(tr("실행 위치 표시"), this);
     m_pointerVisualFeedbackCheck->setToolTip(
-        tr("실행 중 대상 창에 클릭·매칭 위치를 펄스로 표시합니다."));
+        tr("실행 중 대상 창에 클릭·감지 위치를 펄스로 표시합니다."));
     form->addRow(QString(), m_pointerVisualFeedbackCheck);
 
     m_restoreMousePositionOnEndCheck = new QCheckBox(tr("마우스 위치 복귀"), this);

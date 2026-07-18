@@ -535,15 +535,15 @@ void ImageFindEditor::setupUi() {
     roiLayout->addWidget(m_roiList);
     roiLayout->addLayout(roiToolbar);
 
-    m_matchFeedbackGroup = new QGroupBox(tr("실행 위치 피드백"), this);
+    m_matchFeedbackGroup = new QGroupBox(tr("감지 피드백"), this);
     auto* matchFeedbackLayout = new QVBoxLayout(m_matchFeedbackGroup);
     matchFeedbackLayout->setContentsMargins(9, 9, 9, 9);
     matchFeedbackLayout->setSpacing(6);
 
     m_useDefaultMatchFeedbackCheck =
-        new QCheckBox(tr("기본 실행 위치 피드백 사용"), m_matchFeedbackGroup);
+        new QCheckBox(tr("기본 감지 피드백 사용"), m_matchFeedbackGroup);
     m_useDefaultMatchFeedbackCheck->setToolTip(
-        tr("켜면 기본 녹색/빨간색 매칭 펄스를 사용합니다. "
+        tr("켜면 기본 녹색/빨간색 감지 펄스를 사용합니다. "
            "끄면 아래에서 이 블록만의 애니메이션을 지정할 수 있습니다."));
     matchFeedbackLayout->addWidget(m_useDefaultMatchFeedbackCheck);
 
@@ -551,13 +551,13 @@ void ImageFindEditor::setupUi() {
     m_matchFeedbackSummary->setWordWrap(true);
     auto* matchFeedbackRow = new QHBoxLayout();
     matchFeedbackRow->addWidget(m_matchFeedbackSummary, 1);
-    m_matchFeedbackButton = new QPushButton(tr("설정…"), m_matchFeedbackGroup);
+    m_matchFeedbackButton = new QPushButton(tr("설정"), m_matchFeedbackGroup);
     m_matchFeedbackButton->setCursor(Qt::PointingHandCursor);
     matchFeedbackRow->addWidget(m_matchFeedbackButton, 0, Qt::AlignTop);
     matchFeedbackLayout->addLayout(matchFeedbackRow);
 
     auto* matchFeedbackHint = new HintLabel(
-        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 템플릿 매칭 시 대상 창에 표시되는 애니메이션입니다."),
+        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 템플릿 감지 시 대상 창에 표시되는 애니메이션입니다."),
         m_matchFeedbackGroup);
     matchFeedbackHint->setWordWrap(true);
     matchFeedbackLayout->addWidget(matchFeedbackHint);
@@ -1397,7 +1397,7 @@ void ImageFindEditor::updateMatchFeedbackSummary() {
 
 void ImageFindEditor::onOpenMatchFeedbackSettings() {
     ClickPointerFeedbackSettingsDialog dialog(this);
-    dialog.setWindowTitle(tr("실행 위치 피드백 애니메이션"));
+    dialog.setDialogKind(PointerFeedbackDialogKind::Detection);
     dialog.setPersistToGlobalSettingsOnAccept(false);
     dialog.loadFromSettings(m_draftMatchFeedback);
     if (dialog.exec() != QDialog::Accepted) {

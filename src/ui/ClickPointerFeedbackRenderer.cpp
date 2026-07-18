@@ -180,25 +180,33 @@ void renderClickPointerFeedbackFrame(uint32_t* pixels,
                                      int centerY,
                                      uint64_t ageMs,
                                      uint64_t lifetimeMs,
-                                     const ClickPointerFeedbackSettings& settings) {
+                                     const ClickPointerFeedbackSettings& settings,
+                                     const QColor& coreColor,
+                                     const QColor& ringColor) {
     if (!pixels || width <= 0 || height <= 0 || lifetimeMs <= 0) {
         return;
     }
+
+    const QColor resolvedCore = coreColor.isValid() ? coreColor : resolvedClickCoreColor(settings);
+    const QColor resolvedRing = ringColor.isValid() ? ringColor : resolvedClickRingColor(settings);
 
     const float t = static_cast<float>(ageMs) / static_cast<float>(lifetimeMs);
     const float fade = 1.0f - t;
     const uint8_t alpha =
         static_cast<uint8_t>(std::clamp(fade * static_cast<float>(settings.maxAlpha), 0.0f, 255.0f));
-    const uint8_t r = static_cast<uint8_t>(settings.color.red());
-    const uint8_t g = static_cast<uint8_t>(settings.color.green());
-    const uint8_t b = static_cast<uint8_t>(settings.color.blue());
+    const uint8_t coreR = static_cast<uint8_t>(resolvedCore.red());
+    const uint8_t coreG = static_cast<uint8_t>(resolvedCore.green());
+    const uint8_t coreB = static_cast<uint8_t>(resolvedCore.blue());
+    const uint8_t ringR = static_cast<uint8_t>(resolvedRing.red());
+    const uint8_t ringG = static_cast<uint8_t>(resolvedRing.green());
+    const uint8_t ringB = static_cast<uint8_t>(resolvedRing.blue());
 
     const double speed = std::max(0.25, settings.animationSpeed);
     const uint64_t animAge = static_cast<uint64_t>(static_cast<double>(ageMs) * speed);
 
     switch (settings.shape) {
     case ClickPointerFeedbackShape::FilledDotRings:
-        fillCircle(pixels, width, height, centerX, centerY, settings.coreSize, alpha, r, g, b);
+        fillCircle(pixels, width, height, centerX, centerY, settings.coreSize, alpha, coreR, coreG, coreB);
         for (int ring = 0; ring < settings.ringCount; ++ring) {
             const float ringSpan = static_cast<float>(lifetimeMs) * 0.7f;
             const float ringDelay = 90.0f / static_cast<float>(speed);
@@ -224,9 +232,9 @@ void renderClickPointerFeedbackFrame(uint32_t* pixels,
                        radius,
                        settings.ringThickness,
                        ringAlpha,
-                       r,
-                       g,
-                       b);
+                       ringR,
+                       ringG,
+                       ringB);
         }
         break;
     case ClickPointerFeedbackShape::RingOnly:
@@ -253,9 +261,9 @@ void renderClickPointerFeedbackFrame(uint32_t* pixels,
                        radius,
                        settings.ringThickness,
                        ringAlpha,
-                       r,
-                       g,
-                       b);
+                       ringR,
+                       ringG,
+                       ringB);
         }
         break;
     case ClickPointerFeedbackShape::Crosshair: {
@@ -272,9 +280,9 @@ void renderClickPointerFeedbackFrame(uint32_t* pixels,
                         armLength,
                         std::max(2, settings.ringThickness),
                         alpha,
-                        r,
-                        g,
-                        b);
+                        ringR,
+                        ringG,
+                        ringB);
         break;
     }
     case ClickPointerFeedbackShape::Square:
@@ -286,9 +294,9 @@ void renderClickPointerFeedbackFrame(uint32_t* pixels,
                  centerX + settings.coreSize,
                  centerY + settings.coreSize,
                  alpha,
-                 r,
-                 g,
-                 b);
+                 coreR,
+                 coreG,
+                 coreB);
         for (int ring = 0; ring < settings.ringCount; ++ring) {
             const float ringSpan = static_cast<float>(lifetimeMs) * 0.7f;
             const float ringDelay = 90.0f / static_cast<float>(speed);
@@ -314,9 +322,9 @@ void renderClickPointerFeedbackFrame(uint32_t* pixels,
                            halfSize,
                            settings.ringThickness,
                            ringAlpha,
-                           r,
-                           g,
-                           b);
+                           ringR,
+                           ringG,
+                           ringB);
         }
         break;
     }

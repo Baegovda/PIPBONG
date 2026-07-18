@@ -13,6 +13,7 @@ public:
     explicit ClickPointerFeedbackPreviewWidget(QWidget* parent = nullptr);
 
     void setSettings(const ClickPointerFeedbackSettings& settings);
+    void setDetectionPreview(bool enabled);
     void restartAnimation();
 
 protected:
@@ -23,6 +24,7 @@ private:
     void onTick();
 
     ClickPointerFeedbackSettings m_settings;
+    bool m_detectionPreview = false;
     QTimer* m_timer = nullptr;
     qint64 m_startMs = 0;
 };

@@ -18,12 +18,25 @@ struct ClickPointerFeedbackSettings {
     double animationSpeed = 1.0;
     ClickPointerFeedbackShape shape = ClickPointerFeedbackShape::FilledDotRings;
     QColor color{74, 160, 255};
+    /// Optional per-part colors for click feedback; invalid → use `color`.
+    QColor coreColor;
+    QColor ringColor;
+    /// Per-part colors for template-match detection feedback (success / miss).
+    QColor successCoreColor{90, 240, 150};
+    QColor successRingColor{90, 240, 150};
+    QColor missCoreColor{255, 110, 120};
+    QColor missRingColor{255, 110, 120};
     int coreSize = 4;
     int maxExpandRadius = 26;
     int ringCount = 2;
     int ringThickness = 3;
     int maxAlpha = 220;
 };
+
+QColor resolvedClickCoreColor(const ClickPointerFeedbackSettings& settings);
+QColor resolvedClickRingColor(const ClickPointerFeedbackSettings& settings);
+QColor detectionCoreColor(const ClickPointerFeedbackSettings& settings, bool success);
+QColor detectionRingColor(const ClickPointerFeedbackSettings& settings, bool success);
 
 /// Global window-pick confirmation overlay animation (QSettings, not project JSON).
 enum class WindowSelectionFeedbackStyle {

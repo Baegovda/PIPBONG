@@ -207,8 +207,8 @@ void ProgramSettingsDialog::setupUi() {
     clickLayout->addLayout(clickRow);
 
     auto* clickHint = new HintLabel(
-        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 마우스 클릭·템플릿 매칭 시 대상 창에 표시되는 기본 애니메이션입니다. "
-           "템플릿 매칭 블록마다 별도 설정을 지정할 수 있습니다."),
+        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 마우스 클릭 시 대상 창에 표시되는 기본 애니메이션입니다. "
+           "템플릿 감지 피드백은 템플릿 매칭 블록 편집에서 블록별로 지정할 수 있습니다."),
         clickGroup);
     clickHint->setWordWrap(true);
     clickLayout->addWidget(clickHint);
