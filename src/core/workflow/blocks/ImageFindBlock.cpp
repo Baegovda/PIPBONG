@@ -1128,12 +1128,6 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         return result;
     }
 
-#ifdef _WIN32
-    const HWND targetWindow = ctx.targetWindow();
-#else
-    const HWND targetWindow = nullptr;
-#endif
-
     const bool triggerMonitorPoll = ctx.triggerMonitorBlockIndex() >= 0
                                     && ctx.activeBlockIndex() == ctx.triggerMonitorBlockIndex();
 
@@ -1148,6 +1142,13 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         }
         ctx.log("트리거 매칭 재시도");
     }
+
+#ifdef _WIN32
+    ctx.refreshTargetWindowHandle();
+    const HWND targetWindow = ctx.targetWindow();
+#else
+    const HWND targetWindow = nullptr;
+#endif
 
     if (!triggerMonitorPoll) {
         if (const std::optional<BlockResult> replay = tryReplayRememberedPositionForLoop(
@@ -1181,6 +1182,12 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
     };
 
     while (true) {
+#ifdef _WIN32
+        ctx.refreshTargetWindowHandle();
+        const HWND targetWindow = ctx.targetWindow();
+#else
+        const HWND targetWindow = nullptr;
+#endif
         if (!ctx.scopedTargetPollAllowed()) {
             if (!sleepUnlessStopped(ctx, pollIntervalMs)) {
                 accumulateMatchWork();

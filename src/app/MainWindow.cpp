@@ -5207,11 +5207,8 @@ void MainWindow::onBlockImageFindAttempt(int index,
     }
     if (session->runningMode == FeatureRunMode::Trigger
         && session->triggerPhase == TriggerSessionPhase::Monitoring) {
+        // Session title only — ScreenCapture is refreshed on the worker thread to avoid racing capture.
         refreshSessionCaptureTarget(*session);
-        applySessionCaptureTarget(sessionCaptureTargetTitleW(*session));
-        if (session->sessionContext) {
-            session->sessionContext->setTargetWindowTitle(session->lockedCaptureTargetTitle);
-        }
     }
     if (!isDisplayedRunningFeature(session)) {
         return;
@@ -6059,7 +6056,10 @@ void MainWindow::syncTargetWindowTitleToCapture() {
     syncEffectiveTargetWindowTitleToCapture();
 #ifdef _WIN32
     if (!ScreenCapture::findTargetWindow()) {
-        ScreenCapture::setTargetWindowTitle(currentTargetWindowTitleW());
+        const std::wstring autoTitle = resolveAutoRunCaptureTargetTitleW();
+        if (!autoTitle.empty()) {
+            ScreenCapture::setTargetWindowTitle(autoTitle);
+        }
         if (HWND hwnd = ScreenCapture::findTargetWindow()) {
             ScreenCapture::setTargetWindow(hwnd);
         }
@@ -6076,7 +6076,7 @@ void MainWindow::syncEffectiveTargetWindowTitleToCapture() {
     }
     ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
 
-    const std::wstring title = resolveEffectiveTargetTitleW();
+    const std::wstring title = resolveAutoRunCaptureTargetTitleW();
     ScreenCapture::setTargetWindowTitle(title);
 #ifdef _WIN32
     HWND hwnd = GetForegroundWindow();

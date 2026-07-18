@@ -906,6 +906,9 @@ cv::Mat ScreenCapture::captureWithPrintWindow(HWND hwnd, UINT flags) {
 }
 
 cv::Mat ScreenCapture::captureWithClientBitBlt(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return {};
+    }
     RECT rect{};
     if (!GetClientRect(hwnd, &rect)) {
         return {};

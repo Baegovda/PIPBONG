@@ -544,6 +544,18 @@ HWND ExecutionContext::targetWindow() const {
     }
     return ScreenCapture::findTargetWindow();
 }
+
+void ExecutionContext::refreshTargetWindowHandle() const {
+    HWND hwnd = ScreenCapture::targetWindow();
+    if (hwnd && IsWindow(hwnd)) {
+        return;
+    }
+    ScreenCapture::setTargetWindow(nullptr);
+    hwnd = ScreenCapture::findTargetWindow();
+    if (hwnd) {
+        ScreenCapture::setTargetWindow(hwnd);
+    }
+}
 #endif
 
 std::string ExecutionContext::resolvePath(const std::string& relativePath) const {

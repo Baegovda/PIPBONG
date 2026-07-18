@@ -173,6 +173,8 @@ public:
 
 #ifdef _WIN32
     HWND targetWindow() const;
+    /// Re-resolve HWND on the worker thread when the cached target was destroyed (main→sub handoff).
+    void refreshTargetWindowHandle() const;
 #endif
 
     std::string resolvePath(const std::string& relativePath) const;

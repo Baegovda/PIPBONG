@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.201` (from `project(PIPBONG VERSION 0.8.201)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.202` (from `project(PIPBONG VERSION 0.8.202)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1179,6 +1179,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.202] - 2026-07-18
+
+### Fixed
+
+- Crash when the main target window closed and capture should fall back to the profile sub target: trigger monitor no longer rewrites `ScreenCapture` from the UI thread on each ImageFind poll (`MainWindow::onBlockImageFindAttempt`); worker thread refreshes stale HWND via `ExecutionContext::refreshTargetWindowHandle` before each poll (`ImageFindBlock`); idle capture sync prefers `resolveAutoRunCaptureTargetTitleW` sub fallback (`MainWindow::syncEffectiveTargetWindowTitleToCapture`, `syncTargetWindowTitleToCapture`); `captureWithClientBitBlt` guards invalid HWND (`ScreenCapture`).
 
 ## [0.8.201] - 2026-07-18
 
