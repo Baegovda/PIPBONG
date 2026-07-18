@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.220` (from `project(PIPBONG VERSION 0.8.220)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.221` (from `project(PIPBONG VERSION 0.8.221)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1092,6 +1092,22 @@ Qt `Interactive` / `Stretch` / filler columns caused dead handles, inverted resi
 
 Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
+### 8.12 Session run policy sim (dev regression)
+
+**Status:** Added 2026-07 (v0.8.220–0.8.221). Headless checks for trigger/hold/repeat session **policy** — not UI, capture, or input.
+
+| Layer | Role |
+| ----- | ---- |
+| `SessionRunPolicy` | Production policy (`MainWindow` delegates here) |
+| `SessionRunPolicyInvariants` | Invariant checks + exhaustive grid + fuzz |
+| `PIPBONGPolicySim` | Dev-only exe (~tens of KB); manual scenarios + ~990 grid states + 4096 fuzz samples |
+| `scripts/run-policy-sim.ps1` | Build sim + run; writes `build/policy-sim-report.txt` |
+| `build-release.ps1` | Runs policy sim after PIPBONG link unless `PIPBONG_SKIP_POLICY_SIM=1` |
+
+**When to run:** after any change to `SessionRunPolicy`, `MainWindow` session guards, trigger defer refresh, update/center-pin gates, or early-loop mouse lock policy.
+
+**Stage 2 (not yet):** workflow `WorkflowRunner` dry-run with mocks — blocked by OpenCV/UI block dependencies; track as future `PIPBONGWorkflowDryRunSim`.
+
 ---
 
 ## 9. Development Governance
@@ -1189,6 +1205,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.221] - 2026-07-19
+
+### Added
+
+- **`SessionRunPolicyInvariants`**: exhaustive grid (~990 states) + seeded fuzz (4096 samples) over `SessionRunPolicy` with Korean violation messages; `PIPBONGPolicySim` writes `build/policy-sim-report.txt` via `--report=`.
+- **`build-release.ps1`** runs policy sim after PIPBONG link (skip with env `PIPBONG_SKIP_POLICY_SIM=1`).
+
+### Changed
+
+- `SessionRunPolicySim` manual scenarios expanded (hold/trigger disarm, stale session); failure output is bilingual (English id + Korean explanation).
 
 ## [0.8.220] - 2026-07-19
 

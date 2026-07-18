@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.220 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.221 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -214,6 +214,10 @@ endif()
 add_executable(PIPBONGPolicySim
     src/tools/SessionRunPolicySim.cpp
     src/app/SessionRunPolicy.cpp
+    src/app/SessionRunPolicyInvariants.cpp
 )
 target_include_directories(PIPBONGPolicySim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(PIPBONGPolicySim PRIVATE nlohmann_json::nlohmann_json)
+if(MSVC)
+    target_compile_options(PIPBONGPolicySim PRIVATE /utf-8)
+endif()
