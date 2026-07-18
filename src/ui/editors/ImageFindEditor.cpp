@@ -1,6 +1,8 @@
 #include "ui/editors/ImageFindEditor.h"
 
 #include "app/TemplateCaptureHotkeySettings.h"
+#include "app/PointerFeedbackSettings.h"
+#include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/editors/ImageFindPollIntervalPrefs.h"
 #include "core/capture/ScreenCapture.h"
 #include "core/input/HotkeyBinding.h"
@@ -249,6 +251,13 @@ void ImageFindEditor::reload() {
     }
     updateRoiCorrectionUi();
     updateReturnToPreviousMissLimitUi();
+    if (m_useDefaultMatchFeedbackCheck) {
+        QSignalBlocker blocker(m_useDefaultMatchFeedbackCheck);
+        m_useDefaultMatchFeedbackCheck->setChecked(!m_block->matchPointerFeedback.has_value());
+        m_draftMatchFeedback = m_block->matchPointerFeedback.value_or(PointerFeedbackSettings::click());
+        m_matchFeedbackButton->setEnabled(m_block->matchPointerFeedback.has_value());
+        updateMatchFeedbackSummary();
+    }
 }
 
 void ImageFindEditor::setRoiCorrectionUiPolicy(bool featureGlobalEnabled, bool sessionEligible) {
@@ -526,7 +535,41 @@ void ImageFindEditor::setupUi() {
     roiLayout->addWidget(m_roiList);
     roiLayout->addLayout(roiToolbar);
 
+    m_matchFeedbackGroup = new QGroupBox(tr("실행 위치 피드백"), this);
+    auto* matchFeedbackLayout = new QVBoxLayout(m_matchFeedbackGroup);
+    matchFeedbackLayout->setContentsMargins(9, 9, 9, 9);
+    matchFeedbackLayout->setSpacing(6);
+
+    m_useDefaultMatchFeedbackCheck =
+        new QCheckBox(tr("기본 실행 위치 피드백 사용"), m_matchFeedbackGroup);
+    m_useDefaultMatchFeedbackCheck->setToolTip(
+        tr("켜면 기본 녹색/빨간색 매칭 펄스를 사용합니다. "
+           "끄면 아래에서 이 블록만의 애니메이션을 지정할 수 있습니다."));
+    matchFeedbackLayout->addWidget(m_useDefaultMatchFeedbackCheck);
+
+    m_matchFeedbackSummary = new QLabel(m_matchFeedbackGroup);
+    m_matchFeedbackSummary->setWordWrap(true);
+    auto* matchFeedbackRow = new QHBoxLayout();
+    matchFeedbackRow->addWidget(m_matchFeedbackSummary, 1);
+    m_matchFeedbackButton = new QPushButton(tr("설정…"), m_matchFeedbackGroup);
+    m_matchFeedbackButton->setCursor(Qt::PointingHandCursor);
+    matchFeedbackRow->addWidget(m_matchFeedbackButton, 0, Qt::AlignTop);
+    matchFeedbackLayout->addLayout(matchFeedbackRow);
+
+    auto* matchFeedbackHint = new HintLabel(
+        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 템플릿 매칭 시 대상 창에 표시되는 애니메이션입니다."),
+        m_matchFeedbackGroup);
+    matchFeedbackHint->setWordWrap(true);
+    matchFeedbackLayout->addWidget(matchFeedbackHint);
+
+    connect(m_useDefaultMatchFeedbackCheck, &QCheckBox::toggled, this, [this](bool useDefault) {
+        m_matchFeedbackButton->setEnabled(!useDefault);
+        updateMatchFeedbackSummary();
+    });
+    connect(m_matchFeedbackButton, &QPushButton::clicked, this, &ImageFindEditor::onOpenMatchFeedbackSettings);
+
     layout->addWidget(matchGroup);
+    layout->addWidget(m_matchFeedbackGroup);
     layout->addWidget(templateGroup);
     layout->addWidget(roiGroup);
 
@@ -607,6 +650,13 @@ void ImageFindEditor::syncUiToBlockValues() {
     if (m_templateColorModeCombo) {
         m_block->templateColorMode =
             static_cast<TemplateColorMode>(m_templateColorModeCombo->currentData().toInt());
+    }
+    if (m_useDefaultMatchFeedbackCheck) {
+        if (m_useDefaultMatchFeedbackCheck->isChecked()) {
+            m_block->matchPointerFeedback.reset();
+        } else {
+            m_block->matchPointerFeedback = m_draftMatchFeedback;
+        }
     }
     syncBlockTemplatePathsFromList();
     syncBlockCustomRegionsFromList();
@@ -1328,4 +1378,35 @@ void ImageFindEditor::keyPressEvent(QKeyEvent* event) {
 #endif
     }
     QDialog::keyPressEvent(event);
+}
+
+void ImageFindEditor::updateMatchFeedbackSummary() {
+    if (!m_matchFeedbackSummary) {
+        return;
+    }
+    const ClickPointerFeedbackSettings effective =
+        m_useDefaultMatchFeedbackCheck && m_useDefaultMatchFeedbackCheck->isChecked()
+            ? PointerFeedbackSettings::click()
+            : m_draftMatchFeedback;
+    QString summary = ClickPointerFeedbackSettingsDialog::settingsSummary(effective);
+    if (m_useDefaultMatchFeedbackCheck && m_useDefaultMatchFeedbackCheck->isChecked()) {
+        summary += tr(" (기본 녹색/빨간색 펄스)");
+    }
+    m_matchFeedbackSummary->setText(summary);
+}
+
+void ImageFindEditor::onOpenMatchFeedbackSettings() {
+    ClickPointerFeedbackSettingsDialog dialog(this);
+    dialog.setWindowTitle(tr("실행 위치 피드백 애니메이션"));
+    dialog.setPersistToGlobalSettingsOnAccept(false);
+    dialog.loadFromSettings(m_draftMatchFeedback);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    m_draftMatchFeedback = dialog.acceptedSettings();
+    if (m_useDefaultMatchFeedbackCheck) {
+        m_useDefaultMatchFeedbackCheck->setChecked(false);
+        m_matchFeedbackButton->setEnabled(true);
+    }
+    updateMatchFeedbackSummary();
 }

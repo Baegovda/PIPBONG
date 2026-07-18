@@ -2,6 +2,7 @@
 
 
 
+#include "app/PointerFeedbackSettings.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
 
 #include "core/input/HotkeyBinding.h"
@@ -34,6 +35,8 @@ class QKeyEvent;
 class QCheckBox;
 
 class QComboBox;
+
+class QGroupBox;
 
 class HintLabel;
 
@@ -158,6 +161,8 @@ private:
     void updateRoiCorrectionUi();
 
     void updateReturnToPreviousMissLimitUi();
+    void updateMatchFeedbackSummary();
+    void onOpenMatchFeedbackSettings();
 
     ImageFindBlock* m_block = nullptr;
 
@@ -219,6 +224,11 @@ private:
 
     QLabel* m_templateCaptureHotkeyLabel = nullptr;
 
+    QGroupBox* m_matchFeedbackGroup = nullptr;
+    QCheckBox* m_useDefaultMatchFeedbackCheck = nullptr;
+    QLabel* m_matchFeedbackSummary = nullptr;
+    QPushButton* m_matchFeedbackButton = nullptr;
+    ClickPointerFeedbackSettings m_draftMatchFeedback{};
 };
 
 

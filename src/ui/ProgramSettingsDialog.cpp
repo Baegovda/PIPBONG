@@ -3,6 +3,7 @@
 #include "app/PointerFeedbackSettings.h"
 #include "app/ProgramSettings.h"
 #include "app/WindowsRunAsAdmin.h"
+#include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/WindowSelectionFeedbackSettingsDialog.h"
 #include "ui/UiStrings.h"
 #include "ui/widgets/DragAdjustSpinBox.h"
@@ -190,6 +191,29 @@ void ProgramSettingsDialog::setupUi() {
         layout->addWidget(elevatedHint);
     }
 
+    auto* clickGroup = new QGroupBox(tr("실행 위치 피드백 (기본)"), this);
+    auto* clickLayout = new QVBoxLayout(clickGroup);
+
+    m_clickFeedbackSummary = new QLabel(clickGroup);
+    m_clickFeedbackSummary->setWordWrap(true);
+    updateClickFeedbackSummary();
+
+    auto* clickRow = new QHBoxLayout();
+    clickRow->addWidget(m_clickFeedbackSummary, 1);
+    m_clickFeedbackButton = new QPushButton(tr("설정…"), clickGroup);
+    m_clickFeedbackButton->setCursor(Qt::PointingHandCursor);
+    connect(m_clickFeedbackButton, &QPushButton::clicked, this, &ProgramSettingsDialog::onOpenClickFeedbackSettings);
+    clickRow->addWidget(m_clickFeedbackButton, 0, Qt::AlignTop);
+    clickLayout->addLayout(clickRow);
+
+    auto* clickHint = new HintLabel(
+        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 마우스 클릭·템플릿 매칭 시 대상 창에 표시되는 기본 애니메이션입니다. "
+           "템플릿 매칭 블록마다 별도 설정을 지정할 수 있습니다."),
+        clickGroup);
+    clickHint->setWordWrap(true);
+    clickLayout->addWidget(clickHint);
+    layout->addWidget(clickGroup);
+
     auto* windowSelectionGroup = new QGroupBox(tr("창 지정 애니메이션"), this);
     auto* windowSelectionLayout = new QVBoxLayout(windowSelectionGroup);
 
@@ -238,6 +262,22 @@ void ProgramSettingsDialog::setupUi() {
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
+}
+
+void ProgramSettingsDialog::updateClickFeedbackSummary() {
+    if (!m_clickFeedbackSummary) {
+        return;
+    }
+    m_clickFeedbackSummary->setText(ClickPointerFeedbackSettingsDialog::settingsSummary(
+        PointerFeedbackSettings::click()));
+}
+
+void ProgramSettingsDialog::onOpenClickFeedbackSettings() {
+    ClickPointerFeedbackSettingsDialog dialog(this);
+    dialog.setWindowTitle(tr("실행 위치 피드백 (기본)"));
+    if (dialog.exec() == QDialog::Accepted) {
+        updateClickFeedbackSummary();
+    }
 }
 
 void ProgramSettingsDialog::updateImageFindCaptureModeHint() {

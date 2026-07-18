@@ -5163,7 +5163,28 @@ void MainWindow::onBlockMatchResult(int index,
         } else if (isTriggerMonitoring(*session)) {
             kind = RunPointerFeedbackKind::TriggerScan;
         }
-        WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
+        if (kind == RunPointerFeedbackKind::TriggerScan) {
+            WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
+        } else if (session->sessionWorkflow && index >= 0) {
+            const auto& blocks = session->sessionWorkflow->blocks();
+            if (index < static_cast<int>(blocks.size())) {
+                if (auto* imageFind =
+                        dynamic_cast<ImageFindBlock*>(blocks[static_cast<size_t>(index)].get())) {
+                    if (imageFind->hasCustomMatchPointerFeedback()) {
+                        WorkflowMatchFeedbackOverlay::pulseAtClientPoint(
+                            clientX, clientY, kind, imageFind->customMatchPointerFeedback());
+                    } else {
+                        WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
+                    }
+                } else {
+                    WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
+                }
+            } else {
+                WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
+            }
+        } else {
+            WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
+        }
     }
 
     if (!session || !isDisplayedRunningFeature(session)) {
@@ -5172,9 +5193,7 @@ void MainWindow::onBlockMatchResult(int index,
     m_workflowEditor->setBlockMatchResult(index, matchThreshold, confidence, matchPreview, matched);
 }
 
-void MainWindow::onPointerFeedbackAtClientPoint(int clientX,
-                                                int clientY,
-                                                ClickPointerFeedbackSettings settings) {
+void MainWindow::onPointerFeedbackAtClientPoint(int clientX, int clientY) {
     FeatureRunSession* session = sessionForEngine(sender());
     if (!session || !session->pointerVisualFeedback) {
         return;
@@ -5183,7 +5202,7 @@ void MainWindow::onPointerFeedbackAtClientPoint(int clientX,
         return;
     }
     WorkflowMatchFeedbackOverlay::pulseAtClientPoint(
-        clientX, clientY, RunPointerFeedbackKind::Click, settings);
+        clientX, clientY, RunPointerFeedbackKind::Click, PointerFeedbackSettings::click());
 }
 
 void MainWindow::onBlockFinished(int index, bool success, const QString& message, qint64 durationMs,

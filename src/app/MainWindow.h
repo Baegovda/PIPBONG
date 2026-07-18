@@ -137,7 +137,7 @@ private slots:
                             bool hasClientPoint,
                             int clientX,
                             int clientY);
-    void onPointerFeedbackAtClientPoint(int clientX, int clientY, ClickPointerFeedbackSettings settings);
+    void onPointerFeedbackAtClientPoint(int clientX, int clientY);
     void onBlockFinished(int index, bool success, const QString& message, qint64 durationMs,
                          qint64 imageFindMatchDurationMs, int imageFindPollAttempts);
     void onBlockImageFindAttempt(int index,

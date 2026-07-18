@@ -57,7 +57,7 @@ signals:
                           bool hasClientPoint,
                           int clientX,
                           int clientY);
-    void pointerFeedbackAtClientPoint(int clientX, int clientY, ClickPointerFeedbackSettings settings);
+    void pointerFeedbackAtClientPoint(int clientX, int clientY);
     void logMessage(const QString& message);
     void finished(bool success, const QString& message);
 

@@ -34,6 +34,7 @@ struct Pulse {
     RunPointerFeedbackKind kind = RunPointerFeedbackKind::MatchMiss;
     ULONGLONG startMs = 0;
     ClickPointerFeedbackSettings clickSettings{};
+    bool useCustomFeedbackStyle = false;
 };
 
 struct OverlayState {
@@ -61,8 +62,11 @@ void destroyOverlayWindow() {
 }
 
 ULONGLONG pulseLifetimeMs(const Pulse& pulse) {
-    if (pulse.kind == RunPointerFeedbackKind::Click) {
+    if (pulse.useCustomFeedbackStyle) {
         return static_cast<ULONGLONG>(pulse.clickSettings.displayDurationMs);
+    }
+    if (pulse.kind == RunPointerFeedbackKind::Click) {
+        return static_cast<ULONGLONG>(PointerFeedbackSettings::click().displayDurationMs);
     }
     if (pulse.kind == RunPointerFeedbackKind::TriggerScan) {
         return kTriggerScanPulseLifetimeMs;
@@ -239,8 +243,10 @@ void renderClickPulse(uint32_t* pixels,
 }
 
 int pulseRenderMarginPx(const Pulse& pulse) {
-    if (pulse.kind == RunPointerFeedbackKind::Click) {
-        const auto& settings = pulse.clickSettings;
+    if (pulse.useCustomFeedbackStyle
+        || pulse.kind == RunPointerFeedbackKind::Click) {
+        const auto& settings =
+            pulse.useCustomFeedbackStyle ? pulse.clickSettings : PointerFeedbackSettings::click();
         return settings.maxExpandRadius + settings.coreSize + settings.ringThickness + 12;
     }
     if (pulse.kind == RunPointerFeedbackKind::TriggerScan) {
@@ -364,6 +370,8 @@ void renderOverlayFrame() {
             renderClickPulse(pixels, width, height, localPulse, age, lifetime);
         } else if (pulse.kind == RunPointerFeedbackKind::TriggerScan) {
             renderTriggerScanPulse(pixels, width, height, localPulse, age, lifetime);
+        } else if (pulse.useCustomFeedbackStyle) {
+            renderClickPulse(pixels, width, height, localPulse, age, lifetime);
         } else {
             renderMatchPulse(pixels, width, height, localPulse, age, lifetime);
         }
@@ -505,24 +513,12 @@ void WorkflowMatchFeedbackOverlay::hideBeforeCapture() {
 
 void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
                                                       int clientY,
-                                                      RunPointerFeedbackKind kind,
-                                                      const ClickPointerFeedbackSettings& clickSettings) {
+                                                      RunPointerFeedbackKind kind) {
 #ifdef _WIN32
     if (!ensureOverlayWindow()) {
         return;
     }
 
-    if (kind == RunPointerFeedbackKind::Click) {
-        for (Pulse& existing : g_state->pulses) {
-            if (existing.kind == RunPointerFeedbackKind::Click) {
-                existing.clientX = clientX;
-                existing.clientY = clientY;
-                existing.clickSettings = clickSettings;
-                renderOverlayFrame();
-                return;
-            }
-        }
-    }
     if (kind == RunPointerFeedbackKind::TriggerScan) {
         for (Pulse& existing : g_state->pulses) {
             if (existing.kind == RunPointerFeedbackKind::TriggerScan) {
@@ -540,9 +536,6 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
     pulse.clientY = clientY;
     pulse.kind = kind;
     pulse.startMs = nowMs();
-    if (kind == RunPointerFeedbackKind::Click) {
-        pulse.clickSettings = clickSettings;
-    }
     g_state->pulses.push_back(pulse);
     if (g_state->pulses.size() > kMaxActivePulses) {
         g_state->pulses.erase(g_state->pulses.begin(),
@@ -554,7 +547,50 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
     (void)clientX;
     (void)clientY;
     (void)kind;
-    (void)clickSettings;
+#endif
+}
+
+void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
+                                                      int clientY,
+                                                      RunPointerFeedbackKind kind,
+                                                      const ClickPointerFeedbackSettings& feedback) {
+#ifdef _WIN32
+    if (!ensureOverlayWindow()) {
+        return;
+    }
+
+    if (kind == RunPointerFeedbackKind::Click) {
+        for (Pulse& existing : g_state->pulses) {
+            if (existing.kind == RunPointerFeedbackKind::Click) {
+                existing.clientX = clientX;
+                existing.clientY = clientY;
+                existing.clickSettings = feedback;
+                existing.useCustomFeedbackStyle = true;
+                renderOverlayFrame();
+                return;
+            }
+        }
+    }
+
+    Pulse pulse;
+    pulse.clientX = clientX;
+    pulse.clientY = clientY;
+    pulse.kind = kind;
+    pulse.startMs = nowMs();
+    pulse.clickSettings = feedback;
+    pulse.useCustomFeedbackStyle = true;
+    g_state->pulses.push_back(pulse);
+    if (g_state->pulses.size() > kMaxActivePulses) {
+        g_state->pulses.erase(g_state->pulses.begin(),
+                              g_state->pulses.begin()
+                                  + static_cast<std::ptrdiff_t>(g_state->pulses.size() - kMaxActivePulses));
+    }
+    renderOverlayFrame();
+#else
+    (void)clientX;
+    (void)clientY;
+    (void)kind;
+    (void)feedback;
 #endif
 }
 

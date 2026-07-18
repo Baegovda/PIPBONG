@@ -2,9 +2,6 @@
 
 #include "core/workflow/Block.h"
 #include "core/input/InputSimulator.h"
-#include "app/PointerFeedbackSettings.h"
-
-#include <optional>
 
 class ClickBlock : public Block {
 public:
@@ -23,9 +20,6 @@ public:
     int count = 1;
     bool useClientCoordinates = true;
     KeyModifiers modifiers;
-    std::optional<ClickPointerFeedbackSettings> clickPointerFeedback;
-
-    ClickPointerFeedbackSettings resolvedClickPointerFeedback() const;
 
     BlockType type() const override { return BlockType::Click; }
     std::string displayName() const override { return "Click"; }

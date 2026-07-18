@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.206` (from `project(PIPBONG VERSION 0.8.206)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.207` (from `project(PIPBONG VERSION 0.8.207)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -683,6 +683,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `returnToPreviousMissLimit`           | `1` (omitted)             | Consecutive ImageFind poll misses before return-to-previous triggers; only used when `returnToPreviousImageFindOnFailure` is true                                      |
 | `retryAfterNextActionOnFailure`       | `false` (omitted)         | On first detection failure: run the next block once, then retry this block; on second failure jump to the next `ImageFind` block                                        |
 | `rememberMultiMatchPositions`         | `false` (omitted)         | Loop 1: remember all threshold hits in the search ROI (top-to-bottom, left-to-right). Loop round `N` replays stored hit `N` without capture/matching (fails when `N` exceeds stored count) |
+| `matchPointerFeedback`                | omitted                   | Per-block match/run pointer-feedback animation; same fields as `ClickPointerFeedbackSettings`; omitted when block uses legacy green/red match pulse |
 
 #### `Click`
 
@@ -696,7 +697,6 @@ Sbm1.0/                        # repo root (local workspace)
 | `count`                   | `1`           | Click count (`Tap` only)                                                                 |
 | `useClientCoordinates`    | `true`        | Client vs screen coords                                                                  |
 | `ctrl`, `alt`, `shift`    | `false`       | Keyboard modifiers held during the click                                                 |
-| `clickPointerFeedback`    | omitted       | Per-block click pointer-feedback animation; same fields as `ClickPointerFeedbackSettings` (`displayDurationMs`, `animationSpeed`, `shape`, `color`, …); omitted when block uses app default (`PointerFeedbackSettings::click()`) |
 
 #### `KeyPress`
 
@@ -1188,6 +1188,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.207] - 2026-07-18
+
+### Added
+
+- Per-block **실행 위치 피드백** in **템플릿 매칭** block editor: **기본 실행 위치 피드백 사용** (legacy green/red match pulse) or **설정…** for custom animation; JSON `matchPointerFeedback` on `ImageFind` blocks (`ImageFindBlock`, `ImageFindEditor`, `WorkflowMatchFeedbackOverlay`, `MainWindow::onBlockMatchResult`).
+
+### Changed
+
+- Restored **프로그램 설정** **실행 위치 피드백 (기본)** for global click + default animation; per-block customization lives on **템플릿 매칭** blocks only (`ProgramSettingsDialog`, `ClickPointerFeedbackSettingsDialog` title/hint).
+
+### Fixed
+
+- Reverted mistaken v0.8.206 placement of per-block pointer feedback on **마우스** blocks (`ClickBlock`, `ClickEditor`); click pulses use global `PointerFeedbackSettings::click()` again.
+
+### Removed
+
+- `Click` JSON `clickPointerFeedback` and **마우스** block editor **클릭 피드백 애니메이션** group (v0.8.206 regression).
 
 ## [0.8.206] - 2026-07-18
 

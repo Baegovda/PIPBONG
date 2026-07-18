@@ -1,9 +1,11 @@
 #pragma once
 
 #include "core/workflow/Block.h"
+#include "app/PointerFeedbackSettings.h"
 #include "core/capture/ScreenCapture.h"
 #include "core/vision/ImageMatcher.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -66,8 +68,14 @@ public:
     bool retryAfterNextActionOnFailure = false;
     /// Loop 1: remember all threshold hits in ROI (left-to-right, top-to-bottom). Loop 2+: replay without capture.
     bool rememberMultiMatchPositions = false;
+    /// Per-block match/run pointer-feedback animation; omitted when legacy green/red pulse is used.
+    std::optional<ClickPointerFeedbackSettings> matchPointerFeedback;
 
     bool hasTemplates() const;
+    bool hasCustomMatchPointerFeedback() const { return matchPointerFeedback.has_value(); }
+    const ClickPointerFeedbackSettings& customMatchPointerFeedback() const {
+        return *matchPointerFeedback;
+    }
     std::string primaryTemplatePath() const;
 
     MatchOptions matchOptions() const;

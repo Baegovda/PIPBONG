@@ -1,4 +1,5 @@
 #include "core/workflow/blocks/ImageFindBlock.h"
+#include "app/PointerFeedbackSettings.h"
 #include "core/input/HotkeyBinding.h"
 #include "core/vision/ImageMatcher.h"
 #include "core/vision/TemplateCache.h"
@@ -1467,6 +1468,9 @@ nlohmann::json ImageFindBlock::toJson() const {
     if (templateColorMode != TemplateColorMode::Auto) {
         json["templateColorMode"] = templateColorModeToString(templateColorMode);
     }
+    if (matchPointerFeedback) {
+        json["matchPointerFeedback"] = clickPointerFeedbackToJson(*matchPointerFeedback);
+    }
     return json;
 }
 
@@ -1553,6 +1557,9 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
     block->rememberMultiMatchPositions = json.value("rememberMultiMatchPositions", false);
     block->templateColorMode =
         templateColorModeFromString(json.value("templateColorMode", "Auto"));
+    if (json.contains("matchPointerFeedback") && json["matchPointerFeedback"].is_object()) {
+        block->matchPointerFeedback = clickPointerFeedbackFromJson(json["matchPointerFeedback"]);
+    }
     return block;
 }
 

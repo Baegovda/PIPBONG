@@ -177,13 +177,11 @@ protected:
                 emit m_engine->blockMatchResult(
                     i, matchThreshold, confidence, matchPreview, matched, hasClientPoint, clientX, clientY);
             };
-            hooks.onPointerFeedbackAtClientPoint = [this, context](int clientX,
-                                                                   int clientY,
-                                                                   const ClickPointerFeedbackSettings& settings) {
+            hooks.onPointerFeedbackAtClientPoint = [this, context](int clientX, int clientY) {
                 if (context->suppressRepeatUi()) {
                     return;
                 }
-                emit m_engine->pointerFeedbackAtClientPoint(clientX, clientY, settings);
+                emit m_engine->pointerFeedbackAtClientPoint(clientX, clientY);
             };
 
             const bool workerFastRepeat = context->hasWorkerFastRepeat();

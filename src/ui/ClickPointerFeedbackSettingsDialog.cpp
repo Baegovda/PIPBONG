@@ -77,7 +77,7 @@ QString ClickPointerFeedbackSettingsDialog::settingsSummary(const ClickPointerFe
 
 ClickPointerFeedbackSettingsDialog::ClickPointerFeedbackSettingsDialog(QWidget* parent)
     : QDialog(parent) {
-    setWindowTitle(tr("마우스 클릭 피드백 애니메이션"));
+    setWindowTitle(tr("실행 위치 피드백 애니메이션"));
     setModal(true);
     resize(640, 560);
     setupUi();
@@ -98,7 +98,7 @@ void ClickPointerFeedbackSettingsDialog::setupUi() {
     outerLayout->setSpacing(12);
 
     auto* hint = new HintLabel(
-        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 마우스 클릭 시 대상 창에 표시되는 포인터 애니메이션입니다."),
+        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 대상 창에 표시되는 포인터 애니메이션입니다."),
         this);
     hint->setWordWrap(true);
     outerLayout->addWidget(hint);
