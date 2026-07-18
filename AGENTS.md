@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.219` (from `project(PIPBONG VERSION 0.8.219)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.220` (from `project(PIPBONG VERSION 0.8.220)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -392,6 +392,7 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── build-common.ps1       # stale vcpkg lock + stuck cmake/vcpkg helpers (sourced by build-release)
 │   ├── build-release.ps1      # canonical incremental Release build (IDE + AI task close)
 │   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
+│   ├── run-policy-sim.ps1     # build + run PIPBONGPolicySim (session policy regression)
 │   ├── recover-ide-build.ps1  # one-click IDE build recovery (lock, processes, .vscode restore, F5 fix)
 │   ├── fix-pipbong-cursor-f5.ps1  # PIPBONG-only F5 -> Build and Run task (no debugger)
 │   ├── sync-update-log.py     # optional §11 → per-version draft (grouping is manual)
@@ -1188,6 +1189,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.220] - 2026-07-19
+
+### Added
+
+- **`SessionRunPolicy`** (`src/app/SessionRunPolicy.*`): shared session/workflow policy helpers (active session, active workflow burst, early-loop mouse lock, workflow refresh deferral, update vs center-pin gates).
+- **`PIPBONGPolicySim`** headless scenario runner (`src/tools/SessionRunPolicySim.cpp`) and **`scripts/run-policy-sim.ps1`** — regression checks for trigger watch/action/cooldown, hold/repeat between loops, multi-feature, and update vs center-pin policy.
+
+### Changed
+
+- `MainWindow` session policy methods delegate to `SessionRunPolicy` (single source of truth with the sim).
+- `hasAnyRunningSession()` now uses `SessionRunPolicy::hasAnyRunningSession` (active session semantics) instead of a non-empty session map alone.
 
 ## [0.8.219] - 2026-07-19
 

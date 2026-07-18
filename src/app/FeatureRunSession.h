@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/SessionRunPolicy.h"
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/WorkflowEngine.h"
 #include "model/FeatureRunMode.h"
@@ -9,13 +10,6 @@
 
 #include <memory>
 #include <string>
-
-enum class TriggerSessionPhase {
-    None,
-    Monitoring,
-    RunningAction,
-    Cooldown
-};
 
 struct TriggerPreemptedSession {
     std::string featureId;

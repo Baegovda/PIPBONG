@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.219 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.220 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -32,6 +32,7 @@ set(PIPBONG_SOURCES
     src/app/WindowsRunAsAdmin.cpp
     src/app/PointerFeedbackSettings.cpp
     src/app/FeatureLibraryManager.cpp
+    src/app/SessionRunPolicy.cpp
     src/app/UpdateChecker.cpp
     src/model/Feature.cpp
     src/model/FeatureRunMode.cpp
@@ -209,3 +210,10 @@ if(WIN32)
         COMMENT "Copying PIPBONGUpdater next to main executable"
     )
 endif()
+
+add_executable(PIPBONGPolicySim
+    src/tools/SessionRunPolicySim.cpp
+    src/app/SessionRunPolicy.cpp
+)
+target_include_directories(PIPBONGPolicySim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(PIPBONGPolicySim PRIVATE nlohmann_json::nlohmann_json)

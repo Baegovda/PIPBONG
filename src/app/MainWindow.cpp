@@ -4,6 +4,7 @@
 #include "app/FeatureHotkeyGate.h"
 #include "app/PerfTrace.h"
 #include "app/ProgramSettings.h"
+#include "app/SessionRunPolicy.h"
 #include "app/WindowsRunAsAdmin.h"
 #include "app/MouseCenterLock.h"
 #include "app/TargetWindowCenterPin.h"
@@ -112,6 +113,21 @@
 #include <dwmapi.h>
 
 namespace {
+
+SessionRunPolicyInput sessionPolicyInputFrom(const FeatureRunSession& session) {
+    SessionRunPolicyInput input;
+    input.runningMode = session.runningMode;
+    input.triggerPhase = session.triggerPhase;
+    input.repeatSession = session.repeatSession;
+    input.holdRunActive = session.holdRunActive;
+    input.repeatRemaining = session.repeatRemaining;
+    input.engineRunning = session.engine && session.engine->isRunning();
+    input.lockMouseDuringFirstLoopCount = session.lockMouseDuringFirstLoopCount;
+    input.earlyLoopMouseLockReleased = session.earlyLoopMouseLockReleased;
+    input.sessionIteration = session.sessionIteration;
+    input.runLoopNumber = session.sessionContext ? session.sessionContext->runLoopNumber() : 0;
+    return input;
+}
 
 constexpr UINT kForegroundProfileSyncMessage = WM_APP + 0x4A1;
 HWND g_foregroundProfileSyncReceiver = nullptr;
@@ -1388,16 +1404,7 @@ void MainWindow::captureFeatureMouseLockPosition(FeatureRunSession& session) {
 }
 
 bool MainWindow::isEarlyLoopMouseLockWindow(const FeatureRunSession& session) const {
-    if (session.lockMouseDuringFirstLoopCount <= 0 || session.earlyLoopMouseLockReleased) {
-        return false;
-    }
-    if (session.runningMode == FeatureRunMode::Trigger
-        && session.triggerPhase != TriggerSessionPhase::RunningAction) {
-        return false;
-    }
-    const int loopNumber = session.sessionContext ? session.sessionContext->runLoopNumber()
-                                                  : session.sessionIteration + 1;
-    return loopNumber <= session.lockMouseDuringFirstLoopCount;
+    return SessionRunPolicy::isEarlyLoopMouseLockWindow(sessionPolicyInputFrom(session));
 }
 
 bool MainWindow::engageEarlyLoopMouseLockAtBestPoint(FeatureRunSession& session) {
@@ -2496,21 +2503,7 @@ FeatureRunSession* MainWindow::sessionForEngine(const QObject* sender) {
 }
 
 bool MainWindow::isFeatureSessionActive(const FeatureRunSession& session) const {
-    if (session.engine && session.engine->isRunning()) {
-        return true;
-    }
-    if (session.runningMode == FeatureRunMode::Hold && session.holdRunActive) {
-        return true;
-    }
-    if (session.runningMode == FeatureRunMode::Trigger && session.repeatSession) {
-        return true;
-    }
-    if (session.repeatSession
-        && (session.runningMode == FeatureRunMode::RepeatInfinite
-            || session.runningMode == FeatureRunMode::RepeatCount)) {
-        return true;
-    }
-    return false;
+    return SessionRunPolicy::isSessionActive(sessionPolicyInputFrom(session));
 }
 
 bool MainWindow::isFeatureRunning(const std::string& featureId) const {
@@ -2520,26 +2513,28 @@ bool MainWindow::isFeatureRunning(const std::string& featureId) const {
 
 bool MainWindow::isFeatureInActiveWorkflowRun(const std::string& featureId) const {
     const FeatureRunSession* session = sessionFor(featureId);
-    if (!session || !isFeatureSessionActive(*session)) {
+    if (!session) {
         return false;
     }
-    if (session->runningMode == FeatureRunMode::Trigger) {
-        return session->triggerPhase == TriggerSessionPhase::RunningAction;
-    }
-    return true;
+    return SessionRunPolicy::isInActiveWorkflowRun(sessionPolicyInputFrom(*session));
 }
 
 bool MainWindow::hasAnyRunningSession() const {
-    return !m_runSessions.empty();
+    std::vector<SessionRunPolicyInput> inputs;
+    inputs.reserve(m_runSessions.size());
+    for (const auto& entry : m_runSessions) {
+        inputs.push_back(sessionPolicyInputFrom(entry.second));
+    }
+    return SessionRunPolicy::hasAnyRunningSession(inputs);
 }
 
 bool MainWindow::hasAnyActiveWorkflowEngine() const {
+    std::vector<SessionRunPolicyInput> inputs;
+    inputs.reserve(m_runSessions.size());
     for (const auto& entry : m_runSessions) {
-        if (entry.second.engine && entry.second.engine->isRunning()) {
-            return true;
-        }
+        inputs.push_back(sessionPolicyInputFrom(entry.second));
     }
-    return false;
+    return SessionRunPolicy::hasAnyActiveWorkflowEngine(inputs);
 }
 
 QSet<QString> MainWindow::activeWorkflowFeatureIds() const {
@@ -3756,17 +3751,22 @@ void MainWindow::requestSessionWorkflowRefresh(const std::string& featureId) {
         return;
     }
     Feature* feature = m_project->featureById(featureId);
-    if (!feature || !isFeatureSessionActive(*session)) {
+    if (!feature) {
         return;
     }
-    if (session->engine && session->engine->isRunning()) {
+    switch (SessionRunPolicy::workflowRefreshOnProjectEdit(sessionPolicyInputFrom(*session))) {
+    case WorkflowRefreshDecision::SkipInactive:
+        return;
+    case WorkflowRefreshDecision::Defer:
         if (!session->deferredSessionWorkflowRefresh) {
             showTransientStatus(tr("워크플로 변경은 현재 감시·동작이 끝난 뒤 반영됩니다"), 2500);
         }
         session->deferredSessionWorkflowRefresh = true;
         return;
+    case WorkflowRefreshDecision::Immediate:
+        refreshSessionWorkflowFromProject(*session, feature);
+        return;
     }
-    refreshSessionWorkflowFromProject(*session, feature);
 }
 
 void MainWindow::ensureRunSessionResources(FeatureRunSession& session,
