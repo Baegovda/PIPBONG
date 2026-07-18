@@ -6,6 +6,8 @@
 #include <QCloseEvent>
 #include <QEvent>
 #include <QFont>
+#include <QGuiApplication>
+#include <QHideEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
@@ -13,9 +15,11 @@
 #include <QResizeEvent>
 #include <QSettings>
 #include <QShowEvent>
+#include <QScreen>
 #include <QTextEdit>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QWindow>
 
 namespace {
 
@@ -25,6 +29,54 @@ QString memoOpenSettingsKey(const QString& profileId) {
 
 constexpr int kShadowSize = 8;
 constexpr int kNoteRadius = 10;
+
+QScreen* screenByName(const QString& screenName) {
+    if (screenName.isEmpty()) {
+        return nullptr;
+    }
+    for (QScreen* screen : QGuiApplication::screens()) {
+        if (screen && screen->name() == screenName) {
+            return screen;
+        }
+    }
+    return nullptr;
+}
+
+QRect clampWindowRectToScreen(const QRect& rect, QScreen* screen) {
+    if (!screen || !rect.isValid()) {
+        return rect;
+    }
+    const QRect avail = screen->availableGeometry();
+    QRect clamped = rect;
+    if (clamped.width() > avail.width()) {
+        clamped.setWidth(avail.width());
+    }
+    if (clamped.height() > avail.height()) {
+        clamped.setHeight(avail.height());
+    }
+    if (clamped.right() > avail.right()) {
+        clamped.moveRight(avail.right());
+    }
+    if (clamped.bottom() > avail.bottom()) {
+        clamped.moveBottom(avail.bottom());
+    }
+    if (clamped.left() < avail.left()) {
+        clamped.moveLeft(avail.left());
+    }
+    if (clamped.top() < avail.top()) {
+        clamped.moveTop(avail.top());
+    }
+    return clamped;
+}
+
+void assignDialogToScreen(QWidget* window, QScreen* screen) {
+    if (!window || !screen) {
+        return;
+    }
+    if (QWindow* handle = window->windowHandle()) {
+        handle->setScreen(screen);
+    }
+}
 
 } // namespace
 
@@ -145,10 +197,15 @@ void MemoDialog::changeEvent(QEvent* event) {
 
 void MemoDialog::closeEvent(QCloseEvent* event) {
     saveNow();
-    persistGeometry();
+    persistPlacement();
     persistOpenState(m_preserveOpenStateOnClose);
     m_preserveOpenStateOnClose = false;
     QDialog::closeEvent(event);
+}
+
+void MemoDialog::hideEvent(QHideEvent* event) {
+    persistPlacement();
+    QDialog::hideEvent(event);
 }
 
 void MemoDialog::persistOpenState(bool open) {
@@ -161,7 +218,10 @@ void MemoDialog::persistOpenState(bool open) {
 
 void MemoDialog::showEvent(QShowEvent* event) {
     QDialog::showEvent(event);
-    restorePersistedGeometry();
+    if (!m_placementRestored) {
+        restorePlacement();
+        m_placementRestored = true;
+    }
     persistOpenState(true);
 }
 
@@ -241,21 +301,60 @@ void MemoDialog::mouseMoveEvent(QMouseEvent* event) {
 
 void MemoDialog::mouseReleaseEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
+        if (m_dragging) {
+            persistPlacement();
+        }
         m_dragging = false;
     }
     QDialog::mouseReleaseEvent(event);
 }
 
-void MemoDialog::persistGeometry() {
+void MemoDialog::persistPlacement() {
+    const QRect geometry = frameGeometry();
+    if (!geometry.isValid() || geometry.width() < minimumWidth() || geometry.height() < minimumHeight()) {
+        return;
+    }
+
+    QScreen* widgetScreen = QWidget::screen();
+    if (!widgetScreen && windowHandle()) {
+        widgetScreen = windowHandle()->screen();
+    }
+
     QSettings settings;
-    settings.setValue(QStringLiteral("memo/geometry"), saveGeometry());
+    settings.setValue(QStringLiteral("memo/placement/screenName"),
+                      widgetScreen ? widgetScreen->name() : QString());
+    settings.setValue(QStringLiteral("memo/placement/x"), geometry.x());
+    settings.setValue(QStringLiteral("memo/placement/y"), geometry.y());
+    settings.setValue(QStringLiteral("memo/placement/width"), geometry.width());
+    settings.setValue(QStringLiteral("memo/placement/height"), geometry.height());
 }
 
-void MemoDialog::restorePersistedGeometry() {
-    const QByteArray geometry =
-        QSettings().value(QStringLiteral("memo/geometry")).toByteArray();
-    if (!geometry.isEmpty()) {
-        QDialog::restoreGeometry(geometry);
+void MemoDialog::restorePlacement() {
+    QSettings settings;
+    if (settings.contains(QStringLiteral("memo/placement/width"))) {
+        const QString screenName = settings.value(QStringLiteral("memo/placement/screenName")).toString();
+        const int x = settings.value(QStringLiteral("memo/placement/x")).toInt();
+        const int y = settings.value(QStringLiteral("memo/placement/y")).toInt();
+        const int width = settings.value(QStringLiteral("memo/placement/width")).toInt();
+        const int height = settings.value(QStringLiteral("memo/placement/height")).toInt();
+        if (width > 0 && height > 0) {
+            QScreen* targetScreen = screenByName(screenName);
+            if (!targetScreen) {
+                targetScreen = QGuiApplication::primaryScreen();
+            }
+            if (targetScreen) {
+                assignDialogToScreen(this, targetScreen);
+                setGeometry(clampWindowRectToScreen(QRect(x, y, width, height), targetScreen));
+                return;
+            }
+        }
+    }
+
+    const QByteArray legacyGeometry =
+        settings.value(QStringLiteral("memo/geometry")).toByteArray();
+    if (!legacyGeometry.isEmpty()) {
+        restoreGeometry(legacyGeometry);
+        persistPlacement();
     }
 }
 

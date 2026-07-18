@@ -8,6 +8,7 @@ class QPushButton;
 class QTextEdit;
 class QTimer;
 class QEvent;
+class QHideEvent;
 class QMouseEvent;
 class QPaintEvent;
 class QResizeEvent;
@@ -28,6 +29,7 @@ public:
 protected:
     void changeEvent(QEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
@@ -37,8 +39,8 @@ protected:
 
 private:
     void scheduleSave();
-    void persistGeometry();
-    void restorePersistedGeometry();
+    void persistPlacement();
+    void restorePlacement();
     void updateWindowTitle();
     void updateChrome();
     bool isInDragRegion(const QPoint& pos) const;
@@ -53,6 +55,7 @@ private:
     QTimer* m_saveTimer = nullptr;
     bool m_loading = false;
     bool m_dragging = false;
+    bool m_placementRestored = false;
     bool m_preserveOpenStateOnClose = false;
     QPoint m_dragOffset;
     int m_headerHeight = 32;

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.213` (from `project(PIPBONG VERSION 0.8.213)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.214` (from `project(PIPBONG VERSION 0.8.214)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -510,7 +510,7 @@ Sbm1.0/                        # repo root (local workspace)
 | Global program settings | `QSettings` — app-wide settings such as `program/launchAtWindowsStartup`, `program/closeToTray`, `program/runAsAdministrator`, `program/autoInstallUpdates`, `program/updateCheckIntervalMinutes`, `program/logMaxLines`, `program/focusTargetWindowOnProfileSelect`, and `program/pointerFeedback/click/*`; bottom **설정** button opens program settings dialog                               |
 | Calculator sheet        | `QSettings` — `calculator/sheet_v1` (JSON cell array), `calculator/lastLeague`, `calculator/geometry`                                                                                                                                                                                                                        |
 | CPU spike watch         | `QSettings` — `spikewatch/geometry`, `spikewatch/sectionSplitter`, `spikewatch/intervalMs`, thresholds, `topN`, `deltaMargin` (not in `project.json`)                                                                                                                                                                    |
-| Profile memo            | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/memo.txt` — plain UTF-8 text per profile; included in `.pipbong` package mirror; dialog geometry in `QSettings` `memo/geometry`; per-profile open/closed state in `memo/open/{profileId}`                                                                                                                                          |
+| Profile memo            | `%LOCALAPPDATA%/PIPBONG/PIPBONG/profiles/{profileId}/memo.txt` — plain UTF-8 text per profile; included in `.pipbong` package mirror; dialog placement in `QSettings` `memo/placement/*` (legacy `memo/geometry`); per-profile open/closed state in `memo/open/{profileId}`                                                                                                                                          |
 | Crash reports           | `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{timestamp}/` — `report.txt`, `recent_log.txt`, optional `crash.dmp`; `pending.txt` in crash root triggers startup dialog until dismissed                                                                                                                                                                                                               |
 
 ### 5.8 poe.ninja economy calculator
@@ -534,7 +534,7 @@ Sbm1.0/                        # repo root (local workspace)
 - **Entry:** bottom **메모장** button (left of **CPU 감시**); modeless `MemoDialog`.
 - **Content:** plain-text `QTextEdit` per active profile; auto-saves to `profiles/{profileId}/memo.txt` (600 ms debounce, flush on close and profile switch).
 - **Profile switch:** `MainWindow::syncMemoDialogProfile` saves the previous profile memo and loads the new profile when the dialog is open or on next open.
-- **Persistence:** profile workspace `memo.txt` (travels with `.pipbong` export); window geometry in `QSettings` `memo/geometry`; per-profile open/closed state in `memo/open/{profileId}` (restored on startup and profile switch).
+- **Persistence:** profile workspace `memo.txt` (travels with `.pipbong` export); window placement in `QSettings` `memo/placement/*`; per-profile open/closed state in `memo/open/{profileId}` (restored on startup and profile switch).
 
 ### 5.11 Crash reporting (diagnostics)
 
@@ -1188,6 +1188,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.214] - 2026-07-18
+
+### Fixed
+
+- **메모장** window position/size no longer jumps on reopen or profile switch: frameless dialog stores explicit screen + frame geometry (`memo/placement/*`), restores only on first show per instance, persists after drag/close/hide; migrates legacy `memo/geometry` (`MemoDialog`).
 
 ## [0.8.213] - 2026-07-18
 
