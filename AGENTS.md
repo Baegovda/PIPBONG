@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.209` (from `project(PIPBONG VERSION 0.8.209)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.210` (from `project(PIPBONG VERSION 0.8.210)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1188,6 +1188,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.210] - 2026-07-18
+
+### Fixed
+
+- Crash (`EXCEPTION_ACCESS_VIOLATION` read `0x90`) opening **감지 피드백** / click / window-selection feedback settings: preview widgets guarded against zero/negative paint geometry before allocating `QImage` buffers; minimum preview size 160×196; caption font uses pixel size when point size is unset (`ClickPointerFeedbackPreviewWidget`, `WindowSelectionFeedbackPreviewWidget`).
 
 ## [0.8.209] - 2026-07-18
 

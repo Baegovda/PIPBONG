@@ -19,6 +19,15 @@ namespace {
 
 constexpr int kTimerMs = 16;
 
+void shrinkCaptionFont(QFont& font) {
+    if (font.pixelSize() > 0) {
+        font.setPixelSize(qMax(8, font.pixelSize() - 1));
+        return;
+    }
+    const int pointSize = font.pointSize();
+    font.setPointSize(qMax(8, pointSize > 0 ? pointSize - 1 : 9));
+}
+
 void paintCheckerBackground(QPainter& painter, const QRect& rect, const QPalette& pal) {
     const QColor base = pal.color(QPalette::Window).darker(108);
     const QColor alt = base.lighter(112);
@@ -44,7 +53,7 @@ QRect previewWindowRect(const QRect& frame) {
 
 WindowSelectionFeedbackPreviewWidget::WindowSelectionFeedbackPreviewWidget(QWidget* parent)
     : QWidget(parent) {
-    setMinimumHeight(196);
+    setMinimumSize(160, 196);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     m_timer = new QTimer(this);
@@ -86,6 +95,10 @@ void WindowSelectionFeedbackPreviewWidget::paintEvent(QPaintEvent* event) {
     painter.setRenderHint(QPainter::Antialiasing, true);
 
     const QRect frame = rect().adjusted(1, 1, -1, -1);
+    if (frame.width() <= 0 || frame.height() <= 0) {
+        paintCheckerBackground(painter, rect(), palette());
+        return;
+    }
     paintCheckerBackground(painter, frame, palette());
 
     QLinearGradient vignette(frame.topLeft(), frame.bottomLeft());
@@ -95,6 +108,15 @@ void WindowSelectionFeedbackPreviewWidget::paintEvent(QPaintEvent* event) {
     painter.fillRect(frame, vignette);
 
     const QRect windowRect = previewWindowRect(frame);
+    if (windowRect.width() <= 0 || windowRect.height() <= 0) {
+        painter.setPen(palette().color(QPalette::Mid));
+        QFont caption = font();
+        shrinkCaptionFont(caption);
+        painter.setFont(caption);
+        painter.drawText(frame.adjusted(10, 8, -10, -8), Qt::AlignTop | Qt::AlignLeft, tr("미리보기"));
+        return;
+    }
+
     painter.setPen(QPen(palette().color(QPalette::Mid), 1));
     painter.setBrush(palette().color(QPalette::Window).darker(112));
     painter.drawRoundedRect(windowRect, 6, 6);
@@ -122,6 +144,9 @@ void WindowSelectionFeedbackPreviewWidget::paintEvent(QPaintEvent* event) {
                                        windowRect.height(),
                                        progress,
                                        m_settings);
+    if (image.isNull() || !image.bits()) {
+        return;
+    }
     if (image.bytesPerLine() == windowRect.width() * static_cast<int>(sizeof(uint32_t))) {
         std::memcpy(image.bits(), pixels.data(), pixels.size() * sizeof(uint32_t));
     } else {
@@ -136,7 +161,7 @@ void WindowSelectionFeedbackPreviewWidget::paintEvent(QPaintEvent* event) {
 
     painter.setPen(palette().color(QPalette::Mid));
     QFont caption = font();
-    caption.setPointSize(qMax(8, caption.pointSize() - 1));
+    shrinkCaptionFont(caption);
     painter.setFont(caption);
     painter.drawText(frame.adjusted(10, 8, -10, -8), Qt::AlignTop | Qt::AlignLeft, tr("미리보기"));
 }
