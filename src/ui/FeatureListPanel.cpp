@@ -2035,31 +2035,44 @@ void FeatureListPanel::onCopyFeature() {
     if (!m_project) {
         return;
     }
-    const int index = selectedIndex();
-    if (index < 0) {
+    const QList<int> rows = selectedRows();
+    if (rows.isEmpty()) {
         return;
     }
-    const Feature* feature = m_project->featureAt(index);
-    if (!feature) {
-        return;
+    m_clipboardFeatures.clear();
+    m_clipboardFeatures.reserve(static_cast<size_t>(rows.size()));
+    for (int row : rows) {
+        const Feature* feature = m_project->featureAt(row);
+        if (!feature) {
+            continue;
+        }
+        m_clipboardFeatures.push_back(feature->clone());
     }
-    m_clipboardFeature = feature->clone();
 }
 void FeatureListPanel::onPasteFeature() {
-    if (!m_project || !m_editControlsEnabled || !m_clipboardFeature) {
+    if (!m_project || m_clipboardFeatures.empty()) {
         return;
     }
 
-    auto duplicate = m_clipboardFeature->duplicateAsNewInstance();
-    duplicate->setName(tr("%1 복사").arg(QString::fromStdString(duplicate->name())).toStdString());
-
     const int selected = selectedIndex();
-    const int insertIndex = selected >= 0 ? selected + 1 : static_cast<int>(m_project->features().size());
+    int insertIndex =
+        selected >= 0 ? selected + 1 : static_cast<int>(m_project->features().size());
     emit mutationAboutToCommit(QStringLiteral("feature-paste"));
-    m_project->insertFeature(insertIndex, std::move(duplicate));
+    int lastInserted = insertIndex;
+    for (const std::unique_ptr<Feature>& source : m_clipboardFeatures) {
+        if (!source) {
+            continue;
+        }
+        auto duplicate = source->duplicateAsNewInstance();
+        duplicate->setName(
+            tr("%1 복사").arg(QString::fromStdString(duplicate->name())).toStdString());
+        m_project->insertFeature(insertIndex, std::move(duplicate));
+        lastInserted = insertIndex;
+        ++insertIndex;
+    }
 
     refresh();
-    m_list->setCurrentRow(insertIndex);
+    m_list->setCurrentRow(lastInserted);
     emit selectionChanged();
     emit projectModified();
 }
@@ -2296,9 +2309,10 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
         ->setEnabled(m_editControlsEnabled);
     menu.addAction(tr("편집"), this, &FeatureListPanel::onEditFeature)
         ->setEnabled(isFeatureEditableAt(m_list->row(item)));
-    menu.addAction(tr("복사"), this, &FeatureListPanel::onCopyFeature);
+    menu.addAction(tr("복사"), this, &FeatureListPanel::onCopyFeature)
+        ->setEnabled(!selectedRows().isEmpty());
     menu.addAction(tr("붙여넣기"), this, &FeatureListPanel::onPasteFeature)
-        ->setEnabled(m_editControlsEnabled && m_clipboardFeature != nullptr);
+        ->setEnabled(!m_clipboardFeatures.empty());
     menu.addAction(tr("삭제"), this, &FeatureListPanel::onRemoveFeature);
     menu.exec(m_list->mapToGlobal(pos));
 }

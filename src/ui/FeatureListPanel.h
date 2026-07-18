@@ -5,6 +5,7 @@
 #include <QWidget>
 
 #include <memory>
+#include <vector>
 
 class QListWidgetItem;
 class QMimeData;
@@ -289,7 +290,7 @@ private:
 
     bool m_libraryExpanded = false;
 
-    std::unique_ptr<Feature> m_clipboardFeature;
+    std::vector<std::unique_ptr<Feature>> m_clipboardFeatures;
 };
 
 

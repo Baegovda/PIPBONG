@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.212` (from `project(PIPBONG VERSION 0.8.212)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.213` (from `project(PIPBONG VERSION 0.8.213)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1188,6 +1188,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.213] - 2026-07-18
+
+### Fixed
+
+- Feature list **Ctrl+C** / **Ctrl+V** and context **복사** / **붙여넣기** work while other features have active sessions (e.g. trigger **감시**); paste no longer requires global `m_editControlsEnabled` (`FeatureListPanel`).
+
+### Changed
+
+- Feature list copy/paste supports multi-selected rows (same order as selection); paste inserts all copied features below the selection (`FeatureListPanel`).
 
 ## [0.8.212] - 2026-07-18
 
