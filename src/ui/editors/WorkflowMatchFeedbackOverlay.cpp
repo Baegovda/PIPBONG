@@ -33,6 +33,7 @@ struct Pulse {
     int clientY = 0;
     RunPointerFeedbackKind kind = RunPointerFeedbackKind::MatchMiss;
     ULONGLONG startMs = 0;
+    ClickPointerFeedbackSettings clickSettings{};
 };
 
 struct OverlayState {
@@ -59,11 +60,11 @@ void destroyOverlayWindow() {
     g_state.reset();
 }
 
-ULONGLONG pulseLifetimeMs(RunPointerFeedbackKind kind) {
-    if (kind == RunPointerFeedbackKind::Click) {
-        return static_cast<ULONGLONG>(PointerFeedbackSettings::click().displayDurationMs);
+ULONGLONG pulseLifetimeMs(const Pulse& pulse) {
+    if (pulse.kind == RunPointerFeedbackKind::Click) {
+        return static_cast<ULONGLONG>(pulse.clickSettings.displayDurationMs);
     }
-    if (kind == RunPointerFeedbackKind::TriggerScan) {
+    if (pulse.kind == RunPointerFeedbackKind::TriggerScan) {
         return kTriggerScanPulseLifetimeMs;
     }
     return kDefaultMatchPulseLifetimeMs;
@@ -77,7 +78,7 @@ void pruneExpiredPulses(ULONGLONG currentMs) {
     pulses.erase(std::remove_if(pulses.begin(),
                                 pulses.end(),
                                 [currentMs](const Pulse& pulse) {
-                                    return currentMs - pulse.startMs > pulseLifetimeMs(pulse.kind);
+                                    return currentMs - pulse.startMs > pulseLifetimeMs(pulse);
                                 }),
                  pulses.end());
 }
@@ -234,12 +235,12 @@ void renderClickPulse(uint32_t* pixels,
                                     pulse.clientY,
                                     age,
                                     lifetimeMs,
-                                    PointerFeedbackSettings::click());
+                                    pulse.clickSettings);
 }
 
 int pulseRenderMarginPx(const Pulse& pulse) {
     if (pulse.kind == RunPointerFeedbackKind::Click) {
-        const auto& settings = PointerFeedbackSettings::click();
+        const auto& settings = pulse.clickSettings;
         return settings.maxExpandRadius + settings.coreSize + settings.ringThickness + 12;
     }
     if (pulse.kind == RunPointerFeedbackKind::TriggerScan) {
@@ -267,7 +268,7 @@ QRect computeActivePulseClientRegion() {
     bool any = false;
 
     for (const Pulse& pulse : g_state->pulses) {
-        const ULONGLONG lifetime = pulseLifetimeMs(pulse.kind);
+        const ULONGLONG lifetime = pulseLifetimeMs(pulse);
         const ULONGLONG age = currentMs - pulse.startMs;
         if (age > lifetime) {
             continue;
@@ -349,7 +350,7 @@ void renderOverlayFrame() {
 
     const ULONGLONG currentMs = nowMs();
     for (const Pulse& pulse : g_state->pulses) {
-        const ULONGLONG lifetime = pulseLifetimeMs(pulse.kind);
+        const ULONGLONG lifetime = pulseLifetimeMs(pulse);
         const ULONGLONG age = currentMs - pulse.startMs;
         if (age > lifetime) {
             continue;
@@ -504,7 +505,8 @@ void WorkflowMatchFeedbackOverlay::hideBeforeCapture() {
 
 void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
                                                       int clientY,
-                                                      RunPointerFeedbackKind kind) {
+                                                      RunPointerFeedbackKind kind,
+                                                      const ClickPointerFeedbackSettings& clickSettings) {
 #ifdef _WIN32
     if (!ensureOverlayWindow()) {
         return;
@@ -515,6 +517,7 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
             if (existing.kind == RunPointerFeedbackKind::Click) {
                 existing.clientX = clientX;
                 existing.clientY = clientY;
+                existing.clickSettings = clickSettings;
                 renderOverlayFrame();
                 return;
             }
@@ -537,6 +540,9 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
     pulse.clientY = clientY;
     pulse.kind = kind;
     pulse.startMs = nowMs();
+    if (kind == RunPointerFeedbackKind::Click) {
+        pulse.clickSettings = clickSettings;
+    }
     g_state->pulses.push_back(pulse);
     if (g_state->pulses.size() > kMaxActivePulses) {
         g_state->pulses.erase(g_state->pulses.begin(),
@@ -548,6 +554,7 @@ void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
     (void)clientX;
     (void)clientY;
     (void)kind;
+    (void)clickSettings;
 #endif
 }
 

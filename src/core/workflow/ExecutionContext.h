@@ -2,6 +2,7 @@
 
 #include "core/capture/ScreenCapture.h"
 
+#include "app/PointerFeedbackSettings.h"
 #include "core/input/InputSimulator.h"
 
 #include <atomic>
@@ -28,7 +29,8 @@ class ExecutionContext {
 public:
     using LogCallback = std::function<void(const std::string& message)>;
     using ProgressCallback = std::function<void(BlockProgressKind kind)>;
-    using PointerFeedbackCallback = std::function<void(int clientX, int clientY)>;
+    using PointerFeedbackCallback =
+        std::function<void(int clientX, int clientY, const ClickPointerFeedbackSettings& settings)>;
 
     void setLogCallback(LogCallback callback);
     void log(const std::string& message) const;
@@ -41,7 +43,7 @@ public:
     void clearPointerFeedbackCallback();
     void setPointerVisualFeedback(bool enabled);
     bool pointerVisualFeedback() const;
-    void reportPointerFeedback(int clientX, int clientY) const;
+    void reportPointerFeedback(int clientX, int clientY, const ClickPointerFeedbackSettings& settings) const;
 
     /// When true, workflow run log + block UI hooks are suppressed (fast Hold / infinite repeat).
     void setSuppressRepeatUi(bool suppress);

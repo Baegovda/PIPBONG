@@ -292,8 +292,8 @@ WorkflowRunResult executeSingleBlock(const Workflow& workflow,
     }
 
     if (hooks && hooks->onPointerFeedbackAtClientPoint) {
-        ctx.setPointerFeedbackCallback([hooks](int clientX, int clientY) {
-            hooks->onPointerFeedbackAtClientPoint(clientX, clientY);
+        ctx.setPointerFeedbackCallback([hooks](int clientX, int clientY, const ClickPointerFeedbackSettings& settings) {
+            hooks->onPointerFeedbackAtClientPoint(clientX, clientY, settings);
         });
     } else {
         ctx.clearPointerFeedbackCallback();

@@ -5172,7 +5172,9 @@ void MainWindow::onBlockMatchResult(int index,
     m_workflowEditor->setBlockMatchResult(index, matchThreshold, confidence, matchPreview, matched);
 }
 
-void MainWindow::onPointerFeedbackAtClientPoint(int clientX, int clientY) {
+void MainWindow::onPointerFeedbackAtClientPoint(int clientX,
+                                                int clientY,
+                                                ClickPointerFeedbackSettings settings) {
     FeatureRunSession* session = sessionForEngine(sender());
     if (!session || !session->pointerVisualFeedback) {
         return;
@@ -5180,7 +5182,8 @@ void MainWindow::onPointerFeedbackAtClientPoint(int clientX, int clientY) {
     if (session->sessionContext && session->sessionContext->suppressRepeatUi()) {
         return;
     }
-    WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, RunPointerFeedbackKind::Click);
+    WorkflowMatchFeedbackOverlay::pulseAtClientPoint(
+        clientX, clientY, RunPointerFeedbackKind::Click, settings);
 }
 
 void MainWindow::onBlockFinished(int index, bool success, const QString& message, qint64 durationMs,

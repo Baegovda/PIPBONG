@@ -3,7 +3,6 @@
 #include "app/PointerFeedbackSettings.h"
 #include "app/ProgramSettings.h"
 #include "app/WindowsRunAsAdmin.h"
-#include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/WindowSelectionFeedbackSettingsDialog.h"
 #include "ui/UiStrings.h"
 #include "ui/widgets/DragAdjustSpinBox.h"
@@ -191,28 +190,6 @@ void ProgramSettingsDialog::setupUi() {
         layout->addWidget(elevatedHint);
     }
 
-    auto* clickGroup = new QGroupBox(tr("마우스 클릭 피드백 애니메이션"), this);
-    auto* clickLayout = new QVBoxLayout(clickGroup);
-
-    m_clickFeedbackSummary = new QLabel(clickGroup);
-    m_clickFeedbackSummary->setWordWrap(true);
-    updateClickFeedbackSummary();
-
-    auto* clickRow = new QHBoxLayout();
-    clickRow->addWidget(m_clickFeedbackSummary, 1);
-    m_clickFeedbackButton = new QPushButton(tr("설정…"), clickGroup);
-    m_clickFeedbackButton->setCursor(Qt::PointingHandCursor);
-    connect(m_clickFeedbackButton, &QPushButton::clicked, this, &ProgramSettingsDialog::onOpenClickFeedbackSettings);
-    clickRow->addWidget(m_clickFeedbackButton, 0, Qt::AlignTop);
-    clickLayout->addLayout(clickRow);
-
-    auto* clickHint = new HintLabel(
-        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 클릭 시 대상 창에 표시되는 포인터 애니메이션입니다."),
-        clickGroup);
-    clickHint->setWordWrap(true);
-    clickLayout->addWidget(clickHint);
-    layout->addWidget(clickGroup);
-
     auto* windowSelectionGroup = new QGroupBox(tr("창 지정 애니메이션"), this);
     auto* windowSelectionLayout = new QVBoxLayout(windowSelectionGroup);
 
@@ -279,18 +256,6 @@ void ProgramSettingsDialog::updateImageFindCaptureModeHint() {
         m_imageFindCaptureModeHint->setText(
             tr("지금까지 쓰던 방식입니다. 화면에 보이는 대로 캡처해서 "
                "대부분의 프로그램에서 잘 맞습니다. 처음이거나 잘 모르겠으면 이걸 쓰세요."));
-    }
-}
-
-void ProgramSettingsDialog::updateClickFeedbackSummary() {
-    m_clickFeedbackSummary->setText(ClickPointerFeedbackSettingsDialog::settingsSummary(
-        PointerFeedbackSettings::click()));
-}
-
-void ProgramSettingsDialog::onOpenClickFeedbackSettings() {
-    ClickPointerFeedbackSettingsDialog dialog(this);
-    if (dialog.exec() == QDialog::Accepted) {
-        updateClickFeedbackSummary();
     }
 }
 

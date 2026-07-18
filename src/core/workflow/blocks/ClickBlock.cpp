@@ -1,5 +1,6 @@
 #include "core/workflow/blocks/ClickBlock.h"
 
+#include "app/PointerFeedbackSettings.h"
 #include "core/input/InputSimulator.h"
 #include "core/workflow/ExecutionContext.h"
 
@@ -226,6 +227,13 @@ std::string ClickBlock::summary() const {
     return modPrefix + std::to_string(x) + "," + std::to_string(y) + " " + actionText;
 }
 
+ClickPointerFeedbackSettings ClickBlock::resolvedClickPointerFeedback() const {
+    if (clickPointerFeedback) {
+        return *clickPointerFeedback;
+    }
+    return PointerFeedbackSettings::click();
+}
+
 BlockResult ClickBlock::execute(ExecutionContext& ctx) {
     int clickX = x;
     int clickY = y;
@@ -327,11 +335,11 @@ BlockResult ClickBlock::execute(ExecutionContext& ctx) {
             if (InputSimulator::getCursorScreenPosition(screenX, screenY)
                 && clientPointForPointerFeedback(
                     ctx, screenX, screenY, false, feedbackClientX, feedbackClientY)) {
-                ctx.reportPointerFeedback(feedbackClientX, feedbackClientY);
+                ctx.reportPointerFeedback(feedbackClientX, feedbackClientY, resolvedClickPointerFeedback());
             }
         } else if (clientPointForPointerFeedback(
                        ctx, clickX, clickY, useClientCoordinates, feedbackClientX, feedbackClientY)) {
-            ctx.reportPointerFeedback(feedbackClientX, feedbackClientY);
+            ctx.reportPointerFeedback(feedbackClientX, feedbackClientY, resolvedClickPointerFeedback());
         }
     }
 #endif
@@ -375,6 +383,9 @@ nlohmann::json ClickBlock::toJson() const {
     if (modifiers.shift) {
         json["shift"] = true;
     }
+    if (clickPointerFeedback) {
+        json["clickPointerFeedback"] = clickPointerFeedbackToJson(*clickPointerFeedback);
+    }
     return json;
 }
 
@@ -395,5 +406,8 @@ std::unique_ptr<ClickBlock> ClickBlock::fromJson(const nlohmann::json& json) {
     block->modifiers.ctrl = json.value("ctrl", false);
     block->modifiers.alt = json.value("alt", false);
     block->modifiers.shift = json.value("shift", false);
+    if (json.contains("clickPointerFeedback") && json["clickPointerFeedback"].is_object()) {
+        block->clickPointerFeedback = clickPointerFeedbackFromJson(json["clickPointerFeedback"]);
+    }
     return block;
 }

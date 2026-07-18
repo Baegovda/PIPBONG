@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/PointerFeedbackSettings.h"
 #include "core/workflow/blocks/ClickBlock.h"
 
 #include <QDialog>
@@ -70,6 +71,8 @@ private:
     void startCursorHotkeyCapture();
     void stopCursorHotkeyCapture();
     void applyCursorHotkeyCapture(int virtualKey, Qt::KeyboardModifiers modifiers);
+    void updateClickFeedbackSummary();
+    void onOpenClickFeedbackSettings();
     int buttonComboIndexForBlock() const;
     int actionComboIndexForBlock() const;
 
@@ -104,4 +107,10 @@ private:
     QGroupBox* m_featureRunGroup = nullptr;
     QCheckBox* m_lockMouseToScreenCenterCheck = nullptr;
     QCheckBox* m_lockMouseToCurrentPositionCheck = nullptr;
+
+    QGroupBox* m_clickFeedbackGroup = nullptr;
+    QCheckBox* m_useDefaultClickFeedbackCheck = nullptr;
+    QLabel* m_clickFeedbackSummary = nullptr;
+    QPushButton* m_clickFeedbackButton = nullptr;
+    ClickPointerFeedbackSettings m_draftClickFeedback{};
 };

@@ -15,10 +15,8 @@ public:
 
 private:
     void setupUi();
-    void updateClickFeedbackSummary();
     void updateWindowSelectionFeedbackSummary();
     void updateImageFindCaptureModeHint();
-    void onOpenClickFeedbackSettings();
     void onOpenWindowSelectionFeedbackSettings();
 
     QCheckBox* m_autoSelectRunningFeatureCheck = nullptr;
@@ -34,8 +32,6 @@ private:
     QLabel* m_imageFindCaptureModeHint = nullptr;
     QCheckBox* m_runWithoutTargetWindowCheck = nullptr;
     DragAdjustSpinBox* m_logMaxLinesSpin = nullptr;
-    QLabel* m_clickFeedbackSummary = nullptr;
-    QPushButton* m_clickFeedbackButton = nullptr;
     QLabel* m_windowSelectionFeedbackSummary = nullptr;
     QPushButton* m_windowSelectionFeedbackButton = nullptr;
 };

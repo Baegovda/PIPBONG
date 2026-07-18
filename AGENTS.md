@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.205` (from `project(PIPBONG VERSION 0.8.205)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.206` (from `project(PIPBONG VERSION 0.8.206)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -696,6 +696,7 @@ Sbm1.0/                        # repo root (local workspace)
 | `count`                   | `1`           | Click count (`Tap` only)                                                                 |
 | `useClientCoordinates`    | `true`        | Client vs screen coords                                                                  |
 | `ctrl`, `alt`, `shift`    | `false`       | Keyboard modifiers held during the click                                                 |
+| `clickPointerFeedback`    | omitted       | Per-block click pointer-feedback animation; same fields as `ClickPointerFeedbackSettings` (`displayDurationMs`, `animationSpeed`, `shape`, `color`, …); omitted when block uses app default (`PointerFeedbackSettings::click()`) |
 
 #### `KeyPress`
 
@@ -1187,6 +1188,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.206] - 2026-07-18
+
+### Added
+
+- Per-block **클릭 피드백 애니메이션** in **마우스** block editor: **기본 클릭 피드백 사용** or **설정…** opens the same preview dialog as before; stored per block as JSON `clickPointerFeedback` (`ClickBlock`, `ClickEditor`, `PointerFeedbackSettings` JSON helpers, `WorkflowMatchFeedbackOverlay` per-pulse settings).
+
+### Changed
+
+- Click pointer feedback at run time uses each **Click** block's resolved settings (block override or legacy app default from `PointerFeedbackSettings::click()` when unset); overlay pulse lifetime/render follow per-block values (`ClickBlock`, `ExecutionContext`, `WorkflowEngine`, `MainWindow`).
+
+### Removed
+
+- **프로그램 설정** **마우스 클릭 피드백 애니메이션** group — editing moved to each **마우스** block (`ProgramSettingsDialog`).
 
 ## [0.8.205] - 2026-07-18
 

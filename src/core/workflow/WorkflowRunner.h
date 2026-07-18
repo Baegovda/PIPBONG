@@ -4,6 +4,8 @@
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/Workflow.h"
 
+#include "app/PointerFeedbackSettings.h"
+
 #include <QPixmap>
 #include <QString>
 #include <functional>
@@ -41,7 +43,8 @@ struct WorkflowRunHooks {
     std::function<void(int blockIndex, int returnToPreviousCount, int retryAfterNextCount)>
         onImageFindFailureHandling;
     std::function<void(int sourceBlockIndex, int targetBlockIndex)> onImageFindReturnToPrevious;
-    std::function<void(int clientX, int clientY)> onPointerFeedbackAtClientPoint;
+    std::function<void(int clientX, int clientY, const ClickPointerFeedbackSettings& settings)>
+        onPointerFeedbackAtClientPoint;
 };
 
 class WorkflowRunner {

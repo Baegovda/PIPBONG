@@ -89,6 +89,10 @@ ClickPointerFeedbackSettingsDialog::ClickPointerFeedbackSettingsDialog(QWidget* 
     });
 }
 
+void ClickPointerFeedbackSettingsDialog::setPersistToGlobalSettingsOnAccept(bool persist) {
+    m_persistToGlobalSettingsOnAccept = persist;
+}
+
 void ClickPointerFeedbackSettingsDialog::setupUi() {
     auto* outerLayout = new QVBoxLayout(this);
     outerLayout->setSpacing(12);
@@ -249,7 +253,10 @@ void ClickPointerFeedbackSettingsDialog::setupUi() {
     auto* resetButton = buttons->addButton(tr("기본값"), QDialogButtonBox::ResetRole);
     connect(resetButton, &QPushButton::clicked, this, &ClickPointerFeedbackSettingsDialog::onResetDefaults);
     connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
-        PointerFeedbackSettings::setClick(readDraftFromUi());
+        m_acceptedSettings = readDraftFromUi();
+        if (m_persistToGlobalSettingsOnAccept) {
+            PointerFeedbackSettings::setClick(m_acceptedSettings);
+        }
         accept();
     });
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);

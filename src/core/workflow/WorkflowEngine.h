@@ -3,6 +3,8 @@
 #include "core/workflow/Workflow.h"
 #include "core/workflow/ExecutionContext.h"
 
+#include "app/PointerFeedbackSettings.h"
+
 #include <QMutex>
 #include <QObject>
 #include <QPixmap>
@@ -55,7 +57,7 @@ signals:
                           bool hasClientPoint,
                           int clientX,
                           int clientY);
-    void pointerFeedbackAtClientPoint(int clientX, int clientY);
+    void pointerFeedbackAtClientPoint(int clientX, int clientY, ClickPointerFeedbackSettings settings);
     void logMessage(const QString& message);
     void finished(bool success, const QString& message);
 

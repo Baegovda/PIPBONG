@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app/PointerFeedbackSettings.h"
+
 enum class RunPointerFeedbackKind {
     MatchSuccess,
     MatchMiss,
@@ -11,7 +13,10 @@ enum class RunPointerFeedbackKind {
 class WorkflowMatchFeedbackOverlay {
 public:
     /// \p clientX/\p clientY are coordinates in the target window client area.
-    static void pulseAtClientPoint(int clientX, int clientY, RunPointerFeedbackKind kind);
+    static void pulseAtClientPoint(int clientX,
+                                   int clientY,
+                                   RunPointerFeedbackKind kind,
+                                   const ClickPointerFeedbackSettings& clickSettings = {});
     /// Hides and clears pulses synchronously before screen capture (safe from worker thread).
     static void hideBeforeCapture();
     static void dismissAll();

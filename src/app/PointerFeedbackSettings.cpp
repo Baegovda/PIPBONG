@@ -3,6 +3,8 @@
 #include <QColor>
 #include <QSettings>
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 
 namespace {
@@ -35,6 +37,74 @@ QColor readColor(const QSettings& settings, const QString& key, const QColor& fa
 
 ClickPointerFeedbackSettings PointerFeedbackSettings::defaultClick() {
     return ClickPointerFeedbackSettings{};
+}
+
+ClickPointerFeedbackSettings clampClickPointerFeedback(const ClickPointerFeedbackSettings& settings) {
+    const ClickPointerFeedbackSettings defaults = PointerFeedbackSettings::defaultClick();
+    ClickPointerFeedbackSettings result = settings;
+    result.displayDurationMs = clampInt(result.displayDurationMs, 100, 3000);
+    result.animationSpeed = clampDouble(result.animationSpeed, 0.25, 4.0);
+    result.shape = clampShape(static_cast<int>(result.shape));
+    if (!result.color.isValid()) {
+        result.color = defaults.color;
+    }
+    result.coreSize = clampInt(result.coreSize, 2, 16);
+    result.maxExpandRadius = clampInt(result.maxExpandRadius, 8, 80);
+    result.ringCount = clampInt(result.ringCount, 0, 4);
+    result.ringThickness = clampInt(result.ringThickness, 1, 8);
+    result.maxAlpha = clampInt(result.maxAlpha, 40, 255);
+    return result;
+}
+
+ClickPointerFeedbackSettings clickPointerFeedbackFromJson(const nlohmann::json& json) {
+    const ClickPointerFeedbackSettings defaults = PointerFeedbackSettings::defaultClick();
+    ClickPointerFeedbackSettings result = defaults;
+    if (json.contains("displayDurationMs")) {
+        result.displayDurationMs = json["displayDurationMs"].get<int>();
+    }
+    if (json.contains("animationSpeed")) {
+        result.animationSpeed = json["animationSpeed"].get<double>();
+    }
+    if (json.contains("shape")) {
+        result.shape = clampShape(json["shape"].get<int>());
+    }
+    if (json.contains("color")) {
+        const QColor parsed(QString::fromStdString(json["color"].get<std::string>()));
+        if (parsed.isValid()) {
+            result.color = parsed;
+        }
+    }
+    if (json.contains("coreSize")) {
+        result.coreSize = json["coreSize"].get<int>();
+    }
+    if (json.contains("maxExpandRadius")) {
+        result.maxExpandRadius = json["maxExpandRadius"].get<int>();
+    }
+    if (json.contains("ringCount")) {
+        result.ringCount = json["ringCount"].get<int>();
+    }
+    if (json.contains("ringThickness")) {
+        result.ringThickness = json["ringThickness"].get<int>();
+    }
+    if (json.contains("maxAlpha")) {
+        result.maxAlpha = json["maxAlpha"].get<int>();
+    }
+    return clampClickPointerFeedback(result);
+}
+
+nlohmann::json clickPointerFeedbackToJson(const ClickPointerFeedbackSettings& settings) {
+    const ClickPointerFeedbackSettings clamped = clampClickPointerFeedback(settings);
+    return nlohmann::json{
+        {"displayDurationMs", clamped.displayDurationMs},
+        {"animationSpeed", clamped.animationSpeed},
+        {"shape", static_cast<int>(clamped.shape)},
+        {"color", clamped.color.name(QColor::HexRgb).toStdString()},
+        {"coreSize", clamped.coreSize},
+        {"maxExpandRadius", clamped.maxExpandRadius},
+        {"ringCount", clamped.ringCount},
+        {"ringThickness", clamped.ringThickness},
+        {"maxAlpha", clamped.maxAlpha},
+    };
 }
 
 ClickPointerFeedbackSettings PointerFeedbackSettings::click() {
@@ -89,21 +159,7 @@ ClickPointerFeedbackSettings PointerFeedbackSettings::click() {
 }
 
 void PointerFeedbackSettings::setClick(const ClickPointerFeedbackSettings& settings) {
-    const ClickPointerFeedbackSettings clamped = [settings]() {
-        ClickPointerFeedbackSettings s = settings;
-        s.displayDurationMs = clampInt(s.displayDurationMs, 100, 3000);
-        s.animationSpeed = clampDouble(s.animationSpeed, 0.25, 4.0);
-        s.shape = clampShape(static_cast<int>(s.shape));
-        if (!s.color.isValid()) {
-            s.color = defaultClick().color;
-        }
-        s.coreSize = clampInt(s.coreSize, 2, 16);
-        s.maxExpandRadius = clampInt(s.maxExpandRadius, 8, 80);
-        s.ringCount = clampInt(s.ringCount, 0, 4);
-        s.ringThickness = clampInt(s.ringThickness, 1, 8);
-        s.maxAlpha = clampInt(s.maxAlpha, 40, 255);
-        return s;
-    }();
+    const ClickPointerFeedbackSettings clamped = clampClickPointerFeedback(settings);
 
     QSettings qsettings;
     qsettings.setValue(QString::fromLatin1("%1displayDurationMs").arg(kClickPrefix), clamped.displayDurationMs);

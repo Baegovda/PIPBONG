@@ -62,11 +62,13 @@ bool ExecutionContext::pointerVisualFeedback() const {
     return m_pointerVisualFeedback;
 }
 
-void ExecutionContext::reportPointerFeedback(int clientX, int clientY) const {
+void ExecutionContext::reportPointerFeedback(int clientX,
+                                             int clientY,
+                                             const ClickPointerFeedbackSettings& settings) const {
     if (m_suppressRepeatUi || !m_pointerVisualFeedback || !m_pointerFeedbackCallback) {
         return;
     }
-    m_pointerFeedbackCallback(clientX, clientY);
+    m_pointerFeedbackCallback(clientX, clientY, settings);
 }
 
 void ExecutionContext::setSuppressRepeatUi(bool suppress) {

@@ -17,12 +17,15 @@ class ClickPointerFeedbackSettingsDialog : public QDialog {
 public:
     explicit ClickPointerFeedbackSettingsDialog(QWidget* parent = nullptr);
 
+    void setPersistToGlobalSettingsOnAccept(bool persist);
+    ClickPointerFeedbackSettings acceptedSettings() const { return m_acceptedSettings; }
+    void loadFromSettings(const ClickPointerFeedbackSettings& settings);
+
     static QString shapeDisplayName(ClickPointerFeedbackShape shape);
     static QString settingsSummary(const ClickPointerFeedbackSettings& settings);
 
 private:
     void setupUi();
-    void loadFromSettings(const ClickPointerFeedbackSettings& settings);
     ClickPointerFeedbackSettings readDraftFromUi() const;
     void applyDraftToPreview();
     void updateFieldVisibility();
@@ -52,4 +55,6 @@ private:
     DragAdjustSpinBox* m_maxAlphaSpin = nullptr;
 
     QColor m_color;
+    bool m_persistToGlobalSettingsOnAccept = true;
+    ClickPointerFeedbackSettings m_acceptedSettings{};
 };

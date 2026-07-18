@@ -1,6 +1,9 @@
 #pragma once
 
 #include <QColor>
+#include <QMetaType>
+
+#include <nlohmann/json_fwd.hpp>
 
 /// Global click pointer-feedback animation preferences (QSettings, not project JSON).
 enum class ClickPointerFeedbackShape {
@@ -46,6 +49,10 @@ struct WindowSelectionFeedbackSettings {
     bool cornerBrackets = true;
 };
 
+ClickPointerFeedbackSettings clampClickPointerFeedback(const ClickPointerFeedbackSettings& settings);
+ClickPointerFeedbackSettings clickPointerFeedbackFromJson(const nlohmann::json& json);
+nlohmann::json clickPointerFeedbackToJson(const ClickPointerFeedbackSettings& settings);
+
 class PointerFeedbackSettings {
 public:
     static ClickPointerFeedbackSettings click();
@@ -56,3 +63,5 @@ public:
     static void setWindowSelection(const WindowSelectionFeedbackSettings& settings);
     static WindowSelectionFeedbackSettings defaultWindowSelection();
 };
+
+Q_DECLARE_METATYPE(ClickPointerFeedbackSettings)

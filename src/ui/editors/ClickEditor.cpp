@@ -1,10 +1,12 @@
 #include "ui/editors/ClickEditor.h"
 
 #include "app/ClickCursorHotkeySettings.h"
+#include "app/PointerFeedbackSettings.h"
 #include "core/capture/CursorPositionPicker.h"
 #include "core/capture/ScreenCapture.h"
 #include "core/input/HotkeyBinding.h"
 #include "core/input/InputSimulator.h"
+#include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/UiStrings.h"
 #include "ui/UiThemeColors.h"
 #include "ui/widgets/HintLabel.h"
@@ -232,6 +234,12 @@ void ClickEditor::reload() {
         m_altCheck->setChecked(m_block->modifiers.alt);
         m_shiftCheck->setChecked(m_block->modifiers.shift);
     }
+    if (m_useDefaultClickFeedbackCheck) {
+        m_useDefaultClickFeedbackCheck->setChecked(!m_block->clickPointerFeedback.has_value());
+        m_draftClickFeedback = m_block->clickPointerFeedback.value_or(PointerFeedbackSettings::click());
+        m_clickFeedbackButton->setEnabled(m_block->clickPointerFeedback.has_value());
+        updateClickFeedbackSummary();
+    }
     updateTargetUi();
     updateActionDependentUi();
 }
@@ -265,6 +273,12 @@ void ClickEditor::apply() {
     if (!m_block) {
         return;
     }
+    if (m_useDefaultClickFeedbackCheck && m_useDefaultClickFeedbackCheck->isChecked()) {
+        m_block->clickPointerFeedback.reset();
+    } else {
+        m_block->clickPointerFeedback = m_draftClickFeedback;
+    }
+
     m_block->target = static_cast<ClickBlock::ClickTarget>(m_targetCombo->currentData().toInt());
     if (m_block->target == ClickBlock::ClickTarget::Fixed) {
         m_block->x = m_xSpin->value();
@@ -692,6 +706,41 @@ void ClickEditor::setupUi() {
     layout->addWidget(m_fixedCoordGroup);
     layout->addWidget(m_actionGroup);
 
+    m_clickFeedbackGroup = new QGroupBox(tr("클릭 피드백 애니메이션"), this);
+    auto* clickFeedbackLayout = new QVBoxLayout(m_clickFeedbackGroup);
+    clickFeedbackLayout->setContentsMargins(9, 9, 9, 9);
+    clickFeedbackLayout->setSpacing(6);
+
+    m_useDefaultClickFeedbackCheck =
+        new QCheckBox(tr("기본 클릭 피드백 사용"), m_clickFeedbackGroup);
+    m_useDefaultClickFeedbackCheck->setToolTip(
+        tr("켜면 이 블록은 앱에 저장된 기본 클릭 피드백 설정을 따릅니다. "
+           "끄면 아래에서 이 블록만의 애니메이션을 지정할 수 있습니다."));
+    clickFeedbackLayout->addWidget(m_useDefaultClickFeedbackCheck);
+
+    m_clickFeedbackSummary = new QLabel(m_clickFeedbackGroup);
+    m_clickFeedbackSummary->setWordWrap(true);
+    auto* clickFeedbackRow = new QHBoxLayout();
+    clickFeedbackRow->addWidget(m_clickFeedbackSummary, 1);
+    m_clickFeedbackButton = new QPushButton(tr("설정…"), m_clickFeedbackGroup);
+    m_clickFeedbackButton->setCursor(Qt::PointingHandCursor);
+    clickFeedbackRow->addWidget(m_clickFeedbackButton, 0, Qt::AlignTop);
+    clickFeedbackLayout->addLayout(clickFeedbackRow);
+
+    auto* clickFeedbackHint = new HintLabel(
+        tr("기능 편집의 실행 위치 표시가 켜진 기능에서만 클릭 시 대상 창에 표시됩니다."),
+        m_clickFeedbackGroup);
+    clickFeedbackHint->setWordWrap(true);
+    clickFeedbackLayout->addWidget(clickFeedbackHint);
+
+    connect(m_useDefaultClickFeedbackCheck, &QCheckBox::toggled, this, [this](bool useDefault) {
+        m_clickFeedbackButton->setEnabled(!useDefault);
+        updateClickFeedbackSummary();
+        emit layoutChanged();
+    });
+    connect(m_clickFeedbackButton, &QPushButton::clicked, this, &ClickEditor::onOpenClickFeedbackSettings);
+    layout->addWidget(m_clickFeedbackGroup);
+
     m_featureRunGroup = new QGroupBox(tr("기능 실행"), this);
     m_featureRunGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     auto* featureRunLayout = new QVBoxLayout(m_featureRunGroup);
@@ -907,4 +956,35 @@ void ClickEditor::keyPressEvent(QKeyEvent* event) {
 #endif
     }
     QDialog::keyPressEvent(event);
+}
+
+void ClickEditor::updateClickFeedbackSummary() {
+    if (!m_clickFeedbackSummary) {
+        return;
+    }
+    const ClickPointerFeedbackSettings effective =
+        m_useDefaultClickFeedbackCheck && m_useDefaultClickFeedbackCheck->isChecked()
+            ? PointerFeedbackSettings::click()
+            : m_draftClickFeedback;
+    QString summary = ClickPointerFeedbackSettingsDialog::settingsSummary(effective);
+    if (m_useDefaultClickFeedbackCheck && m_useDefaultClickFeedbackCheck->isChecked()) {
+        summary += tr(" (앱 기본값)");
+    }
+    m_clickFeedbackSummary->setText(summary);
+}
+
+void ClickEditor::onOpenClickFeedbackSettings() {
+    ClickPointerFeedbackSettingsDialog dialog(this);
+    dialog.setPersistToGlobalSettingsOnAccept(false);
+    dialog.loadFromSettings(m_draftClickFeedback);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    m_draftClickFeedback = dialog.acceptedSettings();
+    if (m_useDefaultClickFeedbackCheck) {
+        m_useDefaultClickFeedbackCheck->setChecked(false);
+        m_clickFeedbackButton->setEnabled(true);
+    }
+    updateClickFeedbackSummary();
+    emit layoutChanged();
 }
