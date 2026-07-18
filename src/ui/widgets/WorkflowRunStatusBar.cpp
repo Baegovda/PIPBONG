@@ -102,14 +102,12 @@ void WorkflowRunStatusBar::setRunMode(FeatureRunMode mode, int repeatCount) {
         text = tr("트리거");
         tooltip = tr("첫 템플릿 매칭을 감시하다가 성공 시 워크플로를 1회 실행합니다.");
         break;
-    case FeatureRunMode::RepeatCount:
-        if (repeatCount <= 1) {
-            text = tr("N회 반복");
-        } else {
-            text = tr("N회 반복 ×%1").arg(repeatCount);
-        }
-        tooltip = tr("워크플로를 지정한 횟수만큼 반복합니다.");
+    case FeatureRunMode::RepeatCount: {
+        const int count = repeatCount < 1 ? 1 : repeatCount;
+        text = tr("%1회 반복").arg(count);
+        tooltip = tr("워크플로를 %1회 반복합니다.").arg(count);
         break;
+    }
     }
     m_modeChip->setText(text);
     m_modeChip->setToolTip(tooltip);

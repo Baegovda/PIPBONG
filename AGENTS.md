@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.200` (from `project(PIPBONG VERSION 0.8.200)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.201` (from `project(PIPBONG VERSION 0.8.201)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1179,6 +1179,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.201] - 2026-07-18
+
+### Changed
+
+- Workflow run status bar **N회 반복** chip shows the configured repeat count (e.g. **1회 반복**, **5회 반복**) instead of generic **N회 반복** / **N회 반복 ×N** (`WorkflowRunStatusBar`).
 
 ## [0.8.200] - 2026-07-18
 
