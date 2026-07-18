@@ -102,8 +102,6 @@ public:
 
     int triggerCooldownTotalMs(const QString& featureId) const;
 
-    void setEditControlsEnabled(bool enabled);
-
     const Feature* projectFeatureById(const QString& featureId) const;
 
 
@@ -210,11 +208,17 @@ private:
 
     bool editFeatureAt(int index);
 
-    bool isTriggerSettingsEditableAt(int index) const;
+    bool isFeatureInActiveWorkflowRun(const QString& featureId) const;
+
+    bool hasAnyActiveWorkflowRun() const;
 
     bool isFeatureEditableAt(int index) const;
 
+    void refreshListMutationPolicy();
+
     void updateFeatureEditButtonState();
+
+    void updateRemoveButtonState();
 
     void applyInlineRename(int row, const QString& name);
 
@@ -267,8 +271,6 @@ private:
     FeatureListColumnLayout m_headerDragStartLayout;
 
     int m_animPhase = 0;
-
-    bool m_editControlsEnabled = true;
 
     int m_inlineRenameRow = -1;
 

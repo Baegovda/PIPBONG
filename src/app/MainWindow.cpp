@@ -2506,6 +2506,17 @@ bool MainWindow::isFeatureRunning(const std::string& featureId) const {
     return session && isFeatureSessionActive(*session);
 }
 
+bool MainWindow::isFeatureInActiveWorkflowRun(const std::string& featureId) const {
+    const FeatureRunSession* session = sessionFor(featureId);
+    if (!session || !isFeatureSessionActive(*session)) {
+        return false;
+    }
+    if (session->runningMode == FeatureRunMode::Trigger) {
+        return session->triggerPhase == TriggerSessionPhase::RunningAction;
+    }
+    return true;
+}
+
 bool MainWindow::hasAnyRunningSession() const {
     return !m_runSessions.empty();
 }
@@ -2602,14 +2613,13 @@ void MainWindow::updateRunUiState() {
 
     Feature* selected = m_featureList ? m_featureList->selectedFeature() : nullptr;
     const bool selectedRunning = selected && isFeatureRunning(selected->id());
-    if (m_featureList) {
-        m_featureList->setEditControlsEnabled(!selectedRunning && !hasAnyRunningSession());
-    }
+    const bool selectedActiveWorkflow =
+        selected && isFeatureInActiveWorkflowRun(selected->id());
     if (m_profileList) {
         m_profileList->setFeatureDropEnabled(canTransferFeatures());
     }
     if (m_workflowEditor) {
-        m_workflowEditor->setEditingEnabled(!m_libraryPreviewFeature && !selectedRunning);
+        m_workflowEditor->setEditingEnabled(!m_libraryPreviewFeature && !selectedActiveWorkflow);
 
         bool runBtnEnabled = false;
         bool showStop = false;

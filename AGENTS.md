@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.214` (from `project(PIPBONG VERSION 0.8.214)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.215` (from `project(PIPBONG VERSION 0.8.215)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1188,6 +1188,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.215] - 2026-07-18
+
+### Fixed
+
+- Feature list mutations no longer blocked globally when another feature has a trigger **감시** / **쿨다운** session: removed `hasAnyRunningSession()` gate from list edit policy; only the feature in an **active workflow burst** (hold/repeat/trigger action) is blocked for F2 rename, delete, and workflow edit (`MainWindow::updateRunUiState`, `FeatureListPanel::isFeatureInActiveWorkflowRun`, `refreshListMutationPolicy`).
+- Feature list **이름 바꾸기** (F2), **삭제**, context **라이브러리에서 가져오기**, and library drawer import work while unrelated features are in trigger watch (`FeatureListPanel`).
+- List drag-reorder and library reorder blocked only while any feature is in active workflow burst, not during trigger watch alone (`FeatureListPanel::hasAnyActiveWorkflowRun`).
 
 ## [0.8.214] - 2026-07-18
 

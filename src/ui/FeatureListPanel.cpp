@@ -1147,7 +1147,7 @@ void FeatureListPanel::setupUi() {
         setLibraryDrawerExpanded(checked, true);
     });
     connect(m_libraryList, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
-        if (item && m_editControlsEnabled) {
+        if (item) {
             emit importLibraryEntriesRequested(
                 QStringList{item->data(Qt::UserRole).toString()});
         }
@@ -1489,8 +1489,7 @@ void FeatureListPanel::onLibraryContextMenu(const QPoint& pos) {
     menu.addAction(multiple ? tr("선택 항목 가져오기 (%1)").arg(entryIds.size())
                             : tr("현재 프로필로 가져오기"),
                    this,
-                   [this, entryIds]() { emit importLibraryEntriesRequested(entryIds); })
-        ->setEnabled(m_editControlsEnabled);
+                   [this, entryIds]() { emit importLibraryEntriesRequested(entryIds); });
     menu.addSeparator();
     menu.addAction(multiple ? tr("선택 항목 삭제 (%1)").arg(entryIds.size())
                             : tr("라이브러리에서 삭제"),
@@ -1594,6 +1593,7 @@ void FeatureListPanel::setRunningFeatureIds(const QSet<QString>& featureIds) {
         m_animTimer->start();
     }
     updateReorderEnabled();
+    refreshListMutationPolicy();
     if (m_list && m_list->viewport()) {
         m_list->viewport()->update();
     }
@@ -1604,7 +1604,7 @@ void FeatureListPanel::setFeatureRunVisualKinds(const QHash<QString, FeatureRunV
     if (m_list && m_list->viewport()) {
         m_list->viewport()->update();
     }
-    updateFeatureEditButtonState();
+    refreshListMutationPolicy();
 }
 
 void FeatureListPanel::setTriggerCooldownStates(
@@ -1643,14 +1643,27 @@ QString FeatureListPanel::runningFeatureId() const {
 bool FeatureListPanel::isFeatureRunning(const QString& featureId) const {
     return m_runningFeatureIds.contains(featureId);
 }
-void FeatureListPanel::setEditControlsEnabled(bool enabled) {
-    m_editControlsEnabled = enabled;
-    if (m_removeButton) {
-        m_removeButton->setEnabled(enabled);
+
+bool FeatureListPanel::isFeatureInActiveWorkflowRun(const QString& featureId) const {
+    if (!isFeatureRunning(featureId)) {
+        return false;
     }
+    return featureRunVisualKind(featureId) == FeatureRunVisualKind::ActiveRun;
+}
+
+bool FeatureListPanel::hasAnyActiveWorkflowRun() const {
+    for (const QString& featureId : m_runningFeatureIds) {
+        if (featureRunVisualKind(featureId) == FeatureRunVisualKind::ActiveRun) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void FeatureListPanel::refreshListMutationPolicy() {
     updateListItemEditableFlags();
-    updateReorderEnabled();
     updateFeatureEditButtonState();
+    updateRemoveButtonState();
 }
 
 void FeatureListPanel::updateListItemEditableFlags() {
@@ -1662,7 +1675,7 @@ void FeatureListPanel::updateListItemEditableFlags() {
         if (!item) {
             continue;
         }
-        if (m_editControlsEnabled) {
+        if (isFeatureEditableAt(row)) {
             item->setFlags(item->flags() | Qt::ItemIsEditable);
         } else {
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
@@ -1670,11 +1683,25 @@ void FeatureListPanel::updateListItemEditableFlags() {
     }
 }
 
+void FeatureListPanel::updateRemoveButtonState() {
+    if (!m_removeButton) {
+        return;
+    }
+    bool anyRemovable = false;
+    for (int row : selectedRows()) {
+        if (isFeatureEditableAt(row)) {
+            anyRemovable = true;
+            break;
+        }
+    }
+    m_removeButton->setEnabled(anyRemovable);
+}
+
 void FeatureListPanel::updateReorderEnabled() {
     if (!m_list) {
         return;
     }
-    const bool enabled = m_editControlsEnabled && m_runningFeatureIds.isEmpty();
+    const bool enabled = !hasAnyActiveWorkflowRun();
     m_list->setReorderEnabled(enabled);
     if (m_libraryList) {
         m_libraryList->setTransferEnabled(enabled);
@@ -1862,7 +1889,7 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
 }
 
 void FeatureListPanel::onLibraryRowsReordered(int fromRow, int toRow) {
-    if (!m_libraryList || fromRow == toRow || !m_editControlsEnabled) {
+    if (!m_libraryList || fromRow == toRow || hasAnyActiveWorkflowRun()) {
         return;
     }
     emit libraryEntriesReordered(fromRow, toRow);
@@ -1872,7 +1899,7 @@ void FeatureListPanel::onLibraryRowsReordered(int fromRow, int toRow) {
 }
 
 void FeatureListPanel::onLibraryMultiRowsReordered(const QList<int>& selectedRows, int insertIndex) {
-    if (!m_libraryList || selectedRows.isEmpty() || !m_editControlsEnabled) {
+    if (!m_libraryList || selectedRows.isEmpty() || hasAnyActiveWorkflowRun()) {
         return;
     }
     emit libraryEntriesMultiReordered(selectedRows, insertIndex);
@@ -1927,7 +1954,7 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
     item->setData(kHotkeyCtrlRole, hotkey.ctrl);
     item->setData(kHotkeyAltRole, hotkey.alt);
     item->setData(kHotkeyShiftRole, hotkey.shift);
-    if (m_editControlsEnabled) {
+    if (!isFeatureInActiveWorkflowRun(QString::fromStdString(feature.id()))) {
         item->setFlags(item->flags() | Qt::ItemIsEditable);
     } else {
         item->setFlags(item->flags() & ~Qt::ItemIsEditable);
@@ -1981,6 +2008,7 @@ void FeatureListPanel::refresh() {
     if (!m_runningFeatureIds.isEmpty() && m_list->viewport()) {
         m_list->viewport()->update();
     }
+    refreshListMutationPolicy();
 }
 Feature* FeatureListPanel::selectedFeature() const {
     if (!m_project) {
@@ -2077,16 +2105,34 @@ void FeatureListPanel::onPasteFeature() {
     emit projectModified();
 }
 void FeatureListPanel::onRemoveFeature() {
-    if (!m_project || !m_editControlsEnabled) {
+    if (!m_project || !m_list) {
         return;
     }
-    const QList<int> rows = selectedRows();
+    QList<int> rows = selectedRows();
     if (rows.isEmpty()) {
         return;
     }
-    const int restoreRow = qMax(0, rows.front() - 1);
+    QList<int> removable;
+    removable.reserve(rows.size());
+    for (int row : rows) {
+        if (isFeatureEditableAt(row)) {
+            removable.append(row);
+        }
+    }
+    if (removable.isEmpty()) {
+        return;
+    }
+    for (int row : removable) {
+        if (Feature* feature = m_project->featureAt(row)) {
+            const QString featureId = QString::fromStdString(feature->id());
+            if (isFeatureRunning(featureId)) {
+                emit featureRunRequested(featureId);
+            }
+        }
+    }
+    const int restoreRow = qMax(0, removable.front() - 1);
     emit mutationAboutToCommit(QStringLiteral("feature-remove"));
-    for (auto it = rows.crbegin(); it != rows.crend(); ++it) {
+    for (auto it = removable.crbegin(); it != removable.crend(); ++it) {
         m_project->removeFeature(*it);
     }
     refresh();
@@ -2097,29 +2143,7 @@ void FeatureListPanel::onRemoveFeature() {
     emit projectModified();
     emit hotkeysChanged();
 }
-bool FeatureListPanel::isTriggerSettingsEditableAt(int index) const {
-    if (!m_project || index < 0 || index >= static_cast<int>(m_project->features().size())) {
-        return false;
-    }
-    const Feature* feature = m_project->featureAt(index);
-    if (!feature || feature->runMode() != FeatureRunMode::Trigger) {
-        return false;
-    }
-    const QString featureId = QString::fromStdString(feature->id());
-    if (!isFeatureRunning(featureId)) {
-        return false;
-    }
-    const FeatureRunVisualKind kind = featureRunVisualKind(featureId);
-    return kind == FeatureRunVisualKind::TriggerWatch || kind == FeatureRunVisualKind::TriggerCooldown;
-}
-
 bool FeatureListPanel::isFeatureEditableAt(int index) const {
-    if (m_editControlsEnabled) {
-        return true;
-    }
-    if (isTriggerSettingsEditableAt(index)) {
-        return true;
-    }
     if (!m_project || index < 0 || index >= static_cast<int>(m_project->features().size())) {
         return false;
     }
@@ -2127,7 +2151,7 @@ bool FeatureListPanel::isFeatureEditableAt(int index) const {
     if (!feature) {
         return false;
     }
-    return !isFeatureRunning(QString::fromStdString(feature->id()));
+    return !isFeatureInActiveWorkflowRun(QString::fromStdString(feature->id()));
 }
 
 void FeatureListPanel::updateFeatureEditButtonState() {
@@ -2226,11 +2250,15 @@ void FeatureListPanel::onEditFeature() {
 }
 
 void FeatureListPanel::onInlineRenameRequested() {
-    if (!m_editControlsEnabled || !m_list || !m_project) {
+    if (!m_list || !m_project) {
         return;
     }
     QListWidgetItem* item = m_list->currentItem();
-    if (!item || !(item->flags() & Qt::ItemIsEditable)) {
+    if (!item) {
+        return;
+    }
+    const int row = m_list->row(item);
+    if (!isFeatureEditableAt(row) || !(item->flags() & Qt::ItemIsEditable)) {
         return;
     }
     m_inlineRenameRow = m_list->row(item);
@@ -2276,7 +2304,7 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
                         && feature->runMode() != FeatureRunMode::Hold
                         && !feature->workflow().blocks().empty();
     const bool canSaveToLibrary =
-        feature && m_editControlsEnabled && !running && !feature->workflow().blocks().empty();
+        feature && !isFeatureInActiveWorkflowRun(featureId) && !feature->workflow().blocks().empty();
     if (feature) {
         if (feature->enabled()) {
             menu.addAction(tr("사용 안 함"), this, [this, row = m_list->row(item)]() {
@@ -2303,17 +2331,17 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
         ->setEnabled(canSaveToLibrary);
     menu.addAction(tr("라이브러리에서 가져오기"), this, [this]() {
         emit importFeatureFromLibraryRequested();
-    })
-        ->setEnabled(m_editControlsEnabled);
+    });
     menu.addAction(tr("이름 바꾸기"), this, &FeatureListPanel::onInlineRenameRequested)
-        ->setEnabled(m_editControlsEnabled);
+        ->setEnabled(isFeatureEditableAt(m_list->row(item)));
     menu.addAction(tr("편집"), this, &FeatureListPanel::onEditFeature)
         ->setEnabled(isFeatureEditableAt(m_list->row(item)));
     menu.addAction(tr("복사"), this, &FeatureListPanel::onCopyFeature)
         ->setEnabled(!selectedRows().isEmpty());
     menu.addAction(tr("붙여넣기"), this, &FeatureListPanel::onPasteFeature)
         ->setEnabled(!m_clipboardFeatures.empty());
-    menu.addAction(tr("삭제"), this, &FeatureListPanel::onRemoveFeature);
+    menu.addAction(tr("삭제"), this, &FeatureListPanel::onRemoveFeature)
+        ->setEnabled(isFeatureEditableAt(m_list->row(item)));
     menu.exec(m_list->mapToGlobal(pos));
 }
 
@@ -2426,5 +2454,6 @@ void FeatureListPanel::onSelectionChanged() {
         m_libraryList->clearSelection();
     }
     updateFeatureEditButtonState();
+    updateRemoveButtonState();
     emit selectionChanged();
 }

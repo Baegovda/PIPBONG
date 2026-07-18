@@ -184,6 +184,7 @@ private:
     const FeatureRunSession* sessionFor(const std::string& featureId) const;
     FeatureRunSession* sessionForEngine(const QObject* sender);
     bool isFeatureRunning(const std::string& featureId) const;
+    bool isFeatureInActiveWorkflowRun(const std::string& featureId) const;
     bool hasAnyRunningSession() const;
     QSet<QString> runningFeatureIds() const;
     QString featureDisplayName(const std::string& featureId) const;
