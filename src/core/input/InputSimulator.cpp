@@ -893,6 +893,8 @@ void InputSimulator::clickAtCursor(MouseButton button,
         return;
     }
 
+    const SyntheticPointerGuard syntheticPointerGuard;
+
     const bool needsModifiers = mods.any();
     ModifierSnapshot beforeBlock{};
     AppliedKeyModifiers appliedMods{};
@@ -943,6 +945,8 @@ void InputSimulator::clickAtCursorOnTarget(HWND hwnd,
     if (!hwnd || !IsWindow(hwnd) || action == ClickAction::MoveOnly) {
         return;
     }
+
+    const SyntheticPointerGuard syntheticPointerGuard;
 
     const bool needsModifiers = mods.any();
     ModifierSnapshot beforeBlock{};

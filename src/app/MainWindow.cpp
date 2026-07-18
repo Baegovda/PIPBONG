@@ -1631,7 +1631,7 @@ void MainWindow::onUpdateCheckFinished(bool success, bool updateAvailable, const
 }
 
 void MainWindow::onUpdateButtonClicked() {
-    if (hasAnyRunningSession()) {
+    if (hasAnyActiveWorkflowEngine()) {
         QMessageBox::warning(this,
                              tr("업데이트"),
                              tr("워크플로 실행 중에는 업데이트할 수 없습니다. 먼저 실행을 중지하세요."));
@@ -1663,7 +1663,7 @@ void MainWindow::onUpdateButtonClicked() {
 }
 
 void MainWindow::onCheckForUpdates() {
-    if (hasAnyRunningSession()) {
+    if (hasAnyActiveWorkflowEngine()) {
         QMessageBox::warning(this,
                              tr("업데이트"),
                              tr("워크플로 실행 중에는 업데이트할 수 없습니다. 먼저 실행을 중지하세요."));
@@ -1683,7 +1683,7 @@ void MainWindow::maybeStartAutomaticUpdate() {
         return;
     }
 
-    if (hasAnyRunningSession()) {
+    if (hasAnyActiveWorkflowEngine()) {
         const QString version = m_updateChecker->pendingUpdate().version.toString();
         showTransientStatus(tr("v%1 업데이트 감지 — 실행 종료 후 자동 업데이트").arg(version), 5000);
         return;
@@ -2293,6 +2293,11 @@ QString MainWindow::selectedFeaturePreferenceKey() const {
 
 void MainWindow::onProjectModified() {
     scheduleAutoSave();
+    if (m_featureList) {
+        if (Feature* feature = m_featureList->selectedFeature()) {
+            requestSessionWorkflowRefresh(feature->id());
+        }
+    }
 }
 
 void MainWindow::scheduleAutoSave() {
@@ -2528,6 +2533,25 @@ bool MainWindow::hasAnyRunningSession() const {
     return !m_runSessions.empty();
 }
 
+bool MainWindow::hasAnyActiveWorkflowEngine() const {
+    for (const auto& entry : m_runSessions) {
+        if (entry.second.engine && entry.second.engine->isRunning()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+QSet<QString> MainWindow::activeWorkflowFeatureIds() const {
+    QSet<QString> ids;
+    for (const auto& entry : m_runSessions) {
+        if (isFeatureInActiveWorkflowRun(entry.first)) {
+            ids.insert(QString::fromStdString(entry.first));
+        }
+    }
+    return ids;
+}
+
 QSet<QString> MainWindow::runningFeatureIds() const {
     QSet<QString> ids;
     for (const auto& entry : m_runSessions) {
@@ -2602,6 +2626,7 @@ void MainWindow::updateRunUiState() {
             }
         }
         m_featureList->setFeatureRunVisualKinds(visualKinds);
+        m_featureList->setActiveWorkflowFeatureIds(activeWorkflowFeatureIds());
 
         QHash<QString, FeatureTriggerCooldownState> cooldownStates;
         for (const auto& entry : m_runSessions) {
@@ -3707,6 +3732,43 @@ bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Featur
     return shown;
 }
 
+void MainWindow::refreshSessionWorkflowFromProject(FeatureRunSession& session, Feature* feature) {
+    if (!feature) {
+        return;
+    }
+    session.sessionWorkflow = std::shared_ptr<Workflow>(feature->workflow().clone());
+    session.deferredSessionWorkflowRefresh = false;
+}
+
+void MainWindow::applyDeferredSessionWorkflowRefresh(FeatureRunSession& session, Feature* feature) {
+    if (!session.deferredSessionWorkflowRefresh || !feature) {
+        return;
+    }
+    if (session.engine && session.engine->isRunning()) {
+        return;
+    }
+    refreshSessionWorkflowFromProject(session, feature);
+}
+
+void MainWindow::requestSessionWorkflowRefresh(const std::string& featureId) {
+    FeatureRunSession* session = sessionFor(featureId);
+    if (!session || !m_project) {
+        return;
+    }
+    Feature* feature = m_project->featureById(featureId);
+    if (!feature || !isFeatureSessionActive(*session)) {
+        return;
+    }
+    if (session->engine && session->engine->isRunning()) {
+        if (!session->deferredSessionWorkflowRefresh) {
+            showTransientStatus(tr("워크플로 변경은 현재 감시·동작이 끝난 뒤 반영됩니다"), 2500);
+        }
+        session->deferredSessionWorkflowRefresh = true;
+        return;
+    }
+    refreshSessionWorkflowFromProject(*session, feature);
+}
+
 void MainWindow::ensureRunSessionResources(FeatureRunSession& session,
                                            Feature* feature,
                                            bool refreshWorkflow) {
@@ -3715,6 +3777,7 @@ void MainWindow::ensureRunSessionResources(FeatureRunSession& session,
     }
     if (refreshWorkflow || !session.sessionWorkflow) {
         session.sessionWorkflow = std::shared_ptr<Workflow>(feature->workflow().clone());
+        session.deferredSessionWorkflowRefresh = false;
     }
     if (!session.sessionContext) {
         session.sessionContext = std::make_shared<ExecutionContext>();
@@ -4297,7 +4360,10 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
         return;
     }
 
-    ensureRunSessionResources(session, feature, session.sessionIteration > 0);
+    applyDeferredSessionWorkflowRefresh(session, feature);
+    refreshSessionWorkflowFromProject(session, feature);
+
+    ensureRunSessionResources(session, feature, false);
 
     const std::wstring targetTitle = sessionCaptureTargetTitleW(session);
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
@@ -4337,6 +4403,9 @@ void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* fea
     if (!feature || !session.engine || session.engine->isRunning()) {
         return;
     }
+
+    applyDeferredSessionWorkflowRefresh(session, feature);
+    refreshSessionWorkflowFromProject(session, feature);
 
     pauseOtherSessionsForTrigger(session);
 

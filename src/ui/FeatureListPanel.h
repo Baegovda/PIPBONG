@@ -92,6 +92,8 @@ public:
 
     void setRunningFeatureIds(const QSet<QString>& featureIds);
 
+    void setActiveWorkflowFeatureIds(const QSet<QString>& featureIds);
+
     void setFeatureRunVisualKinds(const QHash<QString, FeatureRunVisualKind>& kinds);
 
     void setTriggerCooldownStates(const QHash<QString, FeatureTriggerCooldownState>& states);
@@ -260,6 +262,8 @@ private:
     QTimer* m_animTimer = nullptr;
 
     QSet<QString> m_runningFeatureIds;
+
+    QSet<QString> m_activeWorkflowFeatureIds;
 
     QHash<QString, FeatureRunVisualKind> m_featureRunVisualKinds;
 

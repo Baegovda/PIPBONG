@@ -186,6 +186,8 @@ private:
     bool isFeatureRunning(const std::string& featureId) const;
     bool isFeatureInActiveWorkflowRun(const std::string& featureId) const;
     bool hasAnyRunningSession() const;
+    bool hasAnyActiveWorkflowEngine() const;
+    QSet<QString> activeWorkflowFeatureIds() const;
     QSet<QString> runningFeatureIds() const;
     QString featureDisplayName(const std::string& featureId) const;
     void appendSessionLog(const FeatureRunSession& session,
@@ -260,6 +262,9 @@ private:
                                  const QString& message);
     void launchTriggerMonitor(FeatureRunSession& session, Feature* feature, bool firstSessionStart);
     void launchTriggerActionRun(FeatureRunSession& session, Feature* feature);
+    void refreshSessionWorkflowFromProject(FeatureRunSession& session, Feature* feature);
+    void applyDeferredSessionWorkflowRefresh(FeatureRunSession& session, Feature* feature);
+    void requestSessionWorkflowRefresh(const std::string& featureId);
     void scheduleTriggerCooldown(FeatureRunSession& session, Feature* feature);
     void handleTriggerEngineFinished(FeatureRunSession& session,
                                      Feature* feature,

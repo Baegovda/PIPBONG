@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.218` (from `project(PIPBONG VERSION 0.8.218)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.219` (from `project(PIPBONG VERSION 0.8.219)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1188,6 +1188,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.219] - 2026-07-19
+
+### Changed
+
+- In-app update check/install no longer blocked by trigger **감시** or **쿨다운** alone; only blocks while a workflow engine worker is actively running (`MainWindow::hasAnyActiveWorkflowEngine`).
+- **Active workflow run** policy unified: `MainWindow::activeWorkflowFeatureIds` drives `FeatureListPanel` edit/run guards instead of duplicating trigger visual-kind logic.
+
+### Fixed
+
+- **현재 위치** mouse clicks (`InputSimulator::clickAtCursor`, `clickAtCursorOnTarget`) suspend the mouse-lock hook during injection so **초기 루프 마우스 잠금** no longer blocks them.
+- Trigger (and other) sessions pick up project workflow edits at safe boundaries: immediate refresh when the engine is idle, otherwise deferred until the next monitor/action launch with a title-bar hint (`FeatureRunSession::deferredSessionWorkflowRefresh`, `MainWindow::requestSessionWorkflowRefresh`, `launchTriggerMonitor`, `launchTriggerActionRun`, `onProjectModified`).
 
 ## [0.8.218] - 2026-07-19
 

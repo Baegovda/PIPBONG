@@ -85,4 +85,6 @@ struct FeatureRunSession {
     std::wstring lockedCaptureTargetTitle;
     bool waitingForScopedTargetForeground = false;
     bool triggerMonitorUiInitialized = false;
+    /// Project workflow changed while the engine was running; refresh at the next safe boundary.
+    bool deferredSessionWorkflowRefresh = false;
 };
