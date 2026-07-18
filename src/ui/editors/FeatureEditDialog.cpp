@@ -547,13 +547,9 @@ void FeatureEditDialog::updateModeDependentUi() {
         m_roiCorrectionExpandRow->setVisible(roiCorrectionEligible);
     }
 
-    const bool earlyLockEligible = loopIntervalEligible;
-    if (m_earlyLoopMouseLockCheck) {
-        m_earlyLoopMouseLockCheck->setVisible(earlyLockEligible);
-    }
     if (m_earlyLoopMouseLockDetailsRow) {
         m_earlyLoopMouseLockDetailsRow->setVisible(
-            earlyLockEligible && m_earlyLoopMouseLockCheck && m_earlyLoopMouseLockCheck->isChecked());
+            m_earlyLoopMouseLockCheck && m_earlyLoopMouseLockCheck->isChecked());
     }
 
     adjustSize();
