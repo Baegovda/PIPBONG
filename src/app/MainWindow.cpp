@@ -213,6 +213,98 @@ bool windowTitleMatchesSubTarget(const QString& windowTitle,
     return subHit && (!mainHit || subBinding.length() >= mainBinding.length());
 }
 
+#ifdef _WIN32
+HWND findVisibleTopLevelWindowHwnd(const QString& binding) {
+    if (binding.isEmpty()) {
+        return nullptr;
+    }
+    const QString bindingLower = binding.toLower();
+    struct EnumData {
+        QString bindingLower;
+        HWND result = nullptr;
+    } data{bindingLower, nullptr};
+    EnumWindows(
+        [](HWND hwnd, LPARAM lParam) -> BOOL {
+            auto* enumData = reinterpret_cast<EnumData*>(lParam);
+            if (!IsWindowVisible(hwnd)) {
+                return TRUE;
+            }
+            wchar_t buffer[512]{};
+            GetWindowTextW(hwnd, buffer, 512);
+            const QString title = QString::fromWCharArray(buffer);
+            if (title.toLower().contains(enumData->bindingLower)) {
+                enumData->result = hwnd;
+                return FALSE;
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&data));
+    return data.result;
+}
+
+bool foregroundMatchesScopedSubTarget(const QString& foregroundTitle,
+                                      HWND foregroundHwnd,
+                                      const QString& mainBinding,
+                                      const QString& subBinding) {
+    if (subBinding.isEmpty() || foregroundTitle.isEmpty() || !foregroundHwnd) {
+        return false;
+    }
+    if (!foregroundTitle.contains(subBinding, Qt::CaseInsensitive)) {
+        return false;
+    }
+    if (mainBinding.isEmpty()) {
+        return true;
+    }
+    if (!foregroundTitle.contains(mainBinding, Qt::CaseInsensitive)) {
+        return true;
+    }
+
+    const HWND mainHwnd = findVisibleTopLevelWindowHwnd(mainBinding);
+    const HWND subHwnd = findVisibleTopLevelWindowHwnd(subBinding);
+    if (mainHwnd && subHwnd && mainHwnd == subHwnd) {
+        return true;
+    }
+    if (mainHwnd && foregroundHwnd == mainHwnd && mainHwnd != subHwnd) {
+        return false;
+    }
+    if (subHwnd && foregroundHwnd == subHwnd) {
+        return true;
+    }
+    return mainHwnd == nullptr || foregroundHwnd != mainHwnd;
+}
+
+bool foregroundMatchesScopedMainTarget(const QString& foregroundTitle,
+                                       HWND foregroundHwnd,
+                                       const QString& mainBinding,
+                                       const QString& subBinding) {
+    if (mainBinding.isEmpty() || foregroundTitle.isEmpty() || !foregroundHwnd) {
+        return false;
+    }
+    if (!foregroundTitle.contains(mainBinding, Qt::CaseInsensitive)) {
+        return false;
+    }
+    if (subBinding.isEmpty()) {
+        return true;
+    }
+    if (!foregroundTitle.contains(subBinding, Qt::CaseInsensitive)) {
+        return true;
+    }
+
+    const HWND mainHwnd = findVisibleTopLevelWindowHwnd(mainBinding);
+    const HWND subHwnd = findVisibleTopLevelWindowHwnd(subBinding);
+    if (mainHwnd && subHwnd && mainHwnd == subHwnd) {
+        return true;
+    }
+    if (subHwnd && foregroundHwnd == subHwnd && subHwnd != mainHwnd) {
+        return false;
+    }
+    if (mainHwnd && foregroundHwnd == mainHwnd) {
+        return true;
+    }
+    return subHwnd == nullptr || foregroundHwnd != subHwnd;
+}
+#endif
+
 bool windowTitleMatchesMainBinding(const QString& windowTitle, const QString& mainBinding) {
     return !mainBinding.isEmpty() && !windowTitle.isEmpty()
            && windowTitle.contains(mainBinding, Qt::CaseInsensitive);
@@ -4161,6 +4253,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
         updateRunUiState();
         session.runningBlockIndex = -1;
         session.runningBlockHighlight = BlockListWidget::ExecutionHighlight::None;
+        session.triggerMonitorUiInitialized = true;
     }
 
     session.triggerPhase = TriggerSessionPhase::Monitoring;
@@ -4182,6 +4275,10 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
     session.sessionContext->setSuppressRepeatUi(false);
     session.sessionContext->setRunLoopNumber(1);
     syncUserInputInterruptForSession(session, feature);
+
+    if (deferRunUntilScopedTargetForeground(session, feature)) {
+        return;
+    }
 
     ensureRunSessionResources(session, feature, session.sessionIteration > 0);
 
@@ -5943,10 +6040,10 @@ bool MainWindow::scopedTargetForegroundActive(const Feature* feature) const {
     }
 
     if (scope == FeatureCaptureTargetScope::SubOnly) {
-        return windowTitleMatchesSubTarget(foregroundTitle, mainBinding, subBinding);
+        return foregroundMatchesScopedSubTarget(foregroundTitle, hwnd, mainBinding, subBinding);
     }
     if (scope == FeatureCaptureTargetScope::MainOnly) {
-        return windowTitleMatchesMainBinding(foregroundTitle, mainBinding);
+        return foregroundMatchesScopedMainTarget(foregroundTitle, hwnd, mainBinding, subBinding);
     }
 #else
     Q_UNUSED(feature);
@@ -6012,7 +6109,9 @@ void MainWindow::resumeWaitingScopedTargetForegroundSessions() {
                 || session.triggerPhase == TriggerSessionPhase::RunningAction) {
                 continue;
             }
-            launchTriggerMonitor(session, feature, false);
+            launchTriggerMonitor(session,
+                                 feature,
+                                 !session.triggerMonitorUiInitialized);
             continue;
         }
 

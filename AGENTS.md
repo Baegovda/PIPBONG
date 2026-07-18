@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.207` (from `project(PIPBONG VERSION 0.8.207)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.208` (from `project(PIPBONG VERSION 0.8.208)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1188,6 +1188,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.208] - 2026-07-18
+
+### Fixed
+
+- **서브 대상 창만** + **지정한 대상 창이 활성(포커스)일 때만 동작** with trigger mode: poll **시도 횟수** no longer increments while the main game window (or other non-sub HWND) is focused — scoped foreground check uses HWND disambiguation instead of title substring length heuristics (`MainWindow::scopedTargetForegroundActive`, `foregroundMatchesScopedSubTarget` / `foregroundMatchesScopedMainTarget`).
+- Trigger monitor defers engine start until the scoped target window is foreground (same as other run modes); resume after wait preserves first-start UI (`launchTriggerMonitor`, `deferRunUntilScopedTargetForeground`, `FeatureRunSession::triggerMonitorUiInitialized`).
 
 ## [0.8.207] - 2026-07-18
 
