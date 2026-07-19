@@ -423,7 +423,10 @@ private:
                 .arg(pal.color(QPalette::Button).name(), chipBorder.name()));
 
         QFont badgeFont = m_badge->font();
-        badgeFont.setPointSizeF(badgeFont.pointSizeF() * 0.85);
+        const qreal badgePointSize = badgeFont.pointSizeF();
+        if (badgePointSize > 0) {
+            badgeFont.setPointSizeF(badgePointSize * 0.85);
+        }
         m_badge->setFont(badgeFont);
         m_badge->setStyleSheet(
             QStringLiteral("background:%1; color:%2; border-radius:9px;")
@@ -877,7 +880,10 @@ void paintWorkflowChipHeader(QPainter* painter,
     }
 
     QFont badgeFont = titleFont;
-    badgeFont.setPointSizeF(badgeFont.pointSizeF() * 0.85);
+    const qreal badgePointSize = badgeFont.pointSizeF();
+    if (badgePointSize > 0) {
+        badgeFont.setPointSizeF(badgePointSize * 0.85);
+    }
     painter->setFont(badgeFont);
     painter->setPen(pal.color(QPalette::HighlightedText));
     painter->drawText(badgeRect, Qt::AlignCenter, badgeText);

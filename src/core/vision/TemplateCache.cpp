@@ -10,7 +10,7 @@ namespace {
 struct CacheEntry {
     std::string path;
     qint64 mtime = 0;
-    PreparedTemplate templ;
+    std::shared_ptr<PreparedTemplate> templ;
 };
 
 std::mutex g_mutex;
@@ -48,7 +48,7 @@ void evictIfNeeded() {
 
 } // namespace
 
-const PreparedTemplate& TemplateCache::getOrLoad(const std::string& resolvedPath) {
+std::shared_ptr<PreparedTemplate> TemplateCache::getOrLoad(const std::string& resolvedPath) {
     const qint64 mtime = fileMtime(resolvedPath);
     {
         std::lock_guard<std::mutex> lock(g_mutex);
@@ -59,7 +59,7 @@ const PreparedTemplate& TemplateCache::getOrLoad(const std::string& resolvedPath
         }
     }
 
-    PreparedTemplate loaded = ImageMatcher::loadTemplate(resolvedPath);
+    auto loaded = std::make_shared<PreparedTemplate>(ImageMatcher::loadTemplate(resolvedPath));
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         const int staleIndex = [&]() {
@@ -77,10 +77,10 @@ const PreparedTemplate& TemplateCache::getOrLoad(const std::string& resolvedPath
         CacheEntry entry;
         entry.path = resolvedPath;
         entry.mtime = mtime;
-        entry.templ = std::move(loaded);
+        entry.templ = loaded;
         g_entries.insert(g_entries.begin(), std::move(entry));
         evictIfNeeded();
-        return g_entries.front().templ;
+        return loaded;
     }
 }
 

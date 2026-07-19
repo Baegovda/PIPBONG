@@ -6,6 +6,7 @@
 #include "core/vision/ImageMatcher.h"
 
 #include <optional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -106,6 +107,6 @@ public:
                                                            {});
 
 private:
-    const PreparedTemplate& cachedTemplateFor(const std::string& resolvedPath) const;
+    static std::shared_ptr<PreparedTemplate> cachedTemplateFor(const std::string& resolvedPath);
 };
 

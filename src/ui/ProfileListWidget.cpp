@@ -97,7 +97,12 @@ private:
         const QString badgeText = QStringLiteral("기본");
         QFont badgeFont = opt.font;
         badgeFont.setBold(true);
-        badgeFont.setPointSizeF(qMax(8.0, badgeFont.pointSizeF() - 0.5));
+        const qreal badgePointSize = badgeFont.pointSizeF();
+        if (badgePointSize > 0) {
+            badgeFont.setPointSizeF(qMax(8.0, badgePointSize - 0.5));
+        } else if (badgeFont.pixelSize() > 0) {
+            badgeFont.setPixelSize(qMax(8, badgeFont.pixelSize() - 1));
+        }
         const QFontMetrics badgeFm(badgeFont);
         const int badgeHorizontalPad = 8;
         const int badgeWidth = badgeFm.horizontalAdvance(badgeText) + badgeHorizontalPad * 2;

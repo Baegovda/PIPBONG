@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.224` (from `project(PIPBONG VERSION 0.8.224)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.225` (from `project(PIPBONG VERSION 0.8.225)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1230,6 +1230,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.225] - 2026-07-20
+
+### Fixed
+
+- Crash `EXCEPTION_ACCESS_VIOLATION` in `opencv_core4.dll` during ImageFind: `TemplateCache::getOrLoad` now returns `shared_ptr<PreparedTemplate>` so multi-template blocks and background prefetch no longer use dangling references after LRU eviction (`TemplateCache`, `ImageFindBlock`).
+- `QFont::setPointSize` warnings when block-list loop/if badges or profile **기본** pill use pixel-sized fonts (`BlockListWidget`, `ProfileListWidget`).
 
 ## [0.8.224] - 2026-07-19
 

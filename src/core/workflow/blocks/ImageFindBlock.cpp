@@ -874,7 +874,7 @@ void maybeRememberMultiMatchPositionsAll(ExecutionContext& ctx,
                                          bool blockRememberEnabled,
                                          const cv::Mat& haystack,
                                          const cv::Mat& hayGray,
-                                         const std::vector<const PreparedTemplate*>& templates,
+                                         const std::vector<std::shared_ptr<PreparedTemplate>>& templates,
                                          const std::vector<std::string>& templatePaths,
                                          const MatchOptions& options,
                                          SearchArea searchArea,
@@ -1073,7 +1073,7 @@ MatchOptions ImageFindBlock::matchOptions() const {
     return options;
 }
 
-const PreparedTemplate& ImageFindBlock::cachedTemplateFor(const std::string& resolvedPath) const {
+std::shared_ptr<PreparedTemplate> ImageFindBlock::cachedTemplateFor(const std::string& resolvedPath) {
     return TemplateCache::getOrLoad(resolvedPath);
 }
 
@@ -1104,7 +1104,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                                          : roiCorrectionExpandPercent;
 
     std::vector<std::string> relativePaths;
-    std::vector<const PreparedTemplate*> templates;
+    std::vector<std::shared_ptr<PreparedTemplate>> templates;
     relativePaths.reserve(templatePaths.size());
     templates.reserve(templatePaths.size());
     for (const std::string& path : templatePaths) {
@@ -1112,15 +1112,15 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             continue;
         }
         const std::string resolved = ctx.resolvePath(path);
-        const PreparedTemplate& templ = cachedTemplateFor(resolved);
-        if (templ.empty()) {
+        std::shared_ptr<PreparedTemplate> templ = cachedTemplateFor(resolved);
+        if (!templ || templ->empty()) {
             BlockResult result;
             result.success = false;
             result.message = "템플릿 파일을 찾을 수 없음: " + resolved;
             return result;
         }
         relativePaths.push_back(path);
-        templates.push_back(&templ);
+        templates.push_back(std::move(templ));
     }
     if (relativePaths.empty()) {
         BlockResult result;
@@ -1312,7 +1312,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             std::vector<ImageFindSelection> selections;
             selections.reserve(templates.size());
             bool allMatched = true;
-            for (const PreparedTemplate* templ : templates) {
+            for (const std::shared_ptr<PreparedTemplate>& templ : templates) {
                 const ImageFindSelection selection = trySelectImageFindMatch(
                     haystack, hayGray, *templ, options, ctx, runtimeSearchArea, activeRegion, runtimePercentRegion);
                 selections.push_back(selection);
