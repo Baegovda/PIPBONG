@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.234` (from `project(PIPBONG VERSION 0.8.234)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.235` (from `project(PIPBONG VERSION 0.8.235)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.235] - 2026-07-20
+
+### Fixed
+
+- Trigger mode **감시** with **자동 (메인·서브)** capture scope no longer stays locked on the main target HWND after the user switches to the profile sub window (launcher): `refreshSessionCaptureTarget` re-resolves during monitoring when the auto heuristic picks sub; `syncEffectiveTargetWindowTitleToCapture` pushes the new title to active trigger monitor worker contexts (`MainWindow`).
 
 ## [0.8.234] - 2026-07-20
 

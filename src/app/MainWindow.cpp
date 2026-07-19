@@ -6555,18 +6555,28 @@ void MainWindow::refreshSessionCaptureTarget(FeatureRunSession& session) {
         return;
     }
 
+    const bool triggerWatchMayMigrate =
+        session.runningMode == FeatureRunMode::Trigger
+        && session.triggerPhase == TriggerSessionPhase::Monitoring;
+
 #ifdef _WIN32
     const bool lockedMissing =
         !session.lockedCaptureTargetTitle.empty()
         && !ScreenCapture::hasVisibleWindowMatchingTitle(session.lockedCaptureTargetTitle);
-    if (session.lockedCaptureTargetTitle.empty() || lockedMissing) {
-        session.lockedCaptureTargetTitle = resolved;
-    }
 #else
-    if (session.lockedCaptureTargetTitle.empty()) {
-        session.lockedCaptureTargetTitle = resolved;
-    }
+    const bool lockedMissing = false;
 #endif
+
+    bool shouldAdopt = session.lockedCaptureTargetTitle.empty() || lockedMissing;
+    if (!shouldAdopt && triggerWatchMayMigrate
+        && session.lockedCaptureTargetTitle != resolved) {
+        shouldAdopt = true;
+    }
+
+    if (shouldAdopt && session.lockedCaptureTargetTitle != resolved) {
+        session.lockedCaptureTargetTitle = resolved;
+        applySessionCaptureTarget(resolved);
+    }
 }
 
 void MainWindow::applySessionCaptureTarget(const std::wstring& title) const {
@@ -6641,6 +6651,20 @@ void MainWindow::syncEffectiveTargetWindowTitleToCapture() {
         ScreenCapture::setForegroundHintWindow(hwnd);
     }
 #endif
+
+    for (auto& entry : m_runSessions) {
+        FeatureRunSession& session = entry.second;
+        if (session.runningMode != FeatureRunMode::Trigger
+            || session.triggerPhase != TriggerSessionPhase::Monitoring) {
+            continue;
+        }
+        const std::wstring before = session.lockedCaptureTargetTitle;
+        refreshSessionCaptureTarget(session);
+        if (session.sessionContext && session.lockedCaptureTargetTitle != before
+            && !session.lockedCaptureTargetTitle.empty()) {
+            session.sessionContext->setTargetWindowTitleForWorker(session.lockedCaptureTargetTitle);
+        }
+    }
 }
 
 bool MainWindow::isActiveDefaultProfile() const {
