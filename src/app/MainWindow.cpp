@@ -649,6 +649,20 @@ QString libraryEntryDisplayName(FeatureLibraryManager* libraryManager, const QSt
     return entryId;
 }
 
+QString triggerPhaseLabel(TriggerSessionPhase phase) {
+    switch (phase) {
+    case TriggerSessionPhase::Monitoring:
+        return QStringLiteral("Monitoring");
+    case TriggerSessionPhase::RunningAction:
+        return QStringLiteral("RunningAction");
+    case TriggerSessionPhase::Cooldown:
+        return QStringLiteral("Cooldown");
+    case TriggerSessionPhase::None:
+    default:
+        return QStringLiteral("None");
+    }
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent)
@@ -722,6 +736,8 @@ MainWindow::MainWindow(QWidget* parent)
     syncHotkeys();
     updateTargetWindowDetails();
     scheduleRunWarmup();
+
+    CrashReporter::setContextProvider([this]() { return buildCrashReportContextSnapshot(); });
 }
 
 MainWindow::~MainWindow() {
@@ -750,6 +766,88 @@ void MainWindow::ensureInitialWindowPlacement() {
 
 void MainWindow::showPendingCrashReportIfAny() {
     CrashReportDialog::showPendingIfAny(this);
+}
+
+QString MainWindow::buildCrashReportContextSnapshot() const {
+    QStringList lines;
+
+    if (m_profileManager) {
+        const QString profileId = m_profileManager->activeProfileId();
+        QString profileName = profileId;
+        if (const ProfileManager::Profile* profile = m_profileManager->activeProfile()) {
+            profileName = profile->name;
+        }
+        lines.append(QStringLiteral("  profile: %1 (%2)").arg(profileName, profileId));
+        lines.append(QStringLiteral("  defaultProfile: %1")
+                         .arg(m_profileManager->isDefaultProfile(profileId) ? QStringLiteral("yes")
+                                                                           : QStringLiteral("no")));
+    }
+
+    if (m_project) {
+        const QString mainTarget = QString::fromStdString(m_project->targetWindowTitle());
+        lines.append(QStringLiteral("  targetWindow: %1").arg(mainTarget.isEmpty() ? QStringLiteral("(empty)")
+                                                                                  : mainTarget));
+        if (m_profileManager) {
+            const QString subTarget = m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId());
+            if (!subTarget.isEmpty()) {
+                lines.append(QStringLiteral("  subTargetWindow: %1").arg(subTarget));
+            }
+        }
+    }
+
+    if (m_libraryPreviewFeature && !m_libraryPreviewEntryId.isEmpty()) {
+        lines.append(QStringLiteral("  libraryPreview: %1 (%2)")
+                         .arg(libraryEntryDisplayName(m_featureLibraryManager.get(), m_libraryPreviewEntryId),
+                              m_libraryPreviewEntryId));
+    } else if (m_featureList) {
+        if (Feature* feature = m_featureList->selectedFeature()) {
+            lines.append(QStringLiteral("  selectedFeature: %1 (%2)")
+                             .arg(QString::fromStdString(feature->name()),
+                                  QString::fromStdString(feature->id())));
+        } else {
+            lines.append(QStringLiteral("  selectedFeature: (none)"));
+        }
+    }
+
+    lines.append(QStringLiteral("  runningSessions: %1").arg(static_cast<int>(m_runSessions.size())));
+    for (const auto& entry : m_runSessions) {
+        const FeatureRunSession& session = entry.second;
+        QString featureName = QString::fromStdString(entry.first);
+        if (m_project) {
+            if (const Feature* feature = m_project->featureById(entry.first)) {
+                featureName = QString::fromStdString(feature->name());
+            }
+        }
+        const bool engineRunning = session.engine && session.engine->isRunning();
+        lines.append(QStringLiteral("    - %1 mode=%2 trigger=%3 block=#%4 engine=%5 hold=%6")
+                         .arg(featureName)
+                         .arg(QString::fromStdString(featureRunModeToString(session.runningMode)))
+                         .arg(triggerPhaseLabel(session.triggerPhase))
+                         .arg(session.runningBlockIndex >= 0 ? session.runningBlockIndex + 1 : 0)
+                         .arg(engineRunning ? QStringLiteral("running") : QStringLiteral("idle"))
+                         .arg(session.holdRunActive ? QStringLiteral("yes") : QStringLiteral("no")));
+    }
+
+    int visibleDialogs = 0;
+    if (QApplication* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
+        const QWidgetList widgets = app->topLevelWidgets();
+        for (QWidget* widget : widgets) {
+            if (!widget || !widget->isVisible()) {
+                continue;
+            }
+            if (qobject_cast<QDialog*>(widget)) {
+                ++visibleDialogs;
+            }
+        }
+        const QWidget* active = app->activeWindow();
+        const bool pipbongForeground =
+            active && (active == this || active->window() == this);
+        lines.append(QStringLiteral("  pipbongForeground: %1")
+                         .arg(pipbongForeground ? QStringLiteral("yes") : QStringLiteral("no")));
+    }
+    lines.append(QStringLiteral("  visibleDialogs: %1").arg(visibleDialogs));
+
+    return lines.join(QLatin1Char('\n'));
 }
 
 void MainWindow::setupUi() {
@@ -1115,7 +1213,9 @@ void MainWindow::setupMenus() {
             showTransientStatus(tr("오류 보고서를 열 수 없습니다."), 3000);
             return;
         }
-        CrashReportDialog dialog(QString::fromUtf8(reportFile.readAll()), folder, this);
+        const QString reportText = QString::fromUtf8(reportFile.readAll());
+        const CrashReportKind kind = CrashReporter::kindFromReportText(reportText);
+        CrashReportDialog dialog(reportText, folder, this, false, kind);
         dialog.exec();
     });
     helpMenu->addSeparator();

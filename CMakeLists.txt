@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.226 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.227 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -70,6 +70,8 @@ set(PIPBONG_SOURCES
     src/core/diagnostics/CpuCulpritAnalyzer.cpp
     src/core/diagnostics/CpuMonitorWorker.cpp
     src/core/diagnostics/CrashReporter.cpp
+    src/core/diagnostics/CrashReportSystemInfo.cpp
+    src/core/diagnostics/Win32StackWalker.cpp
     src/ui/calculator/FormulaEvaluator.cpp
     src/ui/calculator/SpreadsheetModel.cpp
     src/ui/calculator/CurrencyIconCache.cpp
@@ -185,7 +187,7 @@ if(WIN32)
 endif()
 
 if(WIN32)
-    target_link_libraries(PIPBONG PRIVATE user32 gdi32 dwmapi dxgi d3d11 winmm shell32)
+    target_link_libraries(PIPBONG PRIVATE user32 gdi32 dwmapi dxgi d3d11 winmm shell32 dbghelp)
 endif()
 
 target_compile_definitions(PIPBONG PRIVATE

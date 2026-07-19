@@ -2,12 +2,23 @@
 
 #include <QString>
 
+#include <functional>
+
+enum class CrashReportKind {
+    Crash,
+    Hang,
+    QtFatal
+};
+
 struct CrashReportSummary {
     QString folderPath;
     QString reportText;
     QString reportFilePath;
     QString dumpFilePath;
+    CrashReportKind kind = CrashReportKind::Crash;
 };
+
+using CrashContextProvider = std::function<QString()>;
 
 class CrashReporter {
 public:
@@ -22,6 +33,9 @@ public:
     /// Call once on the main thread after install() (not in --crash-report viewer mode).
     static void installGuiHangWatchdog();
 
+    /// Registers a GUI-thread callback that refreshes the cached application context snapshot.
+    static void setContextProvider(CrashContextProvider provider);
+
     /// Returns the pending crash from the previous run, if any.
     static bool hasPendingReport();
     static CrashReportSummary pendingReport();
@@ -32,4 +46,10 @@ public:
     static QString crashRootDirectory();
     static bool openPathInExplorer(const QString& path);
     static QString latestReportDirectory();
+
+    /// Packages report.txt, recent_log.txt, optional crash.dmp and user_note.txt into a zip.
+    static bool exportReportFolderAsZip(const QString& folderPath, const QString& zipPath);
+
+    static CrashReportKind kindFromReportText(const QString& reportText);
+    static bool writeUserNote(const QString& folderPath, const QString& note);
 };

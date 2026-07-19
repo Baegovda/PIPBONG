@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.226` (from `project(PIPBONG VERSION 0.8.226)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.227` (from `project(PIPBONG VERSION 0.8.227)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -560,11 +560,12 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.11 Crash reporting (diagnostics)
 
-- **Install:** `CrashReporter::install()` in `main.cpp` immediately after `QApplication` construction — Win32 unhandled-exception filter, `std::terminate` / purecall / invalid-parameter handlers, and Qt `qInstallMessageHandler` ring buffer (~800 lines).
-- **GUI hang (Not Responding):** `CrashReporter::installGuiHangWatchdog()` after `install()` — `QTimer` heartbeat on the GUI thread; background thread writes a report when heartbeat is silent ~6 s and launches detached `PIPBONG.exe --crash-report <folder>` (Win32 `MessageBox` fallback if spawn fails). Does not terminate the process.
-- **On crash:** writes a timestamped folder under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{yyyyMMdd_HHmmss}/` with `report.txt` (version, exception code, stack frames, recent Qt log), `recent_log.txt`, optional `crash.dmp` (minidump via dynamically loaded `Dbghelp.dll`); `pending.txt` in the crash root points at the folder. Retains the last 10 crash folders.
-- **Immediate UI:** Qt fatal messages show modal `CrashReportDialog` on the GUI thread before exit; SEH / CRT handlers spawn a detached `PIPBONG.exe --crash-report <folder>` viewer when in-process UI is unsafe. Startup `showPendingCrashReportIfAny()` remains a fallback when the immediate viewer did not run.
-- **Manual:** title bar **도움말 → 오류 보고서** opens the latest saved `report.txt` (or shows a short status when none exist). Dialog offers **복사** and **폴더 열기**.
+- **Install:** `CrashReporter::install()` in `main.cpp` immediately after `QApplication` construction — Win32 unhandled-exception filter, `std::terminate` / purecall / invalid-parameter handlers, and Qt `qInstallMessageHandler` ring buffer (~800 lines). `Win32StackWalker` (DbgHelp `StackWalk64` / `SymFromAddr` / `SymGetLineFromAddr64`) resolves function names when PDBs are present.
+- **GUI hang (Not Responding):** `CrashReporter::installGuiHangWatchdog()` after `install()` — `QTimer` heartbeat on the GUI thread refreshes a cached application-context snapshot; background thread writes a report when heartbeat is silent ~6 s, captures **GUI thread stack** via `SuspendThread` + `GetThreadContext`, and launches detached `PIPBONG.exe --crash-report <folder>` (Win32 `MessageBox` fallback if spawn fails). Does not terminate the process.
+- **Application context:** `MainWindow` registers `CrashReporter::setContextProvider` — profile, target windows, selected feature, library preview, running sessions, foreground state — included in every `report.txt` under `--- application context ---`.
+- **On crash:** writes a timestamped folder under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{yyyyMMdd_HHmmss}/` with `report.txt` (`kind: crash|hang|qt_fatal`, system info, context, critical-log digest, symbolic stack when available), `recent_log.txt`, `kind.txt`, optional `crash.dmp` (minidump via dynamically loaded `Dbghelp.dll`); `pending.txt` in the crash root points at the folder. Retains the last 10 crash folders.
+- **Immediate UI:** Qt fatal messages show modal `CrashReportDialog` on the GUI thread before exit; SEH / CRT / hang handlers spawn a detached `PIPBONG.exe --crash-report <folder>` viewer when in-process UI is unsafe. Startup `showPendingCrashReportIfAny()` remains a fallback when the immediate viewer did not run.
+- **Manual:** title bar **도움말 → 오류 보고서** opens the latest saved `report.txt` (or shows a short status when none exist). `CrashReportDialog`: hang vs crash titles, optional user note (`user_note.txt`), **ZIP으로 저장** via `tar.exe`, **복사**, **폴더 열기**. `CrashReporter::exportReportFolderAsZip` packages report artifacts.
 
 ---
 
@@ -1231,6 +1232,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.227] - 2026-07-20
+
+### Added
+
+- Crash reports include **system** block (OS/Qt/DPI/screens), **application context** snapshot (profile, targets, selected feature, running sessions), and **recent critical messages** digest (`CrashReportSystemInfo`, `CrashReporter::setContextProvider`, `MainWindow::buildCrashReportContextSnapshot`).
+- **`Win32StackWalker`**: DbgHelp `StackWalk64` + `SymFromAddr` / `SymGetLineFromAddr64` for symbolic stacks when PDBs are available; linked `dbghelp`.
+- Hang reports capture **GUI thread stack** via `SuspendThread` + `GetThreadContext` (separate **watchdog thread stack** section); `kind: hang|crash|qt_fatal` in `report.txt` + `kind.txt`.
+- **`CrashReportDialog`**: hang-specific title (**응답 없음 오류 보고서**), optional user note (`user_note.txt`), **ZIP으로 저장** (`CrashReporter::exportReportFolderAsZip` via `tar.exe`).
+
+### Changed
+
+- GUI hang heartbeat refreshes cached context snapshot every 400 ms (watchdog never calls `MainWindow` directly).
 
 ## [0.8.226] - 2026-07-20
 

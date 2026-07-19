@@ -9,6 +9,8 @@
 #include "core/diagnostics/CrashReporter.h"
 
 #include "PipbongVersion.h"
+#include "core/diagnostics/CrashReportSystemInfo.h"
+#include "core/diagnostics/Win32StackWalker.h"
 #include "ui/diagnostics/CrashReportDialog.h"
 
 #include <QCoreApplication>
@@ -17,6 +19,7 @@
 #include <QDir>
 #include <QFile>
 #include <QMetaObject>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QThread>
@@ -28,6 +31,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -37,6 +41,7 @@
 namespace {
 
 constexpr int kMaxRecentLogLines = 800;
+constexpr int kMaxCriticalLogLines = 20;
 constexpr int kMaxRetainedCrashFolders = 10;
 constexpr int kGuiHeartbeatIntervalMs = 400;
 constexpr int kGuiHangWatchdogPollMs = 1000;
@@ -47,6 +52,7 @@ constexpr wchar_t kCrashReportViewerArg[] = L"--crash-report";
 struct CrashArtifacts {
     QString folderPath;
     QString reportText;
+    CrashReportKind kind = CrashReportKind::Crash;
 };
 
 std::mutex g_logMutex;
@@ -56,15 +62,11 @@ std::atomic<bool> g_writingCrashReport{false};
 std::atomic<qint64> g_lastGuiHeartbeatMs{0};
 std::atomic<bool> g_guiHangReported{false};
 std::atomic<bool> g_guiHangWatchdogStop{false};
+std::atomic<unsigned long> g_mainThreadId{0};
 
-#ifdef _WIN32
-CrashArtifacts writeCrashArtifacts(const QString& reason,
-                                   EXCEPTION_POINTERS* exceptionInfo,
-                                   CONTEXT* fallbackContext);
-void notifyCrashReportSaved(const QString& folderPath, bool immediateHang);
-void launchDetachedCrashReportViewer(const QString& folderPath);
-void presentCrashReport(const CrashArtifacts& artifacts, bool allowInProcessUi);
-#endif
+std::mutex g_contextMutex;
+CrashContextProvider g_contextProvider;
+QString g_cachedContextSnapshot;
 
 #ifdef _WIN32
 struct MinidumpExceptionInformation {
@@ -75,6 +77,28 @@ struct MinidumpExceptionInformation {
 
 using MiniDumpWriteDumpFn = BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, DWORD, MinidumpExceptionInformation*, void*, void*);
 #endif
+
+QString kindToString(CrashReportKind kind) {
+    switch (kind) {
+    case CrashReportKind::Hang:
+        return QStringLiteral("hang");
+    case CrashReportKind::QtFatal:
+        return QStringLiteral("qt_fatal");
+    case CrashReportKind::Crash:
+    default:
+        return QStringLiteral("crash");
+    }
+}
+
+CrashReportKind kindFromString(const QString& value) {
+    if (value == QStringLiteral("hang")) {
+        return CrashReportKind::Hang;
+    }
+    if (value == QStringLiteral("qt_fatal")) {
+        return CrashReportKind::QtFatal;
+    }
+    return CrashReportKind::Crash;
+}
 
 QString qtMessageTypeLabel(QtMsgType type) {
     switch (type) {
@@ -99,6 +123,34 @@ void appendRecentLogLine(const QString& line) {
         g_recentLogLines.pop_front();
     }
 }
+
+void refreshContextCacheFromProvider() {
+    CrashContextProvider provider;
+    {
+        std::lock_guard<std::mutex> lock(g_contextMutex);
+        provider = g_contextProvider;
+    }
+    if (!provider) {
+        return;
+    }
+    const QString snapshot = provider();
+    std::lock_guard<std::mutex> lock(g_contextMutex);
+    g_cachedContextSnapshot = snapshot;
+}
+
+QString cachedContextSnapshot() {
+    std::lock_guard<std::mutex> lock(g_contextMutex);
+    return g_cachedContextSnapshot;
+}
+
+#ifdef _WIN32
+CrashArtifacts writeCrashArtifacts(CrashReportKind kind,
+                                   const QString& reason,
+                                   EXCEPTION_POINTERS* exceptionInfo,
+                                   CONTEXT* fallbackContext,
+                                   bool hangReport);
+void presentCrashReport(const CrashArtifacts& artifacts, bool allowInProcessUi);
+#endif
 
 void qtMessageHandler(QtMsgType type, const QMessageLogContext& context, const QString& message) {
     const QString timestamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh:mm:ss.zzz"));
@@ -125,7 +177,7 @@ void qtMessageHandler(QtMsgType type, const QMessageLogContext& context, const Q
             const QString reason =
                 QStringLiteral("Qt fatal message: %1").arg(message);
             const CrashArtifacts artifacts =
-                writeCrashArtifacts(reason, nullptr, &contextRecord);
+                writeCrashArtifacts(CrashReportKind::QtFatal, reason, nullptr, &contextRecord, false);
             presentCrashReport(artifacts, true);
         }
 #endif
@@ -164,6 +216,19 @@ QString currentExecutablePath() {
     return QString::fromWCharArray(pathBuffer, static_cast<int>(length));
 }
 
+void notifyCrashReportSaved(const QString& folderPath, bool immediateHang) {
+    const QString message =
+        folderPath.isEmpty()
+            ? QStringLiteral("PIPBONG: An error report was saved under %LOCALAPPDATA%\\PIPBONG\\PIPBONG\\crash\\")
+            : QStringLiteral("PIPBONG: An error report was saved.\n\n%1").arg(folderPath);
+    const QString title = immediateHang ? QStringLiteral("PIPBONG - Not Responding")
+                                        : QStringLiteral("PIPBONG - Error Report");
+    MessageBoxW(nullptr,
+                reinterpret_cast<LPCWSTR>(message.utf16()),
+                reinterpret_cast<LPCWSTR>(title.utf16()),
+                MB_OK | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND);
+}
+
 void launchDetachedCrashReportViewer(const QString& folderPath) {
     const QString executablePath = currentExecutablePath();
     if (executablePath.isEmpty() || folderPath.isEmpty()) {
@@ -196,21 +261,10 @@ void launchDetachedCrashReportViewer(const QString& folderPath) {
     CloseHandle(processInfo.hProcess);
 }
 
-void notifyCrashReportSaved(const QString& folderPath, bool immediateHang) {
-    const QString message =
-        folderPath.isEmpty()
-            ? QStringLiteral("PIPBONG: An error report was saved under %LOCALAPPDATA%\\PIPBONG\\PIPBONG\\crash\\")
-            : QStringLiteral("PIPBONG: An error report was saved.\n\n%1").arg(folderPath);
-    const QString title = immediateHang ? QStringLiteral("PIPBONG — Not Responding")
-                                        : QStringLiteral("PIPBONG — Error Report");
-    MessageBoxW(nullptr,
-                reinterpret_cast<LPCWSTR>(message.utf16()),
-                reinterpret_cast<LPCWSTR>(title.utf16()),
-                MB_OK | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND);
-}
-
-void showCrashReportDialogOnGuiThread(const QString& reportText, const QString& folderPath) {
-    CrashReportDialog dialog(reportText, folderPath, nullptr, true);
+void showCrashReportDialogOnGuiThread(const QString& reportText,
+                                       const QString& folderPath,
+                                       CrashReportKind kind) {
+    CrashReportDialog dialog(reportText, folderPath, nullptr, true, kind);
     dialog.exec();
     CrashReporter::dismissPendingReport();
 }
@@ -222,8 +276,10 @@ void presentCrashReport(const CrashArtifacts& artifacts, bool allowInProcessUi) 
 
     QCoreApplication* app = QCoreApplication::instance();
     if (allowInProcessUi && app) {
-        const auto showOnGuiThread = [reportText = artifacts.reportText, folderPath = artifacts.folderPath]() {
-            showCrashReportDialogOnGuiThread(reportText, folderPath);
+        const auto showOnGuiThread = [reportText = artifacts.reportText,
+                                    folderPath = artifacts.folderPath,
+                                    kind = artifacts.kind]() {
+            showCrashReportDialogOnGuiThread(reportText, folderPath, kind);
         };
         if (QThread::currentThread() == app->thread()) {
             showOnGuiThread();
@@ -242,6 +298,7 @@ void presentCrashReport(const CrashArtifacts& artifacts, bool allowInProcessUi) 
 
 void touchGuiHeartbeat() {
     g_lastGuiHeartbeatMs.store(QDateTime::currentMSecsSinceEpoch());
+    refreshContextCacheFromProvider();
 }
 
 void reportGuiThreadHang(qint64 silentMs) {
@@ -250,10 +307,9 @@ void reportGuiThreadHang(qint64 silentMs) {
     }
 
     const QString reason =
-        QStringLiteral("GUI thread not responding (hang) — no heartbeat for %1 ms").arg(silentMs);
-    CONTEXT context{};
-    RtlCaptureContext(&context);
-    const CrashArtifacts artifacts = writeCrashArtifacts(reason, nullptr, &context);
+        QStringLiteral("GUI thread not responding (hang) - no heartbeat for %1 ms").arg(silentMs);
+    const CrashArtifacts artifacts =
+        writeCrashArtifacts(CrashReportKind::Hang, reason, nullptr, nullptr, true);
     presentCrashReport(artifacts, false);
 }
 
@@ -339,41 +395,15 @@ bool writeMiniDump(const QString& dumpPath, EXCEPTION_POINTERS* exceptionInfo) {
     return ok == TRUE;
 }
 
-void appendModuleForAddress(QStringList& lines, void* address) {
-    MEMORY_BASIC_INFORMATION memoryInfo{};
-    if (!VirtualQuery(address, &memoryInfo, sizeof(memoryInfo))) {
-        lines.append(QStringLiteral("  %1").arg(reinterpret_cast<quintptr>(address), 16, 16, QLatin1Char('0')));
-        return;
-    }
-
-    wchar_t modulePath[MAX_PATH]{};
-    const DWORD length = GetModuleFileNameW(static_cast<HMODULE>(memoryInfo.AllocationBase), modulePath, MAX_PATH);
-    const QString module = length > 0 ? QString::fromWCharArray(modulePath, static_cast<int>(length))
-                                      : QStringLiteral("(unknown module)");
-    const auto offset = reinterpret_cast<quintptr>(address)
-                        - reinterpret_cast<quintptr>(memoryInfo.AllocationBase);
-    lines.append(QStringLiteral("  0x%1  %2 + 0x%3")
-                     .arg(reinterpret_cast<quintptr>(address), 16, 16, QLatin1Char('0'))
-                     .arg(module)
-                     .arg(offset, 0, 16));
-}
-
-void appendStackTrace(QStringList& lines, CONTEXT* context, int maxFrames = 32) {
-    Q_UNUSED(context);
-    void* frames[64]{};
-    const USHORT captured =
-        CaptureStackBackTrace(0, static_cast<DWORD>(std::min(maxFrames, 64)), frames, nullptr);
-    for (USHORT index = 0; index < captured; ++index) {
-        appendModuleForAddress(lines, frames[index]);
-    }
-}
-
-QString buildCrashReportText(const QString& reason,
+QString buildCrashReportText(CrashReportKind kind,
+                             const QString& reason,
                              EXCEPTION_POINTERS* exceptionInfo,
-                             CONTEXT* fallbackContext) {
+                             CONTEXT* fallbackContext,
+                             bool hangReport) {
     QStringList lines;
     lines.append(QStringLiteral("PIPBONG crash report"));
     lines.append(QStringLiteral("version: %1").arg(QStringLiteral(PIPBONG_VERSION)));
+    lines.append(QStringLiteral("kind: %1").arg(kindToString(kind)));
     lines.append(QStringLiteral("reason: %1").arg(reason));
     lines.append(QStringLiteral("timestamp: %1")
                      .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs)));
@@ -397,11 +427,54 @@ QString buildCrashReportText(const QString& reason,
     }
 
     lines.append(QString());
-    lines.append(QStringLiteral("--- stack trace ---"));
-    if (exceptionInfo && exceptionInfo->ContextRecord) {
-        appendStackTrace(lines, exceptionInfo->ContextRecord);
-    } else if (fallbackContext) {
-        appendStackTrace(lines, fallbackContext);
+    lines.append(CrashReportSystemInfo::buildSystemSection());
+
+    const QString contextSnapshot = cachedContextSnapshot();
+    lines.append(QString());
+    lines.append(QStringLiteral("--- application context ---"));
+    if (contextSnapshot.trimmed().isEmpty()) {
+        lines.append(QStringLiteral("  (not available)"));
+    } else {
+        lines.append(contextSnapshot);
+    }
+
+    lines.append(QString());
+    lines.append(QStringLiteral("--- recent critical messages ---"));
+    {
+        std::lock_guard<std::mutex> lock(g_logMutex);
+        int criticalCount = 0;
+        for (auto it = g_recentLogLines.rbegin();
+             it != g_recentLogLines.rend() && criticalCount < kMaxCriticalLogLines;
+             ++it) {
+            if (it->contains(QStringLiteral("] CRIT "))) {
+                lines.append(*it);
+                ++criticalCount;
+            }
+        }
+        if (criticalCount == 0) {
+            lines.append(QStringLiteral("  (none)"));
+        }
+    }
+
+    if (hangReport) {
+        lines.append(QString());
+        lines.append(QStringLiteral("--- GUI thread stack ---"));
+        const unsigned long mainThreadId = g_mainThreadId.load();
+        if (!Win32StackWalker::appendGuiThreadStackTrace(lines, mainThreadId)) {
+            lines.append(QStringLiteral("  (failed to capture GUI thread stack)"));
+        }
+
+        lines.append(QString());
+        lines.append(QStringLiteral("--- watchdog thread stack ---"));
+        Win32StackWalker::appendCurrentThreadStackTrace(lines);
+    } else {
+        lines.append(QString());
+        lines.append(QStringLiteral("--- stack trace ---"));
+        if (exceptionInfo && exceptionInfo->ContextRecord) {
+            Win32StackWalker::appendStackTrace(lines, exceptionInfo->ContextRecord);
+        } else if (fallbackContext) {
+            Win32StackWalker::appendStackTrace(lines, fallbackContext);
+        }
     }
 
     lines.append(QString());
@@ -436,10 +509,13 @@ void pruneOldCrashFolders(const QString& rootPath) {
     }
 }
 
-CrashArtifacts writeCrashArtifacts(const QString& reason,
+CrashArtifacts writeCrashArtifacts(CrashReportKind kind,
+                                   const QString& reason,
                                    EXCEPTION_POINTERS* exceptionInfo,
-                                   CONTEXT* fallbackContext) {
+                                   CONTEXT* fallbackContext,
+                                   bool hangReport) {
     CrashArtifacts artifacts;
+    artifacts.kind = kind;
     const QString root = crashRootDirectoryPath();
     artifacts.folderPath = QDir(root).filePath(makeCrashFolderName());
     QDir().mkpath(artifacts.folderPath);
@@ -447,9 +523,12 @@ CrashArtifacts writeCrashArtifacts(const QString& reason,
     const QString reportPath = QDir(artifacts.folderPath).filePath(QStringLiteral("report.txt"));
     const QString dumpPath = QDir(artifacts.folderPath).filePath(QStringLiteral("crash.dmp"));
     const QString logPath = QDir(artifacts.folderPath).filePath(QStringLiteral("recent_log.txt"));
+    const QString kindPath = QDir(artifacts.folderPath).filePath(QStringLiteral("kind.txt"));
 
-    artifacts.reportText = buildCrashReportText(reason, exceptionInfo, fallbackContext);
+    artifacts.reportText =
+        buildCrashReportText(kind, reason, exceptionInfo, fallbackContext, hangReport);
     writeTextFile(reportPath, artifacts.reportText);
+    writeTextFile(kindPath, kindToString(kind) + QLatin1Char('\n'));
 
     {
         std::lock_guard<std::mutex> lock(g_logMutex);
@@ -475,7 +554,11 @@ LONG WINAPI unhandledExceptionFilter(EXCEPTION_POINTERS* exceptionInfo) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
     const CrashArtifacts artifacts =
-        writeCrashArtifacts(QStringLiteral("unhandled SEH exception"), exceptionInfo, nullptr);
+        writeCrashArtifacts(CrashReportKind::Crash,
+                            QStringLiteral("unhandled SEH exception"),
+                            exceptionInfo,
+                            nullptr,
+                            false);
     presentCrashReport(artifacts, false);
     return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -488,14 +571,15 @@ void terminateHandler() {
     CONTEXT context{};
     RtlCaptureContext(&context);
     const CrashArtifacts artifacts =
-        writeCrashArtifacts(QStringLiteral("std::terminate"), nullptr, &context);
+        writeCrashArtifacts(CrashReportKind::Crash, QStringLiteral("std::terminate"), nullptr, &context, false);
     presentCrashReport(artifacts, QCoreApplication::instance() != nullptr);
     std::abort();
 }
 
 void purecallHandler() {
     if (!g_writingCrashReport.exchange(true)) {
-        const CrashArtifacts artifacts = writeCrashArtifacts(QStringLiteral("_purecall"), nullptr, nullptr);
+        const CrashArtifacts artifacts =
+            writeCrashArtifacts(CrashReportKind::Crash, QStringLiteral("_purecall"), nullptr, nullptr, false);
         presentCrashReport(artifacts, false);
     }
     std::abort();
@@ -503,8 +587,11 @@ void purecallHandler() {
 
 void invalidParameterHandler(const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, uintptr_t) {
     if (!g_writingCrashReport.exchange(true)) {
-        const CrashArtifacts artifacts =
-            writeCrashArtifacts(QStringLiteral("invalid parameter handler"), nullptr, nullptr);
+        const CrashArtifacts artifacts = writeCrashArtifacts(CrashReportKind::Crash,
+                                                             QStringLiteral("invalid parameter handler"),
+                                                             nullptr,
+                                                             nullptr,
+                                                             false);
         presentCrashReport(artifacts, false);
     }
     std::abort();
@@ -526,13 +613,23 @@ bool CrashReporter::runViewerModeIfRequested() {
     summary.reportFilePath = QDir(summary.folderPath).filePath(QStringLiteral("report.txt"));
     summary.dumpFilePath = QDir(summary.folderPath).filePath(QStringLiteral("crash.dmp"));
 
+    bool kindRead = false;
+    QFile kindFile(QDir(summary.folderPath).filePath(QStringLiteral("kind.txt")));
+    if (kindFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        summary.kind = kindFromString(QString::fromUtf8(kindFile.readAll()).trimmed());
+        kindRead = true;
+    }
+
     QFile reportFile(summary.reportFilePath);
     if (reportFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         summary.reportText = QString::fromUtf8(reportFile.readAll());
+        if (!kindRead) {
+            summary.kind = kindFromReportText(summary.reportText);
+        }
     }
 
     if (!summary.reportText.trimmed().isEmpty()) {
-        showCrashReportDialogOnGuiThread(summary.reportText, summary.folderPath);
+        showCrashReportDialogOnGuiThread(summary.reportText, summary.folderPath, summary.kind);
     } else {
         dismissPendingReport();
     }
@@ -544,6 +641,7 @@ bool CrashReporter::runViewerModeIfRequested() {
 
 void CrashReporter::install() {
 #ifdef _WIN32
+    Win32StackWalker::initialize();
     SetUnhandledExceptionFilter(unhandledExceptionFilter);
     std::set_terminate(terminateHandler);
     _set_purecall_handler(purecallHandler);
@@ -561,6 +659,7 @@ void CrashReporter::installGuiHangWatchdog() {
         return;
     }
 
+    g_mainThreadId.store(GetCurrentThreadId());
     touchGuiHeartbeat();
 
     auto* heartbeatTimer = new QTimer(app);
@@ -570,12 +669,21 @@ void CrashReporter::installGuiHangWatchdog() {
 
     QObject::connect(app, &QCoreApplication::aboutToQuit, app, []() {
         g_guiHangWatchdogStop.store(true);
+        Win32StackWalker::shutdown();
     });
 
     std::thread(guiHangWatchdogThreadMain).detach();
 #else
     Q_UNUSED(kGuiHeartbeatIntervalMs);
 #endif
+}
+
+void CrashReporter::setContextProvider(CrashContextProvider provider) {
+    {
+        std::lock_guard<std::mutex> lock(g_contextMutex);
+        g_contextProvider = std::move(provider);
+    }
+    refreshContextCacheFromProvider();
 }
 
 bool CrashReporter::hasPendingReport() {
@@ -597,9 +705,19 @@ CrashReportSummary CrashReporter::pendingReport() {
     summary.reportFilePath = QDir(folderPath).filePath(QStringLiteral("report.txt"));
     summary.dumpFilePath = QDir(folderPath).filePath(QStringLiteral("crash.dmp"));
 
+    bool kindRead = false;
+    QFile kindFile(QDir(folderPath).filePath(QStringLiteral("kind.txt")));
+    if (kindFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        summary.kind = kindFromString(QString::fromUtf8(kindFile.readAll()).trimmed());
+        kindRead = true;
+    }
+
     QFile reportFile(summary.reportFilePath);
     if (reportFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         summary.reportText = QString::fromUtf8(reportFile.readAll());
+        if (!kindRead) {
+            summary.kind = kindFromReportText(summary.reportText);
+        }
     }
     return summary;
 }
@@ -629,4 +747,80 @@ QString CrashReporter::latestReportDirectory() {
     const QFileInfoList entries =
         root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time);
     return entries.isEmpty() ? QString() : entries.first().absoluteFilePath();
+}
+
+CrashReportKind CrashReporter::kindFromReportText(const QString& reportText) {
+    const QStringList lines = reportText.split(QLatin1Char('\n'));
+    for (const QString& line : lines) {
+        if (line.startsWith(QStringLiteral("kind:"))) {
+            return kindFromString(line.mid(5).trimmed());
+        }
+    }
+    if (reportText.contains(QStringLiteral("not responding"), Qt::CaseInsensitive)
+        || reportText.contains(QStringLiteral("(hang)"), Qt::CaseInsensitive)) {
+        return CrashReportKind::Hang;
+    }
+    if (reportText.contains(QStringLiteral("Qt fatal"), Qt::CaseInsensitive)) {
+        return CrashReportKind::QtFatal;
+    }
+    return CrashReportKind::Crash;
+}
+
+bool CrashReporter::writeUserNote(const QString& folderPath, const QString& note) {
+    if (folderPath.isEmpty() || note.trimmed().isEmpty()) {
+        return false;
+    }
+    return writeTextFile(QDir(folderPath).filePath(QStringLiteral("user_note.txt")), note.trimmed());
+}
+
+bool CrashReporter::exportReportFolderAsZip(const QString& folderPath, const QString& zipPath) {
+    if (folderPath.isEmpty() || zipPath.isEmpty()) {
+        return false;
+    }
+
+    QDir().mkpath(QFileInfo(zipPath).absolutePath());
+    QFile::remove(zipPath);
+
+    QStringList filesToPack;
+    const QStringList candidates = {
+        QStringLiteral("report.txt"),
+        QStringLiteral("recent_log.txt"),
+        QStringLiteral("crash.dmp"),
+        QStringLiteral("user_note.txt"),
+        QStringLiteral("kind.txt"),
+    };
+    for (const QString& name : candidates) {
+        const QString absolutePath = QDir(folderPath).filePath(name);
+        if (QFile::exists(absolutePath)) {
+            filesToPack.append(name);
+        }
+    }
+    if (filesToPack.isEmpty()) {
+        return false;
+    }
+
+    QProcess process;
+    process.setProgram(QStringLiteral("tar"));
+    QStringList arguments;
+    arguments << QStringLiteral("-a") << QStringLiteral("-cf") << QDir::toNativeSeparators(zipPath);
+    for (const QString& name : filesToPack) {
+        arguments << name;
+    }
+    process.setArguments(arguments);
+    process.setWorkingDirectory(folderPath);
+#ifdef _WIN32
+    process.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* args) {
+        args->flags |= CREATE_NO_WINDOW;
+    });
+#endif
+    process.start();
+    if (!process.waitForStarted(5000)) {
+        return false;
+    }
+    if (!process.waitForFinished(30000)) {
+        process.kill();
+        process.waitForFinished(3000);
+        return false;
+    }
+    return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/diagnostics/CrashReporter.h"
+
 #include <QDialog>
 
 class CrashReportDialog : public QDialog {
@@ -11,10 +13,12 @@ public:
     explicit CrashReportDialog(const QString& reportText,
                                const QString& folderPath,
                                QWidget* parent = nullptr,
-                               bool immediateCrash = false);
+                               bool immediateCrash = false,
+                               CrashReportKind kind = CrashReportKind::Crash);
 
 private:
-    void setupUi(const QString& reportText, const QString& folderPath, bool immediateCrash);
+    void setupUi(const QString& reportText, const QString& folderPath, bool immediateCrash, CrashReportKind kind);
 
     QString m_folderPath;
+    QString m_reportText;
 };

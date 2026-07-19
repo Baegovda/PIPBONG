@@ -343,6 +343,8 @@ private:
     bool shouldSuppressFeatureHotkeyExecution() const;
     void notifyFeatureHotkeySuppressed();
 
+    QString buildCrashReportContextSnapshot() const;
+
     std::unique_ptr<Project> m_project;
     std::unique_ptr<ProfileManager> m_profileManager;
     QString m_projectFilePath;
