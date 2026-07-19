@@ -1233,6 +1233,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Removed
 
+## [0.8.239] - 2026-07-20
+
+### Added
+
+- **서브 대상 창** row: **지정** (click-to-pick) and **표시** buttons matching **주 대상 창** (`MainWindow::onPickSubTargetWindow`, `onShowSubTargetWindow`).
+- `TargetWindowBindingRole` + accent colors: main feedback **green**, sub feedback **blue** — pick hover (`WindowPickerHoverOverlay`), list hover, border pulse, and selection-wave tint (`TargetWindowHighlightOverlay`, `WindowPicker`, `ScreenCapture::findVisibleWindowMatchingTitle`).
+- Profile **기능 편집**: **지정** buttons for main and sub target windows (`ProfileEditDialog::pickTargetWindowByClick`).
+
+### Changed
+
+- Main/sub window-list pickers and **창 지정** hover pass binding role so highlight color matches **주 대상** vs **서브 창** badges (`MainWindow`, `ProfileEditDialog`).
+
 ## [0.8.238] - 2026-07-20
 
 ### Fixed

@@ -118,9 +118,11 @@ private slots:
     void onMemo();
     void onAlwaysOnTopToggled(bool checked);
     void onPickTargetWindow();
+    void onPickSubTargetWindow();
     void onPickMainTargetWindowFromList();
     void onPickSubTargetWindowFromList();
     void onShowTargetWindow();
+    void onShowSubTargetWindow();
     void onPinTargetWindowCenterToggled(bool checked);
     void onProfileSelectionChanged();
     void onAddProfile();
@@ -376,7 +378,9 @@ private:
     LogPanelWidget* m_logPanel = nullptr;
     QToolButton* m_pickWindowButton = nullptr;
     QToolButton* m_pickWindowListButton = nullptr;
+    QToolButton* m_pickSubWindowButton = nullptr;
     QToolButton* m_pickSubWindowListButton = nullptr;
+    QToolButton* m_showSubTargetWindowButton = nullptr;
     QToolButton* m_showTargetWindowButton = nullptr;
     QToolButton* m_pinTargetWindowCenterButton = nullptr;
     QCheckBox* m_alwaysOnTopCheck = nullptr;

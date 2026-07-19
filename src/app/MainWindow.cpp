@@ -39,6 +39,7 @@
 #include "ui/BlockListWidget.h"
 #include "ui/FeatureLibraryDialog.h"
 #include "ui/WorkflowEditorPanel.h"
+#include "ui/TargetWindowBindingRole.h"
 #include "ui/TargetWindowDetailPanel.h"
 #include "ui/TargetWindowHighlightOverlay.h"
 #include "app/UpdateChecker.h"
@@ -339,8 +340,8 @@ void applyWindowListBindingMark(QListWidgetItem* item,
     }
 
     const bool dark = isDarkTheme(pal);
-    const QColor mainAccent = dark ? QColor(0x81, 0xc7, 0x84) : QColor(0x2f, 0x9e, 0x62);
-    const QColor subAccent = dark ? QColor(0x64, 0xb5, 0xf6) : QColor(0x1e, 0x88, 0xe5);
+    const QColor mainAccent = targetWindowBindingAccentColor(TargetWindowBindingRole::Main, dark);
+    const QColor subAccent = targetWindowBindingAccentColor(TargetWindowBindingRole::Sub, dark);
 
     QColor tint = isMainBinding ? mainAccent : subAccent;
     if (isMainBinding && isSubBinding) {
@@ -378,8 +379,8 @@ void applyWindowListBindingMark(QListWidgetItem* item,
 
 QString windowListBindingLegendHtml(const QPalette& pal) {
     const bool dark = isDarkTheme(pal);
-    const QColor mainAccent = dark ? QColor(0x81, 0xc7, 0x84) : QColor(0x2f, 0x9e, 0x62);
-    const QColor subAccent = dark ? QColor(0x64, 0xb5, 0xf6) : QColor(0x1e, 0x88, 0xe5);
+    const QColor mainAccent = targetWindowBindingAccentColor(TargetWindowBindingRole::Main, dark);
+    const QColor subAccent = targetWindowBindingAccentColor(TargetWindowBindingRole::Sub, dark);
     return QStringLiteral(
                "<span style='color:%1; font-weight:600'>● 주 대상</span>"
                "&nbsp;&nbsp;"
@@ -388,12 +389,12 @@ QString windowListBindingLegendHtml(const QPalette& pal) {
 }
 
 #ifdef _WIN32
-void wireWindowListHoverFeedback(QListWidget* listWidget) {
+void wireWindowListHoverFeedback(QListWidget* listWidget, TargetWindowBindingRole role) {
     if (!listWidget) {
         return;
     }
     listWidget->setMouseTracking(true);
-    const auto applyHover = [listWidget]() {
+    const auto applyHover = [listWidget, role]() {
         QListWidgetItem* current = listWidget->currentItem();
         if (!current) {
             WindowPickerHoverOverlay::dismissAll();
@@ -401,7 +402,7 @@ void wireWindowListHoverFeedback(QListWidget* listWidget) {
         }
         const HWND hwnd = reinterpret_cast<HWND>(current->data(Qt::UserRole).toULongLong());
         if (hwnd && IsWindow(hwnd)) {
-            WindowPickerHoverOverlay::updateHover(hwnd);
+            WindowPickerHoverOverlay::updateHover(hwnd, role);
         } else {
             WindowPickerHoverOverlay::dismissAll();
         }
@@ -1141,7 +1142,7 @@ void MainWindow::setupUi() {
     m_pickWindowButton = new QToolButton(mainRow);
     m_pickWindowButton->setText(tr("지정"));
     m_pickWindowButton->setToolTip(
-        tr("클릭한 뒤 주 대상 창을 눌러 지정합니다. 마우스를 올리면 해당 창 테두리가 표시됩니다. 우클릭 또는 Esc로 취소."));
+        tr("클릭한 뒤 주 대상 창을 눌러 지정합니다. 마우스를 올리면 초록색 테두리가 표시됩니다. 우클릭 또는 Esc로 취소."));
     configureTargetWindowActionButton(m_pickWindowButton);
 
     m_pickWindowListButton = new QToolButton(mainRow);
@@ -1152,7 +1153,7 @@ void MainWindow::setupUi() {
 
     m_showTargetWindowButton = new QToolButton(mainRow);
     m_showTargetWindowButton->setText(tr("표시"));
-    m_showTargetWindowButton->setToolTip(tr("지정된 주 대상 창 테두리를 잠시 깜빡여 표시합니다."));
+    m_showTargetWindowButton->setToolTip(tr("지정된 주 대상 창 테두리를 잠시 깜빡여 표시합니다(초록색)."));
     configureTargetWindowActionButton(m_showTargetWindowButton);
 
     m_pinTargetWindowCenterButton = new QToolButton(mainRow);
@@ -1183,18 +1184,35 @@ void MainWindow::setupUi() {
     auto* subCaption = new QLabel(tr("서브 대상 창"), subRow);
     subCaption->setObjectName(QStringLiteral("targetWindowGroupCaption"));
 
+    m_pickSubWindowButton = new QToolButton(subRow);
+    m_pickSubWindowButton->setText(tr("지정"));
+    m_pickSubWindowButton->setToolTip(
+        tr("클릭한 뒤 서브 대상 창을 눌러 지정합니다. 마우스를 올리면 파란색 테두리가 표시됩니다. 우클릭 또는 Esc로 취소."));
+    configureTargetWindowActionButton(m_pickSubWindowButton);
+
     m_pickSubWindowListButton = new QToolButton(subRow);
     m_pickSubWindowListButton->setText(tr("서브 목록"));
     m_pickSubWindowListButton->setToolTip(
-        tr("서브 대상 창 목록에서 선택합니다. 항목을 고르면 해당 창에 테두리 애니메이션이 표시됩니다."));
+        tr("서브 대상 창 목록에서 선택합니다. 항목을 고르면 파란색 테두리 애니메이션이 표시됩니다."));
     configureTargetWindowActionButton(m_pickSubWindowListButton);
+
+    m_showSubTargetWindowButton = new QToolButton(subRow);
+    m_showSubTargetWindowButton->setText(tr("표시"));
+    m_showSubTargetWindowButton->setToolTip(tr("지정된 서브 대상 창 테두리를 잠시 깜빡여 표시합니다(파란색)."));
+    configureTargetWindowActionButton(m_showSubTargetWindowButton);
 #ifndef _WIN32
+    m_pickSubWindowButton->setEnabled(false);
+    m_pickSubWindowButton->setToolTip(tr("창 지정은 Windows에서만 지원됩니다."));
     m_pickSubWindowListButton->setEnabled(false);
     m_pickSubWindowListButton->setToolTip(tr("서브 대상 창 목록은 Windows에서만 지원됩니다."));
+    m_showSubTargetWindowButton->setEnabled(false);
+    m_showSubTargetWindowButton->setToolTip(tr("창 표시는 Windows에서만 지원됩니다."));
 #endif
 
     subLayout->addWidget(subCaption);
+    subLayout->addWidget(m_pickSubWindowButton);
     subLayout->addWidget(m_pickSubWindowListButton);
+    subLayout->addWidget(m_showSubTargetWindowButton);
     subLayout->addStretch();
 
     actionOuter->addWidget(mainRow);
@@ -1564,8 +1582,10 @@ void MainWindow::connectSignals() {
     connect(m_alwaysOnTopCheck, &QCheckBox::toggled, this, &MainWindow::onAlwaysOnTopToggled);
     connect(m_pickWindowButton, &QToolButton::clicked, this, &MainWindow::onPickTargetWindow);
     connect(m_pickWindowListButton, &QToolButton::clicked, this, &MainWindow::onPickMainTargetWindowFromList);
+    connect(m_pickSubWindowButton, &QToolButton::clicked, this, &MainWindow::onPickSubTargetWindow);
     connect(m_pickSubWindowListButton, &QToolButton::clicked, this, &MainWindow::onPickSubTargetWindowFromList);
     connect(m_showTargetWindowButton, &QToolButton::clicked, this, &MainWindow::onShowTargetWindow);
+    connect(m_showSubTargetWindowButton, &QToolButton::clicked, this, &MainWindow::onShowSubTargetWindow);
     connect(m_pinTargetWindowCenterButton,
             &QToolButton::toggled,
             this,
@@ -5369,8 +5389,10 @@ void MainWindow::onPickTargetWindow() {
         return;
     }
 #ifdef _WIN32
-    setPersistentStatus(tr("대상 창을 클릭하세요. 우클릭 또는 Esc로 취소"));
-    WindowPicker::startPick(this, [this](const WindowPicker::Result& result) {
+    setPersistentStatus(tr("주 대상 창을 클릭하세요. 우클릭 또는 Esc로 취소"));
+    WindowPicker::startPick(
+        this,
+        [this](const WindowPicker::Result& result) {
         setPersistentStatus(QString());
         if (!result.accepted || !result.hwnd) {
             showTransientStatus(tr("창 지정이 취소되었습니다."), 3000);
@@ -5382,13 +5404,47 @@ void MainWindow::onPickTargetWindow() {
         appendLog(tr("대상 창을 지정했습니다: %1")
                       .arg(title.isEmpty() ? tr("(제목 없음)") : title),
                   LogLineKind::Success);
-        showTransientStatus(tr("대상 창을 지정했습니다."), 3000);
+        showTransientStatus(tr("주 대상 창을 지정했습니다."), 3000);
         updateTargetWindowDetails();
         refreshProfileList();
-        TargetWindowHighlightOverlay::flashSelectionWave(this);
+        TargetWindowHighlightOverlay::flashSelectionWave(this, TargetWindowBindingRole::Main);
         scheduleRunWarmup();
         syncTargetWindowCenterPin();
-    });
+    },
+        TargetWindowBindingRole::Main);
+#else
+    QMessageBox::information(this, tr("창 지정"), tr("창 지정은 Windows에서만 지원됩니다."));
+#endif
+}
+
+void MainWindow::onPickSubTargetWindow() {
+    if (isActiveDefaultProfile()) {
+        return;
+    }
+#ifdef _WIN32
+    setPersistentStatus(tr("서브 대상 창을 클릭하세요. 우클릭 또는 Esc로 취소"));
+    WindowPicker::startPick(
+        this,
+        [this](const WindowPicker::Result& result) {
+            setPersistentStatus(QString());
+            if (!result.accepted || !result.hwnd) {
+                showTransientStatus(tr("창 지정이 취소되었습니다."), 3000);
+                return;
+            }
+
+            const QString title = QString::fromStdWString(result.title);
+            commitActiveProfileSubTargetWindow(result.hwnd, title);
+            appendLog(tr("서브 대상 창을 지정했습니다: %1")
+                          .arg(title.isEmpty() ? tr("(제목 없음)") : title),
+                      LogLineKind::Success);
+            showTransientStatus(tr("서브 대상 창을 지정했습니다."), 3000);
+            updateTargetWindowDetails();
+            refreshProfileList();
+            TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(result.hwnd,
+                                                                    this,
+                                                                    TargetWindowBindingRole::Sub);
+        },
+        TargetWindowBindingRole::Sub);
 #else
     QMessageBox::information(this, tr("창 지정"), tr("창 지정은 Windows에서만 지원됩니다."));
 #endif
@@ -5408,6 +5464,8 @@ void MainWindow::pickTargetWindowFromList(TargetWindowListPickMode mode) {
     }
 #ifdef _WIN32
     const bool pickSub = mode == TargetWindowListPickMode::Sub;
+    const TargetWindowBindingRole listRole =
+        pickSub ? TargetWindowBindingRole::Sub : TargetWindowBindingRole::Main;
 
     QDialog dialog(this);
     dialog.setWindowTitle(pickSub ? tr("서브 대상 창 목록") : tr("주 대상 창 목록"));
@@ -5511,7 +5569,7 @@ void MainWindow::pickTargetWindowFromList(TargetWindowListPickMode mode) {
         }
     };
 
-    wireWindowListHoverFeedback(listWidget);
+    wireWindowListHoverFeedback(listWidget, listRole);
 
     connect(refreshButton, &QPushButton::clicked, &dialog, populateList);
     connect(listWidget, &QListWidget::itemDoubleClicked, &dialog,
@@ -5537,11 +5595,11 @@ void MainWindow::pickTargetWindowFromList(TargetWindowListPickMode mode) {
         return;
     }
 
-    QTimer::singleShot(0, &dialog, [listWidget]() {
+    QTimer::singleShot(0, &dialog, [listWidget, listRole]() {
         if (QListWidgetItem* current = listWidget->currentItem()) {
             const HWND hwnd = reinterpret_cast<HWND>(current->data(Qt::UserRole).toULongLong());
             if (hwnd && IsWindow(hwnd)) {
-                WindowPickerHoverOverlay::updateHover(hwnd);
+                WindowPickerHoverOverlay::updateHover(hwnd, listRole);
             }
         }
     });
@@ -5574,7 +5632,9 @@ void MainWindow::pickTargetWindowFromList(TargetWindowListPickMode mode) {
         showTransientStatus(tr("서브 대상 창을 목록에서 지정했습니다."), 3000);
         updateTargetWindowDetails();
         QTimer::singleShot(0, this, [this, selectedHwnd]() {
-            TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd, this);
+            TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd,
+                                                                    this,
+                                                                    TargetWindowBindingRole::Sub);
         });
         return;
     }
@@ -5586,7 +5646,9 @@ void MainWindow::pickTargetWindowFromList(TargetWindowListPickMode mode) {
     updateTargetWindowDetails();
     refreshProfileList();
     QTimer::singleShot(0, this, [this, selectedHwnd]() {
-        TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd, this);
+        TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd,
+                                                                this,
+                                                                TargetWindowBindingRole::Main);
     });
     scheduleRunWarmup();
     syncTargetWindowCenterPin();
@@ -5601,8 +5663,42 @@ void MainWindow::onShowTargetWindow() {
         return;
     }
 #ifdef _WIN32
-    if (TargetWindowHighlightOverlay::flash(this)) {
-        showTransientStatus(tr("대상 창을 표시했습니다."), 2500);
+    if (TargetWindowHighlightOverlay::flash(this, TargetWindowBindingRole::Main)) {
+        showTransientStatus(tr("주 대상 창을 표시했습니다."), 2500);
+    }
+#else
+    QMessageBox::information(this, tr("창 표시"), tr("창 표시는 Windows에서만 지원됩니다."));
+#endif
+}
+
+void MainWindow::onShowSubTargetWindow() {
+    if (isActiveDefaultProfile()) {
+        return;
+    }
+#ifdef _WIN32
+    const QString subBinding =
+        m_profileManager
+            ? m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed()
+            : QString();
+    if (subBinding.isEmpty()) {
+        QMessageBox::information(this,
+                                 tr("창 표시"),
+                                 tr("서브 대상 창이 지정되지 않았습니다.\n"
+                                    "먼저 '지정' 또는 '서브 목록'으로 서브 대상 창을 선택하세요."));
+        return;
+    }
+
+    const HWND hwnd = ScreenCapture::findVisibleWindowMatchingTitle(subBinding.toStdWString());
+    if (!hwnd || !IsWindow(hwnd)) {
+        QMessageBox::warning(this,
+                             tr("창 표시"),
+                             tr("서브 대상 창을 찾을 수 없습니다.\n"
+                                "해당 창이 실행 중인지 확인하세요."));
+        return;
+    }
+
+    if (TargetWindowHighlightOverlay::flashForHwnd(hwnd, this, TargetWindowBindingRole::Sub)) {
+        showTransientStatus(tr("서브 대상 창을 표시했습니다."), 2500);
     }
 #else
     QMessageBox::information(this, tr("창 표시"), tr("창 표시는 Windows에서만 지원됩니다."));
@@ -6912,26 +7008,39 @@ void MainWindow::updateTargetWindowControlsForActiveProfile() {
         m_pickWindowButton->setEnabled(!lockedDefault);
         m_pickWindowButton->setToolTip(lockedDefault
                                            ? lockedTooltip
-                                           : tr("클릭한 뒤 주 대상 창을 눌러 지정합니다. 마우스를 올리면 해당 창 테두리가 표시됩니다. "
+                                           : tr("클릭한 뒤 주 대상 창을 눌러 지정합니다. 마우스를 올리면 초록색 테두리가 표시됩니다. "
                                                 "우클릭 또는 Esc로 취소."));
     }
     if (m_pickWindowListButton) {
         m_pickWindowListButton->setEnabled(!lockedDefault);
         m_pickWindowListButton->setToolTip(lockedDefault
                                                ? lockedTooltip
-                                               : tr("주 대상 창 목록에서 선택합니다. 항목을 고르면 해당 창에 테두리 애니메이션이 표시됩니다."));
+                                               : tr("주 대상 창 목록에서 선택합니다. 항목을 고르면 초록색 테두리 애니메이션이 표시됩니다."));
+    }
+    if (m_pickSubWindowButton) {
+        m_pickSubWindowButton->setEnabled(!lockedDefault);
+        m_pickSubWindowButton->setToolTip(lockedDefault
+                                              ? lockedTooltip
+                                              : tr("클릭한 뒤 서브 대상 창을 눌러 지정합니다. 마우스를 올리면 파란색 테두리가 표시됩니다. "
+                                                   "우클릭 또는 Esc로 취소."));
     }
     if (m_pickSubWindowListButton) {
         m_pickSubWindowListButton->setEnabled(!lockedDefault);
         m_pickSubWindowListButton->setToolTip(lockedDefault
                                                   ? lockedTooltip
-                                                  : tr("서브 대상 창 목록에서 선택합니다. 항목을 고르면 해당 창에 테두리 애니메이션이 표시됩니다."));
+                                                  : tr("서브 대상 창 목록에서 선택합니다. 항목을 고르면 파란색 테두리 애니메이션이 표시됩니다."));
     }
     if (m_showTargetWindowButton) {
         m_showTargetWindowButton->setEnabled(!lockedDefault);
         m_showTargetWindowButton->setToolTip(lockedDefault
                                                  ? lockedTooltip
-                                                 : tr("지정된 대상 창 테두리를 잠시 깜빡여 표시합니다."));
+                                                 : tr("지정된 주 대상 창 테두리를 잠시 깜빡여 표시합니다(초록색)."));
+    }
+    if (m_showSubTargetWindowButton) {
+        m_showSubTargetWindowButton->setEnabled(!lockedDefault);
+        m_showSubTargetWindowButton->setToolTip(lockedDefault
+                                                    ? lockedTooltip
+                                                    : tr("지정된 서브 대상 창 테두리를 잠시 깜빡여 표시합니다(파란색)."));
     }
     if (m_pinTargetWindowCenterButton) {
 #ifdef _WIN32

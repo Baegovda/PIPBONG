@@ -1,6 +1,7 @@
 #include "ui/WindowPickerHoverOverlay.h"
 
 #include "core/capture/ScreenCapture.h"
+#include "ui/TargetWindowBindingRole.h"
 
 #include <QCoreApplication>
 #include <QRect>
@@ -30,6 +31,7 @@ struct OverlayState {
     HWND hwnd = nullptr;
     HWND hoveredHwnd = nullptr;
     ULONGLONG pulseStartMs = 0;
+    TargetWindowBindingRole role = TargetWindowBindingRole::Main;
 };
 
 std::unique_ptr<OverlayState> g_state;
@@ -128,7 +130,7 @@ bool hoveredPhysicalBounds(QRect& boundsOut) {
     return true;
 }
 
-void renderOverlayFrame(const QRect& physicalBounds, float pulse) {
+void renderOverlayFrame(const QRect& physicalBounds, float pulse, TargetWindowBindingRole role) {
     if (!g_state || !g_state->hwnd) {
         return;
     }
@@ -163,7 +165,8 @@ void renderOverlayFrame(const QRect& physicalBounds, float pulse) {
 
     const float clampedPulse = std::clamp(pulse, 0.0f, 1.0f);
     const uint8_t alpha = static_cast<uint8_t>(std::clamp(70.0f + clampedPulse * 185.0f, 0.0f, 255.0f));
-    drawBorderFrame(pixels, width, height, kBorderThickness, alpha, 56, 189, 248);
+    const TargetWindowBindingAccentRgb accent = targetWindowBindingAccentRgb(role);
+    drawBorderFrame(pixels, width, height, kBorderThickness, alpha, accent.r, accent.g, accent.b);
 
     POINT ptDst{physicalBounds.x(), physicalBounds.y()};
     SIZE size{width, height};
@@ -205,7 +208,7 @@ void refreshOverlayFrame() {
                  bounds.height(),
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
     const ULONGLONG elapsed = nowMs() - g_state->pulseStartMs;
-    renderOverlayFrame(bounds, pulseStrength(elapsed));
+    renderOverlayFrame(bounds, pulseStrength(elapsed), g_state->role);
 }
 
 LRESULT CALLBACK overlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -266,7 +269,7 @@ bool ensureOverlayWindow() {
 
 } // namespace
 
-void WindowPickerHoverOverlay::updateHover(HWND hwnd) {
+void WindowPickerHoverOverlay::updateHover(HWND hwnd, TargetWindowBindingRole role) {
 #ifdef _WIN32
     if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd)) {
         dismissAll();
@@ -279,13 +282,14 @@ void WindowPickerHoverOverlay::updateHover(HWND hwnd) {
         return;
     }
 
-    const bool targetChanged = !g_state || g_state->hoveredHwnd != hwnd;
+    const bool targetChanged = !g_state || g_state->hoveredHwnd != hwnd || g_state->role != role;
     if (!ensureOverlayWindow()) {
         return;
     }
 
     if (targetChanged) {
         g_state->hoveredHwnd = hwnd;
+        g_state->role = role;
         g_state->pulseStartMs = nowMs();
     }
 
@@ -293,6 +297,7 @@ void WindowPickerHoverOverlay::updateHover(HWND hwnd) {
     startHoverRefreshTimer();
 #else
     (void)hwnd;
+    (void)role;
 #endif
 }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/TargetWindowBindingRole.h"
+
 #include <functional>
 #include <string>
 
@@ -25,6 +27,8 @@ public:
     using Completion = std::function<void(const Result&)>;
 
     /// Global click-to-pick: crosshair cursor, left-click selects top-level window, Esc cancels.
-    static void startPick(QWidget* hostWidget, Completion callback);
+    static void startPick(QWidget* hostWidget,
+                          Completion callback,
+                          TargetWindowBindingRole role = TargetWindowBindingRole::Main);
     static void cancelPick();
 };

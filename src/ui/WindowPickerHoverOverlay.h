@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/TargetWindowBindingRole.h"
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -11,7 +13,7 @@
 class WindowPickerHoverOverlay {
 public:
 #ifdef _WIN32
-    static void updateHover(HWND hwnd);
+    static void updateHover(HWND hwnd, TargetWindowBindingRole role = TargetWindowBindingRole::Main);
 #endif
     static void dismissAll();
 };

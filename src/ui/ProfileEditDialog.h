@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/TargetWindowBindingRole.h"
+
 #include <QDialog>
 
 class QCheckBox;
@@ -30,6 +32,7 @@ public:
 private:
     void setupUi(const QString& currentTargetWindowTitle);
     void openWindowListPicker(QLineEdit* targetEdit, bool subTarget);
+    void pickTargetWindowByClick(QLineEdit* targetEdit, TargetWindowBindingRole role);
     void tryAccept();
     void updateDefaultProfileUi();
 

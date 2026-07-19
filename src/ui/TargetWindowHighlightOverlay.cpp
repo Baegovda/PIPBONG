@@ -2,6 +2,7 @@
 
 #include "app/PointerFeedbackSettings.h"
 #include "core/capture/ScreenCapture.h"
+#include "ui/TargetWindowBindingRole.h"
 #include "ui/WindowSelectionFeedbackRenderer.h"
 
 #include <QMessageBox>
@@ -39,6 +40,7 @@ struct OverlayState {
     HWND targetHwnd = nullptr;
     ULONGLONG startMs = 0;
     HighlightMode mode = HighlightMode::BorderPulse;
+    TargetWindowBindingRole role = TargetWindowBindingRole::Main;
     WindowSelectionFeedbackSettings selectionSettings;
 };
 
@@ -163,7 +165,8 @@ void renderOverlayFrame(const QRect& physicalBounds, float pulse) {
         renderWindowSelectionFeedbackFrame(pixels, width, height, clampedPulse, g_state->selectionSettings);
     } else {
         const uint8_t alpha = static_cast<uint8_t>(std::clamp(80.0f + clampedPulse * 175.0f, 0.0f, 255.0f));
-        drawBorderFrame(pixels, width, height, kBorderThickness, alpha, 96, 165, 250);
+        const TargetWindowBindingAccentRgb accent = targetWindowBindingAccentRgb(g_state->role);
+        drawBorderFrame(pixels, width, height, kBorderThickness, alpha, accent.r, accent.g, accent.b);
     }
 
     POINT ptDst{physicalBounds.x(), physicalBounds.y()};
@@ -261,7 +264,7 @@ bool ensureOverlayClassRegistered() {
     return atom != 0;
 }
 
-bool createOverlayWindow(HWND targetHwnd, const QRect& physicalBounds, HighlightMode mode) {
+bool createOverlayWindow(HWND targetHwnd, const QRect& physicalBounds, HighlightMode mode, TargetWindowBindingRole role) {
     if (!ensureOverlayClassRegistered()) {
         return false;
     }
@@ -270,8 +273,11 @@ bool createOverlayWindow(HWND targetHwnd, const QRect& physicalBounds, Highlight
     g_state->targetHwnd = targetHwnd;
     g_state->startMs = nowMs();
     g_state->mode = mode;
+    g_state->role = role;
     if (mode == HighlightMode::SelectionWave) {
         g_state->selectionSettings = PointerFeedbackSettings::windowSelection();
+        const TargetWindowBindingAccentRgb accent = targetWindowBindingAccentRgb(role);
+        g_state->selectionSettings.color = QColor(accent.r, accent.g, accent.b);
     }
 
     g_state->hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT
@@ -305,7 +311,11 @@ bool createOverlayWindow(HWND targetHwnd, const QRect& physicalBounds, Highlight
     return true;
 }
 
-bool showHighlight(HWND targetHwnd, HighlightMode mode, QWidget* hostWidget, bool showMissingTargetMessage) {
+bool showHighlight(HWND targetHwnd,
+                   HighlightMode mode,
+                   QWidget* hostWidget,
+                   bool showMissingTargetMessage,
+                   TargetWindowBindingRole role) {
     destroyOverlayWindow();
 
     if (mode == HighlightMode::SelectionWave) {
@@ -336,49 +346,57 @@ bool showHighlight(HWND targetHwnd, HighlightMode mode, QWidget* hostWidget, boo
     }
 
     const QRect physicalBounds(bounds.x, bounds.y, bounds.width, bounds.height);
-    return createOverlayWindow(targetHwnd, physicalBounds, mode);
+    return createOverlayWindow(targetHwnd, physicalBounds, mode, role);
 }
 
 #endif // _WIN32
 
 } // namespace
 
-bool TargetWindowHighlightOverlay::flash(QWidget* hostWidget) {
+bool TargetWindowHighlightOverlay::flash(QWidget* hostWidget, TargetWindowBindingRole role) {
 #ifdef _WIN32
     const HWND targetHwnd = ScreenCapture::findTargetWindow();
-    return showHighlight(targetHwnd, HighlightMode::BorderPulse, hostWidget, true);
+    return showHighlight(targetHwnd, HighlightMode::BorderPulse, hostWidget, true, role);
 #else
     (void)hostWidget;
+    (void)role;
     return false;
 #endif
 }
 
-bool TargetWindowHighlightOverlay::flashSelectionWave(QWidget* hostWidget) {
+bool TargetWindowHighlightOverlay::flashSelectionWave(QWidget* hostWidget, TargetWindowBindingRole role) {
 #ifdef _WIN32
     const HWND targetHwnd = ScreenCapture::findTargetWindow();
-    return showHighlight(targetHwnd, HighlightMode::SelectionWave, hostWidget, true);
+    return showHighlight(targetHwnd, HighlightMode::SelectionWave, hostWidget, true, role);
 #else
     (void)hostWidget;
+    (void)role;
     return false;
 #endif
 }
 
-bool TargetWindowHighlightOverlay::flashForHwnd(void* hwnd, QWidget* hostWidget) {
+bool TargetWindowHighlightOverlay::flashForHwnd(void* hwnd,
+                                                QWidget* hostWidget,
+                                                TargetWindowBindingRole role) {
 #ifdef _WIN32
-    return showHighlight(static_cast<HWND>(hwnd), HighlightMode::BorderPulse, hostWidget, false);
+    return showHighlight(static_cast<HWND>(hwnd), HighlightMode::BorderPulse, hostWidget, false, role);
 #else
     (void)hwnd;
     (void)hostWidget;
+    (void)role;
     return false;
 #endif
 }
 
-bool TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(void* hwnd, QWidget* hostWidget) {
+bool TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(void* hwnd,
+                                                           QWidget* hostWidget,
+                                                           TargetWindowBindingRole role) {
 #ifdef _WIN32
-    return showHighlight(static_cast<HWND>(hwnd), HighlightMode::SelectionWave, hostWidget, false);
+    return showHighlight(static_cast<HWND>(hwnd), HighlightMode::SelectionWave, hostWidget, false, role);
 #else
     (void)hwnd;
     (void)hostWidget;
+    (void)role;
     return false;
 #endif
 }

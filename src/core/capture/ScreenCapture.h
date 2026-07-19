@@ -55,6 +55,8 @@ public:
     static void activateTargetWindow();
     /// True when a visible top-level window title contains `binding` (case-sensitive substring).
     static bool hasVisibleWindowMatchingTitle(const std::wstring& binding);
+    /// First visible top-level window whose title contains `binding` (substring match).
+    static HWND findVisibleWindowMatchingTitle(const std::wstring& binding);
     static void warmupCapture();
 #endif
 

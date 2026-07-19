@@ -22,6 +22,7 @@ struct PickState {
     HCURSOR crossCursor = nullptr;
     WindowPicker::Completion callback;
     QPointer<QWidget> host;
+    TargetWindowBindingRole role = TargetWindowBindingRole::Main;
 };
 
 std::unique_ptr<PickState> g_state;
@@ -50,7 +51,7 @@ bool isPickableWindow(HWND hwnd) {
 void updateHoverAtPoint(POINT pt) {
     HWND hwnd = topLevelWindowAtPoint(pt);
     if (isPickableWindow(hwnd)) {
-        WindowPickerHoverOverlay::updateHover(hwnd);
+        WindowPickerHoverOverlay::updateHover(hwnd, g_state ? g_state->role : TargetWindowBindingRole::Main);
     } else {
         WindowPickerHoverOverlay::dismissAll();
     }
@@ -155,7 +156,7 @@ LRESULT CALLBACK keyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
 } // namespace
 #endif
 
-void WindowPicker::startPick(QWidget* hostWidget, Completion callback) {
+void WindowPicker::startPick(QWidget* hostWidget, Completion callback, TargetWindowBindingRole role) {
 #ifdef _WIN32
     cancelPick();
     WindowPickerHoverOverlay::dismissAll();
@@ -163,6 +164,7 @@ void WindowPicker::startPick(QWidget* hostWidget, Completion callback) {
     auto state = std::make_unique<PickState>();
     state->callback = std::move(callback);
     state->host = hostWidget;
+    state->role = role;
     state->crossCursor = LoadCursorW(nullptr, IDC_CROSS);
 
     state->mouseHook = SetWindowsHookExW(WH_MOUSE_LL, mouseHookProc, GetModuleHandleW(nullptr), 0);
@@ -179,6 +181,7 @@ void WindowPicker::startPick(QWidget* hostWidget, Completion callback) {
     g_state = std::move(state);
 #else
     (void)hostWidget;
+    (void)role;
     if (callback) {
         callback({});
     }
