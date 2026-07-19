@@ -18,15 +18,4 @@ Write-Host "OK: build\Release\PIPBONG.exe" -ForegroundColor Green
 if (-not (Test-Path "build\Release\Qt6Core.dll")) {
     Write-Host "DLLs missing? Run: .\scripts\deploy-qt.ps1" -ForegroundColor Yellow
 }
-
-if ($env:PIPBONG_SKIP_POLICY_SIM -eq '1') {
-    Write-Host "Skipped policy sim (PIPBONG_SKIP_POLICY_SIM=1)" -ForegroundColor Yellow
-    exit 0
-}
-
-Write-Host "Running SessionRunPolicySim..."
-& (Join-Path $PSScriptRoot "run-policy-sim.ps1")
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Policy sim failed — fix SessionRunPolicy or scenarios before shipping." -ForegroundColor Red
-    exit $LASTEXITCODE
-}
+# SessionRunPolicySim runs via CMake POST_BUILD on PIPBONG link (see PIPBONG_RUN_POLICY_SIM_ON_BUILD).

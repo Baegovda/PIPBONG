@@ -1,4 +1,4 @@
-# Runs SessionRunPolicySim (manual scenarios + invariant grid + fuzz).
+# Build PIPBONGPolicySim and run regression checks (manual or CI).
 param(
     [string]$ReportPath = ""
 )
@@ -14,17 +14,9 @@ cmake --build $buildDir --config Release --target PIPBONGPolicySim
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $sim = Join-Path $buildDir 'Release\PIPBONGPolicySim.exe'
-if (-not (Test-Path $sim)) {
-    Write-Error "PIPBONGPolicySim.exe not found at $sim"
-}
-
 if ([string]::IsNullOrWhiteSpace($ReportPath)) {
     $ReportPath = Join-Path $buildDir 'policy-sim-report.txt'
 }
 
-& $sim --report=$ReportPath
-$code = $LASTEXITCODE
-if ($code -eq 0) {
-    Write-Host "Report: $ReportPath" -ForegroundColor Green
-}
-exit $code
+& (Join-Path $repoRoot 'scripts\run-policy-sim-postbuild.ps1') -SimExe $sim -ReportPath $ReportPath
+exit $LASTEXITCODE

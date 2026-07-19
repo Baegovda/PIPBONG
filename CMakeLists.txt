@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.221 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.222 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -220,4 +220,25 @@ target_include_directories(PIPBONGPolicySim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/
 target_link_libraries(PIPBONGPolicySim PRIVATE nlohmann_json::nlohmann_json)
 if(MSVC)
     target_compile_options(PIPBONGPolicySim PRIVATE /utf-8)
+endif()
+
+option(PIPBONG_RUN_POLICY_SIM_ON_BUILD
+       "Run SessionRunPolicySim automatically after every successful PIPBONG link"
+       ON)
+
+if(PIPBONG_RUN_POLICY_SIM_ON_BUILD)
+    add_dependencies(PIPBONG PIPBONGPolicySim)
+    add_custom_command(
+        TARGET PIPBONG
+        POST_BUILD
+        COMMAND powershell
+                -NoProfile
+                -ExecutionPolicy
+                Bypass
+                -File "${CMAKE_SOURCE_DIR}/scripts/run-policy-sim-postbuild.ps1"
+                -SimExe "$<TARGET_FILE:PIPBONGPolicySim>"
+                -ReportPath "${CMAKE_BINARY_DIR}/policy-sim-report.txt"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "SessionRunPolicySim regression (automatic after PIPBONG link)"
+    )
 endif()

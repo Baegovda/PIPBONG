@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.221` (from `project(PIPBONG VERSION 0.8.221)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.222` (from `project(PIPBONG VERSION 0.8.222)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -392,7 +392,8 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── build-common.ps1       # stale vcpkg lock + stuck cmake/vcpkg helpers (sourced by build-release)
 │   ├── build-release.ps1      # canonical incremental Release build (IDE + AI task close)
 │   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
-│   ├── run-policy-sim.ps1     # build + run PIPBONGPolicySim (session policy regression)
+│   ├── run-policy-sim.ps1     # build PIPBONGPolicySim only + run (manual)
+│   ├── run-policy-sim-postbuild.ps1  # POST_BUILD hook: run sim after PIPBONG link
 │   ├── recover-ide-build.ps1  # one-click IDE build recovery (lock, processes, .vscode restore, F5 fix)
 │   ├── fix-pipbong-cursor-f5.ps1  # PIPBONG-only F5 -> Build and Run task (no debugger)
 │   ├── sync-update-log.py     # optional §11 → per-version draft (grouping is manual)
@@ -1092,19 +1093,23 @@ Qt `Interactive` / `Stretch` / filler columns caused dead handles, inverted resi
 
 Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
-### 8.12 Session run policy sim (dev regression)
+### 8.12 Session run policy sim (dev regression — automatic on every PIPBONG link)
 
-**Status:** Added 2026-07 (v0.8.220–0.8.221). Headless checks for trigger/hold/repeat session **policy** — not UI, capture, or input.
+**Status:** Added 2026-07 (v0.8.220–0.8.222). Headless checks for trigger/hold/repeat session **policy** — not UI, capture, or input.
 
 | Layer | Role |
 | ----- | ---- |
 | `SessionRunPolicy` | Production policy (`MainWindow` delegates here) |
 | `SessionRunPolicyInvariants` | Invariant checks + exhaustive grid + fuzz |
 | `PIPBONGPolicySim` | Dev-only exe (~tens of KB); manual scenarios + ~990 grid states + 4096 fuzz samples |
-| `scripts/run-policy-sim.ps1` | Build sim + run; writes `build/policy-sim-report.txt` |
-| `build-release.ps1` | Runs policy sim after PIPBONG link unless `PIPBONG_SKIP_POLICY_SIM=1` |
+| **CMake `POST_BUILD` on `PIPBONG`** | After every successful **PIPBONG** link, runs `run-policy-sim-postbuild.ps1` → sim + `build/policy-sim-report.txt` |
+| `scripts/run-policy-sim.ps1` | Manual: build `PIPBONGPolicySim` only + run (no full app relink) |
+| `PIPBONG_RUN_POLICY_SIM_ON_BUILD` | CMake option (default **ON**); set **OFF** to disable POST_BUILD hook |
+| `PIPBONG_SKIP_POLICY_SIM=1` | Runtime skip for one build (POST_BUILD script honors env var) |
 
-**When to run:** after any change to `SessionRunPolicy`, `MainWindow` session guards, trigger defer refresh, update/center-pin gates, or early-loop mouse lock policy.
+**Automatic paths (no extra command):** `build-release.ps1`, `빌드.bat`, Ctrl+Shift+B, F5 (`build-and-run.ps1` → `build-release.ps1` → `cmake --build … PIPBONG` → POST_BUILD sim), `package-release.ps1` / GitHub release.
+
+**When to run `run-policy-sim.ps1` alone:** policy-only edits without relinking PIPBONG, or quick re-check after changing sim scenarios.
 
 **Stage 2 (not yet):** workflow `WorkflowRunner` dry-run with mocks — blocked by OpenCV/UI block dependencies; track as future `PIPBONGWorkflowDryRunSim`.
 
@@ -1205,6 +1210,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.222] - 2026-07-19
+
+### Changed
+
+- Session run policy sim runs automatically on **every successful PIPBONG link** via CMake `POST_BUILD` (`PIPBONG_RUN_POLICY_SIM_ON_BUILD` default ON, `scripts/run-policy-sim-postbuild.ps1`); `build-release.ps1` no longer invokes sim separately — any `cmake --build … --target PIPBONG` path gets the same gate; skip with `PIPBONG_SKIP_POLICY_SIM=1`.
 
 ## [0.8.221] - 2026-07-19
 
