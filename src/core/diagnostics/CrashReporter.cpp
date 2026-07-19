@@ -20,14 +20,17 @@
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QThread>
+#include <QTimer>
 #include <QUrl>
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <deque>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include <QStringConverter>
 
@@ -35,6 +38,9 @@ namespace {
 
 constexpr int kMaxRecentLogLines = 800;
 constexpr int kMaxRetainedCrashFolders = 10;
+constexpr int kGuiHeartbeatIntervalMs = 400;
+constexpr int kGuiHangWatchdogPollMs = 1000;
+constexpr int kGuiHangThresholdMs = 6000;
 constexpr wchar_t kPendingFileName[] = L"pending.txt";
 constexpr wchar_t kCrashReportViewerArg[] = L"--crash-report";
 
@@ -47,11 +53,16 @@ std::mutex g_logMutex;
 std::deque<QString> g_recentLogLines;
 QtMessageHandler g_previousQtHandler = nullptr;
 std::atomic<bool> g_writingCrashReport{false};
+std::atomic<qint64> g_lastGuiHeartbeatMs{0};
+std::atomic<bool> g_guiHangReported{false};
+std::atomic<bool> g_guiHangWatchdogStop{false};
 
 #ifdef _WIN32
 CrashArtifacts writeCrashArtifacts(const QString& reason,
                                    EXCEPTION_POINTERS* exceptionInfo,
                                    CONTEXT* fallbackContext);
+void notifyCrashReportSaved(const QString& folderPath, bool immediateHang);
+void launchDetachedCrashReportViewer(const QString& folderPath);
 void presentCrashReport(const CrashArtifacts& artifacts, bool allowInProcessUi);
 #endif
 
@@ -156,6 +167,7 @@ QString currentExecutablePath() {
 void launchDetachedCrashReportViewer(const QString& folderPath) {
     const QString executablePath = currentExecutablePath();
     if (executablePath.isEmpty() || folderPath.isEmpty()) {
+        notifyCrashReportSaved(folderPath, false);
         return;
     }
 
@@ -177,10 +189,24 @@ void launchDetachedCrashReportViewer(const QString& folderPath) {
                                         &startupInfo,
                                         &processInfo);
     if (!created) {
+        notifyCrashReportSaved(folderPath, true);
         return;
     }
     CloseHandle(processInfo.hThread);
     CloseHandle(processInfo.hProcess);
+}
+
+void notifyCrashReportSaved(const QString& folderPath, bool immediateHang) {
+    const QString message =
+        folderPath.isEmpty()
+            ? QStringLiteral("PIPBONG: An error report was saved under %LOCALAPPDATA%\\PIPBONG\\PIPBONG\\crash\\")
+            : QStringLiteral("PIPBONG: An error report was saved.\n\n%1").arg(folderPath);
+    const QString title = immediateHang ? QStringLiteral("PIPBONG — Not Responding")
+                                        : QStringLiteral("PIPBONG — Error Report");
+    MessageBoxW(nullptr,
+                reinterpret_cast<LPCWSTR>(message.utf16()),
+                reinterpret_cast<LPCWSTR>(title.utf16()),
+                MB_OK | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND);
 }
 
 void showCrashReportDialogOnGuiThread(const QString& reportText, const QString& folderPath) {
@@ -202,12 +228,53 @@ void presentCrashReport(const CrashArtifacts& artifacts, bool allowInProcessUi) 
         if (QThread::currentThread() == app->thread()) {
             showOnGuiThread();
         } else {
-            QMetaObject::invokeMethod(app, showOnGuiThread, Qt::BlockingQueuedConnection);
+            const bool invoked =
+                QMetaObject::invokeMethod(app, showOnGuiThread, Qt::BlockingQueuedConnection);
+            if (!invoked) {
+                launchDetachedCrashReportViewer(artifacts.folderPath);
+            }
         }
         return;
     }
 
     launchDetachedCrashReportViewer(artifacts.folderPath);
+}
+
+void touchGuiHeartbeat() {
+    g_lastGuiHeartbeatMs.store(QDateTime::currentMSecsSinceEpoch());
+}
+
+void reportGuiThreadHang(qint64 silentMs) {
+    if (g_guiHangReported.exchange(true) || g_writingCrashReport.exchange(true)) {
+        return;
+    }
+
+    const QString reason =
+        QStringLiteral("GUI thread not responding (hang) — no heartbeat for %1 ms").arg(silentMs);
+    CONTEXT context{};
+    RtlCaptureContext(&context);
+    const CrashArtifacts artifacts = writeCrashArtifacts(reason, nullptr, &context);
+    presentCrashReport(artifacts, false);
+}
+
+void guiHangWatchdogThreadMain() {
+    while (!g_guiHangWatchdogStop.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(kGuiHangWatchdogPollMs));
+        if (g_guiHangWatchdogStop.load() || g_guiHangReported.load()) {
+            continue;
+        }
+
+        const qint64 lastBeat = g_lastGuiHeartbeatMs.load();
+        if (lastBeat <= 0) {
+            continue;
+        }
+
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const qint64 silentMs = now - lastBeat;
+        if (silentMs >= kGuiHangThresholdMs) {
+            reportGuiThreadHang(silentMs);
+        }
+    }
 }
 
 QString exceptionCodeName(DWORD code) {
@@ -485,6 +552,30 @@ void CrashReporter::install() {
     if (!g_previousQtHandler) {
         g_previousQtHandler = qInstallMessageHandler(qtMessageHandler);
     }
+}
+
+void CrashReporter::installGuiHangWatchdog() {
+#ifdef _WIN32
+    QCoreApplication* app = QCoreApplication::instance();
+    if (!app) {
+        return;
+    }
+
+    touchGuiHeartbeat();
+
+    auto* heartbeatTimer = new QTimer(app);
+    heartbeatTimer->setInterval(kGuiHeartbeatIntervalMs);
+    QObject::connect(heartbeatTimer, &QTimer::timeout, app, []() { touchGuiHeartbeat(); });
+    heartbeatTimer->start();
+
+    QObject::connect(app, &QCoreApplication::aboutToQuit, app, []() {
+        g_guiHangWatchdogStop.store(true);
+    });
+
+    std::thread(guiHangWatchdogThreadMain).detach();
+#else
+    Q_UNUSED(kGuiHeartbeatIntervalMs);
+#endif
 }
 
 bool CrashReporter::hasPendingReport() {

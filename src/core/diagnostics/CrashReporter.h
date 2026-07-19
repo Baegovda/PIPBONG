@@ -18,6 +18,10 @@ public:
     /// Install Win32/Qt handlers. Call once after QApplication construction.
     static void install();
 
+    /// Heartbeat + background watchdog for GUI-thread hangs ("Not Responding").
+    /// Call once on the main thread after install() (not in --crash-report viewer mode).
+    static void installGuiHangWatchdog();
+
     /// Returns the pending crash from the previous run, if any.
     static bool hasPendingReport();
     static CrashReportSummary pendingReport();

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.225` (from `project(PIPBONG VERSION 0.8.225)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.226` (from `project(PIPBONG VERSION 0.8.226)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -561,6 +561,7 @@ Sbm1.0/                        # repo root (local workspace)
 ### 5.11 Crash reporting (diagnostics)
 
 - **Install:** `CrashReporter::install()` in `main.cpp` immediately after `QApplication` construction — Win32 unhandled-exception filter, `std::terminate` / purecall / invalid-parameter handlers, and Qt `qInstallMessageHandler` ring buffer (~800 lines).
+- **GUI hang (Not Responding):** `CrashReporter::installGuiHangWatchdog()` after `install()` — `QTimer` heartbeat on the GUI thread; background thread writes a report when heartbeat is silent ~6 s and launches detached `PIPBONG.exe --crash-report <folder>` (Win32 `MessageBox` fallback if spawn fails). Does not terminate the process.
 - **On crash:** writes a timestamped folder under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{yyyyMMdd_HHmmss}/` with `report.txt` (version, exception code, stack frames, recent Qt log), `recent_log.txt`, optional `crash.dmp` (minidump via dynamically loaded `Dbghelp.dll`); `pending.txt` in the crash root points at the folder. Retains the last 10 crash folders.
 - **Immediate UI:** Qt fatal messages show modal `CrashReportDialog` on the GUI thread before exit; SEH / CRT handlers spawn a detached `PIPBONG.exe --crash-report <folder>` viewer when in-process UI is unsafe. Startup `showPendingCrashReportIfAny()` remains a fallback when the immediate viewer did not run.
 - **Manual:** title bar **도움말 → 오류 보고서** opens the latest saved `report.txt` (or shows a short status when none exist). Dialog offers **복사** and **폴더 열기**.
@@ -1230,6 +1231,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.226] - 2026-07-20
+
+### Added
+
+- **GUI hang watchdog** (`CrashReporter::installGuiHangWatchdog`): background thread detects main-thread heartbeat loss (~6 s); writes hang report, launches detached `--crash-report` viewer, or shows Win32 fallback message when spawn fails (`CrashReporter`, `main.cpp`).
+
+### Fixed
+
+- Crash/hang report viewer: when `CreateProcess` for `--crash-report` fails or `QMetaObject::invokeMethod` cannot reach the GUI thread, fall back to detached viewer or topmost `MessageBox` so reports are not silently lost (`CrashReporter`).
 
 ## [0.8.225] - 2026-07-20
 

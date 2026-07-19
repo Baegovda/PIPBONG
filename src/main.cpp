@@ -15,6 +15,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     CrashReporter::install();
+    CrashReporter::installGuiHangWatchdog();
     MainWindow window;
     window.ensureInitialWindowPlacement();
     window.show();
