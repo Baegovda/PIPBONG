@@ -13,6 +13,7 @@ class WorkflowRunStatusBar : public QFrame {
 public:
     explicit WorkflowRunStatusBar(QWidget* parent = nullptr);
 
+    void setProfileName(const QString& name);
     void setFeatureName(const QString& name);
     void setRunMode(FeatureRunMode mode, int repeatCount);
     void clearRunMode();
@@ -27,10 +28,15 @@ private:
     void applyTerminalChrome();
     void refreshStatsVisibility();
     void refreshRunButtonChrome();
+    void refreshBreadcrumb();
+    QString runModeText(FeatureRunMode mode, int repeatCount) const;
+    QString runModeToolTip(FeatureRunMode mode, int repeatCount) const;
 
     QToolButton* m_runButton = nullptr;
-    QLabel* m_captionLabel = nullptr;
+    QLabel* m_profileLabel = nullptr;
+    QLabel* m_breadcrumbSep1 = nullptr;
     QLabel* m_featureNameLabel = nullptr;
+    QLabel* m_breadcrumbSep2 = nullptr;
     QLabel* m_modeChip = nullptr;
     QWidget* m_statsRow = nullptr;
     QLabel* m_loopChip = nullptr;
@@ -40,4 +46,8 @@ private:
     bool m_hasLoopTiming = false;
     bool m_runButtonShowStop = false;
     bool m_runButtonEnabled = false;
+    QString m_profileName;
+    FeatureRunMode m_runMode = FeatureRunMode::RepeatCount;
+    int m_repeatCount = 1;
+    bool m_hasRunMode = false;
 };

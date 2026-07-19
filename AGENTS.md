@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.222` (from `project(PIPBONG VERSION 0.8.222)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.223` (from `project(PIPBONG VERSION 0.8.223)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1210,6 +1210,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.223] - 2026-07-19
+
+### Changed
+
+- Workflow panel status bar replaces the **워크플로우** caption with a breadcrumb **프로필 › 기능 › 동작 방식** (profile chip, feature chip, run-mode chip); library preview shows **라이브러리** as the profile segment (`WorkflowRunStatusBar`, `WorkflowEditorPanel`, `MainWindow::refreshWorkflowEditor`).
 
 ## [0.8.222] - 2026-07-19
 

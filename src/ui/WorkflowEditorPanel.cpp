@@ -1016,10 +1016,16 @@ void WorkflowEditorPanel::setFeature(Feature* feature) {
     }
 }
 
+void WorkflowEditorPanel::setProfileDisplayName(const QString& name) {
+    m_profileDisplayName = name.trimmed();
+    updateTitleText();
+}
+
 void WorkflowEditorPanel::updateTitleText() {
     if (!m_runStatusBar) {
         return;
     }
+    m_runStatusBar->setProfileName(m_profileDisplayName);
     if (!m_feature) {
         m_runStatusBar->setFeatureName(QString());
         m_runStatusBar->clearRunMode();
@@ -1077,6 +1083,7 @@ void WorkflowEditorPanel::refresh() {
     if (!m_feature) {
         m_blockList->setLoopRegions({});
         clearLoopTiming();
+        updateTitleText();
         updateWorkflowToolButtonStates();
         setEditingEnabled(m_editingEnabled);
         return;

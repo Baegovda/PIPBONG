@@ -32,6 +32,7 @@ public:
     explicit WorkflowEditorPanel(QWidget* parent = nullptr);
 
     void setFeature(Feature* feature);
+    void setProfileDisplayName(const QString& name);
     void setProjectDirectory(const QString& directory);
     void refresh();
     void setEditingEnabled(bool enabled);
@@ -140,6 +141,7 @@ private:
 
     Feature* m_feature = nullptr;
     QString m_projectDirectory;
+    QString m_profileDisplayName;
 
     WorkflowRunStatusBar* m_runStatusBar = nullptr;
     bool m_hasLoopTiming = false;

@@ -43,15 +43,21 @@ WorkflowRunStatusBar::WorkflowRunStatusBar(QWidget* parent)
     m_runButton->setToolTip(tr("기능 실행 / 중지"));
     connect(m_runButton, &QToolButton::clicked, this, &WorkflowRunStatusBar::runToggleRequested);
 
-    m_captionLabel = new QLabel(tr("워크플로우"), this);
-    m_captionLabel->setObjectName(QStringLiteral("workflowRunStatusCaption"));
+    m_profileLabel = new QLabel(tr("—"), this);
+    m_profileLabel->setObjectName(QStringLiteral("workflowRunStatusProfile"));
 
-    m_modeChip = makeStatChip(this, QStringLiteral("workflowRunStatusMode"));
-    m_modeChip->setVisible(false);
+    m_breadcrumbSep1 = new QLabel(QStringLiteral("›"), this);
+    m_breadcrumbSep1->setObjectName(QStringLiteral("workflowRunStatusBreadcrumbSep"));
 
     m_featureNameLabel = new QLabel(tr("—"), this);
     m_featureNameLabel->setObjectName(QStringLiteral("workflowRunStatusFeatureName"));
     m_featureNameLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+    m_breadcrumbSep2 = new QLabel(QStringLiteral("›"), this);
+    m_breadcrumbSep2->setObjectName(QStringLiteral("workflowRunStatusBreadcrumbSep"));
+
+    m_modeChip = makeStatChip(this, QStringLiteral("workflowRunStatusMode"));
+    m_modeChip->setVisible(false);
 
     m_statsRow = new QWidget(this);
     m_statsRow->setObjectName(QStringLiteral("workflowRunStatsRow"));
@@ -70,57 +76,108 @@ WorkflowRunStatusBar::WorkflowRunStatusBar(QWidget* parent)
     statsLayout->addWidget(m_statusChip);
 
     row->addWidget(m_runButton, 0, Qt::AlignVCenter);
-    row->addWidget(m_captionLabel, 0, Qt::AlignVCenter);
-    row->addWidget(m_modeChip, 0, Qt::AlignVCenter);
+    row->addWidget(m_profileLabel, 0, Qt::AlignVCenter);
+    row->addWidget(m_breadcrumbSep1, 0, Qt::AlignVCenter);
     row->addWidget(m_featureNameLabel, 0, Qt::AlignVCenter);
+    row->addWidget(m_breadcrumbSep2, 0, Qt::AlignVCenter);
+    row->addWidget(m_modeChip, 0, Qt::AlignVCenter);
     row->addStretch(1);
     row->addWidget(m_statsRow, 0, Qt::AlignVCenter);
 
     applyTerminalChrome();
     setRunButtonState(false, false);
+    setProfileName(QString());
     clearRunMode();
     clearLoopTiming();
     setFeatureName(QString());
+}
+
+QString WorkflowRunStatusBar::runModeText(FeatureRunMode mode, int repeatCount) const {
+    switch (mode) {
+    case FeatureRunMode::Hold:
+        return tr("홀드");
+    case FeatureRunMode::RepeatInfinite:
+        return tr("무한 반복");
+    case FeatureRunMode::Trigger:
+        return tr("트리거");
+    case FeatureRunMode::RepeatCount: {
+        const int count = repeatCount < 1 ? 1 : repeatCount;
+        return tr("%1회 반복").arg(count);
+    }
+    }
+    return QString();
+}
+
+QString WorkflowRunStatusBar::runModeToolTip(FeatureRunMode mode, int repeatCount) const {
+    switch (mode) {
+    case FeatureRunMode::Hold:
+        return tr("단축키를 누르고 있는 동안 워크플로를 반복합니다.");
+    case FeatureRunMode::RepeatInfinite:
+        return tr("워크플로를 중지할 때까지 무한 반복합니다.");
+    case FeatureRunMode::Trigger:
+        return tr("첫 템플릿 매칭을 감시하다가 성공 시 워크플로를 1회 실행합니다.");
+    case FeatureRunMode::RepeatCount: {
+        const int count = repeatCount < 1 ? 1 : repeatCount;
+        return tr("워크플로를 %1회 반복합니다.").arg(count);
+    }
+    }
+    return QString();
+}
+
+void WorkflowRunStatusBar::setProfileName(const QString& name) {
+    m_profileName = name.trimmed();
+    refreshBreadcrumb();
+}
+
+void WorkflowRunStatusBar::refreshBreadcrumb() {
+    const QString emptyDash = tr("—");
+    const QString profileText = m_profileName.isEmpty() ? emptyDash : m_profileName;
+    const QString featureText =
+        m_featureNameLabel ? m_featureNameLabel->text().trimmed() : emptyDash;
+    const bool hasFeature = !featureText.isEmpty() && featureText != emptyDash;
+    const bool hasMode = m_hasRunMode && m_modeChip && !m_modeChip->text().isEmpty();
+
+    if (m_profileLabel) {
+        m_profileLabel->setText(profileText);
+        m_profileLabel->setToolTip(m_profileName.isEmpty() ? tr("프로필") : tr("프로필: %1").arg(m_profileName));
+    }
+    if (m_featureNameLabel && hasFeature) {
+        m_featureNameLabel->setToolTip(tr("기능: %1").arg(featureText));
+    } else if (m_featureNameLabel) {
+        m_featureNameLabel->setToolTip(tr("기능"));
+    }
+    if (m_breadcrumbSep1) {
+        m_breadcrumbSep1->setVisible(true);
+    }
+    if (m_breadcrumbSep2) {
+        m_breadcrumbSep2->setVisible(hasFeature && hasMode);
+    }
+    if (m_modeChip) {
+        m_modeChip->setVisible(hasMode);
+    }
 }
 
 void WorkflowRunStatusBar::setRunMode(FeatureRunMode mode, int repeatCount) {
     if (!m_modeChip) {
         return;
     }
-    QString text;
-    QString tooltip;
-    switch (mode) {
-    case FeatureRunMode::Hold:
-        text = tr("홀드");
-        tooltip = tr("단축키를 누르고 있는 동안 워크플로를 반복합니다.");
-        break;
-    case FeatureRunMode::RepeatInfinite:
-        text = tr("무한 반복");
-        tooltip = tr("워크플로를 중지할 때까지 무한 반복합니다.");
-        break;
-    case FeatureRunMode::Trigger:
-        text = tr("트리거");
-        tooltip = tr("첫 템플릿 매칭을 감시하다가 성공 시 워크플로를 1회 실행합니다.");
-        break;
-    case FeatureRunMode::RepeatCount: {
-        const int count = repeatCount < 1 ? 1 : repeatCount;
-        text = tr("%1회 반복").arg(count);
-        tooltip = tr("워크플로를 %1회 반복합니다.").arg(count);
-        break;
-    }
-    }
+    m_runMode = mode;
+    m_repeatCount = repeatCount;
+    const QString text = runModeText(mode, repeatCount);
+    m_hasRunMode = !text.isEmpty();
     m_modeChip->setText(text);
-    m_modeChip->setToolTip(tooltip);
-    m_modeChip->setVisible(!text.isEmpty());
+    m_modeChip->setToolTip(runModeToolTip(mode, repeatCount));
+    refreshBreadcrumb();
 }
 
 void WorkflowRunStatusBar::clearRunMode() {
     if (!m_modeChip) {
         return;
     }
+    m_hasRunMode = false;
     m_modeChip->clear();
     m_modeChip->setToolTip(QString());
-    m_modeChip->setVisible(false);
+    refreshBreadcrumb();
 }
 
 void WorkflowRunStatusBar::setRunButtonState(bool showStop, bool enabled, const QString& disabledToolTip) {
@@ -203,17 +260,31 @@ void WorkflowRunStatusBar::applyTerminalChrome() {
         "  border: 1px solid #30363d;"
         "  border-radius: 8px;"
         "}"
-        "QLabel#workflowRunStatusCaption {"
+        "QLabel#workflowRunStatusProfile {"
         "  color: #8b949e;"
+        "  background-color: #21262d;"
+        "  border: 1px solid #30363d;"
+        "  border-radius: 6px;"
+        "  padding: 3px 8px;"
         "  font-size: 11px;"
         "  font-weight: 600;"
-        "  letter-spacing: 0.4px;"
+        "  letter-spacing: 0.2px;"
+        "}"
+        "QLabel#workflowRunStatusBreadcrumbSep {"
+        "  color: #484f58;"
+        "  font-size: 12px;"
+        "  font-weight: 600;"
+        "  padding: 0 1px;"
         "}"
         "QLabel#workflowRunStatusFeatureName {"
         "  color: #e6edf3;"
-        "  font-size: 13px;"
+        "  background-color: #21262d;"
+        "  border: 1px solid #388bfd;"
+        "  border-radius: 6px;"
+        "  padding: 3px 8px;"
+        "  font-size: 11px;"
         "  font-weight: 600;"
-        "  padding-left: 2px;"
+        "  letter-spacing: 0.2px;"
         "}"
         "QLabel#workflowRunStatusMode {"
         "  color: #d2a8ff;"
@@ -271,11 +342,10 @@ void WorkflowRunStatusBar::setFeatureName(const QString& name) {
     const QString trimmed = name.trimmed();
     if (trimmed.isEmpty()) {
         m_featureNameLabel->setText(tr("—"));
-        m_featureNameLabel->setToolTip(QString());
-        return;
+    } else {
+        m_featureNameLabel->setText(trimmed);
     }
-    m_featureNameLabel->setText(trimmed);
-    m_featureNameLabel->setToolTip(trimmed);
+    refreshBreadcrumb();
 }
 
 void WorkflowRunStatusBar::setLoopTiming(int loopNumber, qint64 elapsedMs, qint64 averageMs, bool success) {

@@ -2432,16 +2432,27 @@ void MainWindow::onExportProfilePackage() {
 
 void MainWindow::refreshWorkflowEditor() {
     PIPBONG_PERF_SCOPE("refreshWorkflowEditor");
+    QString workflowProfileName;
     if (m_libraryPreviewFeature && !m_libraryPreviewEntryId.isEmpty()) {
+        workflowProfileName = tr("라이브러리");
         m_workflowEditor->setProjectDirectory(m_featureLibraryManager
                                                   ? m_featureLibraryManager->entryProjectDirectory(m_libraryPreviewEntryId)
                                                   : Application::instance()->projectDirectory());
+        m_workflowEditor->setProfileDisplayName(workflowProfileName);
         m_workflowEditor->setFeature(m_libraryPreviewFeature.get());
         m_workflowEditor->clearLoopTiming();
         m_workflowEditor->setEditingEnabled(false);
         updateRunUiState();
         return;
     }
+
+    if (m_profileManager) {
+        const ProfileManager::Profile* profile = m_profileManager->activeProfile();
+        workflowProfileName =
+            profile ? (m_profileManager->isDefaultProfile(profile->id) ? tr("기본") : profile->name)
+                    : QString();
+    }
+    m_workflowEditor->setProfileDisplayName(workflowProfileName);
 
     Feature* feature = m_featureList->selectedFeature();
     m_workflowEditor->setProjectDirectory(Application::instance()->projectDirectory());
