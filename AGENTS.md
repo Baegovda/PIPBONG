@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.233` (from `project(PIPBONG VERSION 0.8.233)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.234` (from `project(PIPBONG VERSION 0.8.234)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.234] - 2026-07-20
+
+### Changed
+
+- Manual and automatic in-app updates no longer block with a warning when a workflow is running: `stopRunningSessionsForUpdate()` stops active runs and continues the update flow (`MainWindow::onUpdateButtonClicked`, `onCheckForUpdates`, `maybeStartAutomaticUpdate`).
 
 ## [0.8.233] - 2026-07-20
 

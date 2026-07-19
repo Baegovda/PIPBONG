@@ -1879,12 +1879,7 @@ void MainWindow::onUpdateCheckFinished(bool success, bool updateAvailable, const
 }
 
 void MainWindow::onUpdateButtonClicked() {
-    if (hasAnyActiveWorkflowEngine()) {
-        QMessageBox::warning(this,
-                             tr("업데이트"),
-                             tr("워크플로 실행 중에는 업데이트할 수 없습니다. 먼저 실행을 중지하세요."));
-        return;
-    }
+    stopRunningSessionsForUpdate();
 
     if (!m_updateChecker) {
         return;
@@ -1911,12 +1906,7 @@ void MainWindow::onUpdateButtonClicked() {
 }
 
 void MainWindow::onCheckForUpdates() {
-    if (hasAnyActiveWorkflowEngine()) {
-        QMessageBox::warning(this,
-                             tr("업데이트"),
-                             tr("워크플로 실행 중에는 업데이트할 수 없습니다. 먼저 실행을 중지하세요."));
-        return;
-    }
+    stopRunningSessionsForUpdate();
 
     if (!m_updateChecker) {
         return;
@@ -1931,9 +1921,8 @@ void MainWindow::maybeStartAutomaticUpdate() {
         return;
     }
 
+    stopRunningSessionsForUpdate();
     if (hasAnyActiveWorkflowEngine()) {
-        const QString version = m_updateChecker->pendingUpdate().version.toString();
-        showTransientStatus(tr("v%1 업데이트 감지 — 실행 종료 후 자동 업데이트").arg(version), 5000);
         return;
     }
 
@@ -2983,6 +2972,14 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     }
 
     finishRunSession(featureId, session->lastLoopSuccess, QString());
+}
+
+void MainWindow::stopRunningSessionsForUpdate() {
+    if (!hasAnyActiveWorkflowEngine()) {
+        return;
+    }
+    stopAllSessions();
+    showTransientStatus(tr("실행을 중지하고 업데이트를 진행합니다."), 3000);
 }
 
 void MainWindow::stopAllSessions() {

@@ -196,6 +196,7 @@ private:
                           LogLineKind kind = LogLineKind::Info);
     void stopFeatureRun(const std::string& featureId);
     void stopAllSessions();
+    void stopRunningSessionsForUpdate();
     void stopAllSessionsForProfileSwitch();
     void stopSessionEngineForProfileSwitch(FeatureRunSession& session, Feature* feature);
     void abandonSessionEngine(FeatureRunSession& session);
