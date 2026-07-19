@@ -2,7 +2,9 @@
 
 #include "core/capture/ScreenCapture.h"
 
+#include <QCoreApplication>
 #include <QRect>
+#include <QTimer>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -20,8 +22,7 @@ namespace {
 
 #ifdef _WIN32
 constexpr wchar_t kOverlayClassName[] = L"PipbongWindowPickerHoverOverlay";
-constexpr UINT_PTR kTimerId = 1;
-constexpr UINT kTimerMs = 33;
+constexpr int kRefreshIntervalMs = 33;
 constexpr ULONGLONG kPulsePeriodMs = 900;
 constexpr int kBorderThickness = 5;
 
@@ -33,17 +34,44 @@ struct OverlayState {
 
 std::unique_ptr<OverlayState> g_state;
 
+void refreshOverlayFrame();
+
+QTimer* hoverRefreshTimer() {
+    static QTimer* timer = []() -> QTimer* {
+        auto* refreshTimer = new QTimer(QCoreApplication::instance());
+        refreshTimer->setInterval(kRefreshIntervalMs);
+        refreshTimer->setTimerType(Qt::PreciseTimer);
+        QObject::connect(refreshTimer, &QTimer::timeout, refreshTimer, []() { refreshOverlayFrame(); });
+        return refreshTimer;
+    }();
+    return timer;
+}
+
+void startHoverRefreshTimer() {
+    if (QTimer* timer = hoverRefreshTimer()) {
+        if (!timer->isActive()) {
+            timer->start();
+        }
+    }
+}
+
+void stopHoverRefreshTimer() {
+    if (QTimer* timer = hoverRefreshTimer()) {
+        timer->stop();
+    }
+}
+
 ULONGLONG nowMs() {
     return GetTickCount64();
 }
 
 void destroyOverlayWindow() {
+    stopHoverRefreshTimer();
     if (!g_state || !g_state->hwnd) {
         g_state.reset();
         return;
     }
 
-    KillTimer(g_state->hwnd, kTimerId);
     DestroyWindow(g_state->hwnd);
     g_state->hwnd = nullptr;
     g_state.reset();
@@ -182,14 +210,7 @@ void refreshOverlayFrame() {
 
 LRESULT CALLBACK overlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
-    case WM_TIMER:
-        if (wParam == kTimerId) {
-            refreshOverlayFrame();
-            return 0;
-        }
-        break;
     case WM_DESTROY:
-        KillTimer(hwnd, kTimerId);
         return 0;
     default:
         break;
@@ -238,7 +259,6 @@ bool ensureOverlayWindow() {
     }
 
     ShowWindow(g_state->hwnd, SW_SHOWNOACTIVATE);
-    SetTimer(g_state->hwnd, kTimerId, kTimerMs, nullptr);
     return true;
 }
 
@@ -270,6 +290,7 @@ void WindowPickerHoverOverlay::updateHover(HWND hwnd) {
     }
 
     refreshOverlayFrame();
+    startHoverRefreshTimer();
 #else
     (void)hwnd;
 #endif

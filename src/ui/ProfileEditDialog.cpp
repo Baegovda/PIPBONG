@@ -1,7 +1,9 @@
 #include "ui/ProfileEditDialog.h"
 
 #include "core/capture/ScreenCapture.h"
+#include "ui/TargetWindowHighlightOverlay.h"
 #include "ui/UiStrings.h"
+#include "ui/WindowPickerHoverOverlay.h"
 #include "ui/widgets/HintLabel.h"
 
 #include <QAbstractItemView>
@@ -15,6 +17,7 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QSize>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #ifdef _WIN32
@@ -77,6 +80,35 @@ QVector<ProfileWindowListEntry> collectProfileWindowListEntries() {
         },
         reinterpret_cast<LPARAM>(&entries));
     return entries;
+}
+
+void wireProfileWindowListHoverFeedback(QListWidget* listWidget) {
+    if (!listWidget) {
+        return;
+    }
+    listWidget->setMouseTracking(true);
+    const auto applyHover = [listWidget]() {
+        QListWidgetItem* current = listWidget->currentItem();
+        if (!current) {
+            WindowPickerHoverOverlay::dismissAll();
+            return;
+        }
+        const HWND hwnd = reinterpret_cast<HWND>(current->data(Qt::UserRole).toULongLong());
+        if (hwnd && IsWindow(hwnd)) {
+            WindowPickerHoverOverlay::updateHover(hwnd);
+        } else {
+            WindowPickerHoverOverlay::dismissAll();
+        }
+    };
+    QObject::connect(listWidget, &QListWidget::currentItemChanged, listWidget,
+                     [applyHover](QListWidgetItem*, QListWidgetItem*) { applyHover(); });
+    QObject::connect(listWidget, &QListWidget::itemEntered, listWidget,
+                     [listWidget, applyHover](QListWidgetItem* item) {
+                         if (item) {
+                             listWidget->setCurrentItem(item);
+                         }
+                         applyHover();
+                     });
 }
 #endif
 
@@ -193,7 +225,8 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
 
     auto* targetButtons = new QHBoxLayout();
     auto* useCurrentButton = new QPushButton(tr("현재 설정 사용"), m_linkedProgramSection);
-    auto* pickFromListButton = new QPushButton(tr("창 목록"), m_linkedProgramSection);
+    auto* pickFromListButton = new QPushButton(tr("주 대상 창 목록"), m_linkedProgramSection);
+    pickFromListButton->setToolTip(tr("주 대상 창 목록에서 선택합니다. 항목을 고르면 해당 창에 테두리 애니메이션이 표시됩니다."));
     auto* clearButton = new QPushButton(tr("비우기"), m_linkedProgramSection);
     targetButtons->addWidget(useCurrentButton);
     targetButtons->addWidget(pickFromListButton);
@@ -206,7 +239,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         }
     });
     connect(pickFromListButton, &QPushButton::clicked, this, [this]() {
-        openWindowListPicker(m_targetWindowTitleEdit);
+        openWindowListPicker(m_targetWindowTitleEdit, false);
     });
     connect(clearButton, &QPushButton::clicked, this, [this]() {
         if (m_targetWindowTitleEdit) {
@@ -227,7 +260,8 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     linkedLayout->addWidget(subHint);
 
     auto* subButtons = new QHBoxLayout();
-    auto* subPickButton = new QPushButton(tr("창 목록"), m_linkedProgramSection);
+    auto* subPickButton = new QPushButton(tr("서브 대상 창 목록"), m_linkedProgramSection);
+    subPickButton->setToolTip(tr("서브 대상 창 목록에서 선택합니다. 항목을 고르면 해당 창에 테두리 애니메이션이 표시됩니다."));
     auto* subClearButton = new QPushButton(tr("비우기"), m_linkedProgramSection);
     subButtons->addWidget(subPickButton);
     subButtons->addWidget(subClearButton);
@@ -235,7 +269,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     linkedLayout->addLayout(subButtons);
 
     connect(subPickButton, &QPushButton::clicked, this, [this]() {
-        openWindowListPicker(m_subTargetWindowTitleEdit);
+        openWindowListPicker(m_subTargetWindowTitleEdit, true);
     });
     connect(subClearButton, &QPushButton::clicked, this, [this]() {
         if (m_subTargetWindowTitleEdit) {
@@ -267,17 +301,22 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     layout->addWidget(buttons);
 }
 
-void ProfileEditDialog::openWindowListPicker(QLineEdit* targetEdit) {
+void ProfileEditDialog::openWindowListPicker(QLineEdit* targetEdit, bool subTarget) {
 #ifdef _WIN32
     if (!targetEdit) {
         return;
     }
     QDialog dialog(this);
-    dialog.setWindowTitle(tr("창 목록"));
+    dialog.setWindowTitle(subTarget ? tr("서브 대상 창 목록") : tr("주 대상 창 목록"));
     dialog.resize(700, 420);
 
     auto* layout = new QVBoxLayout(&dialog);
-    auto* hint = new HintLabel(tr("현재 표시 중인 창에서 프로필에 연결할 프로그램을 고르세요."), &dialog);
+    auto* hint = new HintLabel(
+        subTarget ? tr("현재 표시 중인 창에서 서브 대상 창으로 연결할 프로그램을 고르세요. "
+                       "선택하면 해당 창에 테두리 애니메이션이 표시됩니다.")
+                  : tr("현재 표시 중인 창에서 주 대상 창으로 연결할 프로그램을 고르세요. "
+                       "선택하면 해당 창에 테두리 애니메이션이 표시됩니다."),
+        &dialog);
     layout->addWidget(hint);
 
     auto* listWidget = new QListWidget(&dialog);
@@ -288,11 +327,14 @@ void ProfileEditDialog::openWindowListPicker(QLineEdit* targetEdit) {
     const QVector<ProfileWindowListEntry> entries = collectProfileWindowListEntries();
     for (const ProfileWindowListEntry& entry : entries) {
         auto* item = new QListWidgetItem(entry.icon, entry.displayText, listWidget);
-        item->setData(Qt::UserRole, QString::fromStdWString(entry.title));
+        item->setData(Qt::UserRole, QVariant::fromValue(reinterpret_cast<qulonglong>(entry.hwnd)));
+        item->setData(Qt::UserRole + 1, QString::fromStdWString(entry.title));
     }
     if (listWidget->count() > 0) {
         listWidget->setCurrentRow(0);
     }
+
+    wireProfileWindowListHoverFeedback(listWidget);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     localizeDialogButtons(buttons);
@@ -300,15 +342,38 @@ void ProfileEditDialog::openWindowListPicker(QLineEdit* targetEdit) {
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addWidget(buttons);
 
+    struct ListPickerHoverGuard {
+        ~ListPickerHoverGuard() { WindowPickerHoverOverlay::dismissAll(); }
+    } hoverGuard;
+
     if (listWidget->count() == 0) {
         return;
     }
+
+    QTimer::singleShot(0, &dialog, [listWidget]() {
+        if (QListWidgetItem* current = listWidget->currentItem()) {
+            const HWND hwnd = reinterpret_cast<HWND>(current->data(Qt::UserRole).toULongLong());
+            if (hwnd && IsWindow(hwnd)) {
+                WindowPickerHoverOverlay::updateHover(hwnd);
+            }
+        }
+    });
+
     if (dialog.exec() != QDialog::Accepted || !listWidget->currentItem()) {
         return;
     }
-    targetEdit->setText(listWidget->currentItem()->data(Qt::UserRole).toString());
+
+    const HWND selectedHwnd =
+        reinterpret_cast<HWND>(listWidget->currentItem()->data(Qt::UserRole).toULongLong());
+    targetEdit->setText(listWidget->currentItem()->data(Qt::UserRole + 1).toString());
+    if (selectedHwnd && IsWindow(selectedHwnd)) {
+        QTimer::singleShot(0, this, [this, selectedHwnd]() {
+            TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd, this);
+        });
+    }
 #else
     Q_UNUSED(targetEdit);
+    Q_UNUSED(subTarget);
 #endif
 }
 

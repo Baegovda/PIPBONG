@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.236` (from `project(PIPBONG VERSION 0.8.236)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.237` (from `project(PIPBONG VERSION 0.8.237)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.237] - 2026-07-20
+
+### Changed
+
+- **대상 창** panel: **주 대상 창** / **서브 대상 창** group captions; **주 목록** and **서브 목록** open dedicated pickers (`MainWindow`).
+- Profile **기능 편집**: **주 대상 창 목록** / **서브 대상 창 목록** button labels and dialog titles (`ProfileEditDialog`).
+
+### Fixed
+
+- Window list picker selection preview: pulsing border on the hovered/selected HWND now animates during modal `QDialog::exec()` via `QTimer` refresh instead of Win32 `SetTimer` (`WindowPickerHoverOverlay`); list opens with immediate hover on the current row; profile edit picker uses the same hover + confirm wave (`MainWindow`, `ProfileEditDialog`).
 
 ## [0.8.236] - 2026-07-20
 

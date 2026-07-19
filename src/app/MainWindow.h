@@ -117,7 +117,8 @@ private slots:
     void onMemo();
     void onAlwaysOnTopToggled(bool checked);
     void onPickTargetWindow();
-    void onPickTargetWindowFromList();
+    void onPickMainTargetWindowFromList();
+    void onPickSubTargetWindowFromList();
     void onShowTargetWindow();
     void onPinTargetWindowCenterToggled(bool checked);
     void onProfileSelectionChanged();
@@ -295,6 +296,8 @@ private:
 #ifdef _WIN32
     void commitActiveProfileTargetWindow(HWND hwnd, const QString& title);
     void commitActiveProfileSubTargetWindow(HWND hwnd, const QString& title);
+    enum class TargetWindowListPickMode { Main, Sub };
+    void pickTargetWindowFromList(TargetWindowListPickMode mode);
 #endif
     bool isActiveDefaultProfile() const;
     std::wstring currentTargetWindowTitleW() const;
@@ -372,6 +375,7 @@ private:
     LogPanelWidget* m_logPanel = nullptr;
     QToolButton* m_pickWindowButton = nullptr;
     QToolButton* m_pickWindowListButton = nullptr;
+    QToolButton* m_pickSubWindowListButton = nullptr;
     QToolButton* m_showTargetWindowButton = nullptr;
     QToolButton* m_pinTargetWindowCenterButton = nullptr;
     QCheckBox* m_alwaysOnTopCheck = nullptr;

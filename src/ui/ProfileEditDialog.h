@@ -29,7 +29,7 @@ public:
 
 private:
     void setupUi(const QString& currentTargetWindowTitle);
-    void openWindowListPicker(QLineEdit* targetEdit);
+    void openWindowListPicker(QLineEdit* targetEdit, bool subTarget);
     void tryAccept();
     void updateDefaultProfileUi();
 
