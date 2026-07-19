@@ -2,6 +2,8 @@
 
 #include <QStringList>
 
+#include <vector>
+
 #ifdef _WIN32
 struct _CONTEXT;
 typedef struct _CONTEXT CONTEXT;
@@ -22,6 +24,13 @@ void appendCurrentThreadStackTrace(QStringList& lines, int maxFrames = 32);
 /// Suspend the GUI thread, capture its context, walk stack, then resume.
 /// Returns false when suspend/context walk failed.
 bool appendGuiThreadStackTrace(QStringList& lines, unsigned long mainThreadId, int maxFrames = 32);
+
+/// Captures stacks for every thread in the current process except those in @p skipThreadIds.
+/// Returns the number of threads captured.
+int appendAllProcessThreadStackTraces(QStringList& lines,
+                                      const std::vector<unsigned long>& skipThreadIds,
+                                      int maxFramesPerThread = 24,
+                                      int maxThreads = 32);
 #else
 inline void initialize() {}
 inline void shutdown() {}

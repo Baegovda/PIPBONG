@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.232 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.233 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -191,7 +191,7 @@ if(WIN32)
 endif()
 
 if(WIN32)
-    target_link_libraries(PIPBONG PRIVATE user32 gdi32 dwmapi dxgi d3d11 winmm shell32 dbghelp)
+    target_link_libraries(PIPBONG PRIVATE user32 gdi32 dwmapi dxgi d3d11 winmm shell32 dbghelp psapi)
 endif()
 
 target_compile_definitions(PIPBONG PRIVATE

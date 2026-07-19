@@ -36,6 +36,9 @@ public:
     /// Registers a GUI-thread callback that refreshes the cached application context snapshot.
     static void setContextProvider(CrashContextProvider provider);
 
+    /// Records the last notable UI action (button click, etc.) for crash/hang reports.
+    static void noteUserAction(const QString& description);
+
     /// Returns the pending crash from the previous run, if any.
     static bool hasPendingReport();
     static CrashReportSummary pendingReport();

@@ -8,6 +8,11 @@
 #endif
 #include <windows.h>
 #include <dbghelp.h>
+#include <tlhelp32.h>
+
+#include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 
 #include <algorithm>
 #include <atomic>
@@ -26,9 +31,18 @@ bool ensureSymbolsInitialized() {
     if (g_symbolsInitialized.load()) {
         return true;
     }
-    const BOOL ok = SymInitialize(GetCurrentProcess(), nullptr, TRUE);
+
+    QString searchPath;
+    if (QCoreApplication::instance()) {
+        const QString exeDir = QFileInfo(QCoreApplication::applicationFilePath()).absolutePath();
+        searchPath = QDir::toNativeSeparators(exeDir);
+    }
+
+    const QByteArray nativeSearchPath = searchPath.toLocal8Bit();
+    const char* searchPathPtr = nativeSearchPath.isEmpty() ? nullptr : nativeSearchPath.constData();
+    const BOOL ok = SymInitialize(GetCurrentProcess(), searchPathPtr, TRUE);
     if (ok) {
-        SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
+        SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES | SYMOPT_FAIL_CRITICAL_ERRORS);
         g_symbolsInitialized.store(true);
     }
     return ok == TRUE;
@@ -226,6 +240,71 @@ bool appendGuiThreadStackTrace(QStringList& lines, unsigned long mainThreadId, i
 
     walkContextStack(lines, &context, maxFrames, guard.handle());
     return true;
+}
+
+bool shouldSkipThread(unsigned long threadId, const std::vector<unsigned long>& skipThreadIds) {
+    return std::find(skipThreadIds.begin(), skipThreadIds.end(), threadId) != skipThreadIds.end();
+}
+
+int appendAllProcessThreadStackTraces(QStringList& lines,
+                                      const std::vector<unsigned long>& skipThreadIds,
+                                      int maxFramesPerThread,
+                                      int maxThreads) {
+    if (maxFramesPerThread <= 0 || maxThreads <= 0) {
+        return 0;
+    }
+
+    const DWORD processId = GetCurrentProcessId();
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+
+    THREADENTRY32 entry{};
+    entry.dwSize = sizeof(entry);
+    int captured = 0;
+
+    if (Thread32First(snapshot, &entry)) {
+        do {
+            if (entry.th32OwnerProcessID != processId) {
+                continue;
+            }
+            if (shouldSkipThread(entry.th32ThreadID, skipThreadIds)) {
+                continue;
+            }
+
+            HANDLE threadHandle =
+                OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION,
+                           FALSE,
+                           entry.th32ThreadID);
+            if (!threadHandle || threadHandle == INVALID_HANDLE_VALUE) {
+                continue;
+            }
+
+            SuspendedThreadGuard guard(threadHandle);
+            if (SuspendThread(guard.handle()) == static_cast<DWORD>(-1)) {
+                continue;
+            }
+
+            CONTEXT context{};
+            context.ContextFlags = CONTEXT_FULL;
+            if (!GetThreadContext(guard.handle(), &context)) {
+                continue;
+            }
+
+            lines.append(QStringLiteral("--- thread id %1 ---").arg(entry.th32ThreadID));
+            walkContextStack(lines, &context, maxFramesPerThread, guard.handle());
+            lines.append(QString());
+
+            ++captured;
+            if (captured >= maxThreads) {
+                break;
+            }
+        } while (Thread32Next(snapshot, &entry));
+    }
+
+    CloseHandle(snapshot);
+    return captured;
 }
 
 } // namespace Win32StackWalker

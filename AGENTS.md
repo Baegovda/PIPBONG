@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.232` (from `project(PIPBONG VERSION 0.8.232)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.233` (from `project(PIPBONG VERSION 0.8.233)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -560,12 +560,12 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.11 Crash reporting (diagnostics)
 
-- **Install:** `CrashReporter::install()` in `main.cpp` immediately after `QApplication` construction — Win32 unhandled-exception filter, `std::terminate` / purecall / invalid-parameter handlers, and Qt `qInstallMessageHandler` ring buffer (~800 lines). `Win32StackWalker` (DbgHelp `StackWalk64` / `SymFromAddr` / `SymGetLineFromAddr64`) resolves function names when PDBs are present.
-- **GUI hang (Not Responding):** `CrashReporter::installGuiHangWatchdog()` after `install()` — `QTimer` heartbeat on the GUI thread refreshes a cached application-context snapshot; background thread writes a report when heartbeat is silent ~6 s, captures **GUI thread stack** via `SuspendThread` + `GetThreadContext`, and launches detached `PIPBONG.exe --crash-report <folder>` (Win32 `MessageBox` fallback if spawn fails). Does not terminate the process.
-- **Application context:** `MainWindow` registers `CrashReporter::setContextProvider` — profile, target windows, selected feature, library preview, running sessions, foreground state — included in every `report.txt` under `--- application context ---`.
-- **On crash:** writes a timestamped folder under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{yyyyMMdd_HHmmss}/` with `report.txt` (`kind: crash|hang|qt_fatal`, system info, context, critical-log digest, symbolic stack when available), `recent_log.txt`, `kind.txt`, optional `crash.dmp` (minidump via dynamically loaded `Dbghelp.dll`); `pending.txt` in the crash root points at the folder. Retains the last 10 crash folders.
+- **Install:** `CrashReporter::install()` in `main.cpp` immediately after `QApplication` construction — Win32 unhandled-exception filter, `std::terminate` / purecall / invalid-parameter handlers, and Qt `qInstallMessageHandler` ring buffer (~800 lines). `Win32StackWalker` (DbgHelp `StackWalk64` / `SymFromAddr` / `SymGetLineFromAddr64`) resolves function names when PDBs are present; symbol search path includes the executable directory.
+- **GUI hang (Not Responding):** `CrashReporter::installGuiHangWatchdog()` after `install()` — `QTimer` heartbeat on the GUI thread refreshes a cached application-context snapshot; background thread writes a report when heartbeat is silent ~6 s, captures **GUI thread stack** via `SuspendThread` + `GetThreadContext`, **all other process thread stacks** (workflow workers included) in `threads.txt`, hang diagnostics (silent ms, heartbeat age), and launches detached `PIPBONG.exe --crash-report <folder>` (Win32 `MessageBox` fallback if spawn fails). Does not terminate the process.
+- **Application context:** `MainWindow` registers `CrashReporter::setContextProvider` — profile, target windows (resolved HWND), selected feature scope, running/abandoned sessions (trigger phase, cooldown, capture lock, block summary, ImageFind poll state), open dialogs, modeless tools, mouse lock, status messages, last button click (`CrashReporter::noteUserAction`) — included in every `report.txt` under `--- application context ---`.
+- **On crash:** writes a timestamped folder under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{yyyyMMdd_HHmmss}/` with `report.txt` (`kind: crash|hang|qt_fatal`, RtlGetVersion OS build, memory/CPU, foreground window, context, WARN/CRIT/FATAL digest, symbolic stacks when available), `recent_log.txt`, `threads.txt` (hang), `kind.txt`, optional `crash.dmp` (minidump with thread/handle data; hang dumps include extra segments); `pending.txt` in the crash root points at the folder. Retains the last 10 crash folders.
 - **Immediate UI:** Qt fatal messages show modal `CrashReportDialog` on the GUI thread before exit; SEH / CRT / hang handlers spawn a detached `PIPBONG.exe --crash-report <folder>` viewer when in-process UI is unsafe. Startup `showPendingCrashReportIfAny()` remains a fallback when the immediate viewer did not run.
-- **Manual:** title bar **도움말 → 오류 보고서** opens the latest saved `report.txt` (or shows a short status when none exist). `CrashReportDialog`: hang vs crash titles, optional user note (`user_note.txt`), **ZIP으로 저장** via `tar.exe`, **복사**, **폴더 열기**. `CrashReporter::exportReportFolderAsZip` packages report artifacts.
+- **Manual:** title bar **도움말 → 오류 보고서** opens the latest saved `report.txt` (or shows a short status when none exist). `CrashReportDialog`: hang vs crash titles, optional user note (`user_note.txt`), **ZIP으로 저장** via `tar.exe`, **복사**, **폴더 열기**. `CrashReporter::exportReportFolderAsZip` packages report artifacts (including `threads.txt` when present).
 
 ---
 
@@ -1232,6 +1232,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.233] - 2026-07-20
+
+### Added
+
+- Crash/hang reports: `threads.txt` with GUI, watchdog, and up to 48 other process thread stacks; hang diagnostics (silent ms, heartbeat age); foreground-window section; RtlGetVersion OS build, memory, elevation, process CPU time; WARN/CRIT/FATAL log digest (40 lines); `CrashReporter::noteUserAction` records last button click (`CrashReporter`, `Win32StackWalker`, `CrashReportSystemInfo`, `MainWindow`).
+
+### Changed
+
+- Application context snapshot expanded: abandoned engines, per-session capture lock/trigger cooldown/stop/poll state/running block summary, resolved target HWND, open dialog class+title, modeless tools, mouse lock, profile-switch deferral (`MainWindow::buildCrashReportContextSnapshot`).
+- Hang minidumps include data segments, handle data, and unloaded modules; DbgHelp symbol search path includes executable directory (`CrashReporter`, `Win32StackWalker`).
 
 ## [0.8.232] - 2026-07-20
 

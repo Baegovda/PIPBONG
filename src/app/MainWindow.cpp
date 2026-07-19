@@ -63,12 +63,13 @@
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QCoreApplication>
-#include <QAbstractItemView>
+#include <QAbstractButton>
 #include <QApplication>
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QEvent>
 #include <QEventLoop>
 #include <QFile>
 #include <QFileDialog>
@@ -740,6 +741,9 @@ MainWindow::MainWindow(QWidget* parent)
     scheduleRunWarmup();
 
     CrashReporter::setContextProvider([this]() { return buildCrashReportContextSnapshot(); });
+    if (QApplication* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
+        app->installEventFilter(this);
+    }
 }
 
 MainWindow::~MainWindow() {
@@ -773,6 +777,33 @@ void MainWindow::showPendingCrashReportIfAny() {
 QString MainWindow::buildCrashReportContextSnapshot() const {
     QStringList lines;
 
+    lines.append(QStringLiteral("  capturedAt: %1")
+                     .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs)));
+
+    if (!m_persistentStatusMessage.isEmpty()) {
+        lines.append(QStringLiteral("  persistentStatus: %1").arg(m_persistentStatusMessage));
+    }
+    if (!m_transientStatusMessage.isEmpty()) {
+        lines.append(QStringLiteral("  transientStatus: %1").arg(m_transientStatusMessage));
+    }
+
+    lines.append(QStringLiteral("  switchingProfile: %1")
+                     .arg(m_switchingProfile ? QStringLiteral("yes") : QStringLiteral("no")));
+    if (!m_deferredProfileSwitchId.isEmpty()) {
+        lines.append(QStringLiteral("  deferredProfileSwitch: %1").arg(m_deferredProfileSwitchId));
+    }
+
+    lines.append(QStringLiteral("  modelessTools: calculator=%1 memo=%2 spikeWatch=%3")
+                     .arg(m_calculatorDialog && m_calculatorDialog->isVisible() ? QStringLiteral("open")
+                                                                                : QStringLiteral("closed"))
+                     .arg(m_memoDialog && m_memoDialog->isVisible() ? QStringLiteral("open")
+                                                                    : QStringLiteral("closed"))
+                     .arg(m_spikeWatchDialog && m_spikeWatchDialog->isVisible() ? QStringLiteral("open")
+                                                                                : QStringLiteral("closed")));
+    lines.append(QStringLiteral("  mouseCenterLock: %1")
+                     .arg(MouseCenterLock::isActive() ? QStringLiteral("active")
+                                                      : QStringLiteral("inactive")));
+
     if (m_profileManager) {
         const QString profileId = m_profileManager->activeProfileId();
         QString profileName = profileId;
@@ -795,6 +826,18 @@ QString MainWindow::buildCrashReportContextSnapshot() const {
                 lines.append(QStringLiteral("  subTargetWindow: %1").arg(subTarget));
             }
         }
+
+        ScreenCapture::TargetWindowInfo targetInfo{};
+        if (ScreenCapture::queryTargetWindowInfo(targetInfo) && targetInfo.found) {
+            lines.append(QStringLiteral("  resolvedTarget: hwnd=0x%1 visible=%2 minimized=%3 client=%4x%5")
+                             .arg(targetInfo.hwndValue, 0, 16)
+                             .arg(targetInfo.visible ? QStringLiteral("yes") : QStringLiteral("no"))
+                             .arg(targetInfo.minimized ? QStringLiteral("yes") : QStringLiteral("no"))
+                             .arg(targetInfo.clientWidth)
+                             .arg(targetInfo.clientHeight));
+        } else {
+            lines.append(QStringLiteral("  resolvedTarget: (not found)"));
+        }
     }
 
     if (m_libraryPreviewFeature && !m_libraryPreviewEntryId.isEmpty()) {
@@ -806,12 +849,29 @@ QString MainWindow::buildCrashReportContextSnapshot() const {
             lines.append(QStringLiteral("  selectedFeature: %1 (%2)")
                              .arg(QString::fromStdString(feature->name()),
                                   QString::fromStdString(feature->id())));
+            lines.append(QStringLiteral("  selectedFeatureScope: %1")
+                             .arg(QString::fromStdString(
+                                 featureCaptureTargetScopeToString(feature->captureTargetScope()))));
+            lines.append(QStringLiteral("  selectedFeatureRequireScopedForeground: %1")
+                             .arg(feature->requireScopedTargetForeground() ? QStringLiteral("yes")
+                                                                         : QStringLiteral("no")));
         } else {
             lines.append(QStringLiteral("  selectedFeature: (none)"));
         }
     }
 
     lines.append(QStringLiteral("  runningSessions: %1").arg(static_cast<int>(m_runSessions.size())));
+    lines.append(QStringLiteral("  abandonedEngines: %1").arg(static_cast<int>(m_abandonedEngines.size())));
+    for (const auto& abandoned : m_abandonedEngines) {
+        if (!abandoned) {
+            continue;
+        }
+        lines.append(QStringLiteral("    - abandoned engine running=%1 liveWorker=%2")
+                         .arg(abandoned->isRunning() ? QStringLiteral("yes") : QStringLiteral("no"))
+                         .arg(abandoned->hasLiveWorker() ? QStringLiteral("yes") : QStringLiteral("no")));
+    }
+
+    const qint64 nowEpochMs = QDateTime::currentMSecsSinceEpoch();
     for (const auto& entry : m_runSessions) {
         const FeatureRunSession& session = entry.second;
         QString featureName = QString::fromStdString(entry.first);
@@ -821,13 +881,69 @@ QString MainWindow::buildCrashReportContextSnapshot() const {
             }
         }
         const bool engineRunning = session.engine && session.engine->isRunning();
-        lines.append(QStringLiteral("    - %1 mode=%2 trigger=%3 block=#%4 engine=%5 hold=%6")
-                         .arg(featureName)
-                         .arg(QString::fromStdString(featureRunModeToString(session.runningMode)))
-                         .arg(triggerPhaseLabel(session.triggerPhase))
-                         .arg(session.runningBlockIndex >= 0 ? session.runningBlockIndex + 1 : 0)
-                         .arg(engineRunning ? QStringLiteral("running") : QStringLiteral("idle"))
-                         .arg(session.holdRunActive ? QStringLiteral("yes") : QStringLiteral("no")));
+        const bool liveWorker = session.engine && session.engine->hasLiveWorker();
+        QStringList sessionBits;
+        sessionBits.append(QStringLiteral("mode=%1")
+                               .arg(QString::fromStdString(featureRunModeToString(session.runningMode))));
+        sessionBits.append(QStringLiteral("trigger=%1").arg(triggerPhaseLabel(session.triggerPhase)));
+        sessionBits.append(QStringLiteral("block=#%1")
+                               .arg(session.runningBlockIndex >= 0 ? session.runningBlockIndex + 1 : 0));
+        sessionBits.append(QStringLiteral("engine=%1")
+                               .arg(engineRunning ? QStringLiteral("running")
+                                                  : (liveWorker ? QStringLiteral("worker") : QStringLiteral("idle"))));
+        sessionBits.append(QStringLiteral("hold=%1")
+                               .arg(session.holdRunActive ? QStringLiteral("yes") : QStringLiteral("no")));
+        sessionBits.append(QStringLiteral("userStop=%1")
+                               .arg(session.userStopRequested ? QStringLiteral("yes") : QStringLiteral("no")));
+        sessionBits.append(QStringLiteral("iteration=%1").arg(session.sessionIteration));
+        if (session.repeatSession) {
+            sessionBits.append(QStringLiteral("repeatRemaining=%1").arg(session.repeatRemaining));
+        }
+        if (!session.lockedCaptureTargetTitle.empty()) {
+            sessionBits.append(QStringLiteral("capture=%1")
+                                   .arg(QString::fromStdWString(session.lockedCaptureTargetTitle)));
+        }
+        if (session.waitingForScopedTargetForeground) {
+            sessionBits.append(QStringLiteral("waitingScopedForeground=yes"));
+        }
+        if (session.deferredSessionWorkflowRefresh) {
+            sessionBits.append(QStringLiteral("deferredWorkflowRefresh=yes"));
+        }
+        if (session.triggerPhase == TriggerSessionPhase::Cooldown && session.triggerCooldownEndsAtEpochMs > 0) {
+            const qint64 remainingMs = session.triggerCooldownEndsAtEpochMs - nowEpochMs;
+            sessionBits.append(QStringLiteral("cooldownRemainingMs=%1").arg(remainingMs));
+        }
+        if (session.consecutiveDetectionFailLoops > 0) {
+            sessionBits.append(QStringLiteral("consecutiveDetectionFailLoops=%1")
+                                   .arg(session.consecutiveDetectionFailLoops));
+        }
+        if (!session.triggerPreemptedSessions.empty()) {
+            sessionBits.append(QStringLiteral("triggerPreempted=%1")
+                                   .arg(static_cast<int>(session.triggerPreemptedSessions.size())));
+        }
+        if (session.sessionContext) {
+            sessionBits.append(QStringLiteral("imageFindPoll=%1")
+                                   .arg(session.sessionContext->imageFindPollAttempt()));
+            sessionBits.append(QStringLiteral("stopRequested=%1")
+                                   .arg(session.sessionContext->shouldStop() ? QStringLiteral("yes")
+                                                                             : QStringLiteral("no")));
+            sessionBits.append(QStringLiteral("paused=%1")
+                                   .arg(session.sessionContext->isPaused() ? QStringLiteral("yes")
+                                                                           : QStringLiteral("no")));
+            sessionBits.append(
+                QStringLiteral("lastMatchConf=%1/%2")
+                    .arg(session.sessionContext->lastMatchAttemptConfidence(), 0, 'f', 3)
+                    .arg(session.sessionContext->lastMatchAttemptThreshold(), 0, 'f', 3));
+        }
+        lines.append(QStringLiteral("    - %1 %2").arg(featureName, sessionBits.join(QLatin1Char(' '))));
+
+        if (session.sessionWorkflow && session.runningBlockIndex >= 0) {
+            const auto& blocks = session.sessionWorkflow->blocks();
+            if (session.runningBlockIndex < static_cast<int>(blocks.size()) && blocks[session.runningBlockIndex]) {
+                lines.append(QStringLiteral("      runningBlock: %1")
+                                 .arg(QString::fromStdString(blocks[session.runningBlockIndex]->summary())));
+            }
+        }
     }
 
     int visibleDialogs = 0;
@@ -839,6 +955,10 @@ QString MainWindow::buildCrashReportContextSnapshot() const {
             }
             if (qobject_cast<QDialog*>(widget)) {
                 ++visibleDialogs;
+                const QString title = widget->windowTitle().trimmed();
+                lines.append(QStringLiteral("  dialog: %1 title=\"%2\"")
+                                 .arg(QString::fromUtf8(widget->metaObject()->className()),
+                                      title.isEmpty() ? QStringLiteral("(untitled)") : title));
             }
         }
         const QWidget* active = app->activeWindow();
@@ -846,10 +966,29 @@ QString MainWindow::buildCrashReportContextSnapshot() const {
             active && (active == this || active->window() == this);
         lines.append(QStringLiteral("  pipbongForeground: %1")
                          .arg(pipbongForeground ? QStringLiteral("yes") : QStringLiteral("no")));
+        if (active) {
+            lines.append(QStringLiteral("  activeWindow: %1 title=\"%2\"")
+                             .arg(QString::fromUtf8(active->metaObject()->className()),
+                                  active->windowTitle().trimmed()));
+        }
     }
     lines.append(QStringLiteral("  visibleDialogs: %1").arg(visibleDialogs));
 
     return lines.join(QLatin1Char('\n'));
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (event->type() == QEvent::MouseButtonRelease) {
+        if (auto* button = qobject_cast<QAbstractButton*>(watched)) {
+            const QString text = button->text().trimmed();
+            const QString label = text.isEmpty()
+                                      ? QString::fromUtf8(button->metaObject()->className())
+                                      : QStringLiteral("%1 \"%2\"")
+                                            .arg(QString::fromUtf8(button->metaObject()->className()), text);
+            CrashReporter::noteUserAction(QStringLiteral("click %1").arg(label));
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::setupUi() {

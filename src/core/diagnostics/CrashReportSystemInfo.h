@@ -5,5 +5,6 @@
 namespace CrashReportSystemInfo {
 
 QString buildSystemSection();
+QString buildForegroundWindowSection();
 
 } // namespace CrashReportSystemInfo

@@ -81,6 +81,7 @@ public:
 protected:
     void closeEvent(QCloseEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 #if defined(Q_OS_WIN)
     bool nativeEvent(const QByteArray& eventType, void* message, qintptr* result) override;
 #endif

@@ -35,13 +35,14 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <QStringConverter>
 
 namespace {
 
 constexpr int kMaxRecentLogLines = 800;
-constexpr int kMaxCriticalLogLines = 20;
+constexpr int kMaxDigestLogLines = 40;
 constexpr int kMaxRetainedCrashFolders = 10;
 constexpr int kGuiHeartbeatIntervalMs = 400;
 constexpr int kGuiHangWatchdogPollMs = 1000;
@@ -68,6 +69,12 @@ std::mutex g_contextMutex;
 CrashContextProvider g_contextProvider;
 QString g_cachedContextSnapshot;
 
+std::mutex g_userActionMutex;
+QString g_lastUserAction;
+qint64 g_lastUserActionMs = 0;
+qint64 g_lastHangSilentMs = 0;
+unsigned long g_watchdogThreadId = 0;
+
 #ifdef _WIN32
 struct MinidumpExceptionInformation {
     DWORD threadId = 0;
@@ -77,6 +84,25 @@ struct MinidumpExceptionInformation {
 
 using MiniDumpWriteDumpFn = BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, DWORD, MinidumpExceptionInformation*, void*, void*);
 #endif
+
+bool isDigestLogLine(const QString& line) {
+    return line.contains(QStringLiteral("] FATAL "))
+           || line.contains(QStringLiteral("] CRIT "))
+           || line.contains(QStringLiteral("] WARN "));
+}
+
+QString lastUserActionSnapshot() {
+    std::lock_guard<std::mutex> lock(g_userActionMutex);
+    if (g_lastUserAction.isEmpty()) {
+        return QString();
+    }
+    const qint64 ageMs =
+        g_lastUserActionMs > 0 ? QDateTime::currentMSecsSinceEpoch() - g_lastUserActionMs : -1;
+    if (ageMs >= 0) {
+        return QStringLiteral("%1 (%2 ms ago)").arg(g_lastUserAction).arg(ageMs);
+    }
+    return g_lastUserAction;
+}
 
 QString kindToString(CrashReportKind kind) {
     switch (kind) {
@@ -306,6 +332,7 @@ void reportGuiThreadHang(qint64 silentMs) {
         return;
     }
 
+    g_lastHangSilentMs = silentMs;
     const QString reason =
         QStringLiteral("GUI thread not responding (hang) - no heartbeat for %1 ms").arg(silentMs);
     const CrashArtifacts artifacts =
@@ -314,6 +341,7 @@ void reportGuiThreadHang(qint64 silentMs) {
 }
 
 void guiHangWatchdogThreadMain() {
+    g_watchdogThreadId = GetCurrentThreadId();
     while (!g_guiHangWatchdogStop.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(kGuiHangWatchdogPollMs));
         if (g_guiHangWatchdogStop.load() || g_guiHangReported.load()) {
@@ -358,7 +386,7 @@ QString exceptionCodeName(DWORD code) {
     }
 }
 
-bool writeMiniDump(const QString& dumpPath, EXCEPTION_POINTERS* exceptionInfo) {
+bool writeMiniDump(const QString& dumpPath, EXCEPTION_POINTERS* exceptionInfo, bool hangReport) {
     HMODULE dbgHelp = LoadLibraryW(L"Dbghelp.dll");
     if (!dbgHelp) {
         return false;
@@ -388,8 +416,14 @@ bool writeMiniDump(const QString& dumpPath, EXCEPTION_POINTERS* exceptionInfo) {
 
     constexpr DWORD kMiniDumpWithThreadInfo = 0x00001000;
     constexpr DWORD kMiniDumpScanMemory = 0x00000010;
-    const BOOL ok = writeDump(GetCurrentProcess(), GetCurrentProcessId(), file,
-                              kMiniDumpWithThreadInfo | kMiniDumpScanMemory, infoPtr, nullptr, nullptr);
+    constexpr DWORD kMiniDumpWithDataSegs = 0x00000001;
+    constexpr DWORD kMiniDumpWithHandleData = 0x00000004;
+    constexpr DWORD kMiniDumpWithUnloadedModules = 0x00000020;
+    DWORD dumpType = kMiniDumpWithThreadInfo | kMiniDumpScanMemory;
+    if (hangReport || !exceptionInfo) {
+        dumpType |= kMiniDumpWithDataSegs | kMiniDumpWithHandleData | kMiniDumpWithUnloadedModules;
+    }
+    const BOOL ok = writeDump(GetCurrentProcess(), GetCurrentProcessId(), file, dumpType, infoPtr, nullptr, nullptr);
     CloseHandle(file);
     FreeLibrary(dbgHelp);
     return ok == TRUE;
@@ -428,6 +462,15 @@ QString buildCrashReportText(CrashReportKind kind,
 
     lines.append(QString());
     lines.append(CrashReportSystemInfo::buildSystemSection());
+    lines.append(QString());
+    lines.append(CrashReportSystemInfo::buildForegroundWindowSection());
+
+    const QString lastAction = lastUserActionSnapshot();
+    if (!lastAction.isEmpty()) {
+        lines.append(QString());
+        lines.append(QStringLiteral("--- last user action ---"));
+        lines.append(QStringLiteral("  %1").arg(lastAction));
+    }
 
     const QString contextSnapshot = cachedContextSnapshot();
     lines.append(QString());
@@ -438,20 +481,37 @@ QString buildCrashReportText(CrashReportKind kind,
         lines.append(contextSnapshot);
     }
 
+    if (hangReport) {
+        lines.append(QString());
+        lines.append(QStringLiteral("--- hang diagnostics ---"));
+        lines.append(QStringLiteral("  heartbeatIntervalMs: %1").arg(kGuiHeartbeatIntervalMs));
+        lines.append(QStringLiteral("  hangThresholdMs: %1").arg(kGuiHangThresholdMs));
+        lines.append(QStringLiteral("  silentMs: %1").arg(g_lastHangSilentMs));
+        const qint64 lastBeat = g_lastGuiHeartbeatMs.load();
+        if (lastBeat > 0) {
+            lines.append(QStringLiteral("  lastHeartbeat: %1 (%2 ms ago)")
+                             .arg(QDateTime::fromMSecsSinceEpoch(lastBeat).toString(Qt::ISODateWithMs))
+                             .arg(QDateTime::currentMSecsSinceEpoch() - lastBeat));
+        }
+        lines.append(QStringLiteral("  mainThreadId: 0x%1")
+                         .arg(g_mainThreadId.load(), 0, 16));
+        lines.append(QStringLiteral("  watchdogThreadId: 0x%1").arg(g_watchdogThreadId, 0, 16));
+    }
+
     lines.append(QString());
-    lines.append(QStringLiteral("--- recent critical messages ---"));
+    lines.append(QStringLiteral("--- recent warnings / errors (newest first) ---"));
     {
         std::lock_guard<std::mutex> lock(g_logMutex);
-        int criticalCount = 0;
+        int digestCount = 0;
         for (auto it = g_recentLogLines.rbegin();
-             it != g_recentLogLines.rend() && criticalCount < kMaxCriticalLogLines;
+             it != g_recentLogLines.rend() && digestCount < kMaxDigestLogLines;
              ++it) {
-            if (it->contains(QStringLiteral("] CRIT "))) {
+            if (isDigestLogLine(*it)) {
                 lines.append(*it);
-                ++criticalCount;
+                ++digestCount;
             }
         }
-        if (criticalCount == 0) {
+        if (digestCount == 0) {
             lines.append(QStringLiteral("  (none)"));
         }
     }
@@ -460,13 +520,31 @@ QString buildCrashReportText(CrashReportKind kind,
         lines.append(QString());
         lines.append(QStringLiteral("--- GUI thread stack ---"));
         const unsigned long mainThreadId = g_mainThreadId.load();
-        if (!Win32StackWalker::appendGuiThreadStackTrace(lines, mainThreadId)) {
+        if (!Win32StackWalker::appendGuiThreadStackTrace(lines, mainThreadId, 48)) {
             lines.append(QStringLiteral("  (failed to capture GUI thread stack)"));
         }
 
         lines.append(QString());
         lines.append(QStringLiteral("--- watchdog thread stack ---"));
-        Win32StackWalker::appendCurrentThreadStackTrace(lines);
+        Win32StackWalker::appendCurrentThreadStackTrace(lines, 24);
+
+        lines.append(QString());
+        lines.append(QStringLiteral("--- other process threads (summary) ---"));
+        std::vector<unsigned long> skipThreads;
+        if (mainThreadId != 0) {
+            skipThreads.push_back(mainThreadId);
+        }
+        if (g_watchdogThreadId != 0) {
+            skipThreads.push_back(g_watchdogThreadId);
+        }
+        const int otherThreads =
+            Win32StackWalker::appendAllProcessThreadStackTraces(lines, skipThreads, 16, 12);
+        if (otherThreads == 0) {
+            lines.append(QStringLiteral("  (no additional thread stacks captured)"));
+        } else {
+            lines.append(QStringLiteral("  captured %1 additional thread(s); see threads.txt for full detail")
+                             .arg(otherThreads));
+        }
     } else {
         lines.append(QString());
         lines.append(QStringLiteral("--- stack trace ---"));
@@ -524,11 +602,42 @@ CrashArtifacts writeCrashArtifacts(CrashReportKind kind,
     const QString dumpPath = QDir(artifacts.folderPath).filePath(QStringLiteral("crash.dmp"));
     const QString logPath = QDir(artifacts.folderPath).filePath(QStringLiteral("recent_log.txt"));
     const QString kindPath = QDir(artifacts.folderPath).filePath(QStringLiteral("kind.txt"));
+    const QString threadsPath = QDir(artifacts.folderPath).filePath(QStringLiteral("threads.txt"));
 
     artifacts.reportText =
         buildCrashReportText(kind, reason, exceptionInfo, fallbackContext, hangReport);
     writeTextFile(reportPath, artifacts.reportText);
     writeTextFile(kindPath, kindToString(kind) + QLatin1Char('\n'));
+
+    if (hangReport) {
+        QStringList threadLines;
+        threadLines.append(QStringLiteral("PIPBONG thread stacks (hang capture)"));
+        threadLines.append(QStringLiteral("timestamp: %1")
+                               .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs)));
+        threadLines.append(QString());
+
+        const unsigned long mainThreadId = g_mainThreadId.load();
+        threadLines.append(QStringLiteral("--- GUI thread %1 ---").arg(mainThreadId));
+        if (!Win32StackWalker::appendGuiThreadStackTrace(threadLines, mainThreadId, 64)) {
+            threadLines.append(QStringLiteral("  (failed)"));
+        }
+        threadLines.append(QString());
+
+        threadLines.append(QStringLiteral("--- watchdog thread %1 ---").arg(g_watchdogThreadId));
+        Win32StackWalker::appendCurrentThreadStackTrace(threadLines, 32);
+        threadLines.append(QString());
+
+        threadLines.append(QStringLiteral("--- all other process threads ---"));
+        std::vector<unsigned long> skipThreads;
+        if (mainThreadId != 0) {
+            skipThreads.push_back(mainThreadId);
+        }
+        if (g_watchdogThreadId != 0) {
+            skipThreads.push_back(g_watchdogThreadId);
+        }
+        Win32StackWalker::appendAllProcessThreadStackTraces(threadLines, skipThreads, 32, 48);
+        writeTextFile(threadsPath, threadLines.join(QLatin1Char('\n')));
+    }
 
     {
         std::lock_guard<std::mutex> lock(g_logMutex);
@@ -540,7 +649,7 @@ CrashArtifacts writeCrashArtifacts(CrashReportKind kind,
         writeTextFile(logPath, logLines.join(QLatin1Char('\n')));
     }
 
-    if (!writeMiniDump(dumpPath, exceptionInfo)) {
+    if (!writeMiniDump(dumpPath, exceptionInfo, hangReport)) {
         QFile(dumpPath).remove();
     }
 
@@ -686,6 +795,15 @@ void CrashReporter::setContextProvider(CrashContextProvider provider) {
     refreshContextCacheFromProvider();
 }
 
+void CrashReporter::noteUserAction(const QString& description) {
+    if (description.trimmed().isEmpty()) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_userActionMutex);
+    g_lastUserAction = description.trimmed();
+    g_lastUserActionMs = QDateTime::currentMSecsSinceEpoch();
+}
+
 bool CrashReporter::hasPendingReport() {
     return QFile::exists(pendingMarkerPath());
 }
@@ -785,6 +903,7 @@ bool CrashReporter::exportReportFolderAsZip(const QString& folderPath, const QSt
     const QStringList candidates = {
         QStringLiteral("report.txt"),
         QStringLiteral("recent_log.txt"),
+        QStringLiteral("threads.txt"),
         QStringLiteral("crash.dmp"),
         QStringLiteral("user_note.txt"),
         QStringLiteral("kind.txt"),
