@@ -197,6 +197,7 @@ private:
     void stopAllSessions();
     void stopAllSessionsForProfileSwitch();
     void stopSessionEngineForProfileSwitch(FeatureRunSession& session, Feature* feature);
+    void abandonSessionEngine(FeatureRunSession& session);
     void pruneAbandonedEngines();
     void flushDeferredProfileSwitchIfIdle();
     bool hasTriggerMonitoringSessions() const;

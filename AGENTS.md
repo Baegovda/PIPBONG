@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.231` (from `project(PIPBONG VERSION 0.8.231)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.232` (from `project(PIPBONG VERSION 0.8.232)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.232] - 2026-07-20
+
+### Fixed
+
+- GUI hang (~6+ s) when stopping multiple concurrent trigger **감시** sessions or exiting with active runs: `stopAllSessions` and **실행 중지** no longer call blocking `WorkflowEngine::stopAndWait()` on the UI thread — engines are stopped and moved to `m_abandonedEngines` while `finishRunSession` tears down UI state immediately (`MainWindow::abandonSessionEngine`, `stopFeatureRun`, `stopAllSessions`, `stopSessionEngineForProfileSwitch`).
+- `WorkflowEngine::stopAndWait` no longer falls back to an unbounded `QThread::wait()` when the bounded timeout expires; destructor uses `stopAndWaitBounded(250ms)` only (`WorkflowEngine`).
 
 ## [0.8.231] - 2026-07-20
 

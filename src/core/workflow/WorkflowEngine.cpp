@@ -267,7 +267,7 @@ WorkflowEngine::WorkflowEngine(QObject* parent)
 }
 
 WorkflowEngine::~WorkflowEngine() {
-    stopAndWait();
+    stopAndWaitBounded(250);
 }
 
 bool WorkflowEngine::isRunning() const {
@@ -332,36 +332,8 @@ void WorkflowEngine::stop() {
 }
 
 void WorkflowEngine::stopAndWait(int timeoutMs) {
-    stop();
-
-    QThread* worker = nullptr;
-    {
-        QMutexLocker lock(&m_mutex);
-        m_workerShutdown = true;
-        m_jobReady.wakeAll();
-        worker = m_worker;
-    }
-
-    if (worker && worker->isRunning()) {
-        const int boundedMs = timeoutMs > 0 ? timeoutMs : 5000;
-        if (!worker->wait(boundedMs) && worker->isRunning()) {
-            worker->wait();
-        }
-    }
-
-    {
-        QMutexLocker lock(&m_mutex);
-        delete m_worker;
-        m_worker = nullptr;
-        m_workerShutdown = false;
-        m_hasQueuedJob = false;
-        m_queuedWorkflow.reset();
-        m_queuedContext.reset();
-        m_queuedPreparer = nullptr;
-        m_activeContext.reset();
-        m_running = false;
-        m_hasPendingResult = false;
-    }
+    const int boundedMs = timeoutMs > 0 ? timeoutMs : 5000;
+    stopAndWaitBounded(boundedMs);
 }
 
 bool WorkflowEngine::hasLiveWorker() const {

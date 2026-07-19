@@ -2811,6 +2811,15 @@ void MainWindow::updateRunUiState() {
     maybeStartAutomaticUpdate();
 }
 
+void MainWindow::abandonSessionEngine(FeatureRunSession& session) {
+    if (!session.engine) {
+        return;
+    }
+    session.engine->stop();
+    m_abandonedEngines.push_back(std::move(session.engine));
+    pruneAbandonedEngines();
+}
+
 void MainWindow::stopFeatureRun(const std::string& featureId) {
     FeatureRunSession* session = sessionFor(featureId);
     if (!session) {
@@ -2824,43 +2833,30 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     ++session->holdRepeatGeneration;
     ++session->triggerCooldownGeneration;
 
-    if (!session->engine) {
-        finishRunSession(featureId, session->lastLoopSuccess, QString());
-        return;
-    }
-
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
     if (session->runningMode == FeatureRunMode::Hold) {
         releaseHoldHotkeyInputToTarget(*session, feature);
     }
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
-    appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
-
-    session->engine->stop();
-    if (!session->engine->isRunning()) {
-        finishRunSession(featureId, session->lastLoopSuccess, QString());
+    if (session->engine) {
+        appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
+        abandonSessionEngine(*session);
     }
+
+    finishRunSession(featureId, session->lastLoopSuccess, QString());
 }
 
 void MainWindow::stopAllSessions() {
     UserInputInterruptMonitor::instance().unregisterAll();
     MouseCenterLock::releaseAll();
-    for (auto& entry : m_runSessions) {
-        if (entry.second.sessionContext) {
-            entry.second.sessionContext->endRunInputSession();
-        }
-        if (entry.second.engine) {
-            entry.second.userStopRequested = true;
-            entry.second.repeatSession = false;
-            entry.second.holdRunActive = false;
-            ++entry.second.holdRepeatGeneration;
-            ++entry.second.triggerCooldownGeneration;
-            entry.second.engine->stopAndWait();
-        }
-        restoreRunStartCursorPosition(entry.second);
+    std::vector<std::string> featureIds;
+    featureIds.reserve(m_runSessions.size());
+    for (const auto& entry : m_runSessions) {
+        featureIds.push_back(entry.first);
     }
-    m_runSessions.clear();
-    updateRunUiState();
+    for (const std::string& featureId : featureIds) {
+        stopFeatureRun(featureId);
+    }
 }
 
 void MainWindow::stopAllSessionsForProfileSwitch() {
@@ -2928,10 +2924,7 @@ void MainWindow::stopSessionEngineForProfileSwitch(FeatureRunSession& session, F
     if (session.runningMode == FeatureRunMode::Hold) {
         releaseHoldHotkeyInputToTarget(session, feature);
     }
-    constexpr int kProfileSwitchEngineStopWaitMs = 250;
-    if (!session.engine->stopAndWaitBounded(kProfileSwitchEngineStopWaitMs)) {
-        m_abandonedEngines.push_back(std::move(session.engine));
-    }
+    abandonSessionEngine(session);
 }
 
 void MainWindow::onFeatureRunRequested(const QString& featureId) {
