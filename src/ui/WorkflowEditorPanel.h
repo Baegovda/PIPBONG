@@ -33,7 +33,7 @@ public:
 
     void setFeature(Feature* feature);
     void setProfileDisplayName(const QString& name);
-    void setProjectDirectory(const QString& directory);
+    void setProjectDirectory(const QString& directory, bool refreshList = true);
     void refresh();
     void setEditingEnabled(bool enabled);
     void clearBlockMatchResults();

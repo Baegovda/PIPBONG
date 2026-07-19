@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.237` (from `project(PIPBONG VERSION 0.8.237)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.238` (from `project(PIPBONG VERSION 0.8.238)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.238] - 2026-07-20
+
+### Fixed
+
+- GUI hang after feature run / **기능 편집** confirm: profile `.pipbong` package seal (`ProjectPackage::packDirectory` / `tar` wait up to 120 s) moved off the GUI thread via `QtConcurrent::run`; shutdown and export still seal synchronously (`MainWindow::sealActiveProfilePackage`, `CMakeLists.txt` `Qt6::Concurrent`).
+- Abandoned `WorkflowEngine` leak (hang report showed 11 engines with live workers): `finishRunSession` and inactive `startFeatureRun` reuse now call `abandonSessionEngine` instead of destroying engines on the GUI thread; `pruneAbandonedEngines` shuts down idle workers with `stopAndWaitBounded` and caps the list at 4 (`MainWindow`).
+- Duplicate workflow panel refresh: `refreshWorkflowEditor` passes `refreshList=false` to `setProjectDirectory` before `setFeature` (`WorkflowEditorPanel`, `MainWindow`).
 
 ## [0.8.237] - 2026-07-20
 

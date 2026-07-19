@@ -100,6 +100,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QToolButton>
+#include <QtConcurrent/QtConcurrent>
 #include <QUuid>
 #include <QVector>
 #include <QVBoxLayout>
@@ -705,7 +706,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_profilePackageSealTimer = new QTimer(this);
     m_profilePackageSealTimer->setSingleShot(true);
     m_profilePackageSealTimer->setInterval(5000);
-    connect(m_profilePackageSealTimer, &QTimer::timeout, this, &MainWindow::sealActiveProfilePackage);
+    connect(m_profilePackageSealTimer, &QTimer::timeout, this, [this]() { sealActiveProfilePackage(false); });
 
     m_statusClearTimer = new QTimer(this);
     m_statusClearTimer->setSingleShot(true);
@@ -2474,7 +2475,8 @@ void MainWindow::prepareForShutdown() {
     saveSelectedFeaturePreference();
     autoSaveProject();
     saveActiveProfileSettings();
-    sealActiveProfilePackage();
+    sealActiveProfilePackage(true);
+    pruneAbandonedEngines();
     if (m_uiState) {
         m_uiState->saveNow();
     }
@@ -2646,12 +2648,30 @@ void MainWindow::scheduleProfilePackageSeal() {
     m_profilePackageSealTimer->start();
 }
 
-void MainWindow::sealActiveProfilePackage() {
+void MainWindow::sealActiveProfilePackage(bool synchronous) {
     if (!m_profileManager) {
         return;
     }
+
     saveActiveProfileSettings();
-    m_profileManager->sealProfilePackage(m_profileManager->activeProfileId());
+
+    const QString profileId = m_profileManager->activeProfileId();
+    const QString profileDirectory = m_profileManager->profileDirectory(profileId);
+    const QString packagePath = m_profileManager->profilePackagePath(profileId);
+
+    if (synchronous) {
+        ProjectPackage::packDirectory(profileDirectory, packagePath);
+        return;
+    }
+
+    if (m_profilePackageSealRunning.exchange(true)) {
+        return;
+    }
+
+    QtConcurrent::run([this, profileDirectory, packagePath]() {
+        ProjectPackage::packDirectory(profileDirectory, packagePath);
+        QTimer::singleShot(0, this, [this]() { m_profilePackageSealRunning.store(false); });
+    });
 }
 
 void MainWindow::onImportProfilePackage() {
@@ -2692,7 +2712,7 @@ void MainWindow::onExportProfilePackage() {
         return;
     }
     saveActiveProfileSettings();
-    sealActiveProfilePackage();
+    sealActiveProfilePackage(true);
 
     const ProfileManager::Profile* profile = m_profileManager->activeProfile();
     const QString defaultBaseName =
@@ -2736,9 +2756,11 @@ void MainWindow::refreshWorkflowEditor() {
     QString workflowProfileName;
     if (m_libraryPreviewFeature && !m_libraryPreviewEntryId.isEmpty()) {
         workflowProfileName = tr("라이브러리");
-        m_workflowEditor->setProjectDirectory(m_featureLibraryManager
-                                                  ? m_featureLibraryManager->entryProjectDirectory(m_libraryPreviewEntryId)
-                                                  : Application::instance()->projectDirectory());
+        m_workflowEditor->setProjectDirectory(
+            m_featureLibraryManager
+                ? m_featureLibraryManager->entryProjectDirectory(m_libraryPreviewEntryId)
+                : Application::instance()->projectDirectory(),
+            false);
         m_workflowEditor->setProfileDisplayName(workflowProfileName);
         m_workflowEditor->setFeature(m_libraryPreviewFeature.get());
         m_workflowEditor->clearLoopTiming();
@@ -2756,7 +2778,7 @@ void MainWindow::refreshWorkflowEditor() {
     m_workflowEditor->setProfileDisplayName(workflowProfileName);
 
     Feature* feature = m_featureList->selectedFeature();
-    m_workflowEditor->setProjectDirectory(Application::instance()->projectDirectory());
+    m_workflowEditor->setProjectDirectory(Application::instance()->projectDirectory(), false);
     m_workflowEditor->setFeature(feature);
     if (feature) {
         if (FeatureRunSession* session = sessionFor(feature->id())) {
@@ -3095,13 +3117,26 @@ bool MainWindow::hasTriggerMonitoringSessions() const {
 }
 
 void MainWindow::pruneAbandonedEngines() {
-    m_abandonedEngines.erase(
-        std::remove_if(m_abandonedEngines.begin(),
-                       m_abandonedEngines.end(),
-                       [](const std::unique_ptr<WorkflowEngine>& engine) {
-                           return !engine || !engine->hasLiveWorker();
-                       }),
-        m_abandonedEngines.end());
+    auto tryShutdownIdleEngine = [](const std::unique_ptr<WorkflowEngine>& engine) {
+        if (!engine || engine->isRunning()) {
+            return false;
+        }
+        engine->stopAndWaitBounded(1);
+        return !engine->hasLiveWorker();
+    };
+
+    m_abandonedEngines.erase(std::remove_if(m_abandonedEngines.begin(),
+                                            m_abandonedEngines.end(),
+                                            tryShutdownIdleEngine),
+                             m_abandonedEngines.end());
+
+    constexpr std::size_t kMaxAbandonedEngines = 4;
+    while (m_abandonedEngines.size() > kMaxAbandonedEngines) {
+        if (m_abandonedEngines.front()) {
+            m_abandonedEngines.front()->stopAndWaitBounded(1);
+        }
+        m_abandonedEngines.erase(m_abandonedEngines.begin());
+    }
 }
 
 void MainWindow::flushDeferredProfileSwitchIfIdle() {
@@ -3936,6 +3971,9 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
             existing->sessionContext->endRunInputSession();
         }
         UserInputInterruptMonitor::instance().unregisterSession(featureId);
+        if (existing->engine) {
+            abandonSessionEngine(*existing);
+        }
         m_runSessions.erase(featureId);
     }
 
@@ -5047,6 +5085,10 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
 
     if (session && session->runningMode == FeatureRunMode::Trigger && session->userStopRequested) {
         persistTriggerArmedState(QString::fromStdString(featureId), false);
+    }
+
+    if (session && session->engine) {
+        abandonSessionEngine(*session);
     }
 
     UserInputInterruptMonitor::instance().unregisterSession(featureId);

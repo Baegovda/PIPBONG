@@ -14,6 +14,7 @@
 #include <QPointer>
 #include <QSet>
 #include <QMutex>
+#include <atomic>
 #include <map>
 #include <memory>
 #include <string>
@@ -242,7 +243,7 @@ private:
     void scheduleAutoSave();
     void autoSaveProject(bool quiet = false);
     void scheduleProfilePackageSeal();
-    void sealActiveProfilePackage();
+    void sealActiveProfilePackage(bool synchronous = false);
     bool ensureProjectFilePath();
     void prepareForShutdown();
     void setupTrayIcon();
@@ -395,6 +396,7 @@ private:
     QString m_libraryPreviewEntryId;
     QTimer* m_autoSaveTimer = nullptr;
     QTimer* m_profilePackageSealTimer = nullptr;
+    std::atomic_bool m_profilePackageSealRunning{false};
     QTimer* m_statusClearTimer = nullptr;
     QTimer* m_updateCheckTimer = nullptr;
     QTimer* m_mouseLockSyncTimer = nullptr;

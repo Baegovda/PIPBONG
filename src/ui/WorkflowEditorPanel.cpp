@@ -1069,9 +1069,12 @@ void WorkflowEditorPanel::clearLoopTiming() {
     updateTitleText();
 }
 
-void WorkflowEditorPanel::setProjectDirectory(const QString& directory) {
+void WorkflowEditorPanel::setProjectDirectory(const QString& directory, bool refreshList) {
+    if (m_projectDirectory == directory) {
+        return;
+    }
     m_projectDirectory = directory;
-    if (m_feature) {
+    if (refreshList && m_feature) {
         refresh();
     }
 }

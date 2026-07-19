@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.237 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.238 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -10,7 +10,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network Concurrent)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
@@ -167,6 +167,7 @@ target_include_directories(PIPBONG PRIVATE
 target_link_libraries(PIPBONG PRIVATE
     Qt6::Widgets
     Qt6::Network
+    Qt6::Concurrent
     opencv_core
     opencv_imgproc
     opencv_imgcodecs
