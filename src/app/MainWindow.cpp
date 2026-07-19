@@ -2237,6 +2237,9 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
         if (msg->message == kForegroundProfileSyncMessage) {
             syncProfileToForegroundWindow();
             resumeWaitingScopedTargetForegroundSessions();
+            if (hasTriggerMonitoringSessions()) {
+                syncEffectiveTargetWindowTitleToCapture();
+            }
             *result = 0;
             return true;
         }
@@ -2935,6 +2938,7 @@ void MainWindow::updateRunUiState() {
     }
 
     pruneAbandonedEngines();
+    scheduleEnsureTriggerMonitorEnginesRunning();
     flushDeferredProfileSwitchIfIdle();
     maybeStartAutomaticUpdate();
 }
@@ -4598,6 +4602,50 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
         }
         continueRepeatSession(*session, current, success, message);
     });
+}
+
+void MainWindow::scheduleEnsureTriggerMonitorEnginesRunning() {
+    if (m_ensureTriggerMonitorPending) {
+        return;
+    }
+    m_ensureTriggerMonitorPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_ensureTriggerMonitorPending = false;
+        ensureTriggerMonitorEnginesRunning();
+    });
+}
+
+void MainWindow::ensureTriggerMonitorEnginesRunning() {
+    if (!m_project) {
+        return;
+    }
+
+    for (auto& entry : m_runSessions) {
+        FeatureRunSession& session = entry.second;
+        if (session.runningMode != FeatureRunMode::Trigger
+            || session.triggerPhase != TriggerSessionPhase::Monitoring) {
+            continue;
+        }
+        if (session.waitingForScopedTargetForeground || session.userStopRequested
+            || !session.repeatSession) {
+            continue;
+        }
+
+        Feature* feature = m_project->featureById(session.featureId);
+        if (!feature || !shouldContinueRunSession(session, feature)) {
+            continue;
+        }
+
+        if (!session.engine) {
+            session.engine = std::make_unique<WorkflowEngine>(this);
+            connectSessionEngine(session);
+        }
+        if (session.engine->isRunning()) {
+            continue;
+        }
+
+        launchTriggerMonitor(session, feature, false);
+    }
 }
 
 void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* feature, bool firstSessionStart) {
@@ -6576,6 +6624,12 @@ void MainWindow::refreshSessionCaptureTarget(FeatureRunSession& session) {
     if (shouldAdopt && session.lockedCaptureTargetTitle != resolved) {
         session.lockedCaptureTargetTitle = resolved;
         applySessionCaptureTarget(resolved);
+        if (triggerWatchMayMigrate) {
+            if (session.sessionContext) {
+                session.sessionContext->setTargetWindowTitleForWorker(resolved);
+            }
+            scheduleEnsureTriggerMonitorEnginesRunning();
+        }
     }
 }
 
@@ -6663,6 +6717,9 @@ void MainWindow::syncEffectiveTargetWindowTitleToCapture() {
         if (session.sessionContext && session.lockedCaptureTargetTitle != before
             && !session.lockedCaptureTargetTitle.empty()) {
             session.sessionContext->setTargetWindowTitleForWorker(session.lockedCaptureTargetTitle);
+        }
+        if (session.lockedCaptureTargetTitle != before) {
+            scheduleEnsureTriggerMonitorEnginesRunning();
         }
     }
 }

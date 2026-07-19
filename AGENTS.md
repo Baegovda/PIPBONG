@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.235` (from `project(PIPBONG VERSION 0.8.235)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.236` (from `project(PIPBONG VERSION 0.8.236)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.236] - 2026-07-20
+
+### Fixed
+
+- Trigger mode **감시** no longer stalls without ImageFind poll attempts after a main↔sub capture-target round-trip (e.g. in-game on main, then back to launcher sub): `ensureTriggerMonitorEnginesRunning` relaunches the monitor worker when the session UI still shows **감시** but the engine stopped; capture-scope migration and foreground changes schedule the same relaunch (`MainWindow`).
 
 ## [0.8.235] - 2026-07-20
 

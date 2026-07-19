@@ -268,6 +268,8 @@ private:
                                  bool success,
                                  const QString& message);
     void launchTriggerMonitor(FeatureRunSession& session, Feature* feature, bool firstSessionStart);
+    void scheduleEnsureTriggerMonitorEnginesRunning();
+    void ensureTriggerMonitorEnginesRunning();
     void launchTriggerActionRun(FeatureRunSession& session, Feature* feature);
     void refreshSessionWorkflowFromProject(FeatureRunSession& session, Feature* feature);
     void applyDeferredSessionWorkflowRefresh(FeatureRunSession& session, Feature* feature);
@@ -429,4 +431,5 @@ private:
     QString m_lastLinkedForegroundProfileId;
     QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;
     bool m_scopedTargetForegroundResumePending = false;
+    bool m_ensureTriggerMonitorPending = false;
 };
