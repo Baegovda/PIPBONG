@@ -4,6 +4,7 @@
 #include "core/input/HotkeyBinding.h"
 #include "model/FeatureRunMode.h"
 #include "model/FeatureCaptureTargetScope.h"
+#include "model/TriggerListAnimationSettings.h"
 #include "model/UserInputInterruptMode.h"
 
 #include <QDialog>
@@ -75,6 +76,9 @@ public:
     int loopIntervalMinMs() const;
     int loopIntervalMaxMs() const;
 
+    void setTriggerListAnimations(const TriggerModeListAnimationSettings& settings);
+    TriggerModeListAnimationSettings triggerListAnimations() const;
+
 protected:
     void showEvent(QShowEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
@@ -96,6 +100,8 @@ private:
     void tryAccept();
     bool isInteractiveWidget(const QWidget* widget) const;
     void applyHotkeyLabelIdleStyle();
+    void updateTriggerAnimationSummary();
+    void openTriggerAnimationSettings();
 
     Project* m_project = nullptr;
     std::string m_featureId;
@@ -129,6 +135,11 @@ private:
     QLabel* m_triggerCooldownLabel = nullptr;
     QWidget* m_triggerCooldownRow = nullptr;
     DragAdjustSpinBox* m_triggerCooldownSpin = nullptr;
+    QWidget* m_triggerAnimationRow = nullptr;
+    QLabel* m_triggerAnimationSummary = nullptr;
+    QPushButton* m_triggerAnimationButton = nullptr;
+    TriggerModeListAnimationSettings m_triggerListAnimations =
+        TriggerModeListAnimationSettings::defaults();
     QWidget* m_loopIntervalSection = nullptr;
     AnimatedTwoWaySwitch* m_loopIntervalModeSwitch = nullptr;
     QStackedWidget* m_loopIntervalInputStack = nullptr;

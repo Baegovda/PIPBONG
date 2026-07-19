@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.229` (from `project(PIPBONG VERSION 0.8.229)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.230` (from `project(PIPBONG VERSION 0.8.230)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.230] - 2026-07-20
+
+### Added
+
+- Per-feature trigger **목록 표시** animation settings in **기능 편집** (visible when **트리거 모드**): **애니메이션 설정…** opens `TriggerModeAnimationSettingsDialog` to edit **감시** / **쿨다운** / **동작** list visuals (style, accent color, speed, sonar options); persisted as JSON `triggerListAnimations` on `Feature` (`TriggerListAnimationSettings`, `TriggerListAnimationRenderer`, `FeatureEditDialog`).
 
 ## [0.8.229] - 2026-07-20
 

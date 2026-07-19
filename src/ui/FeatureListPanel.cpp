@@ -5,6 +5,7 @@
 #include "ui/widgets/ListColumnHeaderWidget.h"
 #include "ui/UiResizeHandle.h"
 #include "ui/HotkeyBindingIcon.h"
+#include "ui/TriggerListAnimationRenderer.h"
 #include "model/Feature.h"
 #include "model/FeatureRunMode.h"
 #include "model/Project.h"
@@ -184,121 +185,6 @@ QString triggerCooldownModeDisplayText(qint64 remainingMs) {
 }
 
 QRect featureRunButtonHitRect(const QRect& runColumnRect);
-
-void paintTriggerCooldownRunButton(QPainter* painter,
-                                   const QRect& runColumnRect,
-                                   qint64 remainingMs,
-                                   int animationPhase,
-                                   const QColor& accent,
-                                   const QPalette& palette) {
-    const QRect btnRect = featureRunButtonHitRect(runColumnRect);
-    painter->save();
-    painter->setRenderHint(QPainter::Antialiasing, true);
-
-    QColor track = palette.color(QPalette::Mid);
-    track.setAlpha(72);
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(track);
-    painter->drawEllipse(btnRect);
-
-    QColor spinColor = accent.isValid() ? accent : palette.color(QPalette::Highlight);
-    QPen arcPen(spinColor, qMax(2.0, btnRect.width() * 0.13));
-    arcPen.setCapStyle(Qt::RoundCap);
-    painter->setPen(arcPen);
-    painter->setBrush(Qt::NoBrush);
-    const QRect arcRect = btnRect.adjusted(2, 2, -2, -2);
-    const int startAngle = static_cast<int>(animationPhase * 15 * 16);
-    const int spanAngle = 270 * 16;
-    painter->drawArc(arcRect, startAngle, spanAngle);
-
-    const int remainSec = static_cast<int>((qMax<qint64>(0, remainingMs) + 999) / 1000);
-    QFont font = painter->font();
-    font.setPointSize(qMax(7, btnRect.height() / 3));
-    font.setBold(true);
-    painter->setFont(font);
-    QColor textColor = palette.color(QPalette::WindowText);
-    if (accent.isValid()) {
-        textColor = spinColor;
-    }
-    painter->setPen(textColor);
-    painter->drawText(btnRect, Qt::AlignCenter, QString::number(remainSec));
-
-    painter->restore();
-}
-
-void paintTriggerWatchModeIcon(QPainter* painter,
-                               const QRect& modeColumnRect,
-                               int animationPhase,
-                               const QColor& accent,
-                               const QPalette& palette) {
-    const int side = qBound(12, qMin(modeColumnRect.width(), modeColumnRect.height()) - 4, 18);
-    const QRect iconRect(modeColumnRect.left() + (modeColumnRect.width() - side) / 2,
-                         modeColumnRect.top() + (modeColumnRect.height() - side) / 2,
-                         side,
-                         side);
-    const QPointF center = iconRect.center();
-    const qreal maxRadius = iconRect.width() * 0.48;
-
-    painter->save();
-    painter->setRenderHint(QPainter::Antialiasing, true);
-
-    QColor base = accent.isValid() ? accent : kTriggerWatchAccent;
-    if (!accent.isValid()) {
-        const qreal pulse = 0.72 + 0.28 * std::sin(animationPhase * M_PI / 36.0);
-        base.setAlpha(static_cast<int>(pulse * 220.0));
-    }
-
-    const auto drawSonarRipple = [&](int phaseOffset, qreal startRadiusFactor, qreal endRadiusFactor) {
-        const qreal t = static_cast<qreal>((animationPhase + phaseOffset) % 48) / 48.0;
-        const qreal eased = 1.0 - (1.0 - t) * (1.0 - t);
-        const qreal radius = maxRadius * (startRadiusFactor + (endRadiusFactor - startRadiusFactor) * eased);
-        QColor ripple = base;
-        ripple.setAlpha(static_cast<int>((1.0 - t) * 150.0));
-        QPen pen(ripple, qMax(1.0, iconRect.width() * 0.09));
-        pen.setCapStyle(Qt::RoundCap);
-        painter->setPen(pen);
-        painter->setBrush(Qt::NoBrush);
-        painter->drawEllipse(center, radius, radius);
-    };
-
-    drawSonarRipple(0, 0.28, 0.98);
-    drawSonarRipple(24, 0.28, 0.98);
-
-    QColor ring = base;
-    ring.setAlpha(qMin(255, base.alpha() + 35));
-    QPen ringPen(ring, qMax(1.0, iconRect.width() * 0.08));
-    ringPen.setCapStyle(Qt::RoundCap);
-    painter->setPen(ringPen);
-    painter->setBrush(Qt::NoBrush);
-    painter->drawEllipse(center, maxRadius * 0.42, maxRadius * 0.42);
-
-    const qreal sweepDeg = static_cast<qreal>(animationPhase % 96) / 96.0 * 360.0;
-    QColor sweep = base;
-    sweep.setAlpha(static_cast<int>(base.alpha() * 0.55));
-    QPen sweepPen(sweep, qMax(1.5, iconRect.width() * 0.11));
-    sweepPen.setCapStyle(Qt::RoundCap);
-    painter->setPen(sweepPen);
-    const QRectF arcRect(center.x() - maxRadius * 0.9,
-                         center.y() - maxRadius * 0.9,
-                         maxRadius * 1.8,
-                         maxRadius * 1.8);
-    painter->drawArc(arcRect, static_cast<int>((90.0 - sweepDeg) * 16.0), 52 * 16);
-
-    const qreal dotPulse = 0.65 + 0.35 * std::sin(animationPhase * M_PI / 18.0);
-    QColor dot = palette.color(QPalette::WindowText);
-    if (accent.isValid()) {
-        dot = accent;
-    } else {
-        dot = kTriggerWatchAccent;
-    }
-    dot.setAlpha(static_cast<int>(dotPulse * 255.0));
-    painter->setPen(Qt::NoPen);
-    painter->setBrush(dot);
-    const qreal dotRadius = qMax(1.2, iconRect.width() * 0.11 * dotPulse);
-    painter->drawEllipse(center, dotRadius, dotRadius);
-
-    painter->restore();
-}
 
 HotkeyBinding hotkeyBindingFromIndex(const QModelIndex& index) {
     HotkeyBinding binding;
@@ -637,8 +523,12 @@ void paintFeatureListRowChrome(QPainter* painter,
                                bool hovered,
                                FeatureRunVisualKind visualKind,
                                int animationPhase,
-                               const QPalette& palette) {
-    if (running && visualKind == FeatureRunVisualKind::ActiveRun) {
+                               const QPalette& palette,
+                               const TriggerModeListAnimationSettings& listAnimations,
+                               bool triggerActionUsesCustomAnimation) {
+    if (running && visualKind == FeatureRunVisualKind::ActiveRun
+        && (!triggerActionUsesCustomAnimation
+            || listAnimations.action.style == TriggerListAnimationStyle::DefaultPrism)) {
         paintPrismActiveRunRowChrome(painter, rect, selected, hovered, animationPhase, palette);
         QColor separator = palette.color(QPalette::Mid);
         if (darkThemeFromPalette(palette) && separator.lightness() < 90) {
@@ -660,11 +550,23 @@ void paintFeatureListRowChrome(QPainter* painter,
     }
     painter->fillRect(rect, rowBg);
 
-    if (running && visualKind != FeatureRunVisualKind::ActiveRun) {
+    if (running
+        && (visualKind != FeatureRunVisualKind::ActiveRun || triggerActionUsesCustomAnimation)) {
         const bool watch = visualKind == FeatureRunVisualKind::TriggerWatch;
-        const qreal pulse = 0.5 + 0.5 * std::sin(animationPhase * M_PI / (watch ? 36.0 : 24.0));
-        const QColor washBase = watch ? kTriggerWatchWash : kTriggerCooldownWash;
-        const int washAlpha = watch ? static_cast<int>(12 + pulse * 14) : static_cast<int>(8 + pulse * 8);
+        const bool cooldown = visualKind == FeatureRunVisualKind::TriggerCooldown;
+        const TriggerListStateAnimationSettings& stateSettings =
+            watch ? listAnimations.watch
+                  : (cooldown ? listAnimations.cooldown : listAnimations.action);
+        const TriggerAnimationState animationState =
+            watch ? TriggerAnimationState::Watch
+                  : (cooldown ? TriggerAnimationState::Cooldown : TriggerAnimationState::Action);
+        const qreal pulse =
+            TriggerListAnimationRenderer::rowPulseFactor(animationState, animationPhase, stateSettings);
+        const QColor washBase =
+            watch ? kTriggerWatchWash : (cooldown ? kTriggerCooldownWash : kTriggerWatchWash);
+        const int washAlpha =
+            watch ? static_cast<int>(12 + pulse * 14)
+                  : (cooldown ? static_cast<int>(8 + pulse * 8) : static_cast<int>(10 + pulse * 12));
         QColor wash = washBase;
         wash.setAlpha(washAlpha);
         const QRect inner = rect.adjusted(1, 2, -1, -2);
@@ -685,17 +587,30 @@ void paintFeatureListRowChrome(QPainter* painter,
     } else if (running) {
         QColor accent = palette.color(QPalette::Highlight);
         if (visualKind == FeatureRunVisualKind::TriggerWatch) {
-            const qreal pulse = 0.72 + 0.28 * std::sin(animationPhase * M_PI / 36.0);
-            accent = kTriggerWatchAccent;
+            accent = TriggerListAnimationRenderer::resolvedAccentColor(TriggerAnimationState::Watch,
+                                                                       listAnimations.watch);
+            const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
+                TriggerAnimationState::Watch, animationPhase, listAnimations.watch);
             accent.setAlpha(static_cast<int>(pulse * 190.0));
         } else if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
-            const qreal pulse = 0.55 + 0.25 * std::sin(animationPhase * M_PI / 24.0);
-            accent = kTriggerCooldownAccent;
+            accent = TriggerListAnimationRenderer::resolvedAccentColor(TriggerAnimationState::Cooldown,
+                                                                       listAnimations.cooldown);
+            const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
+                TriggerAnimationState::Cooldown, animationPhase, listAnimations.cooldown);
             accent.setAlpha(static_cast<int>(pulse * 150.0));
         } else if (visualKind == FeatureRunVisualKind::ActiveRun) {
-            const PrismRunningTone prism = prismRunningTone(animationPhase, false);
-            accent = prism.core;
-            accent.setAlpha(static_cast<int>(prism.shimmer * 215.0));
+            if (triggerActionUsesCustomAnimation
+                && listAnimations.action.style != TriggerListAnimationStyle::DefaultPrism) {
+                accent = TriggerListAnimationRenderer::resolvedAccentColor(TriggerAnimationState::Action,
+                                                                           listAnimations.action);
+                const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
+                    TriggerAnimationState::Action, animationPhase, listAnimations.action);
+                accent.setAlpha(static_cast<int>(pulse * 190.0));
+            } else {
+                const PrismRunningTone prism = prismRunningTone(animationPhase, false);
+                accent = prism.core;
+                accent.setAlpha(static_cast<int>(prism.shimmer * 215.0));
+            }
         }
         painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()), accent);
     }
@@ -714,7 +629,9 @@ void paintFeatureName(QPainter* painter,
                       const QString& name,
                       bool runningGlow,
                       FeatureRunVisualKind visualKind,
-                      int animationPhase) {
+                      int animationPhase,
+                      const TriggerModeListAnimationSettings& listAnimations,
+                      bool triggerActionCustom) {
     QFont nameFont = option.font;
     if (runningGlow) {
         nameFont.setBold(true);
@@ -732,12 +649,16 @@ void paintFeatureName(QPainter* painter,
     }
 
     if (visualKind == FeatureRunVisualKind::TriggerWatch) {
-        const qreal pulse = 0.88 + 0.12 * std::sin(animationPhase * M_PI / 36.0);
+        const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
+            TriggerAnimationState::Watch, animationPhase, listAnimations.watch);
         QColor nameColor = baseText;
         if (selected) {
             nameColor = option.palette.color(QPalette::HighlightedText);
         }
         QColor glow = kTriggerWatchWash;
+        if (listAnimations.watch.accentColor.isValid()) {
+            glow = listAnimations.watch.accentColor;
+        }
         glow.setAlpha(static_cast<int>(24 * pulse));
         painter->setFont(nameFont);
         painter->setPen(glow);
@@ -748,13 +669,32 @@ void paintFeatureName(QPainter* painter,
     }
 
     if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
-        const qreal pulse = 0.82 + 0.18 * std::sin(animationPhase * M_PI / 24.0);
+        const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
+            TriggerAnimationState::Cooldown, animationPhase, listAnimations.cooldown);
         QColor nameColor = baseText;
         if (selected) {
             nameColor = option.palette.color(QPalette::HighlightedText);
         }
         nameColor.setAlpha(static_cast<int>(pulse * 255.0));
         painter->setFont(nameFont);
+        painter->setPen(nameColor);
+        painter->drawText(rect, align, elided);
+        return;
+    }
+
+    if (triggerActionCustom) {
+        const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
+            TriggerAnimationState::Action, animationPhase, listAnimations.action);
+        QColor nameColor = baseText;
+        if (selected) {
+            nameColor = option.palette.color(QPalette::HighlightedText);
+        }
+        QColor glow = TriggerListAnimationRenderer::resolvedAccentColor(TriggerAnimationState::Action,
+                                                                        listAnimations.action);
+        glow.setAlpha(static_cast<int>(28 * pulse));
+        painter->setFont(nameFont);
+        painter->setPen(glow);
+        painter->drawText(rect.adjusted(-1, 0, 1, 0), align, elided);
         painter->setPen(nameColor);
         painter->drawText(rect, align, elided);
         return;
@@ -943,6 +883,13 @@ public:
             return;
         }
 
+        const TriggerModeListAnimationSettings listAnimations =
+            feature ? feature->triggerListAnimations() : TriggerModeListAnimationSettings::defaults();
+        const bool triggerActionCustom =
+            feature && feature->runMode() == FeatureRunMode::Trigger && isRunning
+            && m_panel->featureRunVisualKind(featureId) == FeatureRunVisualKind::ActiveRun
+            && listAnimations.action.style != TriggerListAnimationStyle::DefaultPrism;
+
         paintFeatureListRowChrome(painter,
                                   opt.rect,
                                   selected,
@@ -950,7 +897,9 @@ public:
                                   hovered,
                                   m_panel->featureRunVisualKind(featureId),
                                   m_panel->animationPhase(),
-                                  opt.palette);
+                                  opt.palette,
+                                  listAnimations,
+                                  triggerActionCustom);
         if (!featureEnabled) {
             QColor disabledOverlay = opt.palette.color(QPalette::Mid);
             disabledOverlay.setAlpha(48);
@@ -959,7 +908,8 @@ public:
 
         const FeatureRunVisualKind visualKind = m_panel->featureRunVisualKind(featureId);
         const int animationPhase = m_panel->animationPhase();
-        if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
+        if (visualKind == FeatureRunVisualKind::TriggerCooldown
+            && listAnimations.cooldown.style == TriggerListAnimationStyle::CountdownText) {
             const qint64 remainingMs = m_panel->triggerCooldownRemainingMs(featureId);
             if (remainingMs >= 0) {
                 modeText = triggerCooldownModeDisplayText(remainingMs);
@@ -967,8 +917,12 @@ public:
         }
         const bool triggerWatchModeIcon =
             visualKind == FeatureRunVisualKind::TriggerWatch && featureEnabled && isRunning;
+        const bool triggerCooldownModeIcon =
+            visualKind == FeatureRunVisualKind::TriggerCooldown && featureEnabled && isRunning
+            && listAnimations.cooldown.style != TriggerListAnimationStyle::CountdownText;
         const bool prismRow =
-            featureEnabled && isRunning && visualKind == FeatureRunVisualKind::ActiveRun;
+            featureEnabled && isRunning && visualKind == FeatureRunVisualKind::ActiveRun
+            && !triggerActionCustom;
         const PrismRunningTone prismTone =
             prismRow ? prismRunningTone(animationPhase, selected) : PrismRunningTone{};
         QColor triggerAccent;
@@ -977,14 +931,25 @@ public:
             runAccent = &prismTone.core;
         } else if (featureEnabled && isRunning) {
             if (visualKind == FeatureRunVisualKind::TriggerWatch) {
-                const qreal pulse = 0.72 + 0.28 * std::sin(animationPhase * M_PI / 36.0);
-                triggerAccent = kTriggerWatchAccent;
+                triggerAccent = TriggerListAnimationRenderer::resolvedAccentColor(
+                    TriggerAnimationState::Watch, listAnimations.watch);
+                const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
+                    TriggerAnimationState::Watch, animationPhase, listAnimations.watch);
                 triggerAccent.setAlpha(static_cast<int>(pulse * 200.0));
                 runAccent = &triggerAccent;
             } else if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
-                const qreal pulse = 0.55 + 0.25 * std::sin(animationPhase * M_PI / 24.0);
-                triggerAccent = kTriggerCooldownAccent;
+                triggerAccent = TriggerListAnimationRenderer::resolvedAccentColor(
+                    TriggerAnimationState::Cooldown, listAnimations.cooldown);
+                const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
+                    TriggerAnimationState::Cooldown, animationPhase, listAnimations.cooldown);
                 triggerAccent.setAlpha(static_cast<int>(pulse * 165.0));
+                runAccent = &triggerAccent;
+            } else if (triggerActionCustom) {
+                triggerAccent = TriggerListAnimationRenderer::resolvedAccentColor(
+                    TriggerAnimationState::Action, listAnimations.action);
+                const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
+                    TriggerAnimationState::Action, animationPhase, listAnimations.action);
+                triggerAccent.setAlpha(static_cast<int>(pulse * 200.0));
                 runAccent = &triggerAccent;
             }
         }
@@ -1004,12 +969,12 @@ public:
             triggerCooldownRow ? m_panel->triggerCooldownRemainingMs(featureId) : -1;
 
         if (triggerCooldownRow && cooldownRemainingMs >= 0) {
-            paintTriggerCooldownRunButton(painter,
-                                          cols.run,
-                                          cooldownRemainingMs,
-                                          animationPhase,
-                                          triggerAccent.isValid() ? triggerAccent : QColor(),
-                                          opt.palette);
+            TriggerListAnimationRenderer::paintCooldownRunButton(painter,
+                                                                 cols.run,
+                                                                 cooldownRemainingMs,
+                                                                 animationPhase,
+                                                                 listAnimations.cooldown,
+                                                                 opt.palette);
         } else {
             paintFeatureRunButton(painter,
                                   cols.run,
@@ -1025,7 +990,9 @@ public:
                          featureName,
                          featureEnabled && isRunning && !featureName.isEmpty() && !isDragSource,
                          visualKind,
-                         animationPhase);
+                         animationPhase,
+                         listAnimations,
+                         triggerActionCustom);
 
         QFont secondaryFont = opt.font;
         secondaryFont.setPointSize(qMax(secondaryFont.pointSize() - 1, 8));
@@ -1039,11 +1006,19 @@ public:
             modeColor.setAlpha(selected ? 210 : 185);
         }
         if (triggerWatchModeIcon) {
-            paintTriggerWatchModeIcon(painter,
-                                      cols.mode,
-                                      animationPhase,
-                                      runAccent != nullptr ? *runAccent : QColor(),
-                                      opt.palette);
+            TriggerListAnimationRenderer::paintListIcon(painter,
+                                                        cols.mode,
+                                                        animationPhase,
+                                                        listAnimations.watch,
+                                                        TriggerAnimationState::Watch,
+                                                        opt.palette);
+        } else if (triggerCooldownModeIcon) {
+            TriggerListAnimationRenderer::paintListIcon(painter,
+                                                        cols.mode,
+                                                        animationPhase,
+                                                        listAnimations.cooldown,
+                                                        TriggerAnimationState::Cooldown,
+                                                        opt.palette);
         } else {
             drawCellText(painter,
                          cols.mode,
@@ -2287,6 +2262,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
                              m_project,
                              feature->id(),
                              this);
+    dialog.setTriggerListAnimations(feature->triggerListAnimations());
     if (dialog.exec() != QDialog::Accepted) {
         return false;
     }
@@ -2309,6 +2285,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setRoiCorrectionExpandPercent(dialog.roiCorrectionExpandPercent());
     feature->setEditFirstTemplateRoiOnStart(dialog.editFirstTemplateRoiOnStart());
     feature->setTriggerCooldownMs(dialog.triggerCooldownMs());
+    feature->setTriggerListAnimations(dialog.triggerListAnimations());
     feature->setLoopIntervalMs(dialog.loopIntervalMs());
     feature->setLoopIntervalRandomRange(dialog.loopIntervalRandomRange());
     feature->setLoopIntervalMinMs(dialog.loopIntervalMinMs());

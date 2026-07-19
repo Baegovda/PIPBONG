@@ -4,6 +4,7 @@
 #include "core/workflow/Workflow.h"
 #include "model/FeatureCaptureTargetScope.h"
 #include "model/FeatureRunMode.h"
+#include "model/TriggerListAnimationSettings.h"
 #include "model/UserInputInterruptMode.h"
 
 #include <memory>
@@ -112,6 +113,13 @@ public:
     bool requireScopedTargetForeground() const { return m_requireScopedTargetForeground; }
     void setRequireScopedTargetForeground(bool require) { m_requireScopedTargetForeground = require; }
 
+    const TriggerModeListAnimationSettings& triggerListAnimations() const {
+        return m_triggerListAnimations;
+    }
+    void setTriggerListAnimations(const TriggerModeListAnimationSettings& settings) {
+        m_triggerListAnimations = clampTriggerModeListAnimations(settings);
+    }
+
     std::unique_ptr<Feature> clone() const;
     /// New feature id; clears hotkey by default (paste / profile copy). Library import passes preserveHotkey.
     std::unique_ptr<Feature> duplicateAsNewInstance(bool preserveHotkey = false) const;
@@ -143,6 +151,8 @@ private:
     bool m_hotkeyAllowExtraModifiers = false;
     FeatureCaptureTargetScope m_captureTargetScope = FeatureCaptureTargetScope::Auto;
     bool m_requireScopedTargetForeground = false;
+    TriggerModeListAnimationSettings m_triggerListAnimations =
+        TriggerModeListAnimationSettings::defaults();
     HotkeyBinding m_hotkey;
     Workflow m_workflow;
 };

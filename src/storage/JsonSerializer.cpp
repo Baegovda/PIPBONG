@@ -7,6 +7,7 @@
 #include "model/FeatureRunMode.h"
 #include "model/UserInputInterruptMode.h"
 #include "model/Feature.h"
+#include "model/TriggerListAnimationSettings.h"
 
 #include <QDir>
 #include <QFile>
@@ -92,6 +93,11 @@ nlohmann::json featureToJsonImpl(const Feature& feature) {
     if (feature.requireScopedTargetForeground()) {
         json["requireScopedTargetForeground"] = true;
     }
+    const nlohmann::json triggerAnimationsJson =
+        triggerModeListAnimationsToJson(feature.triggerListAnimations());
+    if (!triggerAnimationsJson.empty()) {
+        json["triggerListAnimations"] = triggerAnimationsJson;
+    }
     return json;
 }
 
@@ -132,6 +138,9 @@ void featureFromJsonImpl(const nlohmann::json& json, Feature& feature) {
     feature.setCaptureTargetScope(
         featureCaptureTargetScopeFromString(json.value("captureTargetScope", "Auto")));
     feature.setRequireScopedTargetForeground(json.value("requireScopedTargetForeground", false));
+    if (json.contains("triggerListAnimations")) {
+        feature.setTriggerListAnimations(triggerModeListAnimationsFromJson(json["triggerListAnimations"]));
+    }
     feature.workflow().clear();
     if (json.contains("workflow")) {
         JsonSerializer::workflowFromJson(json["workflow"], feature.workflow());

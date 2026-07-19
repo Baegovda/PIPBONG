@@ -5,6 +5,7 @@
 #include "model/Project.h"
 #include "model/Feature.h"
 #include "model/FeatureCaptureTargetScope.h"
+#include "ui/TriggerModeAnimationSettingsDialog.h"
 #include "ui/UiStrings.h"
 #include "ui/UiThemeColors.h"
 #include "ui/widgets/AnimatedTwoWaySwitch.h"
@@ -328,6 +329,27 @@ void FeatureEditDialog::setupUi() {
             std::clamp(m_triggerCooldownSpin->value(), 0, kTriggerCooldownMaxSeconds));
     });
 
+    m_triggerAnimationRow = new QWidget(this);
+    auto* triggerAnimationLayout = new QVBoxLayout(m_triggerAnimationRow);
+    triggerAnimationLayout->setContentsMargins(0, 0, 0, 0);
+    triggerAnimationLayout->setSpacing(4);
+    m_triggerAnimationSummary = new QLabel(m_triggerAnimationRow);
+    m_triggerAnimationSummary->setWordWrap(true);
+    auto* triggerAnimationButtonRow = new QHBoxLayout();
+    m_triggerAnimationButton = new QPushButton(tr("애니메이션 설정…"), m_triggerAnimationRow);
+    triggerAnimationButtonRow->addWidget(m_triggerAnimationButton);
+    triggerAnimationButtonRow->addStretch();
+    triggerAnimationLayout->addWidget(m_triggerAnimationSummary);
+    triggerAnimationLayout->addLayout(triggerAnimationButtonRow);
+    m_triggerAnimationRow->setToolTip(
+        tr("기능 목록에서 트리거 감시·쿨다운·동작 상태별로 표시되는 아이콘과 강조 애니메이션을 설정합니다."));
+    form->addRow(tr("목록 표시"), m_triggerAnimationRow);
+    connect(m_triggerAnimationButton,
+            &QPushButton::clicked,
+            this,
+            &FeatureEditDialog::openTriggerAnimationSettings);
+    updateTriggerAnimationSummary();
+
     m_userInputInterruptCombo = new QComboBox(this);
     m_userInputInterruptCombo->addItem(tr("완전 정지"), static_cast<int>(UserInputInterruptMode::Stop));
     m_userInputInterruptCombo->addItem(tr("일시정지"), static_cast<int>(UserInputInterruptMode::Pause));
@@ -538,6 +560,9 @@ void FeatureEditDialog::updateModeDependentUi() {
     }
     if (m_triggerCooldownRow) {
         m_triggerCooldownRow->setVisible(triggerMode);
+    }
+    if (m_triggerAnimationRow) {
+        m_triggerAnimationRow->setVisible(triggerMode);
     }
 
     const bool roiCorrectionEligible = mode == FeatureRunMode::RepeatInfinite
@@ -786,6 +811,31 @@ int FeatureEditDialog::loopIntervalMinMs() const {
 
 int FeatureEditDialog::loopIntervalMaxMs() const {
     return m_loopIntervalMaxSpin ? snapWaitDelayMs(m_loopIntervalMaxSpin->value()) : 0;
+}
+
+void FeatureEditDialog::setTriggerListAnimations(const TriggerModeListAnimationSettings& settings) {
+    m_triggerListAnimations = clampTriggerModeListAnimations(settings);
+    updateTriggerAnimationSummary();
+}
+
+TriggerModeListAnimationSettings FeatureEditDialog::triggerListAnimations() const {
+    return m_triggerListAnimations;
+}
+
+void FeatureEditDialog::updateTriggerAnimationSummary() {
+    if (!m_triggerAnimationSummary) {
+        return;
+    }
+    m_triggerAnimationSummary->setText(triggerModeListAnimationSummary(m_triggerListAnimations));
+}
+
+void FeatureEditDialog::openTriggerAnimationSettings() {
+    TriggerModeAnimationSettingsDialog dialog(m_triggerListAnimations, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    m_triggerListAnimations = dialog.settings();
+    updateTriggerAnimationSummary();
 }
 
 void FeatureEditDialog::reject() {

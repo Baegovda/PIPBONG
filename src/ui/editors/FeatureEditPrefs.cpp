@@ -7,6 +7,7 @@
 #include "model/FeatureCaptureTargetScope.h"
 #include "model/FeatureRunMode.h"
 #include "model/UserInputInterruptMode.h"
+#include "model/TriggerListAnimationSettings.h"
 
 #include <QSettings>
 
@@ -82,6 +83,9 @@ void applySettingsJson(const nlohmann::json& json, Feature& feature) {
     if (json.contains("requireScopedTargetForeground")) {
         feature.setRequireScopedTargetForeground(json.value("requireScopedTargetForeground", false));
     }
+    if (json.contains("triggerListAnimations")) {
+        feature.setTriggerListAnimations(triggerModeListAnimationsFromJson(json["triggerListAnimations"]));
+    }
     if (json.contains("hotkey")) {
         feature.setHotkey(HotkeyBinding::fromJson(json["hotkey"]));
     } else if (json.contains("hotkeyCleared") && json.value("hotkeyCleared", false)) {
@@ -112,6 +116,11 @@ nlohmann::json featureSettingsToJson(const Feature& feature) {
     json["captureTargetScope"] = featureCaptureTargetScopeToString(feature.captureTargetScope());
     if (feature.requireScopedTargetForeground()) {
         json["requireScopedTargetForeground"] = true;
+    }
+    const nlohmann::json triggerAnimationsJson =
+        triggerModeListAnimationsToJson(feature.triggerListAnimations());
+    if (!triggerAnimationsJson.empty()) {
+        json["triggerListAnimations"] = triggerAnimationsJson;
     }
     if (feature.hotkey().isEmpty()) {
         json["hotkeyCleared"] = true;
