@@ -226,6 +226,80 @@ void paintTriggerCooldownRunButton(QPainter* painter,
     painter->restore();
 }
 
+void paintTriggerWatchModeIcon(QPainter* painter,
+                               const QRect& modeColumnRect,
+                               int animationPhase,
+                               const QColor& accent,
+                               const QPalette& palette) {
+    const int side = qBound(12, qMin(modeColumnRect.width(), modeColumnRect.height()) - 4, 18);
+    const QRect iconRect(modeColumnRect.left() + (modeColumnRect.width() - side) / 2,
+                         modeColumnRect.top() + (modeColumnRect.height() - side) / 2,
+                         side,
+                         side);
+    const QPointF center = iconRect.center();
+    const qreal maxRadius = iconRect.width() * 0.48;
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+
+    QColor base = accent.isValid() ? accent : kTriggerWatchAccent;
+    if (!accent.isValid()) {
+        const qreal pulse = 0.72 + 0.28 * std::sin(animationPhase * M_PI / 36.0);
+        base.setAlpha(static_cast<int>(pulse * 220.0));
+    }
+
+    const auto drawSonarRipple = [&](int phaseOffset, qreal startRadiusFactor, qreal endRadiusFactor) {
+        const qreal t = static_cast<qreal>((animationPhase + phaseOffset) % 48) / 48.0;
+        const qreal eased = 1.0 - (1.0 - t) * (1.0 - t);
+        const qreal radius = maxRadius * (startRadiusFactor + (endRadiusFactor - startRadiusFactor) * eased);
+        QColor ripple = base;
+        ripple.setAlpha(static_cast<int>((1.0 - t) * 150.0));
+        QPen pen(ripple, qMax(1.0, iconRect.width() * 0.09));
+        pen.setCapStyle(Qt::RoundCap);
+        painter->setPen(pen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawEllipse(center, radius, radius);
+    };
+
+    drawSonarRipple(0, 0.28, 0.98);
+    drawSonarRipple(24, 0.28, 0.98);
+
+    QColor ring = base;
+    ring.setAlpha(qMin(255, base.alpha() + 35));
+    QPen ringPen(ring, qMax(1.0, iconRect.width() * 0.08));
+    ringPen.setCapStyle(Qt::RoundCap);
+    painter->setPen(ringPen);
+    painter->setBrush(Qt::NoBrush);
+    painter->drawEllipse(center, maxRadius * 0.42, maxRadius * 0.42);
+
+    const qreal sweepDeg = static_cast<qreal>(animationPhase % 96) / 96.0 * 360.0;
+    QColor sweep = base;
+    sweep.setAlpha(static_cast<int>(base.alpha() * 0.55));
+    QPen sweepPen(sweep, qMax(1.5, iconRect.width() * 0.11));
+    sweepPen.setCapStyle(Qt::RoundCap);
+    painter->setPen(sweepPen);
+    const QRectF arcRect(center.x() - maxRadius * 0.9,
+                         center.y() - maxRadius * 0.9,
+                         maxRadius * 1.8,
+                         maxRadius * 1.8);
+    painter->drawArc(arcRect, static_cast<int>((90.0 - sweepDeg) * 16.0), 52 * 16);
+
+    const qreal dotPulse = 0.65 + 0.35 * std::sin(animationPhase * M_PI / 18.0);
+    QColor dot = palette.color(QPalette::WindowText);
+    if (accent.isValid()) {
+        dot = accent;
+    } else {
+        dot = kTriggerWatchAccent;
+    }
+    dot.setAlpha(static_cast<int>(dotPulse * 255.0));
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(dot);
+    const qreal dotRadius = qMax(1.2, iconRect.width() * 0.11 * dotPulse);
+    painter->drawEllipse(center, dotRadius, dotRadius);
+
+    painter->restore();
+}
+
 HotkeyBinding hotkeyBindingFromIndex(const QModelIndex& index) {
     HotkeyBinding binding;
     binding.virtualKey = index.data(kHotkeyVirtualKeyRole).toInt();
@@ -890,9 +964,9 @@ public:
             if (remainingMs >= 0) {
                 modeText = triggerCooldownModeDisplayText(remainingMs);
             }
-        } else if (visualKind == FeatureRunVisualKind::TriggerWatch) {
-            modeText = QStringLiteral("\u25CE");
         }
+        const bool triggerWatchModeIcon =
+            visualKind == FeatureRunVisualKind::TriggerWatch && featureEnabled && isRunning;
         const bool prismRow =
             featureEnabled && isRunning && visualKind == FeatureRunVisualKind::ActiveRun;
         const PrismRunningTone prismTone =
@@ -964,11 +1038,19 @@ public:
             modeColor = *runAccent;
             modeColor.setAlpha(selected ? 210 : 185);
         }
-        drawCellText(painter,
-                     cols.mode,
-                     modeText,
-                     secondaryFont,
-                     isDragSource ? dragMuted : modeColor);
+        if (triggerWatchModeIcon) {
+            paintTriggerWatchModeIcon(painter,
+                                      cols.mode,
+                                      animationPhase,
+                                      runAccent != nullptr ? *runAccent : QColor(),
+                                      opt.palette);
+        } else {
+            drawCellText(painter,
+                         cols.mode,
+                         modeText,
+                         secondaryFont,
+                         isDragSource ? dragMuted : modeColor);
+        }
         if (hasHotkey) {
             const qreal iconOpacity = isDragSource ? 0.55 : (featureEnabled ? 1.0 : 0.45);
             drawHotkeyBindingInRect(painter, cols.hotkey, hotkeyBinding, iconOpacity);

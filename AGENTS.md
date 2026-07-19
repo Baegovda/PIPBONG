@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.228` (from `project(PIPBONG VERSION 0.8.228)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.229` (from `project(PIPBONG VERSION 0.8.229)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.229] - 2026-07-20
+
+### Changed
+
+- Feature list trigger **감시** mode column: static ◎ glyph replaced with animated sonar/radar icon (expanding ripples, rotating sweep arc, pulsing center) so active monitoring reads as in progress (`FeatureListPanel::paintTriggerWatchModeIcon`).
 
 ## [0.8.228] - 2026-07-20
 
