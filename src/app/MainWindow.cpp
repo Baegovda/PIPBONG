@@ -2813,26 +2813,33 @@ void MainWindow::updateRunUiState() {
 
 void MainWindow::stopFeatureRun(const std::string& featureId) {
     FeatureRunSession* session = sessionFor(featureId);
-    if (!session || !session->engine) {
+    if (!session) {
         return;
     }
 
     session->userStopRequested = true;
     session->repeatSession = false;
     session->holdRunActive = false;
+    session->waitingForScopedTargetForeground = false;
     ++session->holdRepeatGeneration;
     ++session->triggerCooldownGeneration;
+
+    if (!session->engine) {
+        finishRunSession(featureId, session->lastLoopSuccess, QString());
+        return;
+    }
+
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
     if (session->runningMode == FeatureRunMode::Hold) {
         releaseHoldHotkeyInputToTarget(*session, feature);
     }
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
     appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
+
+    session->engine->stop();
     if (!session->engine->isRunning()) {
         finishRunSession(featureId, session->lastLoopSuccess, QString());
-        return;
     }
-    session->engine->stop();
 }
 
 void MainWindow::stopAllSessions() {
@@ -4728,6 +4735,11 @@ void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
                                              Feature* feature,
                                              bool success,
                                              const QString& message) {
+    if (!shouldContinueRunSession(session, feature)) {
+        finishRunSession(session.featureId, session.lastLoopSuccess, QString());
+        return;
+    }
+
     if (session.triggerPhase == TriggerSessionPhase::Monitoring) {
         if (session.sessionContext) {
             session.sessionContext->setTriggerMonitorBlockIndex(-1);
@@ -4751,9 +4763,7 @@ void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
             scheduleTriggerCooldown(session, feature);
             return;
         }
-        if (!session.userStopRequested) {
-            appendSessionLog(session, tr("실행 실패 — 감시를 다시 시작합니다"), LogLineKind::Warning);
-        }
+        appendSessionLog(session, tr("실행 실패 — 감시를 다시 시작합니다"), LogLineKind::Warning);
         launchTriggerMonitor(session, feature, false);
     }
 }
@@ -5592,8 +5602,13 @@ void MainWindow::onBlockImageFindAttempt(int index,
     }
     if (session->runningMode == FeatureRunMode::Trigger
         && session->triggerPhase == TriggerSessionPhase::Monitoring) {
-        // Session title only — ScreenCapture is refreshed on the worker thread to avoid racing capture.
         refreshSessionCaptureTarget(*session);
+        if (session->sessionContext) {
+            const std::wstring title = sessionCaptureTargetTitleW(*session);
+            if (!title.empty()) {
+                session->sessionContext->setTargetWindowTitleForWorker(title);
+            }
+        }
     }
     if (!isDisplayedRunningFeature(session)) {
         return;

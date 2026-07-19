@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.230` (from `project(PIPBONG VERSION 0.8.230)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.231` (from `project(PIPBONG VERSION 0.8.231)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.231] - 2026-07-20
+
+### Fixed
+
+- Trigger mode **실행 중지** now tears down the session when stop is requested during 감시/쿨다운/동작: `stopFeatureRun` finishes idle trigger sessions immediately and `handleTriggerEngineFinished` no longer relaunches monitor/action after `repeatSession` is cleared (`MainWindow`).
+- Trigger **감시** polls refresh the worker capture target from the session locked title on each attempt so main→sub HWND handoff during monitoring works without UI-thread `ScreenCapture` writes (`ExecutionContext::setTargetWindowTitleForWorker`, `MainWindow::onBlockImageFindAttempt`).
 
 ## [0.8.230] - 2026-07-20
 

@@ -170,6 +170,8 @@ public:
     void clearRememberedPositions();
 
     void setTargetWindowTitle(const std::wstring& title);
+    /// Updates the bound title only; ScreenCapture HWND/title sync happens on the worker thread.
+    void setTargetWindowTitleForWorker(const std::wstring& title);
     std::wstring targetWindowTitle() const;
 
 #ifdef _WIN32

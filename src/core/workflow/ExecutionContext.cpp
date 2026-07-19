@@ -532,6 +532,10 @@ void ExecutionContext::setTargetWindowTitle(const std::wstring& title) {
     ScreenCapture::setTargetWindowTitle(title);
 }
 
+void ExecutionContext::setTargetWindowTitleForWorker(const std::wstring& title) {
+    m_targetWindowTitle = title;
+}
+
 std::wstring ExecutionContext::targetWindowTitle() const {
     return m_targetWindowTitle;
 }
@@ -546,6 +550,9 @@ HWND ExecutionContext::targetWindow() const {
 }
 
 void ExecutionContext::refreshTargetWindowHandle() const {
+    if (!m_targetWindowTitle.empty()) {
+        ScreenCapture::setTargetWindowTitle(m_targetWindowTitle);
+    }
     HWND hwnd = ScreenCapture::targetWindow();
     if (hwnd && IsWindow(hwnd)) {
         return;
