@@ -1354,6 +1354,10 @@ void InputSimulator::setActiveExecutionContext(ExecutionContext* context) {
     g_activeExecutionContext = context;
 }
 
+ExecutionContext* InputSimulator::activeExecutionContext() {
+    return g_activeExecutionContext;
+}
+
 int normalizeModifierVirtualKey(int virtualKey) {
     switch (virtualKey) {
     case VK_LSHIFT:

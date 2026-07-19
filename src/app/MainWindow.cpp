@@ -1,5 +1,7 @@
 #include "app/MainWindow.h"
 
+#include <algorithm>
+
 #include "app/Application.h"
 #include "app/FeatureHotkeyGate.h"
 #include "app/PerfTrace.h"
@@ -2804,6 +2806,8 @@ void MainWindow::updateRunUiState() {
         }
     }
 
+    pruneAbandonedEngines();
+    flushDeferredProfileSwitchIfIdle();
     maybeStartAutomaticUpdate();
 }
 
@@ -2854,28 +2858,73 @@ void MainWindow::stopAllSessions() {
 
 void MainWindow::stopAllSessionsForProfileSwitch() {
     PIPBONG_PERF_SCOPE("stopAllSessionsForProfileSwitch");
+    pruneAbandonedEngines();
     UserInputInterruptMonitor::instance().unregisterAll();
     MouseCenterLock::releaseAll();
     for (auto& entry : m_runSessions) {
         if (entry.second.sessionContext) {
             entry.second.sessionContext->endRunInputSession();
         }
-        if (entry.second.engine) {
-            entry.second.userStopRequested = true;
-            entry.second.repeatSession = false;
-            entry.second.holdRunActive = false;
-            ++entry.second.holdRepeatGeneration;
-            ++entry.second.triggerCooldownGeneration;
-            Feature* feature = m_project ? m_project->featureById(entry.first) : nullptr;
-            if (entry.second.runningMode == FeatureRunMode::Hold) {
-                releaseHoldHotkeyInputToTarget(entry.second, feature);
-            }
-            entry.second.engine->stopAndWait();
-        }
+        Feature* feature = m_project ? m_project->featureById(entry.first) : nullptr;
+        stopSessionEngineForProfileSwitch(entry.second, feature);
         restoreRunStartCursorPosition(entry.second);
     }
     m_runSessions.clear();
     updateRunUiState();
+    flushDeferredProfileSwitchIfIdle();
+}
+
+bool MainWindow::hasTriggerMonitoringSessions() const {
+    for (const auto& entry : m_runSessions) {
+        if (isTriggerMonitoring(entry.second)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void MainWindow::pruneAbandonedEngines() {
+    m_abandonedEngines.erase(
+        std::remove_if(m_abandonedEngines.begin(),
+                       m_abandonedEngines.end(),
+                       [](const std::unique_ptr<WorkflowEngine>& engine) {
+                           return !engine || !engine->hasLiveWorker();
+                       }),
+        m_abandonedEngines.end());
+}
+
+void MainWindow::flushDeferredProfileSwitchIfIdle() {
+    if (m_deferredProfileSwitchId.isEmpty() || m_switchingProfile || !m_profileManager) {
+        return;
+    }
+    if (hasTriggerMonitoringSessions()) {
+        return;
+    }
+    const QString profileId = m_deferredProfileSwitchId;
+    if (profileId == m_profileManager->activeProfileId()) {
+        m_deferredProfileSwitchId.clear();
+        return;
+    }
+    m_deferredProfileSwitchId.clear();
+    switchToProfile(profileId, true);
+}
+
+void MainWindow::stopSessionEngineForProfileSwitch(FeatureRunSession& session, Feature* feature) {
+    if (!session.engine) {
+        return;
+    }
+    session.userStopRequested = true;
+    session.repeatSession = false;
+    session.holdRunActive = false;
+    ++session.holdRepeatGeneration;
+    ++session.triggerCooldownGeneration;
+    if (session.runningMode == FeatureRunMode::Hold) {
+        releaseHoldHotkeyInputToTarget(session, feature);
+    }
+    constexpr int kProfileSwitchEngineStopWaitMs = 250;
+    if (!session.engine->stopAndWaitBounded(kProfileSwitchEngineStopWaitMs)) {
+        m_abandonedEngines.push_back(std::move(session.engine));
+    }
 }
 
 void MainWindow::onFeatureRunRequested(const QString& featureId) {
@@ -5894,6 +5943,7 @@ void MainWindow::syncProfileToForegroundWindow() {
     if (!m_profileManager || m_switchingProfile) {
         return;
     }
+    pruneAbandonedEngines();
 #ifdef _WIN32
     HWND hwnd = GetForegroundWindow();
     if (!hwnd || !IsWindow(hwnd)) {
@@ -5988,7 +6038,20 @@ void MainWindow::syncProfileToForegroundWindow() {
     } else {
         m_recentAutomaticDefaultProfileSwitchTimer.invalidate();
     }
+
+    if (hasTriggerMonitoringSessions()) {
+        m_deferredProfileSwitchId = targetProfileId;
+        return;
+    }
+    constexpr int kAutomaticProfileSwitchMinIntervalMs = 800;
+    if (m_lastAutomaticProfileSwitchTimer.isValid()
+        && m_lastAutomaticProfileSwitchTimer.elapsed() < kAutomaticProfileSwitchMinIntervalMs) {
+        m_deferredProfileSwitchId = targetProfileId;
+        return;
+    }
+
     switchToProfile(targetProfileId, true);
+    m_lastAutomaticProfileSwitchTimer.start();
 #else
     Q_UNUSED(this);
 #endif

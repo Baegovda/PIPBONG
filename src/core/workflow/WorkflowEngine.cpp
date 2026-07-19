@@ -345,7 +345,6 @@ void WorkflowEngine::stopAndWait(int timeoutMs) {
     if (worker && worker->isRunning()) {
         const int boundedMs = timeoutMs > 0 ? timeoutMs : 5000;
         if (!worker->wait(boundedMs) && worker->isRunning()) {
-            // Never delete a QThread while it is still running (Qt aborts with a fatal).
             worker->wait();
         }
     }
@@ -363,4 +362,54 @@ void WorkflowEngine::stopAndWait(int timeoutMs) {
         m_running = false;
         m_hasPendingResult = false;
     }
+}
+
+bool WorkflowEngine::hasLiveWorker() const {
+    QMutexLocker lock(&m_mutex);
+    return m_worker != nullptr && m_worker->isRunning();
+}
+
+bool WorkflowEngine::stopAndWaitBounded(int timeoutMs) {
+    stop();
+
+    QThread* worker = nullptr;
+    {
+        QMutexLocker lock(&m_mutex);
+        m_workerShutdown = true;
+        m_jobReady.wakeAll();
+        worker = m_worker;
+    }
+
+    if (worker && worker->isRunning()) {
+        const int boundedMs = timeoutMs > 0 ? timeoutMs : 250;
+        if (!worker->wait(boundedMs) && worker->isRunning()) {
+            QObject::connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+            QMutexLocker lock(&m_mutex);
+            m_worker = nullptr;
+            m_workerShutdown = false;
+            m_hasQueuedJob = false;
+            m_queuedWorkflow.reset();
+            m_queuedContext.reset();
+            m_queuedPreparer = nullptr;
+            m_activeContext.reset();
+            m_running = false;
+            m_hasPendingResult = false;
+            return false;
+        }
+    }
+
+    {
+        QMutexLocker lock(&m_mutex);
+        delete m_worker;
+        m_worker = nullptr;
+        m_workerShutdown = false;
+        m_hasQueuedJob = false;
+        m_queuedWorkflow.reset();
+        m_queuedContext.reset();
+        m_queuedPreparer = nullptr;
+        m_activeContext.reset();
+        m_running = false;
+        m_hasPendingResult = false;
+    }
+    return true;
 }

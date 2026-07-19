@@ -1,6 +1,8 @@
 #include "core/capture/ScreenCapture.h"
 
 #include "core/capture/DxgiScreenCapture.h"
+#include "core/input/InputSimulator.h"
+#include "core/workflow/ExecutionContext.h"
 
 #include <opencv2/imgproc.hpp>
 #include <QSettings>
@@ -15,6 +17,13 @@
 
 #ifdef _WIN32
 namespace {
+
+bool workflowCaptureAborted() {
+    if (ExecutionContext* ctx = InputSimulator::activeExecutionContext()) {
+        return ctx->shouldStop();
+    }
+    return false;
+}
 
 using PhysicalToLogicalForDpiFn = BOOL(WINAPI*)(HWND, LPPOINT);
 using LogicalToPhysicalForDpiFn = BOOL(WINAPI*)(HWND, LPPOINT);
@@ -124,7 +133,7 @@ void fillMonitorInfoForWindow(HWND hwnd, ScreenCapture::TargetWindowInfo& out) {
 }
 
 cv::Mat bitBltPhysicalRectGdi(int screenX, int screenY, int width, int height) {
-    if (width <= 0 || height <= 0) {
+    if (width <= 0 || height <= 0 || workflowCaptureAborted()) {
         return {};
     }
 
@@ -720,7 +729,7 @@ cv::Mat ScreenCapture::capturePhysicalRect(int x, int y, int width, int height) 
 }
 
 cv::Mat ScreenCapture::capturePhysicalRectForTemplate(int x, int y, int width, int height) {
-    if (width <= 0 || height <= 0) {
+    if (width <= 0 || height <= 0 || workflowCaptureAborted()) {
         return {};
     }
 
@@ -933,6 +942,9 @@ cv::Mat ScreenCapture::captureWithClientBitBlt(HWND hwnd) {
 }
 
 cv::Mat ScreenCapture::captureWithScreenBitBlt(HWND hwnd) {
+    if (workflowCaptureAborted()) {
+        return {};
+    }
     if (!hwnd || !IsWindow(hwnd)) {
         return {};
     }
@@ -946,6 +958,9 @@ cv::Mat ScreenCapture::captureWithScreenBitBlt(HWND hwnd) {
     }
 
     cv::Mat dxgi = DxgiScreenCapture::capturePhysicalRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    if (workflowCaptureAborted()) {
+        return {};
+    }
     if (!dxgi.empty() && !isMostlyBlack(dxgi)) {
         return dxgi;
     }
@@ -978,6 +993,9 @@ cv::Mat ScreenCapture::captureWithFullScreenCrop(HWND hwnd) {
 }
 
 cv::Mat ScreenCapture::captureWindow(HWND hwnd) {
+    if (workflowCaptureAborted()) {
+        return {};
+    }
     if (!hwnd || !IsWindow(hwnd)) {
         return {};
     }
@@ -985,21 +1003,33 @@ cv::Mat ScreenCapture::captureWindow(HWND hwnd) {
     const auto tryCapture = [](const cv::Mat& mat) { return !mat.empty() && !isMostlyBlack(mat); };
 
     cv::Mat mat = captureWithPrintWindow(hwnd, PW_RENDERFULLCONTENT | PW_CLIENTONLY);
+    if (workflowCaptureAborted()) {
+        return {};
+    }
     if (tryCapture(mat)) {
         return mat;
     }
 
     mat = captureWithScreenBitBlt(hwnd);
+    if (workflowCaptureAborted()) {
+        return {};
+    }
     if (tryCapture(mat)) {
         return mat;
     }
 
     mat = captureWithPrintWindow(hwnd, PW_CLIENTONLY);
+    if (workflowCaptureAborted()) {
+        return {};
+    }
     if (tryCapture(mat)) {
         return mat;
     }
 
     mat = captureWithClientBitBlt(hwnd);
+    if (workflowCaptureAborted()) {
+        return {};
+    }
     if (tryCapture(mat)) {
         return mat;
     }

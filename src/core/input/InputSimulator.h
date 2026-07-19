@@ -152,6 +152,7 @@ public:
 #ifdef _WIN32
     static SessionModifierSnapshot captureSessionModifierSnapshot();
     static void setActiveExecutionContext(ExecutionContext* context);
+    static ExecutionContext* activeExecutionContext();
     static void restoreTrackedKeyboard(std::unordered_set<int>& heldKeys,
                                        const SessionModifierSnapshot& sessionStart);
     static void restoreTrackedMouseButtons(std::unordered_set<int>& heldButtons);

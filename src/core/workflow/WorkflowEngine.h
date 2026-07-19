@@ -34,6 +34,10 @@ public slots:
     void runPrepared(WorkflowRunPreparer preparer);
     void stop();
     void stopAndWait(int timeoutMs = 5000);
+    /// Stops the worker and waits up to @p timeoutMs. Returns false when the worker is still
+    /// running (abandoned — caller must keep this engine alive until pruneAbandonedEngines).
+    bool stopAndWaitBounded(int timeoutMs);
+    bool hasLiveWorker() const;
 
 signals:
     void sessionPrepared(std::shared_ptr<Workflow> workflow, std::shared_ptr<ExecutionContext> context);

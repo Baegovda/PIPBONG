@@ -196,6 +196,10 @@ private:
     void stopFeatureRun(const std::string& featureId);
     void stopAllSessions();
     void stopAllSessionsForProfileSwitch();
+    void stopSessionEngineForProfileSwitch(FeatureRunSession& session, Feature* feature);
+    void pruneAbandonedEngines();
+    void flushDeferredProfileSwitchIfIdle();
+    bool hasTriggerMonitoringSessions() const;
     void appendLog(const QString& message, LogLineKind kind = LogLineKind::Info);
     bool maybeSave(bool quiet = false);
     void loadProjectFromFile(const QString& path, bool quiet = false);
@@ -416,6 +420,8 @@ private:
     std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;
+    QElapsedTimer m_lastAutomaticProfileSwitchTimer;
+    std::vector<std::unique_ptr<WorkflowEngine>> m_abandonedEngines;
     QElapsedTimer m_pendingDefaultProfileSwitchTimer;
     QString m_lastLinkedForegroundProfileId;
     QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.227` (from `project(PIPBONG VERSION 0.8.227)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.228` (from `project(PIPBONG VERSION 0.8.228)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.228] - 2026-07-20
+
+### Fixed
+
+- Profile switch no longer blocks the GUI for 6+ seconds (false hang report): `stopAllSessionsForProfileSwitch` uses `WorkflowEngine::stopAndWaitBounded(250ms)` and abandons slow workers to `m_abandonedEngines` instead of indefinite `QThread::wait()` (`WorkflowEngine`, `MainWindow`).
+- Foreground profile auto-switch defers while trigger **감시** sessions are active and coalesces rapid switches (800 ms minimum interval); deferred switch runs when sessions end (`MainWindow::syncProfileToForegroundWindow`, `flushDeferredProfileSwitchIfIdle`).
+- ImageFind / screen capture honors workflow stop during capture: `ScreenCapture` checks `ExecutionContext::shouldStop()` via `InputSimulator::activeExecutionContext()`; extra stop checks in `ImageFindBlock` poll loop.
 
 ## [0.8.227] - 2026-07-20
 

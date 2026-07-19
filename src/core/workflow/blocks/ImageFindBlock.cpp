@@ -1254,8 +1254,26 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
 
         for (const CaptureRegion& activeRegion : pollRegions) {
             missReportRegion = activeRegion;
+            if (ctx.shouldStop()) {
+                accumulateMatchWork();
+                BlockResult result;
+                result.success = false;
+                result.message = "사용자가 중지함";
+                result.imageFindMatchDurationMs = matchWorkMs;
+                result.imageFindPollAttempts = pollAttemptCount;
+                return result;
+            }
             const cv::Mat haystack = ScreenCapture::captureSearchAreaForImageFind(
                 runtimeSearchArea, activeRegion, runtimePercentRegion);
+            if (ctx.shouldStop()) {
+                accumulateMatchWork();
+                BlockResult result;
+                result.success = false;
+                result.message = "사용자가 중지함";
+                result.imageFindMatchDurationMs = matchWorkMs;
+                result.imageFindPollAttempts = pollAttemptCount;
+                return result;
+            }
             if (haystack.empty() || ScreenCapture::isMostlyBlack(haystack)) {
                 continue;
             }
@@ -1266,6 +1284,15 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
 
             if (templateMatchMode == ImageFindTemplateMatchMode::Any) {
                 for (size_t index = 0; index < templates.size(); ++index) {
+                    if (ctx.shouldStop()) {
+                        accumulateMatchWork();
+                        BlockResult result;
+                        result.success = false;
+                        result.message = "사용자가 중지함";
+                        result.imageFindMatchDurationMs = matchWorkMs;
+                        result.imageFindPollAttempts = pollAttemptCount;
+                        return result;
+                    }
                     const ImageFindSelection selection = trySelectImageFindMatch(
                         haystack, hayGray, *templates[index], options, ctx, runtimeSearchArea, activeRegion, runtimePercentRegion);
                     if (selection.ok) {
