@@ -15,7 +15,7 @@ cmake --build build --config Release --target PIPBONG
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "OK: build\Release\PIPBONG.exe" -ForegroundColor Green
-if (-not (Test-Path "build\Release\Qt6Core.dll")) {
-    Write-Host "DLLs missing? Run: .\scripts\deploy-qt.ps1" -ForegroundColor Yellow
+if (-not (Test-Path "build\Release\platforms\qwindows.dll")) {
+    Write-Host "Qt runtime not deployed? F5/build-and-run auto-runs deploy-qt, or run: .\scripts\deploy-qt.ps1" -ForegroundColor Yellow
 }
 # SessionRunPolicySim runs via CMake POST_BUILD on PIPBONG link (see PIPBONG_RUN_POLICY_SIM_ON_BUILD).

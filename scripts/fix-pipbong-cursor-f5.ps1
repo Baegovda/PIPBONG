@@ -1,9 +1,6 @@
 # PIPBONG: F5 must run Build and Run task (Start-Process) — never CodeLLDB.
-#
-# Root cause of blank-terminal hang: F5 fell through to Debug: Start Debugging
-# because when-clauses like `workspaceFolder =~ /Sbm1\.0/i` often do NOT match in
-# Cursor, so unbind+rebind were ignored. Fix: unconditional F5 -> tasks.test, plus
-# config.pipbong.f5BuildAndRun gated bindings as a second layer.
+# Bindings are gated on config.pipbong.f5BuildAndRun (set in this repo's .vscode/settings.json)
+# so a second Cursor window on another project keeps its own F5 / debug behavior.
 $ErrorActionPreference = "Stop"
 
 $cursorUser = Join-Path $env:APPDATA "Cursor\User"
@@ -30,34 +27,24 @@ function Read-KeybindingsArray {
     return @((ConvertFrom-Json $json))
 }
 
+$whenPipbong = 'config.pipbong.f5BuildAndRun'
 $existing = @(Read-KeybindingsArray -Path $keybindingsPath)
 
 $kept = @($existing | Where-Object {
-    $k = [string]$_.key
-    if ($k -in @('f5', 'ctrl+f5')) { return $false }
-    if ($k -eq 'ctrl+shift+b') {
-        $w = if ($null -eq $_.when) { '' } else { [string]$_.when }
-        $c = [string]$_.command
-        if ($w -like '*Sbm1*' -or $w -like '*pipbong*' -or
-            $c -eq '-glass.openBrowserTab' -or $c -eq 'workbench.action.tasks.build') {
-            return $false
-        }
-    }
+    $w = if ($null -eq $_.when) { '' } else { [string]$_.when }
+    if ($w -eq $whenPipbong) { return $false }
+    if ($w -like '*Sbm1*' -or $w -like '*pipbong*') { return $false }
     return $true
 })
 
-# Layer 1: unconditional (always wins over default F5 debug).
-# Layer 2: config.pipbong.f5BuildAndRun (set in .vscode/settings.json) for clarity.
 $pipbong = @(
-    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.start' },
-    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.selectandstart' },
-    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.run' },
-    [pscustomobject]@{ key = 'ctrl+f5'; command = '-workbench.action.debug.run' },
-    [pscustomobject]@{ key = 'f5'; command = 'workbench.action.tasks.test' },
-    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.start'; when = 'config.pipbong.f5BuildAndRun' },
-    [pscustomobject]@{ key = 'f5'; command = 'workbench.action.tasks.test'; when = 'config.pipbong.f5BuildAndRun' },
-    [pscustomobject]@{ key = 'ctrl+shift+b'; command = '-glass.openBrowserTab'; when = 'config.pipbong.f5BuildAndRun' },
-    [pscustomobject]@{ key = 'ctrl+shift+b'; command = 'workbench.action.tasks.build'; when = 'config.pipbong.f5BuildAndRun' }
+    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.start'; when = $whenPipbong },
+    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.selectandstart'; when = $whenPipbong },
+    [pscustomobject]@{ key = 'f5'; command = '-workbench.action.debug.run'; when = $whenPipbong },
+    [pscustomobject]@{ key = 'ctrl+f5'; command = '-workbench.action.debug.run'; when = $whenPipbong },
+    [pscustomobject]@{ key = 'f5'; command = 'workbench.action.tasks.test'; when = $whenPipbong },
+    [pscustomobject]@{ key = 'ctrl+shift+b'; command = '-glass.openBrowserTab'; when = $whenPipbong },
+    [pscustomobject]@{ key = 'ctrl+shift+b'; command = 'workbench.action.tasks.build'; when = $whenPipbong }
 )
 
 $merged = @($kept) + @($pipbong)
@@ -87,7 +74,7 @@ for ($i = 0; $i -lt $merged.Count; $i++) {
 [System.IO.File]::WriteAllText($keybindingsPath, $sb.ToString(), [System.Text.UTF8Encoding]::new($false))
 
 Write-Host "Updated Cursor keybindings ($keybindingsPath)" -ForegroundColor Green
-Write-Host "  F5 -> workbench.action.tasks.test (NO debugger, unconditional)" -ForegroundColor Cyan
-Write-Host "  launch.json has no debug configs — F5 cannot attach CodeLLDB" -ForegroundColor Cyan
+Write-Host "  F5 -> tasks.test ONLY when config.pipbong.f5BuildAndRun (this workspace)" -ForegroundColor Cyan
+Write-Host "  Other Cursor windows are unchanged — dual-project safe" -ForegroundColor Cyan
 Write-Host "REQUIRED once: Command Palette -> Developer: Reload Window" -ForegroundColor Yellow
-Write-Host "Then F5: terminal must print 'Started PIPBONG.exe' (not a blank pane)." -ForegroundColor Yellow
+Write-Host "PIPBONG window F5: terminal must print 'Started PIPBONG.exe'." -ForegroundColor Yellow

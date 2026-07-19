@@ -14,5 +14,14 @@ if (-not (Test-Path $exe)) {
     exit 1
 }
 
+$qwindows = Join-Path $cwd "platforms\qwindows.dll"
+if (-not (Test-Path $qwindows)) {
+    Write-Host "Qt platform plugin missing — running deploy-qt (once after configure or folder move)..." -ForegroundColor Yellow
+    & (Join-Path $PSScriptRoot "deploy-qt.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
+
 Start-Process -FilePath $exe -WorkingDirectory $cwd
 Write-Host "Started PIPBONG.exe" -ForegroundColor Green

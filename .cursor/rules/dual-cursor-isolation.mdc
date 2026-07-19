@@ -1,0 +1,39 @@
+---
+description: Dual Cursor windows — parallel projects without cross-build interference
+alwaysApply: true
+---
+
+# Dual Cursor / Parallel Projects (Mandatory — PIPBONG Window)
+
+**Status:** Policy added 2026-07 (v0.8.224). PIPBONG and another project may run in **separate Cursor windows** with simultaneous incremental builds when these rules hold.
+
+## One-time setup (PIPBONG window)
+
+```powershell
+.\scripts\ensure-dev-isolation.ps1
+```
+
+Then **Developer: Reload Window**.
+
+## Required invariants (this repo)
+
+| Item | Rule |
+|------|------|
+| Window | **File → Open Folder** → `PIPBONG` only — not multi-root with another project |
+| Build | `.\scripts\build-release.ps1` / Ctrl+Shift+B — **never** CMake Tools configure |
+| F5 | `config.pipbong.f5BuildAndRun` in `.vscode/settings.json`; `fix-pipbong-cursor-f5.ps1` gates F5 to this workspace only |
+| vcpkg lock | `build-common.ps1` **waits** — does **not** kill global cmake/vcpkg during normal builds |
+| Recovery | `recover-ide-build.ps1` local by default; `-KillGlobalBuildProcesses` only when alone |
+| Qt | `build-and-run.ps1` auto-runs `deploy-qt.ps1` when `platforms/qwindows.dll` missing |
+| Cache path | `Test-CMakeCachePathMismatch` clears `build/` on folder rename |
+
+## Anti-patterns
+
+| Do not | Why |
+|--------|-----|
+| `recover-ide-build.ps1 -KillGlobalBuildProcesses` while other window builds | Kills their cmake/vcpkg/msbuild |
+| CMake Tools **[Configure]** in either window during parallel work | vcpkg manifest contention |
+| Share one `build/` folder between repos | CMake cache corruption |
+| Unconditional global F5 → tasks.test | Breaks other project's debug F5 |
+
+Full handover: [AGENTS.md](../../AGENTS.md) §3.1 **Dual Cursor windows**.

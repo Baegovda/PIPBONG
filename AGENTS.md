@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.223` (from `project(PIPBONG VERSION 0.8.223)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.224` (from `project(PIPBONG VERSION 0.8.224)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -216,7 +216,7 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 | Layer | Required behavior |
 |-------|-------------------|
 | Key | **F5** |
-| Command | `workbench.action.tasks.test` (**unconditional** — no `workspaceFolder =~` on the primary F5 binding) |
+| Command | `workbench.action.tasks.test` when **`config.pipbong.f5BuildAndRun`** is true in this workspace (`.vscode/settings.json`) |
 | Task | **`Build and Run PIPBONG (Release)`** (`group.kind: test`, `isDefault: true`) |
 | Script | `scripts/build-and-run.ps1` → incremental build + `Start-Process` |
 | Success | Terminal prints **`Started PIPBONG.exe`** immediately after build |
@@ -224,12 +224,12 @@ These files **must** remain in git (see `.gitignore` whitelist). They are **not*
 
 **Cursor user keybindings** (written by `scripts/fix-pipbong-cursor-f5.ps1`):
 
-1. Unbind F5 / Ctrl+F5 from `workbench.action.debug.start`, `selectandstart`, `debug.run`.
-2. Bind F5 → `workbench.action.tasks.test` with **no** `when` clause (primary).
-3. Optional second layer: same bindings with `when: config.pipbong.f5BuildAndRun` (workspace setting).
+1. Unbind F5 / Ctrl+F5 from debug commands **only when** `config.pipbong.f5BuildAndRun` (this workspace).
+2. Bind F5 → `workbench.action.tasks.test` with the same `when` clause.
+3. Other Cursor windows (other projects) keep their own F5 / debug bindings — dual-project safe (v0.8.224+).
 4. After writing keybindings: **Developer: Reload Window** (required once).
 
-**Hard ban:** Do **not** gate the primary F5 binding with `when: workspaceFolder =~ /Sbm1\.0/i`. That clause often **fails to match** in Cursor, so unbind is ignored and F5 still starts CodeLLDB (blank hang). Verified failure mode before v0.8.82.
+**Hard ban:** Do **not** gate F5 with `when: workspaceFolder =~ /Sbm1\.0/i` (folder rename breaks the clause). Use **`config.pipbong.f5BuildAndRun`** instead.
 
 **Hard ban:** Do **not** put `type: "lldb"` / **Debug PIPBONG** configs back into `launch.json` for daily use. Keep `"configurations": []`.
 
@@ -237,7 +237,7 @@ Always-applied rule: `.cursor/rules/f5-build-and-run.mdc`.
 
 #### Recovery checklist (IDE build / F5 broken)
 
-1. `.\scripts\recover-ide-build.ps1` (kills stuck cmake/vcpkg/msbuild, clears stale lock, restores `.vscode/` from git, runs `fix-pipbong-cursor-f5.ps1`).
+1. `.\scripts\recover-ide-build.ps1` (local stale lock + `.vscode/` restore + F5 fix; optional `-KillGlobalBuildProcesses` only when no other project is building).
 2. **Developer: Reload Window** in Cursor.
 3. Confirm full CMake-off keys, `pipbong.f5BuildAndRun: true`, empty `launch.json` configurations.
 4. **Do not** click CMake status-bar **[Configure]** / **[Build]**.
@@ -257,15 +257,34 @@ Always-applied rule: `.cursor/rules/f5-build-and-run.mdc`.
 3. **Developer: Reload Window**
 4. F5 → must print **`Started PIPBONG.exe`**
 
+#### Dual Cursor windows (parallel projects)
+
+**Status:** Policy added 2026-07 (v0.8.224). Run **`.\scripts\ensure-dev-isolation.ps1`** once in the PIPBONG Cursor window after opening this folder.
+
+| Layer | PIPBONG isolation |
+|-------|-------------------|
+| Workspace | Open **`PIPBONG`** folder in its **own** Cursor window — not a multi-root workspace with another project |
+| Build tree | `PIPBONG/build/` only — never share `build/` with another repo |
+| CMake Tools | **Off** in `.vscode/settings.json` — build via `build-release.ps1` / Ctrl+Shift+B only |
+| vcpkg lock | `build-common.ps1` **waits** on this repo's lock; does **not** kill global `cmake`/`vcpkg` (other window safe) |
+| F5 | `fix-pipbong-cursor-f5.ps1` binds F5 → Build and Run **only when** `pipbong.f5BuildAndRun` (this workspace) |
+| Recovery | `recover-ide-build.ps1` default = local; `-KillGlobalBuildProcesses` kills cmake/vcpkg/msbuild machine-wide |
+| Qt run | `build-and-run.ps1` auto-runs `deploy-qt.ps1` when `platforms/qwindows.dll` is missing |
+| CMake cache | Auto-clears `build/` when `PIPBONG_SOURCE_DIR` in cache ≠ current folder (folder rename) |
+
+**Still shared (cannot isolate from PIPBONG repo alone):** machine `VCPKG_ROOT`, vcpkg binary cache, simultaneous **first configure** in two vcpkg-manifest projects — stagger configure if both are cold.
+
+**Other project's checklist (human):** separate `build/`, disable `cmake.configureOnOpen`, do not run configure in both windows at once.
+
 #### F5 shows “CMake: Run Without Debugging” / Qt platform plugin error (dual Cursor)
 
 **Symptom:** F5 runs **CMake: Run Without Debugging**; MSVC dialog: *no Qt platform plugin could be initialized* on `build\Debug\Qt6Cored.dll`. Often after CMake Tools + F5 in another Cursor window.
 
 **Fix:**
 
-1. `.\scripts\fix-pipbong-cursor-f5.ps1` (unconditional F5 → Build and Run task).
+1. `.\scripts\fix-pipbong-cursor-f5.ps1` + `.\scripts\ensure-dev-isolation.ps1` (workspace-gated F5 → Build and Run task).
 2. **Developer: Reload Window**.
-3. Do **not** use `build/Debug/` for daily runs. If needed: `.\scripts\deploy-qt.ps1` once for Release DLLs.
+3. Do **not** use `build/Debug/` for daily runs. F5 auto-deploys Release Qt when `platforms/qwindows.dll` is missing.
 
 Cursor rules: `.cursor/rules/f5-build-and-run.mdc`, `.cursor/rules/ide-build-workflow.mdc`, `.cursor/rules/no-full-rebuild.mdc` (always applied).
 
@@ -394,8 +413,9 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
 │   ├── run-policy-sim.ps1     # build PIPBONGPolicySim only + run (manual)
 │   ├── run-policy-sim-postbuild.ps1  # POST_BUILD hook: run sim after PIPBONG link
-│   ├── recover-ide-build.ps1  # one-click IDE build recovery (lock, processes, .vscode restore, F5 fix)
-│   ├── fix-pipbong-cursor-f5.ps1  # PIPBONG-only F5 -> Build and Run task (no debugger)
+│   ├── recover-ide-build.ps1  # IDE recovery (local default; optional -KillGlobalBuildProcesses)
+│   ├── ensure-dev-isolation.ps1  # dual-Cursor setup: settings check, F5 fix, deploy-qt if needed
+│   ├── fix-pipbong-cursor-f5.ps1  # workspace-gated F5 -> Build and Run (config.pipbong.f5BuildAndRun)
 │   ├── sync-update-log.py     # optional §11 → per-version draft (grouping is manual)
 │   ├── regroup-update-log.py  # merge existing update_log into patch-decade blocks
 │   ├── deploy-qt.ps1          # Qt + vcpkg runtime DLLs beside build/Release
@@ -1210,6 +1230,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.224] - 2026-07-19
+
+### Added
+
+- **`scripts/ensure-dev-isolation.ps1`**: one-shot dual-Cursor setup (settings check, workspace-gated F5 fix, Qt deploy if `platforms/qwindows.dll` missing); `.cursor/rules/dual-cursor-isolation.mdc`; AGENTS.md §3.1 **Dual Cursor windows**.
+
+### Changed
+
+- **`build-common.ps1`**: on `vcpkg-running.lock`, **wait** for release instead of killing global `cmake`/`vcpkg` (safe when another Cursor window builds another project); `Wait-ForRepoVcpkgLock` before first configure; `Test-CMakeCachePathMismatch` clears `build/` on folder rename (already present).
+- **`recover-ide-build.ps1`**: default local-only recovery; **`-KillGlobalBuildProcesses`** opt-in for machine-wide cmake/vcpkg/msbuild kill.
+- **`fix-pipbong-cursor-f5.ps1`**: F5 → Build and Run **only when** `config.pipbong.f5BuildAndRun` (other Cursor windows keep their F5/debug).
+- **`build-and-run.ps1`**: auto-runs `deploy-qt.ps1` when Qt platform plugin is missing.
+- **`build-release.ps1`**: warn when `platforms/qwindows.dll` is absent (not only `Qt6Core.dll`).
 
 ## [0.8.223] - 2026-07-19
 
@@ -4613,8 +4647,13 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ### `f5-build-and-run.mdc`
 
-- **Mandatory** F5 path: unconditional `workbench.action.tasks.test` → **Build and Run** → `Started PIPBONG.exe`; empty `launch.json`; never gate F5 on `workspaceFolder =~`.
+- **Mandatory** F5 path: `config.pipbong.f5BuildAndRun` → `workbench.action.tasks.test` → **Build and Run** → `Started PIPBONG.exe`; empty `launch.json`; dual-Cursor safe (v0.8.224+).
 - Full rules in [§3.1 F5 daily run](#f5-daily-run-mandatory--no-debugger) and [§8.8](#88-ide--cursor-build-workflow-mandatory--do-not-regress).
+
+### `dual-cursor-isolation.mdc`
+
+- Parallel Cursor windows: `ensure-dev-isolation.ps1`, wait-not-kill vcpkg lock, workspace-gated F5, local `recover-ide-build.ps1` default.
+- Full handover: [§3.1 Dual Cursor windows](#dual-cursor-windows-parallel-projects).
 
 ### `no-full-rebuild.mdc`
 
