@@ -12,6 +12,7 @@
 #include "core/input/HotkeyBinding.h"
 #include "ui/editors/FeatureEditDialog.h"
 #include "ui/editors/FeatureEditPrefs.h"
+#include "ui/FeatureRunModeTheme.h"
 #include "ui/UiThemeColors.h"
 #include "ui/UiHoverFeedback.h"
 #include "app/FeatureHotkeyGate.h"
@@ -56,6 +57,7 @@ constexpr int kHotkeyVirtualKeyRole = Qt::UserRole + 4;
 constexpr int kHotkeyCtrlRole = Qt::UserRole + 5;
 constexpr int kHotkeyAltRole = Qt::UserRole + 6;
 constexpr int kHotkeyShiftRole = Qt::UserRole + 7;
+constexpr int kRunModeRole = Qt::UserRole + 8;
 constexpr int kColumnMargin = 6;
 constexpr int kColumnGap = 4;
 constexpr int kMinModeColumnWidth = 28;
@@ -516,6 +518,56 @@ void paintPrismRunningFeatureName(QPainter* painter,
     painter->restore();
 }
 
+void paintFeatureRunModeChip(QPainter* painter,
+                             const QRect& columnRect,
+                             const QString& text,
+                             const QFont& font,
+                             FeatureRunMode mode,
+                             const QPalette& palette,
+                             bool enabled,
+                             const QColor* accentOverride = nullptr) {
+    const bool dark = darkThemeFromPalette(palette);
+    FeatureRunModeTheme theme = featureRunModeTheme(mode, dark);
+
+    QColor fill = theme.chipFill;
+    QColor border = theme.chipBorder;
+    QColor textColor = theme.chipText;
+    if (accentOverride != nullptr && accentOverride->isValid()) {
+        border = *accentOverride;
+        textColor = *accentOverride;
+        fill = accentOverride->darker(dark ? 150 : 112);
+        fill.setAlpha(dark ? 88 : 210);
+    }
+    if (!enabled) {
+        const QColor muted = featureListMutedTextColor(palette);
+        fill = muted;
+        fill.setAlpha(dark ? 36 : 52);
+        border = muted;
+        border.setAlpha(dark ? 90 : 120);
+        textColor = muted;
+    }
+
+    const QFontMetrics metrics(font);
+    const int horizontalPad = 4;
+    const int chipHeight = qBound(14, qMin(columnRect.height() - 4, metrics.height() + 4), columnRect.height());
+    const int chipWidth =
+        qMin(columnRect.width() - 2, metrics.horizontalAdvance(text) + horizontalPad * 2);
+    const QRect chip(columnRect.left() + (columnRect.width() - chipWidth) / 2,
+                     columnRect.top() + (columnRect.height() - chipHeight) / 2,
+                     chipWidth,
+                     chipHeight);
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+    painter->setPen(QPen(border, 1.0));
+    painter->setBrush(fill);
+    painter->drawRoundedRect(chip, 4, 4);
+    painter->setFont(font);
+    painter->setPen(textColor);
+    painter->drawText(chip, Qt::AlignCenter, text);
+    painter->restore();
+}
+
 void paintFeatureListRowChrome(QPainter* painter,
                                const QRect& rect,
                                bool selected,
@@ -525,7 +577,9 @@ void paintFeatureListRowChrome(QPainter* painter,
                                int animationPhase,
                                const QPalette& palette,
                                const TriggerModeListAnimationSettings& listAnimations,
-                               bool triggerActionUsesCustomAnimation) {
+                               bool triggerActionUsesCustomAnimation,
+                               FeatureRunMode runMode,
+                               bool featureEnabled) {
     if (running && visualKind == FeatureRunVisualKind::ActiveRun
         && (!triggerActionUsesCustomAnimation
             || listAnimations.action.style == TriggerListAnimationStyle::DefaultPrism)) {
@@ -549,6 +603,21 @@ void paintFeatureListRowChrome(QPainter* painter,
         rowBg = UiHoverFeedback::blendListRowHover(palette);
     }
     painter->fillRect(rect, rowBg);
+
+    if (!running && featureEnabled) {
+        const FeatureRunModeTheme modeTheme =
+            featureRunModeTheme(runMode, darkThemeFromPalette(palette));
+        QColor wash = modeTheme.rowWash;
+        wash.setAlpha(selected ? 18 : (hovered ? 14 : 10));
+        const QRect inner = rect.adjusted(1, 2, -1, -2);
+        QLinearGradient gradient(inner.topLeft(), inner.bottomRight());
+        gradient.setColorAt(0.0, wash);
+        QColor washFade = wash;
+        washFade.setAlpha(wash.alpha() / 3);
+        gradient.setColorAt(0.7, washFade);
+        gradient.setColorAt(1.0, Qt::transparent);
+        painter->fillRect(inner, gradient);
+    }
 
     if (running
         && (visualKind != FeatureRunVisualKind::ActiveRun || triggerActionUsesCustomAnimation)) {
@@ -612,6 +681,10 @@ void paintFeatureListRowChrome(QPainter* painter,
                 accent.setAlpha(static_cast<int>(prism.shimmer * 215.0));
             }
         }
+        painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()), accent);
+    } else if (featureEnabled) {
+        QColor accent = featureRunModeTheme(runMode, darkThemeFromPalette(palette)).accent;
+        accent.setAlpha(selected ? 200 : 150);
         painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()), accent);
     }
 
@@ -890,6 +963,10 @@ public:
             && m_panel->featureRunVisualKind(featureId) == FeatureRunVisualKind::ActiveRun
             && listAnimations.action.style != TriggerListAnimationStyle::DefaultPrism;
 
+        const FeatureRunMode runMode =
+            feature ? feature->runMode()
+                    : static_cast<FeatureRunMode>(index.data(kRunModeRole).toInt());
+
         paintFeatureListRowChrome(painter,
                                   opt.rect,
                                   selected,
@@ -899,7 +976,9 @@ public:
                                   m_panel->animationPhase(),
                                   opt.palette,
                                   listAnimations,
-                                  triggerActionCustom);
+                                  triggerActionCustom,
+                                  runMode,
+                                  featureEnabled);
         if (!featureEnabled) {
             QColor disabledOverlay = opt.palette.color(QPalette::Mid);
             disabledOverlay.setAlpha(48);
@@ -997,13 +1076,16 @@ public:
         QFont secondaryFont = opt.font;
         secondaryFont.setPointSize(qMax(secondaryFont.pointSize() - 1, 8));
         const QColor dragMuted = featureListMutedTextColor(opt.palette);
-        QColor modeColor = featureEnabled ? mutedColor : dragMuted;
+        const QColor* modeAccentOverride = nullptr;
+        QColor modeAccent;
         if (prismRow) {
-            modeColor = prismTone.core;
-            modeColor.setAlpha(selected ? 230 : 205);
+            modeAccent = prismTone.core;
+            modeAccent.setAlpha(selected ? 230 : 205);
+            modeAccentOverride = &modeAccent;
         } else if (featureEnabled && isRunning && runAccent != nullptr) {
-            modeColor = *runAccent;
-            modeColor.setAlpha(selected ? 210 : 185);
+            modeAccent = *runAccent;
+            modeAccent.setAlpha(selected ? 210 : 185);
+            modeAccentOverride = &modeAccent;
         }
         if (triggerWatchModeIcon) {
             TriggerListAnimationRenderer::paintListIcon(painter,
@@ -1020,21 +1102,25 @@ public:
                                                         TriggerAnimationState::Cooldown,
                                                         opt.palette);
         } else {
-            drawCellText(painter,
-                         cols.mode,
-                         modeText,
-                         secondaryFont,
-                         isDragSource ? dragMuted : modeColor);
+            paintFeatureRunModeChip(painter,
+                                    cols.mode,
+                                    modeText,
+                                    secondaryFont,
+                                    runMode,
+                                    opt.palette,
+                                    featureEnabled && !isDragSource,
+                                    isDragSource ? nullptr : modeAccentOverride);
         }
         if (hasHotkey) {
             const qreal iconOpacity = isDragSource ? 0.55 : (featureEnabled ? 1.0 : 0.45);
             drawHotkeyBindingInRect(painter, cols.hotkey, hotkeyBinding, iconOpacity);
         } else {
+            const QColor hotkeyMuted = isDragSource ? dragMuted : mutedColor;
             drawCellText(painter,
                          cols.hotkey,
                          QStringLiteral("\u2014"),
                          secondaryFont,
-                         isDragSource ? dragMuted : modeColor);
+                         hotkeyMuted);
         }
         painter->restore();
     }
@@ -2007,6 +2093,7 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
     item->setData(kFeatureIdRole, QString::fromStdString(feature.id()));
     item->setData(kFeatureNameRole, featureName);
     item->setData(kRunModeDisplayRole, modeText);
+    item->setData(kRunModeRole, static_cast<int>(feature.runMode()));
     item->setData(kHotkeyVirtualKeyRole, hotkey.virtualKey);
     item->setData(kHotkeyCtrlRole, hotkey.ctrl);
     item->setData(kHotkeyAltRole, hotkey.alt);

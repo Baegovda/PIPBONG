@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.242` (from `project(PIPBONG VERSION 0.8.242)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.243` (from `project(PIPBONG VERSION 0.8.243)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.243] - 2026-07-20
+
+### Changed
+
+- Feature list **방식** column and idle row chrome use per–run-mode theme colors: **홀드** amber, **무한 반복** blue, **트리거** jade-teal, **N회 반복** violet (`FeatureRunModeTheme`, `FeatureListPanel` mode chip, row wash, left accent bar).
 
 ## [0.8.242] - 2026-07-20
 
