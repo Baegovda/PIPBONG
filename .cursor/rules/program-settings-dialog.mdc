@@ -1,0 +1,42 @@
+---
+description: Program settings dialog layout — grouped sections, tooltips only (no inline HintLabel)
+alwaysApply: true
+---
+
+# Program Settings Dialog (Mandatory — Do Not Regress)
+
+**Status:** Verified working on Windows (2026-07). **프로그램 설정** (`ProgramSettingsDialog`) uses category **QGroupBox** sections and **tooltips** for all option detail — not inline `HintLabel` paragraphs under each row.
+
+## Required layout
+
+| Group | Options |
+| ----- | ------- |
+| **기능 실행** | Auto-select running feature, focus target on profile switch, run without target window, log max lines |
+| **시작·종료** | Launch at Windows startup, close to tray |
+| **업데이트** | Periodic update check + interval spin, auto-install updates |
+| **권한·호환** | Run as administrator (+ elevated status line when applicable) |
+| **템플릿 매칭** | ImageFind capture mode combo |
+| **화면 표시** | Default click/run feedback, window-pick animation (summary + **설정…**) |
+
+Top intro: one short `QLabel` (muted via `secondaryHintTextColor`) — tells users to hover for tooltips and notes profile vs global scope.
+
+## Adding a new option (mandatory)
+
+1. Place the control in the **correct existing group** (add a new `QGroupBox` only when no group fits).
+2. **Label:** short, beginner-friendly Korean — no multi-line explanation in the label.
+3. **Detail:** `widget->setToolTip(...)` on the checkbox, label, combo, or spin — never a sibling `HintLabel` under the row.
+4. **Group overview:** optional one-line tooltip on the `QGroupBox` title.
+5. **Persistence:** `ProgramSettings` + `QSettings` key; document in AGENTS.md §5.7 / §11 when user-facing.
+
+## Anti-patterns
+
+- Inline `HintLabel` (or multi-line grey text) under every checkbox in program settings
+- Flat ungrouped list of all options
+- Long option labels that duplicate tooltip text
+- `changeEvent` → `setStyleSheet` on settings widgets
+
+## Key file
+
+- `src/ui/ProgramSettingsDialog.cpp` — reference implementation
+
+Full handover: [AGENTS.md](../../AGENTS.md) — **§8.13 Program settings dialog**.

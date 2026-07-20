@@ -17,7 +17,7 @@ private:
     void setupUi();
     void updateClickFeedbackSummary();
     void updateWindowSelectionFeedbackSummary();
-    void updateImageFindCaptureModeHint();
+    void updateImageFindCaptureModeToolTip();
     void onOpenClickFeedbackSettings();
     void onOpenWindowSelectionFeedbackSettings();
 
@@ -31,7 +31,6 @@ private:
     DragAdjustSpinBox* m_updateCheckIntervalSpin = nullptr;
     QLabel* m_updateCheckIntervalLabel = nullptr;
     QComboBox* m_imageFindCaptureModeCombo = nullptr;
-    QLabel* m_imageFindCaptureModeHint = nullptr;
     QCheckBox* m_runWithoutTargetWindowCheck = nullptr;
     DragAdjustSpinBox* m_logMaxLinesSpin = nullptr;
     QLabel* m_clickFeedbackSummary = nullptr;

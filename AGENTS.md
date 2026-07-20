@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.244` (from `project(PIPBONG VERSION 0.8.244)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.245` (from `project(PIPBONG VERSION 0.8.245)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1135,6 +1135,23 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 **Stage 2 (not yet):** workflow `WorkflowRunner` dry-run with mocks — blocked by OpenCV/UI block dependencies; track as future `PIPBONGWorkflowDryRunSim`.
 
+### 8.13 Program settings dialog (mandatory — grouped + tooltips)
+
+**Status:** Verified working on Windows (2026-07, v0.8.245). **프로그램 설정** (`ProgramSettingsDialog`) must stay compact: options in category **QGroupBox** sections; detailed help on **tooltips** only — no inline `HintLabel` under each row.
+
+| Group | Contents |
+| ----- | -------- |
+| **기능 실행** | Auto-select running feature, profile-switch focus to target window, run without target window, log max lines |
+| **시작·종료** | Windows startup launch, close to tray |
+| **업데이트** | Periodic update check + interval, auto-install |
+| **권한·호환** | Run as administrator (+ one-line elevated status when applicable) |
+| **템플릿 매칭** | ImageFind capture mode combo (mode-specific tooltip on combo) |
+| **화면 표시** | Default click/run feedback + window-pick animation (summary + **설정…**) |
+
+**Adding options:** pick the matching group (or add a new group only when none fits); short Korean label; `setToolTip` on the control; optional group-box tooltip; persist via `ProgramSettings` / `QSettings`.
+
+Cursor rule: `.cursor/rules/program-settings-dialog.mdc`.
+
 ---
 
 ## 9. Development Governance
@@ -1232,6 +1249,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.245] - 2026-07-20
+
+### Changed
+
+- **프로그램 설정** dialog reorganized into category groups (**기능 실행**, **시작·종료**, **업데이트**, **권한·호환**, **템플릿 매칭**, **화면 표시**); inline `HintLabel` paragraphs removed — all option detail on control tooltips; shorter beginner-friendly labels (`ProgramSettingsDialog`, `.cursor/rules/program-settings-dialog.mdc`, AGENTS.md §8.13).
 
 ## [0.8.244] - 2026-07-20
 
@@ -4821,6 +4844,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 - Feature list + workflow block list column header resize uses shared `ListColumnHeaderWidget` — not stock `QHeaderView` Interactive/Stretch.
 - Full rules in [§8.11](#811-list-column-header-resize-mandatory--do-not-regress). **Code reference:** git tag **`v0.8.141`**.
+
+### `program-settings-dialog.mdc`
+
+- **프로그램 설정:** grouped `QGroupBox` sections; option detail on **tooltips** only — no inline `HintLabel` per row.
+- Full rules in [§8.13](#813-program-settings-dialog-mandatory--grouped--tooltips).
 
 ### Korean update log (§3.7)
 
