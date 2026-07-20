@@ -206,9 +206,9 @@ void FeatureEditDialog::setupUi() {
     m_captureTargetScopeCombo = new QComboBox(this);
     m_captureTargetScopeCombo->addItem(tr("자동 (메인·서브)"),
                                        static_cast<int>(FeatureCaptureTargetScope::Auto));
-    m_captureTargetScopeCombo->addItem(tr("메인 대상 창만"),
+    m_captureTargetScopeCombo->addItem(tr("메인 창만"),
                                        static_cast<int>(FeatureCaptureTargetScope::MainOnly));
-    m_captureTargetScopeCombo->addItem(tr("서브 대상 창만"),
+    m_captureTargetScopeCombo->addItem(tr("서브 창만"),
                                        static_cast<int>(FeatureCaptureTargetScope::SubOnly));
     m_captureTargetScopeCombo->setToolTip(
         tr("이 기능이 동작할 대상 창입니다. 프로필의 메인·서브 창 지정과 함께 사용합니다. "
@@ -218,7 +218,7 @@ void FeatureEditDialog::setupUi() {
     m_requireScopedTargetForegroundCheck =
         new QCheckBox(tr("지정한 대상 창이 활성(포커스)일 때만 동작"), this);
     m_requireScopedTargetForegroundCheck->setToolTip(
-        tr("메인 대상 창만·서브 대상 창만을 선택했을 때 사용합니다. 체크하면 해당 창이 "
+        tr("메인 창만·서브 창만을 선택했을 때 사용합니다. 체크하면 해당 창이 "
            "포커스되어 있지 않을 때는 감시·실행을 하지 않습니다."));
     form->addRow(QString(), m_requireScopedTargetForegroundCheck);
 

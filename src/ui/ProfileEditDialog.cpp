@@ -103,7 +103,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         layout->addWidget(lockedHint);
     } else {
         auto* hint = new HintLabel(
-            tr("프로필마다 이름과 연결된 프로그램(주·서브 대상 창)을 따로 저장합니다. 기본 프로필은 대상 창 없이 전역으로 동작합니다."),
+            tr("프로필마다 이름과 연결된 프로그램(메인·서브 창)을 따로 저장합니다. 기본 프로필은 대상 창 없이 전역으로 동작합니다."),
             this);
         layout->addWidget(hint);
 
@@ -120,7 +120,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     linkedLayout->setContentsMargins(0, 0, 0, 0);
     linkedLayout->setSpacing(6);
 
-    auto* targetLabel = new QLabel(tr("주 대상 창"), m_linkedProgramSection);
+    auto* targetLabel = new QLabel(tr("메인 창"), m_linkedProgramSection);
     linkedLayout->addWidget(targetLabel);
 
     m_targetWindowTitleEdit = new QLineEdit(m_linkedProgramSection);
@@ -136,10 +136,10 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     auto* useCurrentButton = new QPushButton(tr("현재 설정 사용"), m_linkedProgramSection);
     auto* pickTargetButton = new QPushButton(tr("지정"), m_linkedProgramSection);
     pickTargetButton->setToolTip(
-        tr("클릭한 뒤 주 대상 창을 눌러 지정합니다. 마우스를 올리면 초록색 테두리가 표시됩니다."));
-    auto* pickFromListButton = new QPushButton(tr("주 목록"), m_linkedProgramSection);
+        tr("클릭한 뒤 메인 창을 눌러 지정합니다. 마우스를 올리면 초록색 테두리가 표시됩니다."));
+    auto* pickFromListButton = new QPushButton(tr("메인 목록"), m_linkedProgramSection);
     pickFromListButton->setToolTip(
-        tr("주 대상 창 목록에서 선택합니다. 항목을 고르면 초록색 테두리 애니메이션이 표시됩니다."));
+        tr("메인 창 목록에서 선택합니다. 항목을 고르면 초록색 테두리 애니메이션이 표시됩니다."));
     auto* clearButton = new QPushButton(tr("비우기"), m_linkedProgramSection);
     targetButtons->addWidget(useCurrentButton);
     targetButtons->addWidget(pickTargetButton);
@@ -164,7 +164,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         }
     });
 
-    auto* subLabel = new QLabel(tr("서브 대상 창"), m_linkedProgramSection);
+    auto* subLabel = new QLabel(tr("서브 창"), m_linkedProgramSection);
     linkedLayout->addWidget(subLabel);
 
     m_subTargetWindowTitleEdit = new QLineEdit(m_linkedProgramSection);
@@ -179,10 +179,10 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     auto* subButtons = new QHBoxLayout();
     auto* subPickButton = new QPushButton(tr("지정"), m_linkedProgramSection);
     subPickButton->setToolTip(
-        tr("클릭한 뒤 서브 대상 창을 눌러 지정합니다. 마우스를 올리면 파란색 테두리가 표시됩니다."));
+        tr("클릭한 뒤 서브 창을 눌러 지정합니다. 마우스를 올리면 파란색 테두리가 표시됩니다."));
     auto* subPickListButton = new QPushButton(tr("서브 목록"), m_linkedProgramSection);
     subPickListButton->setToolTip(
-        tr("서브 대상 창 목록에서 선택합니다. 항목을 고르면 파란색 테두리 애니메이션이 표시됩니다."));
+        tr("서브 창 목록에서 선택합니다. 항목을 고르면 파란색 테두리 애니메이션이 표시됩니다."));
     auto* subClearButton = new QPushButton(tr("비우기"), m_linkedProgramSection);
     subButtons->addWidget(subPickButton);
     subButtons->addWidget(subPickListButton);

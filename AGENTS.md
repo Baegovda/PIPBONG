@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.241` (from `project(PIPBONG VERSION 0.8.241)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.242` (from `project(PIPBONG VERSION 0.8.242)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.242] - 2026-07-20
+
+### Changed
+
+- UI terminology: **주 대상 창** → **메인 창**, **서브 대상 창** → **서브 창** across main **대상 창** panel, profile edit, feature edit capture scope, window-list picker badges/legend, program settings, and status/log messages; list buttons **주 목록** → **메인 목록** (`MainWindow`, `ProfileEditDialog`, `FeatureEditDialog`, `TargetWindowListPicker`, `ProgramSettingsDialog`).
 
 ## [0.8.241] - 2026-07-20
 

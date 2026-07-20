@@ -61,7 +61,7 @@ void applyTargetWindowListBindingMark(QListWidgetItem* item,
 
     QString badges;
     if (isMainBinding) {
-        badges += QStringLiteral("● 주 대상");
+        badges += QStringLiteral("● 메인 창");
     }
     if (isSubBinding) {
         if (!badges.isEmpty()) {
@@ -90,7 +90,7 @@ QString targetWindowListBindingLegendHtml(const QPalette& pal) {
     const QColor mainAccent = targetWindowBindingAccentColor(TargetWindowBindingRole::Main, dark);
     const QColor subAccent = targetWindowBindingAccentColor(TargetWindowBindingRole::Sub, dark);
     return QStringLiteral(
-               "<span style='color:%1; font-weight:600'>● 주 대상</span>"
+               "<span style='color:%1; font-weight:600'>● 메인 창</span>"
                "&nbsp;&nbsp;"
                "<span style='color:%2; font-weight:600'>● 서브 창</span>")
         .arg(mainAccent.name(), subAccent.name());
@@ -193,7 +193,7 @@ std::optional<TargetWindowListPickResult> pickTargetWindowFromList(QWidget* pare
     const bool pickSub = options.role == TargetWindowBindingRole::Sub;
 
     QDialog dialog(parent);
-    dialog.setWindowTitle(pickSub ? QObject::tr("서브 대상 창 목록") : QObject::tr("주 대상 창 목록"));
+    dialog.setWindowTitle(pickSub ? QObject::tr("서브 창 목록") : QObject::tr("메인 창 목록"));
     dialog.resize(760, 460);
 
     auto* layout = new QVBoxLayout(&dialog);
@@ -201,9 +201,9 @@ std::optional<TargetWindowListPickResult> pickTargetWindowFromList(QWidget* pare
     layout->setSpacing(8);
 
     auto* hintLabel = new QLabel(
-        pickSub ? QObject::tr("현재 데스크톱에 표시된 최상위 창 목록입니다. 서브 대상 창으로 연결할 항목을 고르세요. "
+        pickSub ? QObject::tr("현재 데스크톱에 표시된 최상위 창 목록입니다. 서브 창으로 연결할 항목을 고르세요. "
                                "선택하면 해당 창에 파란색 테두리 애니메이션이 표시됩니다.")
-                : QObject::tr("현재 데스크톱에 표시된 최상위 창 목록입니다. 주 대상 창으로 연결할 항목을 고르세요. "
+                : QObject::tr("현재 데스크톱에 표시된 최상위 창 목록입니다. 메인 창으로 연결할 항목을 고르세요. "
                                "선택하면 해당 창에 초록색 테두리 애니메이션이 표시됩니다. "
                                "더블클릭하거나 선택 후 확인을 누르세요."),
         &dialog);
@@ -311,8 +311,8 @@ std::optional<TargetWindowListPickResult> pickTargetWindowFromList(QWidget* pare
     populateList();
     if (listWidget->count() == 0) {
         QMessageBox::information(parent,
-                                 pickSub ? QObject::tr("서브 대상 창 목록")
-                                         : QObject::tr("주 대상 창 목록"),
+                                 pickSub ? QObject::tr("서브 창 목록")
+                                         : QObject::tr("메인 창 목록"),
                                  QObject::tr("표시 중인 창을 찾지 못했습니다."));
         return std::nullopt;
     }
@@ -338,7 +338,7 @@ std::optional<TargetWindowListPickResult> pickTargetWindowFromList(QWidget* pare
     const HWND hwnd = reinterpret_cast<HWND>(currentItem->data(Qt::UserRole).toULongLong());
     if (!hwnd || !IsWindow(hwnd)) {
         QMessageBox::warning(parent,
-                             pickSub ? QObject::tr("서브 대상 창 목록") : QObject::tr("주 대상 창 목록"),
+                             pickSub ? QObject::tr("서브 창 목록") : QObject::tr("메인 창 목록"),
                              QObject::tr("선택한 창이 더 이상 유효하지 않습니다. 다시 선택하세요."));
         return std::nullopt;
     }

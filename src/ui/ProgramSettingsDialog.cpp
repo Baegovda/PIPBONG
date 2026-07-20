@@ -56,7 +56,7 @@ void ProgramSettingsDialog::setupUi() {
     addCheckWithHint(
         m_focusTargetWindowOnProfileSelectCheck,
         tr("프로필 선택 시 대상 창으로 포커스 이동"),
-        tr("프로필 목록에서 프로필을 바꿀 때 연결된 메인·서브 대상 창을 앞으로 가져옵니다. "
+        tr("프로필 목록에서 프로필을 바꿀 때 연결된 메인·서브 창을 앞으로 가져옵니다. "
            "끄면 PIPBONG에 머무른 채로 프로필만 전환합니다."),
         ProgramSettings::focusTargetWindowOnProfileSelect());
 
