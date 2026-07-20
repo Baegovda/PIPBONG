@@ -69,11 +69,6 @@ constexpr int kMaxEnableColumnWidth = 48;
 constexpr int kMinRunColumnWidth = 20;
 constexpr int kMaxRunColumnWidth = 40;
 
-// Refined jade-teal for trigger mode — distinct from normal run blue and active-run prism.
-constexpr QColor kTriggerWatchWash(132, 186, 172);
-constexpr QColor kTriggerCooldownWash(138, 144, 152);
-constexpr QColor kTriggerWatchAccent(78, 168, 148);
-constexpr QColor kTriggerCooldownAccent(118, 126, 136);
 struct FeatureListColumnRects {
     QRect enable;
     QRect run;
@@ -154,32 +149,6 @@ QList<int> featureListDividerXs(const FeatureListColumnEdges& edges) {
 FeatureListColumnRects featureListColumnRects(const QRect& itemRect, const FeatureListColumnLayout& layout) {
     return featureListColumnEdges(itemRect, layout).cols;
 }
-QString featureRunModeLabel(FeatureRunMode mode) {
-    switch (mode) {
-    case FeatureRunMode::Hold:
-        return QObject::tr("홀드");
-    case FeatureRunMode::RepeatInfinite:
-        return QObject::tr("무한");
-    case FeatureRunMode::Trigger:
-        return QObject::tr("트리거");
-    case FeatureRunMode::RepeatCount:
-        return QObject::tr("N회");
-    }
-    return QObject::tr("N회");
-}
-QString featureRunModeCompact(FeatureRunMode mode, int repeatCount) {
-    switch (mode) {
-    case FeatureRunMode::Hold:
-        return QObject::tr("홀드");
-    case FeatureRunMode::RepeatInfinite:
-        return QStringLiteral("\u221e");
-    case FeatureRunMode::Trigger:
-        return QObject::tr("T");
-    case FeatureRunMode::RepeatCount:
-        return repeatCount <= 1 ? QStringLiteral("\u00d71") : QStringLiteral("\u00d7%1").arg(repeatCount);
-    }
-    return QStringLiteral("\u00d71");
-}
 
 QString triggerCooldownModeDisplayText(qint64 remainingMs) {
     const int remainSec = static_cast<int>((qMax<qint64>(0, remainingMs) + 999) / 1000);
@@ -198,11 +167,7 @@ HotkeyBinding hotkeyBindingFromIndex(const QModelIndex& index) {
 }
 
 bool darkThemeFromPalette(const QPalette& pal) {
-    const QColor window = pal.color(QPalette::Window);
-    if (window.isValid()) {
-        return window.lightness() < 128;
-    }
-    return pal.color(QPalette::WindowText).lightness() > 128;
+    return featureRunModeDarkThemeFromPalette(pal);
 }
 
 QColor featureListMutedTextColor(const QPalette& pal) {
@@ -518,56 +483,6 @@ void paintPrismRunningFeatureName(QPainter* painter,
     painter->restore();
 }
 
-void paintFeatureRunModeChip(QPainter* painter,
-                             const QRect& columnRect,
-                             const QString& text,
-                             const QFont& font,
-                             FeatureRunMode mode,
-                             const QPalette& palette,
-                             bool enabled,
-                             const QColor* accentOverride = nullptr) {
-    const bool dark = darkThemeFromPalette(palette);
-    FeatureRunModeTheme theme = featureRunModeTheme(mode, dark);
-
-    QColor fill = theme.chipFill;
-    QColor border = theme.chipBorder;
-    QColor textColor = theme.chipText;
-    if (accentOverride != nullptr && accentOverride->isValid()) {
-        border = *accentOverride;
-        textColor = *accentOverride;
-        fill = accentOverride->darker(dark ? 150 : 112);
-        fill.setAlpha(dark ? 88 : 210);
-    }
-    if (!enabled) {
-        const QColor muted = featureListMutedTextColor(palette);
-        fill = muted;
-        fill.setAlpha(dark ? 36 : 52);
-        border = muted;
-        border.setAlpha(dark ? 90 : 120);
-        textColor = muted;
-    }
-
-    const QFontMetrics metrics(font);
-    const int horizontalPad = 4;
-    const int chipHeight = qBound(14, qMin(columnRect.height() - 4, metrics.height() + 4), columnRect.height());
-    const int chipWidth =
-        qMin(columnRect.width() - 2, metrics.horizontalAdvance(text) + horizontalPad * 2);
-    const QRect chip(columnRect.left() + (columnRect.width() - chipWidth) / 2,
-                     columnRect.top() + (columnRect.height() - chipHeight) / 2,
-                     chipWidth,
-                     chipHeight);
-
-    painter->save();
-    painter->setRenderHint(QPainter::Antialiasing, true);
-    painter->setPen(QPen(border, 1.0));
-    painter->setBrush(fill);
-    painter->drawRoundedRect(chip, 4, 4);
-    painter->setFont(font);
-    painter->setPen(textColor);
-    painter->drawText(chip, Qt::AlignCenter, text);
-    painter->restore();
-}
-
 void paintFeatureListRowChrome(QPainter* painter,
                                const QRect& rect,
                                bool selected,
@@ -631,8 +546,10 @@ void paintFeatureListRowChrome(QPainter* painter,
                   : (cooldown ? TriggerAnimationState::Cooldown : TriggerAnimationState::Action);
         const qreal pulse =
             TriggerListAnimationRenderer::rowPulseFactor(animationState, animationPhase, stateSettings);
-        const QColor washBase =
-            watch ? kTriggerWatchWash : (cooldown ? kTriggerCooldownWash : kTriggerWatchWash);
+        const bool dark = darkThemeFromPalette(palette);
+        const QColor washBase = watch ? featureRunModeTriggerWatchWash(dark)
+                                      : (cooldown ? featureRunModeTriggerCooldownWash(dark)
+                                                  : featureRunModeTriggerWatchWash(dark));
         const int washAlpha =
             watch ? static_cast<int>(12 + pulse * 14)
                   : (cooldown ? static_cast<int>(8 + pulse * 8) : static_cast<int>(10 + pulse * 12));
@@ -728,7 +645,7 @@ void paintFeatureName(QPainter* painter,
         if (selected) {
             nameColor = option.palette.color(QPalette::HighlightedText);
         }
-        QColor glow = kTriggerWatchWash;
+        QColor glow = featureRunModeTriggerWatchWash(darkThemeFromPalette(option.palette));
         if (listAnimations.watch.accentColor.isValid()) {
             glow = listAnimations.watch.accentColor;
         }

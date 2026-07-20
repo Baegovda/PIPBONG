@@ -28,6 +28,7 @@ private:
     void applyTerminalChrome();
     void refreshStatsVisibility();
     void refreshRunButtonChrome();
+    void refreshModeChipChrome();
     void refreshBreadcrumb();
     QString runModeText(FeatureRunMode mode, int repeatCount) const;
     QString runModeToolTip(FeatureRunMode mode, int repeatCount) const;

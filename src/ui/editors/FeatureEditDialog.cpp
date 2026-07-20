@@ -1,5 +1,7 @@
 #include "ui/editors/FeatureEditDialog.h"
 
+#include "ui/FeatureRunModeTheme.h"
+
 #include "app/FeatureHotkeyGate.h"
 #include "app/HotkeyManager.h"
 #include "model/Project.h"
@@ -234,7 +236,16 @@ void FeatureEditDialog::setupUi() {
                              tr("첫 번째 템플릿 매칭 블록만 상시 감시합니다. 감지되면 워크플로를 1회 실행하고, "
                                 "성공한 뒤 쿨다운 시간이 지나면 다시 감시합니다. 단축키로 감시를 켜고 끕니다."),
                              Qt::ToolTipRole);
-    form->addRow(tr("동작 방식"), m_modeCombo);
+    m_modePreviewChip = new QLabel(this);
+    m_modePreviewChip->setAlignment(Qt::AlignCenter);
+    m_modePreviewChip->setFixedWidth(52);
+    auto* modeRow = new QWidget(this);
+    auto* modeRowLayout = new QHBoxLayout(modeRow);
+    modeRowLayout->setContentsMargins(0, 0, 0, 0);
+    modeRowLayout->setSpacing(8);
+    modeRowLayout->addWidget(m_modePreviewChip, 0);
+    modeRowLayout->addWidget(m_modeCombo, 1);
+    form->addRow(tr("동작 방식"), modeRow);
 
     m_repeatSpin = new DragAdjustSpinBox(this);
     m_repeatSpin->setRange(1, 9999);
@@ -577,6 +588,11 @@ void FeatureEditDialog::updateModeDependentUi() {
         m_earlyLoopMouseLockDetailsRow->setVisible(
             m_earlyLoopMouseLockCheck && m_earlyLoopMouseLockCheck->isChecked());
     }
+
+    if (m_modePreviewChip) {
+        applyFeatureRunModeChipLabel(m_modePreviewChip, mode, m_repeatSpin->value());
+    }
+    applyFeatureRunModeComboAccent(m_modeCombo, mode);
 
     adjustSize();
 }

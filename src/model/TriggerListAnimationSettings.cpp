@@ -1,5 +1,7 @@
 #include "model/TriggerListAnimationSettings.h"
 
+#include "ui/FeatureRunModeTheme.h"
+
 #include <QObject>
 
 #include <nlohmann/json.hpp>
@@ -7,8 +9,8 @@
 #include <algorithm>
 #include <cmath>
 
-const QColor kDefaultTriggerWatchListAccent(78, 168, 148);
-const QColor kDefaultTriggerCooldownListAccent(118, 126, 136);
+const QColor kDefaultTriggerWatchListAccent = featureRunModeTriggerWatchAccent(true);
+const QColor kDefaultTriggerCooldownListAccent = featureRunModeTriggerCooldownAccent(true);
 
 namespace {
 

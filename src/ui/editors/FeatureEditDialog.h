@@ -116,6 +116,7 @@ private:
     QComboBox* m_captureTargetScopeCombo = nullptr;
     QCheckBox* m_requireScopedTargetForegroundCheck = nullptr;
     QComboBox* m_modeCombo = nullptr;
+    QLabel* m_modePreviewChip = nullptr;
     QLabel* m_repeatCountLabel = nullptr;
     DragAdjustSpinBox* m_repeatSpin = nullptr;
     QCheckBox* m_infiniteExitCheck = nullptr;

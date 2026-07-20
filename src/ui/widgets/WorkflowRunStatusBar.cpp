@@ -1,5 +1,7 @@
 #include "ui/widgets/WorkflowRunStatusBar.h"
 
+#include "ui/FeatureRunModeTheme.h"
+
 #include <QFont>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -85,6 +87,7 @@ WorkflowRunStatusBar::WorkflowRunStatusBar(QWidget* parent)
     row->addWidget(m_statsRow, 0, Qt::AlignVCenter);
 
     applyTerminalChrome();
+    refreshModeChipChrome();
     setRunButtonState(false, false);
     setProfileName(QString());
     clearRunMode();
@@ -167,7 +170,20 @@ void WorkflowRunStatusBar::setRunMode(FeatureRunMode mode, int repeatCount) {
     m_hasRunMode = !text.isEmpty();
     m_modeChip->setText(text);
     m_modeChip->setToolTip(runModeToolTip(mode, repeatCount));
+    refreshModeChipChrome();
     refreshBreadcrumb();
+}
+
+void WorkflowRunStatusBar::refreshModeChipChrome() {
+    if (!m_modeChip) {
+        return;
+    }
+    if (!m_hasRunMode || m_modeChip->text().isEmpty()) {
+        m_modeChip->setStyleSheet(QString());
+        return;
+    }
+    m_modeChip->setStyleSheet(featureRunModeChipStyleSheet(
+        m_runMode, true, QStringLiteral("QLabel#workflowRunStatusMode")));
 }
 
 void WorkflowRunStatusBar::clearRunMode() {
@@ -280,16 +296,6 @@ void WorkflowRunStatusBar::applyTerminalChrome() {
         "  color: #e6edf3;"
         "  background-color: #21262d;"
         "  border: 1px solid #388bfd;"
-        "  border-radius: 6px;"
-        "  padding: 3px 8px;"
-        "  font-size: 11px;"
-        "  font-weight: 600;"
-        "  letter-spacing: 0.2px;"
-        "}"
-        "QLabel#workflowRunStatusMode {"
-        "  color: #d2a8ff;"
-        "  background-color: #21262d;"
-        "  border: 1px solid #8957e5;"
         "  border-radius: 6px;"
         "  padding: 3px 8px;"
         "  font-size: 11px;"

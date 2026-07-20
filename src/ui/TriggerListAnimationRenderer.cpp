@@ -1,5 +1,7 @@
 #include "ui/TriggerListAnimationRenderer.h"
 
+#include "ui/FeatureRunModeTheme.h"
+
 #include <QPainter>
 #include <QPainterPath>
 #include <QtMath>
@@ -129,13 +131,13 @@ QColor resolvedAccentColor(TriggerAnimationState state,
     }
     switch (state) {
     case TriggerAnimationState::Watch:
-        return kDefaultTriggerWatchListAccent;
+        return featureRunModeTriggerWatchAccent(true);
     case TriggerAnimationState::Cooldown:
-        return kDefaultTriggerCooldownListAccent;
+        return featureRunModeTriggerCooldownAccent(true);
     case TriggerAnimationState::Action:
-        return kDefaultTriggerWatchListAccent;
+        return featureRunModeTriggerWatchAccent(true);
     }
-    return kDefaultTriggerWatchListAccent;
+    return featureRunModeTriggerWatchAccent(true);
 }
 
 void paintListIcon(QPainter* painter,

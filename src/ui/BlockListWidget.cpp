@@ -1,5 +1,6 @@
 #include "ui/BlockListWidget.h"
 
+#include "ui/FeatureRunModeTheme.h"
 #include "ui/UiHoverFeedback.h"
 #include "ui/UiResizeHandle.h"
 #include "ui/widgets/ListColumnHeaderWidget.h"
@@ -510,21 +511,23 @@ struct GlassColors {
 
 GlassColors glassColorsFor(BlockListWidget::ExecutionHighlight highlight,
                            qreal intensity,
-                           const QPalette& palette) {
+                           const QPalette& palette,
+                           FeatureRunMode featureRunMode) {
     GlassColors colors;
     colors.intensity = qBound(0.0, intensity, 1.0);
     colors.foreground = palette.color(QPalette::Text);
     colors.scoreForeground = palette.color(QPalette::Text);
+    const bool dark = featureRunModeDarkThemeFromPalette(palette);
 
     switch (highlight) {
     case BlockListWidget::ExecutionHighlight::Running:
-        colors.tint = QColor(255, 196, 92);
+        colors.tint = featureRunModeTheme(featureRunMode, dark).accent;
         break;
     case BlockListWidget::ExecutionHighlight::TriggerWatch:
-        colors.tint = QColor(128, 188, 172);
+        colors.tint = featureRunModeTriggerWatchWash(dark);
         break;
     case BlockListWidget::ExecutionHighlight::TriggerCooldown:
-        colors.tint = QColor(140, 146, 154);
+        colors.tint = featureRunModeTriggerCooldownWash(dark);
         colors.intensity = qMin(1.0, colors.intensity * 0.75);
         break;
     case BlockListWidget::ExecutionHighlight::ImageFindMiss:
@@ -1594,6 +1597,14 @@ void BlockListWidget::setBlockRoiCorrection(int row, bool enabled, bool interact
     roiItem->setFlags(flags);
     roiItem->setCheckState(enabled ? Qt::Checked : Qt::Unchecked);
     m_updatingRoiCorrectionItem = false;
+}
+
+void BlockListWidget::setFeatureRunMode(FeatureRunMode mode) {
+    if (m_featureRunMode == mode) {
+        return;
+    }
+    m_featureRunMode = mode;
+    viewport()->update();
 }
 
 void BlockListWidget::setBlockCount(int count) {
@@ -2863,7 +2874,7 @@ void BlockListWidget::applyActiveRowVisuals() {
         const bool inPickPreview = tableRow < m_loopRegionPickPreview.size() && m_loopRegionPickPreview[tableRow];
 
         if (showGlass) {
-            glassColors = glassColorsFor(rowHighlight, glassIntensity, rowPalette);
+            glassColors = glassColorsFor(rowHighlight, glassIntensity, rowPalette, m_featureRunMode);
             if (rowHighlight == ExecutionHighlight::ReturnToPrevious) {
                 const QColor tint = tintOverlay(glassColors.tint, glassColors.intensity, kReturnToPreviousGlassAlphaCap);
                 const QColor specular = tintOverlay(QColor(255, 255, 255), glassColors.intensity, 34);

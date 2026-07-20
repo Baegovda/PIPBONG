@@ -4,6 +4,8 @@
 
 #include "core/workflow/WorkflowLoopRegion.h"
 
+#include "model/FeatureRunMode.h"
+
 #include "ui/BlockListRowMeta.h"
 
 #include "ui/widgets/DragAdjustSpinMouse.h"
@@ -120,6 +122,8 @@ public:
     static void wireListColumnHeader(ListColumnHeaderWidget* header, BlockListWidget* table);
 
     void setBlockCount(int count);
+
+    void setFeatureRunMode(FeatureRunMode mode);
 
     void setBlockInfo(int row,
 
@@ -447,6 +451,8 @@ private:
     QVector<bool> m_loopRegionPickPreview;
 
     QString m_defaultToolTip;
+
+    FeatureRunMode m_featureRunMode = FeatureRunMode::RepeatCount;
 
 };
 

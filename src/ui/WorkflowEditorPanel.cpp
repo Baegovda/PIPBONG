@@ -994,6 +994,10 @@ void WorkflowEditorPanel::setFeature(Feature* feature) {
     m_feature = feature;
     clearWorkflowHistory();
 
+    if (m_blockList) {
+        m_blockList->setFeatureRunMode(feature ? feature->runMode() : FeatureRunMode::RepeatCount);
+    }
+
     if (m_feature) {
         restoreRunFeedbackForFeature(m_feature->id());
     } else {

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.243 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.244 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -90,6 +90,7 @@ set(PIPBONG_SOURCES
     src/storage/ProfileMemoStore.cpp
     src/ui/LogPanelWidget.cpp
     src/ui/FeatureListPanel.cpp
+    src/ui/FeatureRunModeTheme.cpp
     src/ui/TriggerListAnimationRenderer.cpp
     src/ui/TriggerModeAnimationSettingsDialog.cpp
     src/ui/FeatureLibraryDialog.cpp
