@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.239 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.240 LANGUAGES CXX)
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -133,6 +133,7 @@ set(PIPBONG_SOURCES
     src/ui/editors/WorkflowRoiFlashOverlay.cpp
     src/ui/TargetWindowHighlightOverlay.cpp
     src/ui/WindowPickerHoverOverlay.cpp
+    src/ui/TargetWindowListPicker.cpp
     src/ui/OpenCvQtUtil.cpp
     src/ui/editors/ClickEditor.cpp
     src/ui/editors/KeyPressEditor.cpp

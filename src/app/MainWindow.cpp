@@ -42,6 +42,7 @@
 #include "ui/TargetWindowBindingRole.h"
 #include "ui/TargetWindowDetailPanel.h"
 #include "ui/TargetWindowHighlightOverlay.h"
+#include "ui/TargetWindowListPicker.h"
 #include "app/UpdateChecker.h"
 #include "core/diagnostics/CrashReporter.h"
 #include "ui/AppHelpDialog.h"
@@ -214,26 +215,6 @@ bool applyNativeAlwaysOnTop(QWidget* window, bool enabled) {
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE;
 }
 
-struct WindowListEntry {
-    HWND hwnd = nullptr;
-    std::wstring title;
-    QString processPath;
-    QString displayText;
-    QIcon icon;
-};
-
-bool windowTitleMatchesSubTarget(const QString& windowTitle,
-                                 const QString& mainBinding,
-                                 const QString& subBinding) {
-    if (subBinding.isEmpty() || windowTitle.isEmpty()) {
-        return false;
-    }
-    const bool subHit = windowTitle.contains(subBinding, Qt::CaseInsensitive);
-    const bool mainHit =
-        !mainBinding.isEmpty() && windowTitle.contains(mainBinding, Qt::CaseInsensitive);
-    return subHit && (!mainHit || subBinding.length() >= mainBinding.length());
-}
-
 #ifdef _WIN32
 HWND findVisibleTopLevelWindowHwnd(const QString& binding) {
     if (binding.isEmpty()) {
@@ -323,99 +304,6 @@ bool foregroundMatchesScopedMainTarget(const QString& foregroundTitle,
         return true;
     }
     return subHwnd == nullptr || foregroundHwnd != subHwnd;
-}
-#endif
-
-bool windowTitleMatchesMainBinding(const QString& windowTitle, const QString& mainBinding) {
-    return !mainBinding.isEmpty() && !windowTitle.isEmpty()
-           && windowTitle.contains(mainBinding, Qt::CaseInsensitive);
-}
-
-void applyWindowListBindingMark(QListWidgetItem* item,
-                                const QPalette& pal,
-                                bool isMainBinding,
-                                bool isSubBinding) {
-    if (!item || (!isMainBinding && !isSubBinding)) {
-        return;
-    }
-
-    const bool dark = isDarkTheme(pal);
-    const QColor mainAccent = targetWindowBindingAccentColor(TargetWindowBindingRole::Main, dark);
-    const QColor subAccent = targetWindowBindingAccentColor(TargetWindowBindingRole::Sub, dark);
-
-    QColor tint = isMainBinding ? mainAccent : subAccent;
-    if (isMainBinding && isSubBinding) {
-        tint = QColor((mainAccent.red() + subAccent.red()) / 2,
-                      (mainAccent.green() + subAccent.green()) / 2,
-                      (mainAccent.blue() + subAccent.blue()) / 2);
-    }
-    tint.setAlpha(dark ? 48 : 40);
-
-    QString badges;
-    if (isMainBinding) {
-        badges += QStringLiteral("● 주 대상");
-    }
-    if (isSubBinding) {
-        if (!badges.isEmpty()) {
-            badges += QStringLiteral("  ");
-        }
-        badges += QStringLiteral("● 서브 창");
-    }
-
-    item->setText(item->text() + QStringLiteral("    ") + badges);
-    item->setToolTip(badges);
-    item->setBackground(QBrush(tint));
-
-    QFont font = item->font();
-    font.setBold(true);
-    item->setFont(font);
-
-    const QColor accent =
-        isMainBinding && isSubBinding ? primaryContentTextColor(pal)
-        : isMainBinding                  ? mainAccent
-                                         : subAccent;
-    item->setForeground(QBrush(accent));
-}
-
-QString windowListBindingLegendHtml(const QPalette& pal) {
-    const bool dark = isDarkTheme(pal);
-    const QColor mainAccent = targetWindowBindingAccentColor(TargetWindowBindingRole::Main, dark);
-    const QColor subAccent = targetWindowBindingAccentColor(TargetWindowBindingRole::Sub, dark);
-    return QStringLiteral(
-               "<span style='color:%1; font-weight:600'>● 주 대상</span>"
-               "&nbsp;&nbsp;"
-               "<span style='color:%2; font-weight:600'>● 서브 창</span>")
-        .arg(mainAccent.name(), subAccent.name());
-}
-
-#ifdef _WIN32
-void wireWindowListHoverFeedback(QListWidget* listWidget, TargetWindowBindingRole role) {
-    if (!listWidget) {
-        return;
-    }
-    listWidget->setMouseTracking(true);
-    const auto applyHover = [listWidget, role]() {
-        QListWidgetItem* current = listWidget->currentItem();
-        if (!current) {
-            WindowPickerHoverOverlay::dismissAll();
-            return;
-        }
-        const HWND hwnd = reinterpret_cast<HWND>(current->data(Qt::UserRole).toULongLong());
-        if (hwnd && IsWindow(hwnd)) {
-            WindowPickerHoverOverlay::updateHover(hwnd, role);
-        } else {
-            WindowPickerHoverOverlay::dismissAll();
-        }
-    };
-    QObject::connect(listWidget, &QListWidget::currentItemChanged, listWidget,
-                     [applyHover](QListWidgetItem*, QListWidgetItem*) { applyHover(); });
-    QObject::connect(listWidget, &QListWidget::itemEntered, listWidget,
-                     [listWidget, applyHover](QListWidgetItem* item) {
-                         if (item) {
-                             listWidget->setCurrentItem(item);
-                         }
-                         applyHover();
-                     });
 }
 #endif
 
@@ -555,52 +443,6 @@ void releaseHoldHotkeyInputToTarget(FeatureRunSession& session, const Feature* f
     }
 #endif
     session.holdHotkeyReleasedToTarget = true;
-}
-
-QVector<WindowListEntry> collectWindowListEntries() {
-    QVector<WindowListEntry> entries;
-    EnumWindows(
-        [](HWND hwnd, LPARAM lParam) -> BOOL {
-            if (!IsWindowVisible(hwnd)) {
-                return TRUE;
-            }
-            if (GetWindow(hwnd, GW_OWNER) != nullptr) {
-                return TRUE;
-            }
-
-            wchar_t titleBuffer[512]{};
-            GetWindowTextW(hwnd, titleBuffer, 512);
-            std::wstring title(titleBuffer);
-            if (title.empty()) {
-                return TRUE;
-            }
-
-            ScreenCapture::TargetWindowInfo info;
-            QString processName = QStringLiteral("Unknown");
-            std::wstring processPath;
-            if (ScreenCapture::queryWindowInfo(hwnd, info) && !info.processPath.empty()) {
-                processPath = info.processPath;
-                const QFileInfo processInfo(QString::fromStdWString(processPath));
-                processName = processInfo.fileName();
-            }
-
-            auto* out = reinterpret_cast<QVector<WindowListEntry>*>(lParam);
-            WindowListEntry entry;
-            entry.hwnd = hwnd;
-            entry.title = title;
-            entry.processPath = QString::fromStdWString(processPath);
-            entry.icon = iconForProcessPath(processPath);
-            const QString titleText = QString::fromStdWString(title);
-            const qulonglong hwndValue = reinterpret_cast<qulonglong>(hwnd);
-            entry.displayText = QStringLiteral("[%1] %2 - %3")
-                                    .arg(hwndValue, 0, 16)
-                                    .toUpper()
-                                    .arg(processName, titleText);
-            out->push_back(std::move(entry));
-            return TRUE;
-        },
-        reinterpret_cast<LPARAM>(&entries));
-    return entries;
 }
 
 } // namespace
@@ -5463,168 +5305,25 @@ void MainWindow::pickTargetWindowFromList(TargetWindowListPickMode mode) {
         return;
     }
 #ifdef _WIN32
-    const bool pickSub = mode == TargetWindowListPickMode::Sub;
-    const TargetWindowBindingRole listRole =
-        pickSub ? TargetWindowBindingRole::Sub : TargetWindowBindingRole::Main;
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(pickSub ? tr("서브 대상 창 목록") : tr("주 대상 창 목록"));
-    dialog.resize(760, 460);
-
-    auto* layout = new QVBoxLayout(&dialog);
-    layout->setContentsMargins(12, 12, 12, 12);
-    layout->setSpacing(8);
-
-    auto* hintLabel = new QLabel(
-        pickSub
-            ? tr("현재 데스크톱에 표시된 최상위 창 목록입니다. 서브 대상 창으로 연결할 항목을 고르세요. "
-                 "선택하면 해당 창에 테두리 애니메이션이 표시됩니다.")
-            : tr("현재 데스크톱에 표시된 최상위 창 목록입니다. 주 대상 창으로 연결할 항목을 고르세요. "
-                 "선택하면 해당 창에 테두리 애니메이션이 표시됩니다. 더블클릭하거나 선택 후 확인을 누르세요."),
-        &dialog);
-    hintLabel->setWordWrap(true);
-    layout->addWidget(hintLabel);
-
-    auto* legendLabel = new QLabel(&dialog);
-    legendLabel->setTextFormat(Qt::RichText);
-    legendLabel->setText(windowListBindingLegendHtml(dialog.palette()));
-    layout->addWidget(legendLabel);
-
-    auto* listWidget = new QListWidget(&dialog);
-    listWidget->setSelectionMode(QAbstractItemView::SingleSelection);
-    listWidget->setIconSize(QSize(24, 24));
-    layout->addWidget(listWidget, 1);
-
-    auto* refreshButton = new QPushButton(tr("새로고침"), &dialog);
-    auto* buttonRow = new QHBoxLayout();
-    buttonRow->addWidget(refreshButton);
-    buttonRow->addStretch();
-
-    auto* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    auto* okButton = buttonBox->button(QDialogButtonBox::Ok);
-    if (okButton) {
-        okButton->setText(tr("선택"));
-        okButton->setEnabled(false);
-    }
-    if (auto* cancelButton = buttonBox->button(QDialogButtonBox::Cancel)) {
-        cancelButton->setText(tr("취소"));
-    }
-    buttonRow->addWidget(buttonBox);
-    layout->addLayout(buttonRow);
-
-    const QString mainBinding =
+    TargetWindowListPickOptions options;
+    options.role =
+        mode == TargetWindowListPickMode::Sub ? TargetWindowBindingRole::Sub : TargetWindowBindingRole::Main;
+    options.mainBinding =
         QString::fromStdString(m_project ? m_project->targetWindowTitle() : std::string{}).trimmed();
-    const QString subBinding =
+    options.subBinding =
         m_profileManager
             ? m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed()
             : QString();
+    options.preferredHwnd = ScreenCapture::targetWindow();
 
-    auto populateList = [listWidget, mainBinding, subBinding, pickSub]() {
-        const HWND currentTarget = ScreenCapture::targetWindow();
-        const QVector<WindowListEntry> entries = collectWindowListEntries();
-        const QPalette listPalette = listWidget->palette();
-        listWidget->clear();
-
-        int selectedIndex = -1;
-        int subMatchIndex = -1;
-        for (int i = 0; i < entries.size(); ++i) {
-            const auto& entry = entries[i];
-            auto* item = new QListWidgetItem(entry.displayText, listWidget);
-            item->setIcon(entry.icon);
-            item->setData(Qt::UserRole, QVariant::fromValue(reinterpret_cast<qulonglong>(entry.hwnd)));
-            item->setData(Qt::UserRole + 1, QString::fromStdWString(entry.title));
-
-            const QString entryTitle = QString::fromStdWString(entry.title);
-            const bool isMainBinding =
-                windowTitleMatchesMainBinding(entryTitle, mainBinding)
-                || (currentTarget && currentTarget == entry.hwnd);
-            const bool isSubBinding =
-                windowTitleMatchesSubTarget(entryTitle, mainBinding, subBinding);
-            applyWindowListBindingMark(item, listPalette, isMainBinding, isSubBinding);
-
-            if (pickSub) {
-                if (subMatchIndex < 0 && isSubBinding) {
-                    subMatchIndex = i;
-                }
-            } else if (currentTarget && currentTarget == entry.hwnd) {
-                selectedIndex = i;
-            } else if (selectedIndex < 0 && isMainBinding) {
-                selectedIndex = i;
-            }
-            if (subMatchIndex < 0 && isSubBinding) {
-                subMatchIndex = i;
-            }
-        }
-
-        if (pickSub) {
-            if (subMatchIndex >= 0) {
-                listWidget->setCurrentRow(subMatchIndex);
-            } else if (listWidget->count() > 0) {
-                listWidget->setCurrentRow(0);
-            }
-        } else if (selectedIndex >= 0) {
-            listWidget->setCurrentRow(selectedIndex);
-        } else if (listWidget->count() > 0) {
-            listWidget->setCurrentRow(0);
-        }
-    };
-
-    wireWindowListHoverFeedback(listWidget, listRole);
-
-    connect(refreshButton, &QPushButton::clicked, &dialog, populateList);
-    connect(listWidget, &QListWidget::itemDoubleClicked, &dialog,
-            [&dialog](QListWidgetItem*) { dialog.accept(); });
-    connect(listWidget, &QListWidget::currentItemChanged, &dialog,
-            [okButton](QListWidgetItem* current) {
-                if (okButton) {
-                    okButton->setEnabled(current != nullptr);
-                }
-            });
-    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-    struct ListPickerHoverGuard {
-        ~ListPickerHoverGuard() { WindowPickerHoverOverlay::dismissAll(); }
-    } hoverGuard;
-
-    populateList();
-    if (listWidget->count() == 0) {
-        QMessageBox::information(this,
-                                 pickSub ? tr("서브 대상 창 목록") : tr("주 대상 창 목록"),
-                                 tr("표시 중인 창을 찾지 못했습니다."));
+    const std::optional<TargetWindowListPickResult> pickResult = ::pickTargetWindowFromList(this, options);
+    if (!pickResult) {
         return;
     }
 
-    QTimer::singleShot(0, &dialog, [listWidget, listRole]() {
-        if (QListWidgetItem* current = listWidget->currentItem()) {
-            const HWND hwnd = reinterpret_cast<HWND>(current->data(Qt::UserRole).toULongLong());
-            if (hwnd && IsWindow(hwnd)) {
-                WindowPickerHoverOverlay::updateHover(hwnd, listRole);
-            }
-        }
-    });
-
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    QListWidgetItem* currentItem = listWidget->currentItem();
-    if (!currentItem) {
-        return;
-    }
-
-    const qulonglong hwndValue = currentItem->data(Qt::UserRole).toULongLong();
-    const HWND hwnd = reinterpret_cast<HWND>(hwndValue);
-    if (!hwnd || !IsWindow(hwnd)) {
-        QMessageBox::warning(this,
-                             pickSub ? tr("서브 대상 창 목록") : tr("주 대상 창 목록"),
-                             tr("선택한 창이 더 이상 유효하지 않습니다. 다시 선택하세요."));
-        return;
-    }
-
-    const QString title = currentItem->data(Qt::UserRole + 1).toString();
-    const HWND selectedHwnd = hwnd;
-    if (pickSub) {
+    const HWND selectedHwnd = pickResult->hwnd;
+    const QString title = pickResult->title;
+    if (mode == TargetWindowListPickMode::Sub) {
         commitActiveProfileSubTargetWindow(selectedHwnd, title);
         appendLog(tr("서브 대상 창을 지정했습니다: %1")
                       .arg(title.isEmpty() ? tr("(제목 없음)") : title),
@@ -6159,8 +5858,8 @@ void MainWindow::refreshProfileList() {
             break;
         }
     }
-    const QVector<WindowListEntry> windows =
-        needsLiveWindowIcons ? collectWindowListEntries() : QVector<WindowListEntry>{};
+    const QVector<TargetWindowListEntry> windows =
+        needsLiveWindowIcons ? collectTargetWindowListEntries() : QVector<TargetWindowListEntry>{};
     const auto resolveProfileIcon = [this, &defaultId, &windows](const ProfileManager::Profile& profile) {
         if (profile.id == defaultId) {
             return windowIcon();
@@ -6179,7 +5878,7 @@ void MainWindow::refreshProfileList() {
         }
         const QString targetTitle = profile.targetWindowTitle;
         if (!targetTitle.isEmpty()) {
-            for (const WindowListEntry& entry : windows) {
+            for (const TargetWindowListEntry& entry : windows) {
                 if (!QString::fromStdWString(entry.title).contains(targetTitle, Qt::CaseInsensitive)) {
                     continue;
                 }
@@ -7112,7 +6811,7 @@ void MainWindow::updateTargetWindowDetails() {
             wchar_t fgTitleBuffer[512]{};
             GetWindowTextW(fg, fgTitleBuffer, 512);
             const QString fgTitle = QString::fromWCharArray(fgTitleBuffer).trimmed();
-            if (windowTitleMatchesSubTarget(fgTitle, savedTitle, subBinding)) {
+            if (targetWindowTitleMatchesSubTarget(fgTitle, savedTitle, subBinding)) {
                 hwnd = fg;
                 ScreenCapture::setTargetWindow(hwnd);
                 ScreenCapture::setForegroundHintWindow(hwnd);
@@ -7180,7 +6879,7 @@ void MainWindow::updateTargetWindowDetails() {
     // Persist exe path once resolved so profile list icons survive settings saves
     // and restarts (even if an earlier save wiped linkedTargetProcessPath).
     const bool isSubTarget =
-        windowTitleMatchesSubTarget(title, savedTitle, subBinding);
+        targetWindowTitleMatchesSubTarget(title, savedTitle, subBinding);
     if (m_profileManager && !processPath.isEmpty() && !isActiveDefaultProfile()) {
         const QString profileId = m_profileManager->activeProfileId();
         if (isSubTarget) {

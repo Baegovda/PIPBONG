@@ -4,117 +4,24 @@
 #include "core/capture/WindowPicker.h"
 #include "ui/TargetWindowBindingRole.h"
 #include "ui/TargetWindowHighlightOverlay.h"
+#include "ui/TargetWindowListPicker.h"
 #include "ui/UiStrings.h"
-#include "ui/WindowPickerHoverOverlay.h"
 #include "ui/widgets/HintLabel.h"
 
-#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QDialogButtonBox>
-#include <QFileIconProvider>
-#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
 #include <QPushButton>
-#include <QSize>
 #include <QTimer>
 #include <QVBoxLayout>
+
+#include <optional>
 
 #ifdef _WIN32
 #include <windows.h>
 #endif
-
-namespace {
-
-#ifdef _WIN32
-struct ProfileWindowListEntry {
-    HWND hwnd = nullptr;
-    std::wstring title;
-    QString displayText;
-    QIcon icon;
-};
-
-QIcon profileIconForProcessPath(const std::wstring& processPath) {
-    static QFileIconProvider iconProvider;
-    if (!processPath.empty()) {
-        const QIcon icon = iconProvider.icon(QFileInfo(QString::fromStdWString(processPath)));
-        if (!icon.isNull()) {
-            return icon;
-        }
-    }
-    return iconProvider.icon(QFileIconProvider::File);
-}
-
-QVector<ProfileWindowListEntry> collectProfileWindowListEntries() {
-    QVector<ProfileWindowListEntry> entries;
-    EnumWindows(
-        [](HWND hwnd, LPARAM lParam) -> BOOL {
-            if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != nullptr) {
-                return TRUE;
-            }
-
-            wchar_t titleBuffer[512]{};
-            GetWindowTextW(hwnd, titleBuffer, 512);
-            std::wstring title(titleBuffer);
-            if (title.empty()) {
-                return TRUE;
-            }
-
-            ScreenCapture::TargetWindowInfo info;
-            QString processName = QStringLiteral("Unknown");
-            std::wstring processPath;
-            if (ScreenCapture::queryWindowInfo(hwnd, info) && !info.processPath.empty()) {
-                processPath = info.processPath;
-                processName = QFileInfo(QString::fromStdWString(processPath)).fileName();
-            }
-
-            auto* out = reinterpret_cast<QVector<ProfileWindowListEntry>*>(lParam);
-            ProfileWindowListEntry entry;
-            entry.hwnd = hwnd;
-            entry.title = title;
-            entry.icon = profileIconForProcessPath(processPath);
-            entry.displayText = QStringLiteral("%1 - %2")
-                                    .arg(processName, QString::fromStdWString(title));
-            out->push_back(std::move(entry));
-            return TRUE;
-        },
-        reinterpret_cast<LPARAM>(&entries));
-    return entries;
-}
-
-void wireProfileWindowListHoverFeedback(QListWidget* listWidget, TargetWindowBindingRole role) {
-    if (!listWidget) {
-        return;
-    }
-    listWidget->setMouseTracking(true);
-    const auto applyHover = [listWidget, role]() {
-        QListWidgetItem* current = listWidget->currentItem();
-        if (!current) {
-            WindowPickerHoverOverlay::dismissAll();
-            return;
-        }
-        const HWND hwnd = reinterpret_cast<HWND>(current->data(Qt::UserRole).toULongLong());
-        if (hwnd && IsWindow(hwnd)) {
-            WindowPickerHoverOverlay::updateHover(hwnd, role);
-        } else {
-            WindowPickerHoverOverlay::dismissAll();
-        }
-    };
-    QObject::connect(listWidget, &QListWidget::currentItemChanged, listWidget,
-                     [applyHover](QListWidgetItem*, QListWidgetItem*) { applyHover(); });
-    QObject::connect(listWidget, &QListWidget::itemEntered, listWidget,
-                     [listWidget, applyHover](QListWidgetItem* item) {
-                         if (item) {
-                             listWidget->setCurrentItem(item);
-                         }
-                         applyHover();
-                     });
-}
-#endif
-
-} // namespace
 
 ProfileEditDialog::ProfileEditDialog(const QString& profileName,
                                      const QString& targetWindowTitle,
@@ -230,7 +137,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     auto* pickTargetButton = new QPushButton(tr("지정"), m_linkedProgramSection);
     pickTargetButton->setToolTip(
         tr("클릭한 뒤 주 대상 창을 눌러 지정합니다. 마우스를 올리면 초록색 테두리가 표시됩니다."));
-    auto* pickFromListButton = new QPushButton(tr("주 대상 창 목록"), m_linkedProgramSection);
+    auto* pickFromListButton = new QPushButton(tr("주 목록"), m_linkedProgramSection);
     pickFromListButton->setToolTip(
         tr("주 대상 창 목록에서 선택합니다. 항목을 고르면 초록색 테두리 애니메이션이 표시됩니다."));
     auto* clearButton = new QPushButton(tr("비우기"), m_linkedProgramSection);
@@ -273,7 +180,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     auto* subPickButton = new QPushButton(tr("지정"), m_linkedProgramSection);
     subPickButton->setToolTip(
         tr("클릭한 뒤 서브 대상 창을 눌러 지정합니다. 마우스를 올리면 파란색 테두리가 표시됩니다."));
-    auto* subPickListButton = new QPushButton(tr("서브 대상 창 목록"), m_linkedProgramSection);
+    auto* subPickListButton = new QPushButton(tr("서브 목록"), m_linkedProgramSection);
     subPickListButton->setToolTip(
         tr("서브 대상 창 목록에서 선택합니다. 항목을 고르면 파란색 테두리 애니메이션이 표시됩니다."));
     auto* subClearButton = new QPushButton(tr("비우기"), m_linkedProgramSection);
@@ -324,69 +231,22 @@ void ProfileEditDialog::openWindowListPicker(QLineEdit* targetEdit, bool subTarg
     if (!targetEdit) {
         return;
     }
-    const TargetWindowBindingRole role =
-        subTarget ? TargetWindowBindingRole::Sub : TargetWindowBindingRole::Main;
-    QDialog dialog(this);
-    dialog.setWindowTitle(subTarget ? tr("서브 대상 창 목록") : tr("주 대상 창 목록"));
-    dialog.resize(700, 420);
 
-    auto* layout = new QVBoxLayout(&dialog);
-    auto* hint = new HintLabel(
-        subTarget ? tr("현재 표시 중인 창에서 서브 대상 창으로 연결할 프로그램을 고르세요. "
-                       "선택하면 해당 창에 테두리 애니메이션이 표시됩니다.")
-                  : tr("현재 표시 중인 창에서 주 대상 창으로 연결할 프로그램을 고르세요. "
-                       "선택하면 해당 창에 테두리 애니메이션이 표시됩니다."),
-        &dialog);
-    layout->addWidget(hint);
+    TargetWindowListPickOptions options;
+    options.role = subTarget ? TargetWindowBindingRole::Sub : TargetWindowBindingRole::Main;
+    options.mainBinding = m_targetWindowTitleEdit ? m_targetWindowTitleEdit->text().trimmed() : QString();
+    options.subBinding =
+        m_subTargetWindowTitleEdit ? m_subTargetWindowTitleEdit->text().trimmed() : QString();
 
-    auto* listWidget = new QListWidget(&dialog);
-    listWidget->setSelectionMode(QAbstractItemView::SingleSelection);
-    listWidget->setIconSize(QSize(24, 24));
-    layout->addWidget(listWidget, 1);
-
-    const QVector<ProfileWindowListEntry> entries = collectProfileWindowListEntries();
-    for (const ProfileWindowListEntry& entry : entries) {
-        auto* item = new QListWidgetItem(entry.icon, entry.displayText, listWidget);
-        item->setData(Qt::UserRole, QVariant::fromValue(reinterpret_cast<qulonglong>(entry.hwnd)));
-        item->setData(Qt::UserRole + 1, QString::fromStdWString(entry.title));
-    }
-    if (listWidget->count() > 0) {
-        listWidget->setCurrentRow(0);
-    }
-
-    wireProfileWindowListHoverFeedback(listWidget, role);
-
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    localizeDialogButtons(buttons);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addWidget(buttons);
-
-    struct ListPickerHoverGuard {
-        ~ListPickerHoverGuard() { WindowPickerHoverOverlay::dismissAll(); }
-    } hoverGuard;
-
-    if (listWidget->count() == 0) {
+    const std::optional<TargetWindowListPickResult> pickResult = ::pickTargetWindowFromList(this, options);
+    if (!pickResult) {
         return;
     }
 
-    QTimer::singleShot(0, &dialog, [listWidget, role]() {
-        if (QListWidgetItem* current = listWidget->currentItem()) {
-            const HWND hwnd = reinterpret_cast<HWND>(current->data(Qt::UserRole).toULongLong());
-            if (hwnd && IsWindow(hwnd)) {
-                WindowPickerHoverOverlay::updateHover(hwnd, role);
-            }
-        }
-    });
-
-    if (dialog.exec() != QDialog::Accepted || !listWidget->currentItem()) {
-        return;
-    }
-
-    const HWND selectedHwnd =
-        reinterpret_cast<HWND>(listWidget->currentItem()->data(Qt::UserRole).toULongLong());
-    targetEdit->setText(listWidget->currentItem()->data(Qt::UserRole + 1).toString());
-    if (selectedHwnd && IsWindow(selectedHwnd)) {
+    targetEdit->setText(pickResult->title);
+    if (pickResult->hwnd && IsWindow(pickResult->hwnd)) {
+        const HWND selectedHwnd = pickResult->hwnd;
+        const TargetWindowBindingRole role = options.role;
         QTimer::singleShot(0, this, [this, selectedHwnd, role]() {
             TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd, this, role);
         });

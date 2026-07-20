@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.239` (from `project(PIPBONG VERSION 0.8.239)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.240` (from `project(PIPBONG VERSION 0.8.240)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.240] - 2026-07-20
+
+### Changed
+
+- Shared `TargetWindowListPicker` (`src/ui/TargetWindowListPicker.*`): main window **주 목록** / **서브 목록** and profile **프로필 편집** use the same window-list dialog (HWND row format, legend, refresh, binding badges, hover preview, smart pre-selection); removed duplicate collectors and dialog code from `MainWindow` and `ProfileEditDialog`.
+- Profile edit list buttons renamed **주 목록** / **서브 목록** to match the main **대상 창** panel (`ProfileEditDialog`).
 
 ## [0.8.239] - 2026-07-20
 
