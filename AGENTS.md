@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.240` (from `project(PIPBONG VERSION 0.8.240)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.241` (from `project(PIPBONG VERSION 0.8.241)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1232,6 +1232,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.241] - 2026-07-20
+
+### Fixed
+
+- **메모장** typing no longer loses keys bound as feature hotkeys: when focus is in a text/numeric field inside hotkey-gate-exempt tool dialogs (memo, calculator, CPU watch), `FeatureHotkeyGate` blocks swallow/execution so keystrokes reach the editor (`FeatureHotkeyGate`, `HotkeyManager` LL hook).
 
 ## [0.8.240] - 2026-07-20
 

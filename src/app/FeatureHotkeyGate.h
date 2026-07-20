@@ -2,7 +2,8 @@
 
 // Suppresses feature global hotkeys while:
 // - an explicit FeatureHotkeyGateScope is held (block editor, settings, capture), or
-// - any QDialog belonging to this process is visible (modal or modeless edit/tool windows).
+// - any QDialog belonging to this process is visible (modal or modeless edit/tool windows), or
+// - focus is in a text/numeric field inside a hotkey-gate-exempt tool dialog (memo, calculator, CPU watch).
 class FeatureHotkeyGate {
 public:
     static bool isFeatureHotkeysBlocked();

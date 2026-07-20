@@ -1,7 +1,11 @@
 #include "app/FeatureHotkeyGate.h"
 
+#include <QAbstractSpinBox>
 #include <QApplication>
 #include <QDialog>
+#include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QTextEdit>
 #include <QWidget>
 
 #include <atomic>
@@ -11,6 +15,32 @@ namespace {
 std::atomic<int> g_featureHotkeyBlockCount{0};
 
 constexpr char kFeatureHotkeyGateExemptProperty[] = "pipbong_featureHotkeyGateExempt";
+
+bool isTextInputFocusWidget(const QWidget* widget) {
+    if (!widget) {
+        return false;
+    }
+    return qobject_cast<const QLineEdit*>(widget) || qobject_cast<const QTextEdit*>(widget)
+           || qobject_cast<const QPlainTextEdit*>(widget)
+           || qobject_cast<const QAbstractSpinBox*>(widget);
+}
+
+bool focusInExemptDialogTextInput() {
+    QWidget* focus = QApplication::focusWidget();
+    if (!isTextInputFocusWidget(focus)) {
+        return false;
+    }
+    for (QWidget* ancestor = focus; ancestor; ancestor = ancestor->parentWidget()) {
+        const auto* dialog = qobject_cast<const QDialog*>(ancestor);
+        if (!dialog || !dialog->isVisible()) {
+            continue;
+        }
+        if (dialog->property(kFeatureHotkeyGateExemptProperty).toBool()) {
+            return true;
+        }
+    }
+    return false;
+}
 
 bool anyVisibleAppDialogOpen() {
     if (!QApplication::instance()) {
@@ -35,6 +65,9 @@ bool anyVisibleAppDialogOpen() {
 
 bool FeatureHotkeyGate::isFeatureHotkeysBlocked() {
     if (g_featureHotkeyBlockCount.load() > 0) {
+        return true;
+    }
+    if (focusInExemptDialogTextInput()) {
         return true;
     }
     // Any editing / tool dialog left open (modal or modeless) suppresses feature bindings
