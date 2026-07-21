@@ -3126,6 +3126,10 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     ++session->holdRepeatGeneration;
     ++session->triggerCooldownGeneration;
 
+    if (session->runningMode == FeatureRunMode::Trigger) {
+        persistTriggerArmedState(QString::fromStdString(featureId), false);
+    }
+
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
     if (session->runningMode == FeatureRunMode::Hold) {
         releaseHoldHotkeyInputToTarget(*session, feature);
@@ -4031,23 +4035,31 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
         }
         return;
     }
+    bool deferTriggerRestoreStart = false;
 #ifdef _WIN32
     if (!ProgramSettings::runWithoutTargetWindow()) {
         syncProfileToForegroundWindow();
         syncEffectiveTargetWindowTitleToCapture();
         reconcileRunSessionsWithForegroundGate();
-        if (!runForegroundGateActive(feature)) {
+        const bool foregroundGateActive = runForegroundGateActive(feature);
+        const std::wstring captureTitle = resolveRunCaptureTargetTitleW(feature);
+        const FeatureCaptureTargetScope scope = feature->captureTargetScope();
+        const bool triggerRestore = silentRestoreStart && feature->runMode() == FeatureRunMode::Trigger;
+        if (!foregroundGateActive) {
             if (!silentRestoreStart) {
                 QMessageBox::information(
                     this,
                     tr("실행"),
                     tr("현재 포커스 창에 연결된 프로필의 기능만 실행됩니다. "
                        "해당 프로필로 전환하거나 타겟 프로그램을 활성화한 뒤 다시 시도하세요."));
+                return;
             }
-            return;
+            if (triggerRestore) {
+                deferTriggerRestoreStart = true;
+            } else {
+                return;
+            }
         }
-        const std::wstring captureTitle = resolveRunCaptureTargetTitleW(feature);
-        const FeatureCaptureTargetScope scope = feature->captureTargetScope();
         if (captureTitle.empty()) {
             if (!silentRestoreStart) {
                 QString message;
@@ -4059,10 +4071,14 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
                                  "프로그램 설정에서 '창을 지정하지 않은 상태에서도 동작'을 켜세요.");
                 }
                 QMessageBox::information(this, tr("실행"), message);
+                return;
             }
-            return;
-        }
-        if (!ScreenCapture::hasVisibleWindowMatchingTitle(captureTitle)) {
+            if (triggerRestore) {
+                deferTriggerRestoreStart = true;
+            } else {
+                return;
+            }
+        } else if (!ScreenCapture::hasVisibleWindowMatchingTitle(captureTitle)) {
             if (!silentRestoreStart) {
                 QString message;
                 if (scope == FeatureCaptureTargetScope::SubOnly) {
@@ -4075,8 +4091,13 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
                                  "'타겟 지정'·프로필 편집을 확인하세요.");
                 }
                 QMessageBox::information(this, tr("실행"), message);
+                return;
             }
-            return;
+            if (triggerRestore) {
+                deferTriggerRestoreStart = true;
+            } else {
+                return;
+            }
         }
     }
 #endif
@@ -4138,6 +4159,12 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
     }
     if (feature->runMode() == FeatureRunMode::Trigger) {
         persistTriggerArmedState(QString::fromStdString(featureId), true);
+        if (deferTriggerRestoreStart) {
+            activeSession.waitingForScopedTargetForeground = true;
+            scheduleScopedTargetForegroundResumePoll();
+            updateRunUiState();
+            return;
+        }
         launchTriggerMonitor(activeSession, feature, true);
         return;
     }
@@ -4211,6 +4238,7 @@ bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Featur
         self->scheduleAutoSave();
         self->refreshWorkflowEditor();
         if (activeFeature->runMode() == FeatureRunMode::Trigger) {
+            self->persistTriggerArmedState(QString::fromStdString(featureId), true);
             self->launchTriggerMonitor(*activeSession, activeFeature, true);
         } else {
             self->launchWorkflowRun(*activeSession, activeFeature, false);
@@ -5168,6 +5196,9 @@ void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* fe
     QTimer::singleShot(cooldownMs, this, [this, featureId, generation]() {
         FeatureRunSession* activeSession = sessionFor(featureId);
         if (!activeSession || generation != activeSession->triggerCooldownGeneration) {
+            if (activeSession && activeSession->userStopRequested) {
+                finishRunSession(featureId, activeSession->lastLoopSuccess, QString());
+            }
             return;
         }
         if (activeSession->userStopRequested || !activeSession->repeatSession) {

@@ -635,7 +635,7 @@ bool ProfileManager::saveSettings(const QString& id,
     if (!toWrite.subLinkedTargetProcessPath.isEmpty()) {
         root.insert(QStringLiteral("subLinkedTargetProcessPath"), toWrite.subLinkedTargetProcessPath);
     }
-    if (replaceTriggerArmedFeatureIds || !toWrite.triggerArmedFeatureIds.isEmpty()) {
+    {
         QJsonArray armedArray;
         for (const QString& featureId : toWrite.triggerArmedFeatureIds) {
             if (!featureId.isEmpty()) {

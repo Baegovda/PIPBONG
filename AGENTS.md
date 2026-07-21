@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.247` (from `project(PIPBONG VERSION 0.8.247)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.248` (from `project(PIPBONG VERSION 0.8.248)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.248] - 2026-07-22
+
+### Fixed
+
+- Trigger mode **감시** armed/stopped state persists reliably in `profile-settings.json` `triggerArmedFeatureIds`: explicit user stop writes disarm immediately in `stopFeatureRun` (not only after engine teardown); first-template ROI confirm path persists armed before monitor launch; `saveSettings` always writes the armed-id array (empty clears prior state); silent restore creates a deferred trigger session when the foreground gate or target window is not ready yet instead of dropping restore (`MainWindow`, `ProfileManager`).
 
 ## [0.8.247] - 2026-07-22
 
