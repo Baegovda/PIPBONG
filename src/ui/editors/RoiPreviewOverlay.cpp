@@ -1049,8 +1049,8 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
     if (!ScreenCapture::findTargetWindow()) {
         QMessageBox::warning(messageBoxParent(hostWidget),
                              QObject::tr("ROI 미리보기"),
-                             QObject::tr("대상 창을 찾을 수 없습니다.\n"
-                                         "메인 창에서 먼저 '창 지정'을 사용하세요."));
+                             QObject::tr("타겟을 찾을 수 없습니다.\n"
+                                         "메인 창에서 먼저 '타겟 지정'을 사용하세요."));
         return false;
     }
 
@@ -1058,7 +1058,7 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
     if (!target.valid || target.width <= 0 || target.height <= 0) {
         QMessageBox::warning(messageBoxParent(hostWidget),
                              QObject::tr("ROI 미리보기"),
-                             QObject::tr("대상 창 영역을 확인할 수 없습니다."));
+                             QObject::tr("타겟 영역을 확인할 수 없습니다."));
         return false;
     }
 
@@ -1095,7 +1095,7 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
         if (roiClient.width() < kMinRoiSize || roiClient.height() < kMinRoiSize) {
             QMessageBox::warning(messageBoxParent(hostWidget),
                                  QObject::tr("ROI 미리보기"),
-                                 QObject::tr("탐색 ROI가 대상 창과 겹치지 않습니다."));
+                                 QObject::tr("탐색 ROI가 타겟과 겹치지 않습니다."));
             return false;
         }
         roiClientRects.push_back(roiClient);
@@ -1104,7 +1104,7 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
     if (roiClientRects.empty()) {
         QMessageBox::warning(messageBoxParent(hostWidget),
                              QObject::tr("ROI 미리보기"),
-                             QObject::tr("탐색 ROI가 대상 창과 겹치지 않습니다."));
+                             QObject::tr("탐색 ROI가 타겟과 겹치지 않습니다."));
         return false;
     }
 

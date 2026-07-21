@@ -73,7 +73,7 @@ void ProgramSettingsDialog::setupUi() {
     auto* runGroup = addSettingsGroup(
         layout,
         tr("기능 실행"),
-        tr("기능을 실행할 때 워크플로·대상 창·로그와 관련된 동작입니다."));
+        tr("기능을 실행할 때 워크플로·타겟·로그와 관련된 동작입니다."));
     auto* runLayout = new QVBoxLayout(runGroup);
     runLayout->setSpacing(6);
 
@@ -87,7 +87,7 @@ void ProgramSettingsDialog::setupUi() {
     m_focusTargetWindowOnProfileSelectCheck = addGroupCheck(
         runLayout,
         runGroup,
-        tr("프로필 전환 시 대상 창으로 이동"),
+        tr("프로필 전환 시 타겟으로 이동"),
         tr("프로필을 바꿀 때 연결된 게임·프로그램 창을 앞으로 가져옵니다. "
            "끄면 PIPBONG 화면에 머무른 채로 프로필만 바뀝니다."),
         ProgramSettings::focusTargetWindowOnProfileSelect());
@@ -95,9 +95,9 @@ void ProgramSettingsDialog::setupUi() {
     m_runWithoutTargetWindowCheck = addGroupCheck(
         runLayout,
         runGroup,
-        tr("대상 창 없이도 실행 허용"),
-        tr("창 지정 없이 키보드·딜레이·텍스트 블록을 실행할 수 있습니다. "
-           "템플릿 매칭은 전체 화면을 봅니다. 끄면 실행 전에 창 지정이 필요합니다."),
+        tr("타겟 없이도 실행 허용"),
+        tr("타겟 지정 없이 키보드·딜레이·텍스트 블록을 실행할 수 있습니다. "
+           "템플릿 매칭은 전체 화면을 봅니다. 끄면 실행 전에 타겟 지정이 필요합니다."),
         ProgramSettings::runWithoutTargetWindow());
 
     auto* logRow = new QHBoxLayout();
@@ -206,7 +206,7 @@ void ProgramSettingsDialog::setupUi() {
         compatLayout,
         compatGroup,
         tr("항상 관리자 권한으로 실행"),
-        tr("대상 프로그램이 관리자 권한으로 실행될 때 입력·화면 캡처가 동작합니다. "
+        tr("타겟 프로그램이 관리자 권한으로 실행될 때 입력·화면 캡처가 동작합니다. "
            "실행할 때마다 Windows UAC 확인이 뜰 수 있습니다."),
         ProgramSettings::runAsAdministrator());
 
@@ -254,7 +254,7 @@ void ProgramSettingsDialog::setupUi() {
     auto* visualGroup = addSettingsGroup(
         layout,
         tr("화면 표시"),
-        tr("클릭·창 지정 시 대상 창 위에 보이는 효과입니다."));
+        tr("클릭·타겟 지정 시 타겟 위에 보이는 효과입니다."));
     auto* visualLayout = new QVBoxLayout(visualGroup);
     visualLayout->setSpacing(8);
 
@@ -265,7 +265,7 @@ void ProgramSettingsDialog::setupUi() {
     auto* clickTitle = new QLabel(tr("실행 위치 피드백 (기본)"), clickSection);
     applyOptionToolTip(
         clickTitle,
-        tr("기능 편집에서 실행 위치 표시가 켜진 기능의 클릭·실행 위치를 대상 창에 보여 주는 기본 애니메이션입니다. "
+        tr("기능 편집에서 실행 위치 표시가 켜진 기능의 클릭·실행 위치를 타겟에 보여 주는 기본 애니메이션입니다. "
            "템플릿 감지 피드백은 템플릿 매칭 블록 편집에서 블록별로 지정합니다."));
     clickSectionLayout->addWidget(clickTitle);
     m_clickFeedbackSummary = new QLabel(clickSection);
@@ -285,10 +285,10 @@ void ProgramSettingsDialog::setupUi() {
     auto* windowSectionLayout = new QVBoxLayout(windowSection);
     windowSectionLayout->setContentsMargins(0, 0, 0, 0);
     windowSectionLayout->setSpacing(4);
-    auto* windowTitle = new QLabel(tr("창 지정 애니메이션"), windowSection);
+    auto* windowTitle = new QLabel(tr("타겟 지정 애니메이션"), windowSection);
     applyOptionToolTip(
         windowTitle,
-        tr("창 지정 또는 창 목록에서 대상 창을 고를 때 그 창 위에 재생되는 확인 효과입니다."));
+        tr("타겟 지정 또는 창 목록에서 타겟을 고를 때 그 창 위에 재생되는 확인 효과입니다."));
     windowSectionLayout->addWidget(windowTitle);
     m_windowSelectionFeedbackSummary = new QLabel(windowSection);
     m_windowSelectionFeedbackSummary->setWordWrap(true);

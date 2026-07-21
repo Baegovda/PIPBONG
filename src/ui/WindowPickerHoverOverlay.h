@@ -9,7 +9,7 @@
 #include <windows.h>
 #endif
 
-/// Pulsing border on the top-level window under the cursor during "창 지정" pick mode.
+/// Pulsing border on the top-level window under the cursor during "타겟 지정" pick mode.
 class WindowPickerHoverOverlay {
 public:
 #ifdef _WIN32

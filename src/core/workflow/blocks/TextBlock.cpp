@@ -77,7 +77,6 @@ BlockResult TextBlock::execute(ExecutionContext& ctx) {
     if (text.empty()) {
         result.success = true;
         result.message = "입력할 텍스트가 없습니다";
-        ctx.log(result.message);
         return result;
     }
 
@@ -106,7 +105,6 @@ BlockResult TextBlock::execute(ExecutionContext& ctx) {
     const std::string summaryText = collapseTextForSummary(text);
     result.success = true;
     result.message = "텍스트 입력 · " + summaryText;
-    ctx.log(result.message);
     return result;
 }
 

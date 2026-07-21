@@ -3,6 +3,7 @@
 #include "ui/FeatureRunModeTheme.h"
 #include "ui/UiHoverFeedback.h"
 #include "ui/UiResizeHandle.h"
+#include "ui/UiThemeColors.h"
 #include "ui/widgets/ListColumnHeaderWidget.h"
 #include "ui/widgets/ListDragAutoScroll.h"
 
@@ -14,8 +15,7 @@
 
 #include <QApplication>
 #include <QCursor>
-#include <QDrag>
-#include <QMimeData>
+#include <QEventLoop>
 #include <QSettings>
 #include <QStyle>
 #include <QWheelEvent>
@@ -36,6 +36,7 @@
 #include <QPushButton>
 #include <QLinearGradient>
 #include <QPainter>
+#include <QPainterPath>
 #include <QResizeEvent>
 #include <QShowEvent>
 #include <QScrollBar>
@@ -55,8 +56,8 @@ namespace {
 constexpr int kThumbnailSize = 32;
 constexpr int kLoopRegionHeaderHeight = 28;
 constexpr int kColIndex = 0;
-constexpr int kColPreview = 1;
-constexpr int kColAction = 2;
+constexpr int kColAction = 1;
+constexpr int kColPreview = 2;
 constexpr int kColSummary = 3;
 constexpr int kColDuration = 4;
 constexpr int kColMatchDuration = 5;
@@ -273,8 +274,8 @@ int blockListDividerHandleAt(const QPoint& pos, const BlockListColumnEdges& edge
         int x = 0;
         int rightColumn = 0;
     };
-    QList<Candidate> candidates = {{edges.previewDividerX, kColPreview},
-                                   {edges.actionDividerX, kColAction},
+    QList<Candidate> candidates = {{edges.actionDividerX, kColAction},
+                                   {edges.previewDividerX, kColPreview},
                                    {edges.summaryDividerX, kColSummary},
                                    {edges.durationDividerX, kColDuration},
                                    {edges.matchDurationDividerX, kColMatchDuration},
@@ -303,8 +304,8 @@ int blockListDividerHandleAt(const QPoint& pos, const BlockListColumnEdges& edge
 }
 
 QList<int> blockListDividerXs(const BlockListColumnEdges& edges, bool roiVisible) {
-    QList<int> xs = {edges.previewDividerX,
-                     edges.actionDividerX,
+    QList<int> xs = {edges.actionDividerX,
+                     edges.previewDividerX,
                      edges.summaryDividerX,
                      edges.durationDividerX,
                      edges.matchDurationDividerX,
@@ -322,21 +323,28 @@ QList<int> blockListDividerXs(const BlockListColumnEdges& edges, bool roiVisible
 void initBlockListColumnHeader(BlockListWidget* table) {
     table->setColumnCount(kColumnCount);
     table->setHorizontalHeaderLabels({QStringLiteral("#"),
-                                    QStringLiteral("◻"),
+                                    BlockListWidget::tr("종류"),
+                                    BlockListWidget::tr("아이콘"),
                                     BlockListWidget::tr("동작"),
-                                    QStringLiteral("요약"),
-                                    BlockListWidget::tr("동작 시간"),
-                                    BlockListWidget::tr("매칭 시간"),
-                                    BlockListWidget::tr("시도 횟수"),
-                                    BlockListWidget::tr("이전 복귀"),
+                                    BlockListWidget::tr("시간"),
+                                    BlockListWidget::tr("탐색"),
+                                    BlockListWidget::tr("시도"),
+                                    BlockListWidget::tr("복귀"),
                                     BlockListWidget::tr("재시도"),
                                     BlockListWidget::tr("기준/감지"),
-                                    BlockListWidget::tr("ROI 보정"),
+                                    BlockListWidget::tr("ROI"),
                                     BlockListWidget::tr("매칭")});
 
     if (QTableWidgetItem* previewHeader = table->horizontalHeaderItem(kColPreview)) {
         previewHeader->setToolTip(
-            BlockListWidget::tr("블록 아이콘·썸네일 (클릭하여 편집)"));
+            BlockListWidget::tr("블록 아이콘·키·버튼·템플릿 (클릭하여 편집)"));
+    }
+    if (QTableWidgetItem* actionHeader = table->horizontalHeaderItem(kColAction)) {
+        actionHeader->setToolTip(BlockListWidget::tr("템플릿 매칭, 마우스, 키보드, 딜레이, 텍스트"));
+    }
+    if (QTableWidgetItem* detailHeader = table->horizontalHeaderItem(kColSummary)) {
+        detailHeader->setToolTip(
+            BlockListWidget::tr("누름·뗌·탭·클릭·대기 시간·ROI 등 블록별 세부 동작"));
     }
 
     if (QHeaderView* header = table->horizontalHeader()) {
@@ -478,6 +486,7 @@ void attachChipHeaderRowActions(BlockListWidget* table,
 
 constexpr int kMissFlashMs = 72;
 constexpr int kSuccessFlashMs = 140;
+constexpr int kClipboardFlashMs = 720;
 constexpr int kFailedFlashMs = 170;
 constexpr int kReturnToPreviousHoldMs = 560;
 constexpr int kReturnToPreviousFadeMs = 840;
@@ -542,6 +551,14 @@ GlassColors glassColorsFor(BlockListWidget::ExecutionHighlight highlight,
     case BlockListWidget::ExecutionHighlight::ReturnToPrevious:
         colors.tint = QColor(168, 108, 232);
         colors.intensity = qMin(1.0, colors.intensity * 1.12);
+        break;
+    case BlockListWidget::ExecutionHighlight::ClipboardCopy:
+        colors.tint = QColor(88, 178, 255);
+        colors.intensity = qMin(1.0, colors.intensity * 1.08);
+        break;
+    case BlockListWidget::ExecutionHighlight::ClipboardPaste:
+        colors.tint = QColor(72, 210, 140);
+        colors.intensity = qMin(1.0, colors.intensity * 1.08);
         break;
     case BlockListWidget::ExecutionHighlight::None:
     default:
@@ -756,6 +773,47 @@ private:
     bool m_bright = true;
 };
 
+class InternalDragFloater : public QWidget {
+public:
+    explicit InternalDragFloater(QWidget* parent = nullptr)
+        : QWidget(parent, Qt::ToolTip | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus) {
+        setAttribute(Qt::WA_TranslucentBackground);
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_ShowWithoutActivating);
+    }
+
+    void setLifted(const ListDragVisuals::LiftedPixmap& lifted) {
+        m_pixmap = lifted.pixmap;
+        m_hotSpot = lifted.hotSpot;
+        if (m_pixmap.isNull()) {
+            hide();
+            return;
+        }
+        const qreal dpr = m_pixmap.devicePixelRatioF();
+        resize(QSize(qMax(1, qRound(m_pixmap.width() / dpr)), qMax(1, qRound(m_pixmap.height() / dpr))));
+        update();
+    }
+
+    void moveToGlobalCursor() {
+        if (!m_pixmap.isNull()) {
+            move(QCursor::pos() - m_hotSpot);
+        }
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        if (m_pixmap.isNull()) {
+            return;
+        }
+        QPainter painter(this);
+        painter.drawPixmap(0, 0, m_pixmap);
+    }
+
+private:
+    QPixmap m_pixmap;
+    QPoint m_hotSpot;
+};
+
 struct LoopRegionChromeGeometry {
     QRect groupFill;
     QRect leftBar;
@@ -763,13 +821,13 @@ struct LoopRegionChromeGeometry {
 };
 
 QString loopRegionHeaderTitle() {
-    return BlockListWidget::tr("구간 반복");
+    return BlockListWidget::tr("반복");
 }
 
 QString loopRegionHeaderCondition(const WorkflowLoopRegion& region) {
-    QString condition = QString::fromStdString(loopExitConditionDisplayLabel(region.exitCondition));
+    QString condition = QString::fromStdString(loopExitConditionShortLabel(region.exitCondition));
     if (region.exitCondition == LoopExitCondition::DetectionFailed && region.detectionMissLimit > 1) {
-        condition += BlockListWidget::tr(" (%1회)").arg(region.detectionMissLimit);
+        condition += QStringLiteral("×%1").arg(region.detectionMissLimit);
     }
     return condition;
 }
@@ -812,6 +870,67 @@ QRect tableRowRect(const QTableWidget* table, int tableRow) {
 
 QRect loopRegionHeaderRowRect(const QTableWidget* table, int tableRow) {
     return tableRowRect(table, tableRow);
+}
+
+bool rowIntersectsViewport(const QTableWidget* table, const QRect& rowRect) {
+    if (!table || !table->viewport() || !rowRect.isValid()) {
+        return false;
+    }
+    const int viewportHeight = table->viewport()->height();
+    return !(rowRect.bottom() < 0 || rowRect.top() > viewportHeight);
+}
+
+void paintLastMatchFollowChrome(QPainter* painter,
+                                const BlockListWidget* table,
+                                int sourceBlockRow,
+                                int clickBlockRow) {
+    if (!painter || !table || sourceBlockRow < 0 || clickBlockRow < 0
+        || sourceBlockRow >= clickBlockRow) {
+        return;
+    }
+
+    const QRect clickRect =
+        tableRowRect(table, table->tableRowForBlockRow(clickBlockRow));
+    if (!clickRect.isValid() || !rowIntersectsViewport(table, clickRect)) {
+        return;
+    }
+
+    const QPalette pal = table->palette();
+    const bool dark = isDarkTheme(pal);
+    QColor accent = secondaryHintTextColor(pal);
+
+    constexpr qreal kStemX = 4.0;
+    constexpr qreal kHookLen = 7.0;
+    constexpr qreal kLineWidth = 1.0;
+
+    QColor line = accent;
+    line.setAlpha(dark ? 88 : 76);
+    painter->setPen(QPen(line, kLineWidth, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
+    painter->setBrush(Qt::NoBrush);
+
+    const qreal clickY = clickRect.center().y();
+
+    if (clickBlockRow != sourceBlockRow + 1) {
+        // Non-adjacent: bottom hook only on the click row (same 1 px weight).
+        painter->drawLine(QPointF(kStemX, clickY), QPointF(kStemX + kHookLen, clickY));
+        return;
+    }
+
+    const QRect sourceRect =
+        tableRowRect(table, table->tableRowForBlockRow(sourceBlockRow));
+    if (!sourceRect.isValid() || !rowIntersectsViewport(table, sourceRect)) {
+        painter->drawLine(QPointF(kStemX, clickY), QPointF(kStemX + kHookLen, clickY));
+        return;
+    }
+
+    const qreal sourceY = sourceRect.center().y();
+    // [ shape: top hook on source row, vertical stem, bottom hook on click row.
+    QPainterPath bracket;
+    bracket.moveTo(kStemX + kHookLen, sourceY);
+    bracket.lineTo(kStemX, sourceY);
+    bracket.lineTo(kStemX, clickY);
+    bracket.lineTo(kStemX + kHookLen, clickY);
+    painter->drawPath(bracket);
 }
 
 void paintWorkflowChipHeader(QPainter* painter,
@@ -907,6 +1026,88 @@ void paintWorkflowChipHeader(QPainter* painter,
     painter->setPen(mutedText);
     painter->drawText(conditionRect, Qt::AlignLeft | Qt::AlignVCenter, separator + conditionText);
 }
+
+class BlockListLastMatchSummaryDelegate : public QStyledItemDelegate {
+public:
+    explicit BlockListLastMatchSummaryDelegate(QObject* parent = nullptr)
+        : QStyledItemDelegate(parent) {}
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override {
+        const QString summary = index.data(Qt::DisplayRole).toString();
+        const int linkSuffixAt = summary.lastIndexOf(QStringLiteral("·#"));
+        if (linkSuffixAt < 0) {
+            QStyledItemDelegate::paint(painter, option, index);
+            return;
+        }
+
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        opt.text.clear();
+        const QWidget* widget = opt.widget;
+        QStyle* style = widget ? widget->style() : QApplication::style();
+        style->drawPrimitive(QStyle::PE_PanelItemViewItem, &opt, painter, widget);
+
+        const QRect content = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, widget);
+        const QString mainText = summary.left(linkSuffixAt);
+        const QString linkSuffix = summary.mid(linkSuffixAt);
+        const QString prefix = QStringLiteral("↳ ");
+
+        const bool selected = opt.state & QStyle::State_Selected;
+        QColor mainColor = opt.palette.color(selected ? QPalette::HighlightedText : QPalette::Text);
+        QColor prefixColor = secondaryHintTextColor(opt.palette);
+        prefixColor.setAlpha(selected ? 200 : (isDarkTheme(opt.palette) ? 165 : 145));
+        QColor suffixColor = secondaryHintTextColor(opt.palette);
+        suffixColor.setAlpha(selected ? 230 : (isDarkTheme(opt.palette) ? 190 : 165));
+
+        const QFontMetrics fm(opt.font);
+        const int prefixWidth = fm.horizontalAdvance(prefix);
+        const int mainWidth = fm.horizontalAdvance(mainText);
+        const int suffixWidth = fm.horizontalAdvance(linkSuffix);
+        const int available = qMax(0, content.width());
+
+        QString elidedPrefix = prefix;
+        QString elidedMain = mainText;
+        QString elidedSuffix = linkSuffix;
+        int total = prefixWidth + mainWidth + suffixWidth;
+        if (total > available && available > 0) {
+            if (suffixWidth >= available) {
+                elidedPrefix.clear();
+                elidedMain.clear();
+                elidedSuffix = fm.elidedText(linkSuffix, Qt::ElideRight, available);
+            } else {
+                int budget = available - suffixWidth;
+                if (prefixWidth + mainWidth > budget) {
+                    if (budget > prefixWidth + 8) {
+                        elidedMain = fm.elidedText(mainText, Qt::ElideRight, budget - prefixWidth);
+                    } else {
+                        elidedPrefix.clear();
+                        elidedMain = fm.elidedText(mainText, Qt::ElideRight, budget);
+                    }
+                }
+            }
+        }
+
+        painter->save();
+        painter->setFont(opt.font);
+        int x = content.left();
+        const int y = content.center().y();
+        if (!elidedPrefix.isEmpty()) {
+            painter->setPen(prefixColor);
+            painter->drawText(x, y, elidedPrefix);
+            x += fm.horizontalAdvance(elidedPrefix);
+        }
+        if (!elidedMain.isEmpty()) {
+            painter->setPen(mainColor);
+            painter->drawText(x, y, elidedMain);
+            x += fm.horizontalAdvance(elidedMain);
+        }
+        if (!elidedSuffix.isEmpty()) {
+            painter->setPen(suffixColor);
+            painter->drawText(x, y, elidedSuffix);
+        }
+        painter->restore();
+    }
+};
 
 class BlockListChromeRowDelegate : public QStyledItemDelegate {
 public:
@@ -1029,58 +1230,77 @@ public:
 
     void setRegions(const std::vector<WorkflowLoopRegion>& regions) {
         m_regions = regions;
-        setVisible(!m_regions.empty());
+        syncVisibility();
+    }
+
+    void syncVisibility() {
+        const bool show = !m_regions.empty()
+            || (m_owner && m_owner->hasLastMatchLinkChrome())
+            || (m_owner && m_owner->viewportRowFlashOverlayVisible());
+        setVisible(show);
         update();
     }
 
 protected:
     void paintEvent(QPaintEvent*) override {
-        if (!m_owner || m_regions.empty()) {
+        if (!m_owner) {
             return;
         }
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
-        const QPalette pal = m_owner->palette();
-        const QColor accent = pal.color(QPalette::Highlight);
-        const QColor accentSoft = [&accent]() {
-            QColor color = accent;
-            color.setAlpha(18);
-            return color;
-        }();
-        const QColor border = [&accent]() {
-            QColor color = accent;
-            color.setAlpha(72);
-            return color;
-        }();
 
-        for (const WorkflowLoopRegion& region : m_regions) {
-            const LoopRegionChromeGeometry geometry = loopRegionChromeGeometry(m_owner, region);
-            if (!geometry.visible) {
-                continue;
+        if (!m_regions.empty()) {
+            const QPalette pal = m_owner->palette();
+            const QColor accent = pal.color(QPalette::Highlight);
+            const QColor accentSoft = [&accent]() {
+                QColor color = accent;
+                color.setAlpha(18);
+                return color;
+            }();
+            const QColor border = [&accent]() {
+                QColor color = accent;
+                color.setAlpha(72);
+                return color;
+            }();
+
+            for (const WorkflowLoopRegion& region : m_regions) {
+                const LoopRegionChromeGeometry geometry = loopRegionChromeGeometry(m_owner, region);
+                if (!geometry.visible) {
+                    continue;
+                }
+
+                painter.fillRect(geometry.groupFill, accentSoft);
+
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(accent);
+                painter.drawRoundedRect(geometry.leftBar, 2, 2);
+
+                painter.setPen(QPen(border, 1.0));
+                painter.setBrush(Qt::NoBrush);
+                painter.drawLine(geometry.groupFill.left(),
+                                 geometry.groupFill.top() + 1,
+                                 geometry.groupFill.right(),
+                                 geometry.groupFill.top() + 1);
+                painter.drawLine(geometry.groupFill.left(),
+                                 geometry.groupFill.bottom() - 1,
+                                 geometry.groupFill.right(),
+                                 geometry.groupFill.bottom() - 1);
+                painter.drawLine(geometry.leftBar.right() + 1,
+                                 geometry.groupFill.top() + 1,
+                                 geometry.leftBar.right() + 1,
+                                 geometry.groupFill.bottom() - 1);
             }
-
-            painter.fillRect(geometry.groupFill, accentSoft);
-
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(accent);
-            painter.drawRoundedRect(geometry.leftBar, 2, 2);
-
-            painter.setPen(QPen(border, 1.0));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawLine(geometry.groupFill.left(),
-                             geometry.groupFill.top() + 1,
-                             geometry.groupFill.right(),
-                             geometry.groupFill.top() + 1);
-            painter.drawLine(geometry.groupFill.left(),
-                             geometry.groupFill.bottom() - 1,
-                             geometry.groupFill.right(),
-                             geometry.groupFill.bottom() - 1);
-            painter.drawLine(geometry.leftBar.right() + 1,
-                             geometry.groupFill.top() + 1,
-                             geometry.leftBar.right() + 1,
-                             geometry.groupFill.bottom() - 1);
         }
+
+        for (int clickRow = 0; clickRow < m_owner->blockCount(); ++clickRow) {
+            const int sourceRow = m_owner->clickLastMatchSourceBlockRow(clickRow);
+            if (sourceRow >= 0) {
+                paintLastMatchFollowChrome(&painter, m_owner, sourceRow, clickRow);
+            }
+        }
+
+        m_owner->paintViewportRowFlashOverlay(&painter);
     }
 
 private:
@@ -1099,8 +1319,9 @@ BlockListWidget::BlockListWidget(QWidget* parent)
     setColumnLayout(m_columnLayout, false);
     setIconSize(QSize(kThumbnailSize, kThumbnailSize));
     setItemDelegateForColumn(0, new BlockListChromeRowDelegate(this));
-    setItemDelegateForColumn(1, new CenterIconDelegate(this));
+    setItemDelegateForColumn(kColPreview, new CenterIconDelegate(this));
     setItemDelegateForColumn(kColRoiCorrection, new CenterCheckBoxDelegate(this));
+    setItemDelegateForColumn(kColSummary, new BlockListLastMatchSummaryDelegate(this));
 
     verticalHeader()->setDefaultSectionSize(m_blockRowHeight);
     verticalHeader()->setVisible(false);
@@ -1492,7 +1713,7 @@ void BlockListWidget::wireListColumnHeader(ListColumnHeaderWidget* header, Block
     header->setObjectName(QStringLiteral("blockListHeaderRow"));
     header->setToolTip(
         BlockListWidget::tr("헤더 구분선을 드래그해 열 너비·줄 높이를 조절합니다.\n"
-                            "· 요약 열은 패널 크기에 맞춰 남는 너비를 채웁니다.\n"
+                            "· 동작 열은 패널 크기에 맞춰 남는 너비를 채웁니다.\n"
                             "· 헤더 아래 가장자리: 줄 높이"));
 
     header->setRowHeightProvider([table] { return table->columnLayout().rowHeight; });
@@ -1506,17 +1727,17 @@ void BlockListWidget::wireListColumnHeader(ListColumnHeaderWidget* header, Block
         ctx.painter->setPen(ListColumnHeaderWidget::headerTextColor(ctx.palette));
         const Qt::Alignment align = Qt::AlignHCenter | Qt::AlignVCenter;
         ctx.painter->drawText(edges.cols.index, align, QStringLiteral("#"));
-        ctx.painter->drawText(edges.cols.preview, align, QStringLiteral("◻"));
-        ctx.painter->drawText(edges.cols.action, align, BlockListWidget::tr("동작"));
-        ctx.painter->drawText(edges.cols.summary, align, QStringLiteral("요약"));
-        ctx.painter->drawText(edges.cols.duration, align, BlockListWidget::tr("동작 시간"));
-        ctx.painter->drawText(edges.cols.matchDuration, align, BlockListWidget::tr("매칭 시간"));
-        ctx.painter->drawText(edges.cols.attempts, align, BlockListWidget::tr("시도 횟수"));
-        ctx.painter->drawText(edges.cols.returnPrev, align, BlockListWidget::tr("이전 복귀"));
+        ctx.painter->drawText(edges.cols.action, align, BlockListWidget::tr("종류"));
+        ctx.painter->drawText(edges.cols.preview, align, BlockListWidget::tr("아이콘"));
+        ctx.painter->drawText(edges.cols.summary, align, BlockListWidget::tr("동작"));
+        ctx.painter->drawText(edges.cols.duration, align, BlockListWidget::tr("시간"));
+        ctx.painter->drawText(edges.cols.matchDuration, align, BlockListWidget::tr("탐색"));
+        ctx.painter->drawText(edges.cols.attempts, align, BlockListWidget::tr("시도"));
+        ctx.painter->drawText(edges.cols.returnPrev, align, BlockListWidget::tr("복귀"));
         ctx.painter->drawText(edges.cols.retry, align, BlockListWidget::tr("재시도"));
         ctx.painter->drawText(edges.cols.score, align, BlockListWidget::tr("기준/감지"));
         if (!table->isColumnHidden(kColRoiCorrection)) {
-            ctx.painter->drawText(edges.cols.roiCorrection, align, BlockListWidget::tr("ROI 보정"));
+            ctx.painter->drawText(edges.cols.roiCorrection, align, BlockListWidget::tr("ROI"));
         }
         ctx.painter->drawText(edges.cols.match, align, BlockListWidget::tr("매칭"));
     });
@@ -1619,6 +1840,51 @@ void BlockListWidget::setBlockCount(int count) {
     m_rowImageFindReturnCounts = QVector<int>(count, -1);
     m_rowImageFindRetryCounts = QVector<int>(count, -1);
     m_rowCompletedHighlight = QVector<ExecutionHighlight>(count, ExecutionHighlight::None);
+    m_clickLastMatchSource = QVector<int>(count, -1);
+}
+
+void BlockListWidget::setClickLastMatchSources(const QVector<int>& sourceBlockRowPerClickRow) {
+    m_clickLastMatchSource = sourceBlockRowPerClickRow;
+    if (m_clickLastMatchSource.size() < m_blockCount) {
+        m_clickLastMatchSource.resize(m_blockCount, -1);
+    }
+
+    for (int clickRow = 0; clickRow < m_blockCount; ++clickRow) {
+        const int tableRow = tableRowForBlockRow(clickRow);
+        if (tableRow < 0) {
+            continue;
+        }
+        QTableWidgetItem* summaryItem = item(tableRow, kColSummary);
+        if (!summaryItem) {
+            continue;
+        }
+        const int sourceRow =
+            clickRow < m_clickLastMatchSource.size() ? m_clickLastMatchSource[clickRow] : -1;
+        if (sourceRow >= 0) {
+            summaryItem->setToolTip(
+                tr("템플릿 매칭 #%1의 매칭 위치를 사용합니다").arg(sourceRow + 1));
+        } else if (summaryItem->toolTip().contains(QStringLiteral("매칭 위치"))) {
+            summaryItem->setToolTip(QString());
+        }
+    }
+
+    updateLoopRegionChrome();
+}
+
+int BlockListWidget::clickLastMatchSourceBlockRow(int blockRow) const {
+    if (blockRow < 0 || blockRow >= m_clickLastMatchSource.size()) {
+        return -1;
+    }
+    return m_clickLastMatchSource[blockRow];
+}
+
+bool BlockListWidget::hasLastMatchLinkChrome() const {
+    for (int sourceRow : m_clickLastMatchSource) {
+        if (sourceRow >= 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void BlockListWidget::rebuildTableRows() {
@@ -1726,6 +1992,14 @@ void BlockListWidget::selectBlockRow(int blockRow) {
     }
 }
 
+void BlockListWidget::flashClipboardCopyRange(int startBlockRow, int endBlockRow) {
+    triggerRangeRowFlash(startBlockRow, endBlockRow, ExecutionHighlight::ClipboardCopy, kClipboardFlashMs);
+}
+
+void BlockListWidget::flashClipboardPasteRange(int startBlockRow, int endBlockRow) {
+    triggerRangeRowFlash(startBlockRow, endBlockRow, ExecutionHighlight::ClipboardPaste, kClipboardFlashMs);
+}
+
 int BlockListWidget::blockRowAtViewportY(int viewportY) const {
     return blockRowForTableRow(rowAtViewportY(viewportY));
 }
@@ -1778,6 +2052,7 @@ void BlockListWidget::updateLoopRegionChrome() {
     if (m_dropIndicator && m_dropIndicator->isVisible()) {
         m_dropIndicator->raise();
     }
+    static_cast<LoopRegionChromeOverlay*>(m_loopRegionChrome)->syncVisibility();
     m_loopRegionChrome->update();
 }
 
@@ -1944,6 +2219,46 @@ void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
 }
 
 bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
+    if (m_internalRowDragActive && watched == qApp) {
+        switch (event->type()) {
+        case QEvent::MouseMove: {
+            m_dragAutoScroll->updateFromGlobalCursor();
+            refreshDragScrollDependentUi();
+            updateInternalDragFloater();
+            return true;
+        }
+        case QEvent::MouseButtonRelease: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (mouseEvent->button() == Qt::LeftButton) {
+                const QPoint viewportPos =
+                    viewport()->mapFromGlobal(mouseEvent->globalPosition().toPoint());
+                commitInternalRowDragAt(viewportPos);
+                if (m_internalRowDragEventLoop) {
+                    m_internalRowDragEventLoop->quit();
+                }
+                mouseEvent->accept();
+                return true;
+            }
+            break;
+        }
+        case QEvent::KeyPress: {
+            auto* keyEvent = static_cast<QKeyEvent*>(event);
+            if (keyEvent->key() == Qt::Key_Escape) {
+                m_pendingReorderFrom = -1;
+                m_pendingReorderTo = -1;
+                if (m_internalRowDragEventLoop) {
+                    m_internalRowDragEventLoop->quit();
+                }
+                keyEvent->accept();
+                return true;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
     if (event->type() == QEvent::Wheel && m_dragAutoScroll && m_dragAutoScroll->isActive()
         && !m_loopRegionPickActive) {
         auto* wheelEvent = static_cast<QWheelEvent*>(event);
@@ -2125,6 +2440,15 @@ void BlockListWidget::commitRowSuccess(int row) {
 }
 
 BlockListWidget::ExecutionHighlight BlockListWidget::rowVisualHighlight(int row) const {
+    if ((m_flashKind == ExecutionHighlight::ClipboardCopy
+         || m_flashKind == ExecutionHighlight::ClipboardPaste)
+        && m_flashIntensity > 0.0 && m_flashRow >= 0 && m_flashRowSecondary >= 0) {
+        const int lo = qMin(m_flashRow, m_flashRowSecondary);
+        const int hi = qMax(m_flashRow, m_flashRowSecondary);
+        if (row >= lo && row <= hi) {
+            return m_flashKind;
+        }
+    }
     if (m_flashKind == ExecutionHighlight::ReturnToPrevious && m_flashIntensity > 0.0
         && (row == m_flashRow || row == m_flashRowSecondary)) {
         return ExecutionHighlight::ReturnToPrevious;
@@ -2174,7 +2498,12 @@ void BlockListWidget::setBlockInfo(int row,
     auto* indexItem = new QTableWidgetItem(QString::number(row + 1));
     indexItem->setTextAlignment(Qt::AlignCenter);
     indexItem->setFlags(itemFlags);
-    setItem(tableRow, 0, indexItem);
+    setItem(tableRow, kColIndex, indexItem);
+
+    auto* typeItem = new QTableWidgetItem(type);
+    typeItem->setTextAlignment(Qt::AlignCenter);
+    typeItem->setFlags(itemFlags);
+    setItem(tableRow, kColAction, typeItem);
 
     auto* thumbnailItem = new QTableWidgetItem();
     thumbnailItem->setTextAlignment(Qt::AlignCenter);
@@ -2182,12 +2511,7 @@ void BlockListWidget::setBlockInfo(int row,
     if (!thumbnail.isNull()) {
         thumbnailItem->setIcon(QIcon(thumbnail));
     }
-    setItem(tableRow, 1, thumbnailItem);
-
-    auto* typeItem = new QTableWidgetItem(type);
-    typeItem->setTextAlignment(Qt::AlignCenter);
-    typeItem->setFlags(itemFlags);
-    setItem(tableRow, 2, typeItem);
+    setItem(tableRow, kColPreview, thumbnailItem);
 
     auto* roiItem = new QTableWidgetItem();
     roiItem->setTextAlignment(Qt::AlignCenter);
@@ -2241,7 +2565,7 @@ void BlockListWidget::setBlockInfo(int row,
         m_rowImageFindThresholds.resize(m_blockCount, 0.85);
         m_rowDisplayConfidences.resize(m_blockCount, -1.0);
     }
-    m_rowIsImageFind[row] = (type == blockTypeWorkflowActionName(BlockType::ImageFind));
+    m_rowIsImageFind[row] = (type == blockTypeDisplayName(BlockType::ImageFind));
     if (!m_rowIsImageFind[row]) {
         roiItem->setText(QStringLiteral("—"));
     }
@@ -2557,7 +2881,7 @@ void BlockListWidget::syncAmbientAnimationTimer() {
         m_ambientAnimTimer->setInterval(50);
         connect(m_ambientAnimTimer, &QTimer::timeout, this, [this]() {
             m_ambientAnimPhase = (m_ambientAnimPhase + 1) % 120;
-            applyActiveRowVisuals();
+            applyActiveRowVisuals(false);
         });
     }
     if (needsAmbient) {
@@ -2660,6 +2984,32 @@ void BlockListWidget::refreshDragScrollDependentUi() {
     }
 }
 
+void BlockListWidget::commitInternalRowDragAt(const QPoint& viewportPos) {
+    if (m_dragSourceRow < 0) {
+        return;
+    }
+
+    const int toRow = dropTargetRow(viewportPos);
+    const int fromRow = m_dragSourceRow;
+    if (fromRow == toRow) {
+        return;
+    }
+
+    const int fromBlock = blockRowForTableRow(fromRow);
+    const int toBlock = blockRowForDropInsertion(dropInsertionIndex(viewportPos));
+    if (fromBlock >= 0 && toBlock >= 0 && fromBlock != toBlock) {
+        m_pendingReorderFrom = fromBlock;
+        m_pendingReorderTo = toBlock;
+    }
+}
+
+void BlockListWidget::updateInternalDragFloater() {
+    if (!m_internalDragFloater) {
+        return;
+    }
+    static_cast<InternalDragFloater*>(m_internalDragFloater)->moveToGlobalCursor();
+}
+
 void BlockListWidget::clearActiveRow() {
     setActiveRow(-1, ExecutionHighlight::None);
 }
@@ -2710,6 +3060,36 @@ void BlockListWidget::triggerDualRowFlash(int primaryRow,
     m_flashAnimation->start();
 }
 
+void BlockListWidget::triggerRangeRowFlash(int startBlockRow,
+                                           int endBlockRow,
+                                           ExecutionHighlight highlight,
+                                           int durationMs) {
+    if (!m_flashAnimation || startBlockRow < 0 || endBlockRow < 0 || durationMs <= 0) {
+        return;
+    }
+
+    cancelReturnFlashHold();
+    m_flashAnimation->stop();
+    m_flashRow = qMin(startBlockRow, endBlockRow);
+    m_flashRowSecondary = qMax(startBlockRow, endBlockRow);
+    m_flashKind = highlight;
+    m_flashIntensity = 1.0;
+    m_flashAnimation->setDuration(durationMs);
+    m_flashAnimation->setStartValue(1.0);
+    m_flashAnimation->setEndValue(0.0);
+    m_flashAnimation->start();
+    applyActiveRowVisuals();
+
+    const int tableLo = tableRowForBlockRow(m_flashRow);
+    const int tableHi = tableRowForBlockRow(m_flashRowSecondary);
+    if (tableLo >= 0 && tableHi >= 0) {
+        const int anchorTableRow = (tableLo + tableHi) / 2;
+        if (QTableWidgetItem* anchor = item(anchorTableRow, 0)) {
+            scrollToItem(anchor, QAbstractItemView::PositionAtCenter);
+        }
+    }
+}
+
 void BlockListWidget::onFlashAnimationValueChanged(const QVariant& value) {
     m_flashIntensity = value.toReal();
     applyActiveRowVisuals();
@@ -2738,13 +3118,22 @@ qreal BlockListWidget::rowGlassIntensity(int row, ExecutionHighlight highlight) 
         return kRunningGlassIntensity * pulse;
     }
     if (highlight == ExecutionHighlight::TriggerCooldown) {
-        const qreal pulse = 0.82 + 0.14 * std::sin(m_ambientAnimPhase * M_PI / 24.0);
-        return kRunningGlassIntensity * 0.74 * pulse;
+        const qreal pulse = 0.88 + 0.12 * std::sin(m_ambientAnimPhase * M_PI / 24.0);
+        return kRunningGlassIntensity * 0.78 * pulse;
     }
     if (m_flashKind == highlight && m_flashIntensity > 0.0
         && (m_flashRow == row || m_flashRowSecondary == row)) {
         if (highlight == ExecutionHighlight::ReturnToPrevious) {
             return qMin<qreal>(1.0, m_flashIntensity * 1.08);
+        }
+        if (highlight == ExecutionHighlight::ClipboardCopy
+            || highlight == ExecutionHighlight::ClipboardPaste) {
+            const int lo = qMin(m_flashRow, m_flashRowSecondary);
+            const int hi = qMax(m_flashRow, m_flashRowSecondary);
+            if (row >= lo && row <= hi) {
+                return m_flashIntensity;
+            }
+            return 0.0;
         }
         return m_flashIntensity;
     }
@@ -2762,6 +3151,46 @@ QColor BlockListWidget::matchScoreForegroundColor(bool succeeded, bool onMissHig
     }
     const QColor text = palette().color(QPalette::Text);
     return text.lightness() < 128 ? QColor(255, 150, 158) : QColor(190, 58, 68);
+}
+
+bool BlockListWidget::viewportRowFlashOverlayVisible() const {
+    return (m_flashKind == ExecutionHighlight::ClipboardCopy
+            || m_flashKind == ExecutionHighlight::ClipboardPaste)
+        && m_flashIntensity > 0.0 && m_flashRow >= 0 && m_flashRowSecondary >= 0;
+}
+
+void BlockListWidget::paintViewportRowFlashOverlay(QPainter* painter) const {
+    if (!painter || !viewportRowFlashOverlayVisible()) {
+        return;
+    }
+
+    const int lo = qMin(m_flashRow, m_flashRowSecondary);
+    const int hi = qMax(m_flashRow, m_flashRowSecondary);
+    const QColor tint = m_flashKind == ExecutionHighlight::ClipboardCopy ? QColor(88, 178, 255)
+                                                                         : QColor(72, 210, 140);
+    const int fillAlpha = qBound(0, static_cast<int>(72 + 96 * m_flashIntensity), 168);
+    const int edgeAlpha = qBound(0, fillAlpha + 48, 220);
+
+    QColor fill = tint;
+    fill.setAlpha(fillAlpha);
+    QColor edge = tint;
+    edge.setAlpha(edgeAlpha);
+
+    for (int blockRow = lo; blockRow <= hi; ++blockRow) {
+        const int tableRow = tableRowForBlockRow(blockRow);
+        if (tableRow < 0) {
+            continue;
+        }
+        const QRect rowRect = tableRowRect(this, tableRow);
+        if (!rowRect.isValid()) {
+            continue;
+        }
+
+        painter->fillRect(rowRect, fill);
+
+        const QRect accentBar(rowRect.left() + 1, rowRect.top() + 1, 4, rowRect.height() - 2);
+        painter->fillRect(accentBar, edge);
+    }
 }
 
 void BlockListWidget::updateHoverTableRow(int tableRow) {
@@ -2802,7 +3231,7 @@ void BlockListWidget::applyIdleRowBackground(int tableRow) {
     }
 }
 
-void BlockListWidget::applyActiveRowVisuals() {
+void BlockListWidget::applyActiveRowVisuals(bool autoScrollToActiveRow) {
     const QPalette rowPalette = palette();
     const QBrush normalBrush = rowPalette.brush(QPalette::Base);
     const QBrush normalForeground = rowPalette.brush(QPalette::Text);
@@ -2875,25 +3304,32 @@ void BlockListWidget::applyActiveRowVisuals() {
 
         if (showGlass) {
             glassColors = glassColorsFor(rowHighlight, glassIntensity, rowPalette, m_featureRunMode);
-            if (rowHighlight == ExecutionHighlight::ReturnToPrevious) {
-                const QColor tint = tintOverlay(glassColors.tint, glassColors.intensity, kReturnToPreviousGlassAlphaCap);
-                const QColor specular = tintOverlay(QColor(255, 255, 255), glassColors.intensity, 34);
-                const QColor base = rowPalette.color(QPalette::Base);
-                const QColor alt = rowPalette.color(QPalette::AlternateBase);
-                QLinearGradient gradient(0, 0, 0, qMax(m_blockRowHeight, 1));
-                gradient.setColorAt(0.0, blendOver(base, specular));
-                gradient.setColorAt(0.18, blendOver(base, tint));
-                gradient.setColorAt(1.0,
-                                     blendOver(alt.isValid() ? alt : base,
-                                               tintOverlay(glassColors.tint, glassColors.intensity * 0.55,
-                                                           kReturnToPreviousGlassAlphaCap)));
-                gradient.setCoordinateMode(QGradient::ObjectBoundingMode);
-                rowBrush = QBrush(gradient);
-            } else {
+            if (rowHighlight == ExecutionHighlight::ClipboardCopy
+                || rowHighlight == ExecutionHighlight::ClipboardPaste) {
                 rowBrush = glassBodyBrush(glassColors, rowPalette, m_blockRowHeight);
+                rowForeground = glassColors.foreground;
+                useGlassIndex = false;
+            } else {
+                if (rowHighlight == ExecutionHighlight::ReturnToPrevious) {
+                    const QColor tint = tintOverlay(glassColors.tint, glassColors.intensity, kReturnToPreviousGlassAlphaCap);
+                    const QColor specular = tintOverlay(QColor(255, 255, 255), glassColors.intensity, 34);
+                    const QColor base = rowPalette.color(QPalette::Base);
+                    const QColor alt = rowPalette.color(QPalette::AlternateBase);
+                    QLinearGradient gradient(0, 0, 0, qMax(m_blockRowHeight, 1));
+                    gradient.setColorAt(0.0, blendOver(base, specular));
+                    gradient.setColorAt(0.18, blendOver(base, tint));
+                    gradient.setColorAt(1.0,
+                                         blendOver(alt.isValid() ? alt : base,
+                                                   tintOverlay(glassColors.tint, glassColors.intensity * 0.55,
+                                                               kReturnToPreviousGlassAlphaCap)));
+                    gradient.setCoordinateMode(QGradient::ObjectBoundingMode);
+                    rowBrush = QBrush(gradient);
+                } else {
+                    rowBrush = glassBodyBrush(glassColors, rowPalette, m_blockRowHeight);
+                }
+                rowForeground = glassColors.foreground;
+                useGlassIndex = true;
             }
-            rowForeground = glassColors.foreground;
-            useGlassIndex = true;
         }
 
         for (int c = 0; c < kColumnCount; ++c) {
@@ -2946,7 +3382,7 @@ void BlockListWidget::applyActiveRowVisuals() {
 
     if (isReturnToPreviousFlashVisible()) {
         scrollReturnToPreviousRowsIntoView();
-    } else if (m_activeRow >= 0) {
+    } else if (autoScrollToActiveRow && m_dragSourceRow < 0 && m_activeRow >= 0) {
         const int activeTableRow = tableRowForBlockRow(m_activeRow);
         if (activeTableRow >= 0) {
             if (QTableWidgetItem* anchor = item(activeTableRow, 0)) {
@@ -2958,6 +3394,7 @@ void BlockListWidget::applyActiveRowVisuals() {
 }
 
 void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
+    Q_UNUSED(supportedActions);
     m_dragSourceRow = currentRow();
     m_pendingReorderFrom = -1;
     m_pendingReorderTo = -1;
@@ -2975,27 +3412,41 @@ void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
     const QRect slotRect(0, rowRect.top(), viewport()->width(), rowRect.height());
     ListDragVisuals::showDragSlotPlaceholder(viewport(), slotRect, &m_dragSlotPlaceholder);
 
-    QModelIndexList indexes = selectedIndexes();
-    if (indexes.isEmpty()) {
-        for (int column = 0; column < kColumnCount; ++column) {
-            indexes << model()->index(sourceRow, column);
-        }
+    if (m_ambientAnimTimer && m_ambientAnimTimer->isActive()) {
+        m_ambientAnimTimer->stop();
     }
 
-    auto* mimeData = model()->mimeData(indexes);
-    auto* drag = new QDrag(this);
-    drag->setMimeData(mimeData);
+    if (!m_internalDragFloater) {
+        m_internalDragFloater = new InternalDragFloater(window());
+    }
     const ListDragVisuals::LiftedPixmap lifted =
         ListDragVisuals::makeLiftedTableRowDrag(this, sourceRow, cursorGlobal);
-    ListDragVisuals::applyToDrag(drag, lifted);
+    auto* floater = static_cast<InternalDragFloater*>(m_internalDragFloater);
+    floater->setLifted(lifted);
+    floater->moveToGlobalCursor();
+    floater->show();
+    floater->raise();
+
+    m_internalRowDragActive = true;
     m_dragAutoScroll->begin();
     qApp->installEventFilter(this);
-    drag->exec(supportedActions, Qt::MoveAction);
+    refreshDragScrollDependentUi();
+
+    QEventLoop loop;
+    m_internalRowDragEventLoop = &loop;
+    loop.exec();
+    m_internalRowDragEventLoop = nullptr;
+    m_internalRowDragActive = false;
+
     qApp->removeEventFilter(this);
     m_dragAutoScroll->end();
+    if (m_internalDragFloater) {
+        m_internalDragFloater->hide();
+    }
 
     ListDragVisuals::hideDragSlotPlaceholder(&m_dragSlotPlaceholder);
     clearDropIndicator();
+    syncAmbientAnimationTimer();
     applyActiveRowVisuals();
 
     const int fromBlock =

@@ -56,3 +56,17 @@ std::string loopExitConditionDisplayLabel(LoopExitCondition condition) {
     }
     return "탐지 실패 시까지";
 }
+
+std::string loopExitConditionShortLabel(LoopExitCondition condition) {
+    switch (condition) {
+    case LoopExitCondition::DetectionFailed:
+        return "실패까지";
+    case LoopExitCondition::DetectionSucceeded:
+        return "성공까지";
+    case LoopExitCondition::LastMatchSuccess:
+        return "직전성공";
+    case LoopExitCondition::LastMatchFailed:
+        return "직전실패";
+    }
+    return "실패까지";
+}

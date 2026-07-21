@@ -1,6 +1,8 @@
 #include "ui/editors/ClickEditor.h"
 
 #include "app/ClickCursorHotkeySettings.h"
+#include "app/ClickContinuousInputHotkeySettings.h"
+#include "core/capture/ClickContinuousInputRecorder.h"
 #include "core/capture/CursorPositionPicker.h"
 #include "core/capture/ScreenCapture.h"
 #include "core/input/HotkeyBinding.h"
@@ -58,15 +60,28 @@ LRESULT CALLBACK clickCursorHotkeyHookProc(int code, WPARAM wParam, LPARAM lPara
     }
 
     if (g_clickCursorHotkeyEditor->isCapturingCursorHotkey()
+        || g_clickCursorHotkeyEditor->isCapturingContinuousInputHotkey()
         || CursorPositionPicker::isActive()) {
         return CallNextHookEx(g_clickCursorHotkeyHook, code, wParam, lParam);
     }
 
-    const HotkeyBinding binding = ClickCursorHotkeySettings::binding();
     const auto* info = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
     if (info->flags & LLKHF_INJECTED) {
         return CallNextHookEx(g_clickCursorHotkeyHook, code, wParam, lParam);
     }
+
+    if (g_clickCursorHotkeyEditor->isContinuousInputHotkeyHookEligible()) {
+        const HotkeyBinding continuousBinding = ClickContinuousInputHotkeySettings::binding();
+        if (continuousBinding.matchesVirtualKey(static_cast<int>(info->vkCode))
+            && continuousBinding.modifiersMatch()) {
+            QMetaObject::invokeMethod(g_clickCursorHotkeyEditor,
+                                      "toggleContinuousInputArmed",
+                                      Qt::QueuedConnection);
+            return 1;
+        }
+    }
+
+    const HotkeyBinding binding = ClickCursorHotkeySettings::binding();
     if (!binding.matchesVirtualKey(static_cast<int>(info->vkCode)) || !binding.modifiersMatch()) {
         return CallNextHookEx(g_clickCursorHotkeyHook, code, wParam, lParam);
     }
@@ -195,6 +210,7 @@ ClickEditor::ClickEditor(ClickBlock* block, QWidget* parent, bool embedded)
 }
 
 ClickEditor::~ClickEditor() {
+    ClickContinuousInputRecorder::endSession();
     CursorPositionPicker::cancelPick();
     syncClickCursorHotkeyHook();
     if (m_cursorPollTimer) {
@@ -203,10 +219,13 @@ ClickEditor::~ClickEditor() {
 }
 
 void ClickEditor::setBlock(ClickBlock* block) {
+    ClickContinuousInputRecorder::endSession();
+    m_continuousInputArmed = false;
     CursorPositionPicker::cancelPick();
     m_block = block;
     reload();
     syncClickCursorHotkeyHook();
+    updateContinuousInputUi();
 }
 
 void ClickEditor::reload() {
@@ -355,6 +374,16 @@ void ClickEditor::updateTargetUi() {
     m_currentPositionHint->setVisible(currentPositionTarget);
     m_liveCursorLabel->setVisible(fixedTarget || lastMatchOffsetEnabled);
     m_clientCoordsRow->setVisible(fixedTarget || currentPositionTarget || lastMatchOffsetEnabled);
+    if (m_continuousInputRow) {
+        m_continuousInputRow->setVisible(fixedTarget);
+    }
+    if (!fixedTarget) {
+        ClickContinuousInputRecorder::setArmed(false);
+        m_continuousInputArmed = false;
+        updateContinuousInputUi();
+    } else {
+        syncContinuousInputSession();
+    }
     emit layoutChanged();
 }
 
@@ -426,7 +455,7 @@ void ClickEditor::updateLiveCursorPosition() {
                 return;
             }
         }
-        m_liveCursorLabel->setText(tr("현재 커서: X %1, Y %2 (화면 · 대상 창 없음)")
+        m_liveCursorLabel->setText(tr("현재 커서: X %1, Y %2 (화면 · 타겟 없음)")
                                        .arg(screenX)
                                        .arg(screenY));
         return;
@@ -443,7 +472,10 @@ void ClickEditor::showEvent(QShowEvent* event) {
     updateLiveCursorLabelStyle();
     updateLiveCursorPosition();
     updateCursorHotkeyDisplay();
+    updateContinuousInputHotkeyDisplay();
     syncClickCursorHotkeyHook();
+    syncContinuousInputSession();
+    updateContinuousInputUi();
     if (m_cursorPollTimer) {
         m_cursorPollTimer->start();
     }
@@ -454,6 +486,10 @@ void ClickEditor::hideEvent(QHideEvent* event) {
         m_cursorPollTimer->stop();
     }
     stopCursorHotkeyCapture();
+    stopContinuousInputHotkeyCapture();
+    ClickContinuousInputRecorder::endSession();
+    m_continuousInputArmed = false;
+    updateContinuousInputUi();
     syncClickCursorHotkeyHook();
     QDialog::hideEvent(event);
 }
@@ -490,7 +526,7 @@ void ClickEditor::onPickCoordinates() {
         const int answer = QMessageBox::warning(
             this,
             tr("좌표 지정"),
-            tr("대상 창을 찾을 수 없습니다. 화면 좌표로 기록하시겠습니까?"),
+            tr("타겟을 찾을 수 없습니다. 화면 좌표로 기록하시겠습니까?"),
             QMessageBox::Yes | QMessageBox::No,
             QMessageBox::No);
         if (answer != QMessageBox::Yes) {
@@ -571,7 +607,7 @@ void ClickEditor::setupUi() {
     connect(m_cursorPollTimer, &QTimer::timeout, this, &ClickEditor::updateLiveCursorPosition);
 
     m_clientCoordsCheck = new QCheckBox(tr("클라이언트 좌표"), this);
-    m_clientCoordsCheck->setToolTip(tr("체크 시 대상 창 기준 좌표입니다. 해제 시 화면 좌표입니다."));
+    m_clientCoordsCheck->setToolTip(tr("체크 시 타겟 기준 좌표입니다. 해제 시 화면 좌표입니다."));
     connect(m_clientCoordsCheck, &QCheckBox::toggled, this, &ClickEditor::updateLiveCursorPosition);
     m_clientCoordsRow = new QWidget(this);
     auto* clientCoordsLayout = new QHBoxLayout(m_clientCoordsRow);
@@ -634,6 +670,39 @@ void ClickEditor::setupUi() {
         syncClickCursorHotkeyHook();
     });
     updateCursorHotkeyDisplay();
+
+    m_continuousInputRow = new QWidget(m_fixedCoordGroup);
+    auto* continuousLayout = new QVBoxLayout(m_continuousInputRow);
+    continuousLayout->setContentsMargins(0, 0, 0, 0);
+    continuousLayout->setSpacing(6);
+
+    m_continuousInputStatusLabel = new QLabel(m_continuousInputRow);
+    m_continuousInputStatusLabel->setWordWrap(true);
+    continuousLayout->addWidget(m_continuousInputStatusLabel);
+
+    m_continuousInputHotkeyLabel = new QLabel(m_continuousInputRow);
+    m_continuousInputHotkeyLabel->setAlignment(Qt::AlignCenter);
+    m_continuousInputHotkeyLabel->setCursor(Qt::PointingHandCursor);
+    m_continuousInputHotkeyLabel->installEventFilter(this);
+    m_continuousInputHotkeyLabel->setToolTip(
+        tr("단축키로 연속 입력을 켜거나 끕니다. 켠 뒤 타겟을 클릭할 때마다 고정 좌표 마우스 블록이 "
+           "워크플로에 바로 추가됩니다. 아래 동작 설정(버튼·동작·조합키)이 각 블록에 적용됩니다. 클릭하여 "
+           "단축키 변경."));
+    auto* clearContinuousHotkeyButton = new QPushButton(tr("단축키 지우기"), m_continuousInputRow);
+    clearContinuousHotkeyButton->setToolTip(tr("기본값 F2로 되돌립니다."));
+    auto* continuousHotkeyRow = new QHBoxLayout();
+    continuousHotkeyRow->setSpacing(8);
+    continuousHotkeyRow->addWidget(m_continuousInputHotkeyLabel, 3);
+    continuousHotkeyRow->addWidget(clearContinuousHotkeyButton, 1);
+    continuousLayout->addLayout(continuousHotkeyRow);
+    connect(clearContinuousHotkeyButton, &QPushButton::clicked, this, [this]() {
+        stopContinuousInputHotkeyCapture();
+        ClickContinuousInputHotkeySettings::setBinding({});
+        updateContinuousInputHotkeyDisplay();
+        syncClickCursorHotkeyHook();
+    });
+    updateContinuousInputHotkeyDisplay();
+    coordForm->addRow(tr("연속 입력"), m_continuousInputRow);
 
     m_actionGroup = new QGroupBox(tr("동작 설정"), this);
     m_actionGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
@@ -700,10 +769,10 @@ void ClickEditor::setupUi() {
     featureRunLayout->setSpacing(6);
 
     m_lockMouseToScreenCenterCheck =
-        new QCheckBox(tr("기능이 켜져 있는 동안 마우스를 대상 창 중앙에 고정"), m_featureRunGroup);
+        new QCheckBox(tr("기능이 켜져 있는 동안 마우스를 타겟 중앙에 고정"), m_featureRunGroup);
     m_lockMouseToScreenCenterCheck->setToolTip(
-        tr("이 기능이 실행되는 동안 실제 마우스 커서를 대상 창 중앙에 고정합니다. "
-           "대상 창을 옮기면 고정 위치도 함께 따라갑니다. "
+        tr("이 기능이 실행되는 동안 실제 마우스 커서를 타겟 중앙에 고정합니다. "
+           "타겟을 옮기면 고정 위치도 함께 따라갑니다. "
            "워크플로가 보내는 클릭 이동은 그대로 동작합니다."));
     featureRunLayout->addWidget(m_lockMouseToScreenCenterCheck);
 
@@ -711,7 +780,7 @@ void ClickEditor::setupUi() {
         new QCheckBox(tr("기능이 켜져 있는 동안 마우스 위치 잠금"), m_featureRunGroup);
     m_lockMouseToCurrentPositionCheck->setToolTip(
         tr("기능 시작 시점의 실제 마우스 위치에 커서를 고정합니다. "
-           "대상 창이 지정되어 있으면 창을 옮겨도 같은 상대 위치를 유지합니다. "
+           "타겟이 지정되어 있으면 창을 옮겨도 같은 상대 위치를 유지합니다. "
            "워크플로가 보내는 클릭 이동은 그대로 동작하지만, 사용자가 마우스를 움직일 수 없게 합니다."));
     featureRunLayout->addWidget(m_lockMouseToCurrentPositionCheck);
     connect(m_lockMouseToCurrentPositionCheck, &QCheckBox::toggled, this, [this](bool checked) {
@@ -888,10 +957,29 @@ bool ClickEditor::eventFilter(QObject* watched, QEvent* event) {
         startCursorHotkeyCapture();
         return true;
     }
+    if (watched == m_continuousInputHotkeyLabel && event->type() == QEvent::MouseButtonPress) {
+        startContinuousInputHotkeyCapture();
+        return true;
+    }
     return QDialog::eventFilter(watched, event);
 }
 
 void ClickEditor::keyPressEvent(QKeyEvent* event) {
+    if (m_capturingContinuousInputHotkey) {
+        if (event->key() == Qt::Key_Escape) {
+            stopContinuousInputHotkeyCapture();
+            event->accept();
+            return;
+        }
+#ifdef _WIN32
+        const int vk = HotkeyBinding::qtKeyToVirtualKey(event->key());
+        if (vk != 0) {
+            applyContinuousInputHotkeyCapture(vk, event->modifiers());
+            event->accept();
+            return;
+        }
+#endif
+    }
     if (m_capturingCursorHotkey) {
         if (event->key() == Qt::Key_Escape) {
             stopCursorHotkeyCapture();
@@ -908,4 +996,186 @@ void ClickEditor::keyPressEvent(QKeyEvent* event) {
 #endif
     }
     QDialog::keyPressEvent(event);
+}
+
+void ClickEditor::setContinuousInputBlockHandler(ContinuousInputBlockHandler handler) {
+    m_continuousInputBlockHandler = std::move(handler);
+}
+
+bool ClickEditor::isContinuousInputHotkeyHookEligible() const {
+    if (!isClickCursorHotkeyHookActive() || m_capturingCursorHotkey
+        || m_capturingContinuousInputHotkey || CursorPositionPicker::isActive()) {
+        return false;
+    }
+    if (!m_targetCombo) {
+        return false;
+    }
+    return m_targetCombo->currentData().toInt()
+           == static_cast<int>(ClickBlock::ClickTarget::Fixed);
+}
+
+void ClickEditor::toggleContinuousInputArmed() {
+    if (!isContinuousInputHotkeyHookEligible()) {
+        return;
+    }
+    syncContinuousInputSession();
+    if (!ClickContinuousInputRecorder::isSessionActive()) {
+        return;
+    }
+    ClickContinuousInputRecorder::setArmed(!ClickContinuousInputRecorder::isArmed());
+}
+
+void ClickEditor::syncContinuousInputSession() {
+#ifdef _WIN32
+    if (!isClickCursorHotkeyHookActive()) {
+        ClickContinuousInputRecorder::endSession();
+        m_continuousInputArmed = false;
+        return;
+    }
+    if (!isContinuousInputHotkeyHookEligible()) {
+        if (ClickContinuousInputRecorder::isSessionActive()) {
+            ClickContinuousInputRecorder::endSession();
+        }
+        m_continuousInputArmed = false;
+        return;
+    }
+    if (ClickContinuousInputRecorder::isSessionActive()) {
+        return;
+    }
+
+    QPointer<ClickEditor> self(this);
+    ClickContinuousInputRecorder::beginSession(
+        window(),
+        m_clientCoordsCheck && m_clientCoordsCheck->isChecked(),
+        [self](int x, int y) -> std::unique_ptr<ClickBlock> {
+            if (!self) {
+                return nullptr;
+            }
+            return self->buildFixedClickBlockAt(x, y);
+        },
+        [self](std::unique_ptr<ClickBlock> block) {
+            if (!self || !block) {
+                return;
+            }
+            self->m_xSpin->setValue(block->x);
+            self->m_ySpin->setValue(block->y);
+            if (self->m_continuousInputBlockHandler) {
+                self->m_continuousInputBlockHandler(std::move(block));
+            }
+        },
+        [self](bool armed) {
+            if (!self) {
+                return;
+            }
+            self->m_continuousInputArmed = armed;
+            self->updateContinuousInputUi();
+        });
+#else
+    Q_UNUSED(this);
+#endif
+}
+
+std::unique_ptr<ClickBlock> ClickEditor::buildFixedClickBlockAt(int x, int y) const {
+    auto block = std::make_unique<ClickBlock>();
+    block->target = ClickBlock::ClickTarget::Fixed;
+    block->x = x;
+    block->y = y;
+    block->lastMatchRelativeOffset = false;
+    block->useClientCoordinates = m_clientCoordsCheck && m_clientCoordsCheck->isChecked();
+
+    if (m_moveOnlyCheck && m_moveOnlyCheck->isChecked()) {
+        block->action = ClickAction::MoveOnly;
+        block->modifiers = {};
+        return block;
+    }
+
+    if (!m_buttonCombo || !m_actionCombo) {
+        return block;
+    }
+
+    const int buttonData = m_buttonCombo->currentData().toInt();
+    if (buttonData == kWheelButtonCategory) {
+        MouseButton button = MouseButton::Middle;
+        ClickAction action = ClickAction::Tap;
+        wheelButtonActionFromComboIndex(m_actionCombo->currentIndex(), button, action);
+        block->button = button;
+        block->action = action;
+    } else if (usesStandardClickActions(buttonData)) {
+        block->button = mouseButtonFromComboData(buttonData);
+        block->action = static_cast<ClickAction>(m_actionCombo->currentData().toInt());
+    }
+
+    if (m_ctrlCheck) {
+        block->modifiers.ctrl = m_ctrlCheck->isChecked();
+        block->modifiers.alt = m_altCheck->isChecked();
+        block->modifiers.shift = m_shiftCheck->isChecked();
+    }
+    return block;
+}
+
+void ClickEditor::updateContinuousInputUi() {
+    if (!m_continuousInputStatusLabel) {
+        return;
+    }
+    if (m_continuousInputArmed) {
+        m_continuousInputStatusLabel->setText(
+            tr("연속 입력 켜짐 — 타겟을 클릭할 때마다 워크플로에 마우스 블록이 추가됩니다. 같은 "
+               "단축키로 끕니다."));
+        m_continuousInputStatusLabel->setStyleSheet(
+            QStringLiteral("color: %1;").arg(palette().color(QPalette::Highlight).name()));
+    } else {
+        m_continuousInputStatusLabel->setText(
+            tr("연속 입력 꺼짐 — 단축키를 누른 뒤 클릭하면 고정 좌표 블록이 워크플로에 추가됩니다."));
+        m_continuousInputStatusLabel->setStyleSheet(
+            QStringLiteral("color: %1;").arg(secondaryHintTextColor(palette()).name()));
+    }
+}
+
+void ClickEditor::updateContinuousInputHotkeyDisplay() {
+    if (!m_continuousInputHotkeyLabel || m_capturingContinuousInputHotkey) {
+        return;
+    }
+    const HotkeyBinding binding = ClickContinuousInputHotkeySettings::binding();
+    m_continuousInputHotkeyLabel->setText(binding.displayString());
+    m_continuousInputHotkeyLabel->setStyleSheet(hotkeyBindingLabelIdleStyleSheet(palette()));
+}
+
+void ClickEditor::updateContinuousInputHotkeyCaptureUi() {
+    if (!m_continuousInputHotkeyLabel) {
+        return;
+    }
+    if (m_capturingContinuousInputHotkey) {
+        m_continuousInputHotkeyLabel->setText(tr("입력 대기 중..."));
+        m_continuousInputHotkeyLabel->setStyleSheet(hotkeyBindingLabelCaptureStyleSheet(palette()));
+    } else {
+        updateContinuousInputHotkeyDisplay();
+    }
+}
+
+void ClickEditor::startContinuousInputHotkeyCapture() {
+    m_capturingContinuousInputHotkey = true;
+    updateContinuousInputHotkeyCaptureUi();
+    setFocus();
+}
+
+void ClickEditor::stopContinuousInputHotkeyCapture() {
+    m_capturingContinuousInputHotkey = false;
+    updateContinuousInputHotkeyCaptureUi();
+}
+
+void ClickEditor::applyContinuousInputHotkeyCapture(int virtualKey, Qt::KeyboardModifiers modifiers) {
+    if (virtualKey == 0 || HotkeyBinding::isModifierOnlyVirtualKey(virtualKey)
+        || HotkeyBinding::isMouseVirtualKey(virtualKey)) {
+        return;
+    }
+
+    HotkeyBinding binding;
+    binding.virtualKey = virtualKey;
+    binding.ctrl = modifiers.testFlag(Qt::ControlModifier);
+    binding.alt = modifiers.testFlag(Qt::AltModifier);
+    binding.shift = modifiers.testFlag(Qt::ShiftModifier);
+    ClickContinuousInputHotkeySettings::setBinding(binding);
+    stopContinuousInputHotkeyCapture();
+    updateContinuousInputHotkeyDisplay();
+    syncClickCursorHotkeyHook();
 }

@@ -81,7 +81,7 @@ QString WindowSelectionFeedbackSettingsDialog::settingsSummary(const WindowSelec
 
 WindowSelectionFeedbackSettingsDialog::WindowSelectionFeedbackSettingsDialog(QWidget* parent)
     : QDialog(parent) {
-    setWindowTitle(tr("창 지정 애니메이션"));
+    setWindowTitle(tr("타겟 지정 애니메이션"));
     setModal(true);
     resize(660, 580);
     setupUi();
@@ -98,12 +98,12 @@ void WindowSelectionFeedbackSettingsDialog::setupUi() {
     outerLayout->setSpacing(12);
 
     auto* hint = new HintLabel(
-        tr("창 지정 또는 창 목록에서 대상 창을 선택했을 때 대상 창 위에 재생되는 확인 애니메이션입니다."),
+        tr("타겟 지정 또는 창 목록에서 타겟을 선택했을 때 타겟 위에 재생되는 확인 애니메이션입니다."),
         this);
     hint->setWordWrap(true);
     outerLayout->addWidget(hint);
 
-    m_enabledCheck = new QCheckBox(tr("창 지정 애니메이션 사용"), this);
+    m_enabledCheck = new QCheckBox(tr("타겟 지정 애니메이션 사용"), this);
     connect(m_enabledCheck, &QCheckBox::toggled, this, [this](bool) {
         updateFieldVisibility();
         applyDraftToPreview();
@@ -394,7 +394,7 @@ void WindowSelectionFeedbackSettingsDialog::updateColorButton() {
 
 void WindowSelectionFeedbackSettingsDialog::onPickColor() {
     const QColor picked =
-        QColorDialog::getColor(m_color, this, tr("창 지정 애니메이션 색상"), QColorDialog::DontUseNativeDialog);
+        QColorDialog::getColor(m_color, this, tr("타겟 지정 애니메이션 색상"), QColorDialog::DontUseNativeDialog);
     if (!picked.isValid()) {
         return;
     }

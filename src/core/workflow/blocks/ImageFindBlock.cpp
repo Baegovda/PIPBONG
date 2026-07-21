@@ -1,5 +1,6 @@
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "app/PointerFeedbackSettings.h"
+#include "core/diagnostics/DiagnosticHub.h"
 #include "core/input/HotkeyBinding.h"
 #include "core/vision/ImageMatcher.h"
 #include "core/vision/TemplateCache.h"
@@ -713,7 +714,6 @@ BlockResult imageFindSuccessResult(ExecutionContext& ctx,
                              haystack.cols,
                              haystack.rows);
     ctx.reportProgress(BlockProgressKind::ImageFindSuccess);
-    ctx.log(result.message);
     return result;
 }
 
@@ -968,7 +968,6 @@ BlockResult replayRememberedImageFindPosition(ExecutionContext& ctx,
         result.message += " [" + std::to_string(hitIndex + 1) + "/" + std::to_string(total) + "]";
     }
     result.imageFindPollAttempts = 0;
-    ctx.log(result.message);
     return result;
 }
 
@@ -1063,6 +1062,47 @@ std::string ImageFindBlock::summary() const {
     return "템플릿 매칭";
 }
 
+std::string ImageFindBlock::listDetailSummary() const {
+    std::vector<std::string> parts;
+
+    if (searchArea == SearchArea::FullScreen) {
+        parts.push_back("전체");
+    } else if (searchArea == SearchArea::CustomRegion) {
+        const int roiCount = static_cast<int>(customRegionsWindowPercent.size());
+        if (roiCount > 1) {
+            parts.push_back("ROI×" + std::to_string(roiCount));
+        } else if (!customRegionsWindowPercent.empty()) {
+            const PercentRegion& region = customRegionsWindowPercent.front();
+            parts.push_back("ROI " + std::to_string(static_cast<int>(region.x)) + ","
+                            + std::to_string(static_cast<int>(region.y)));
+        } else {
+            parts.push_back("ROI");
+        }
+    }
+
+    const int templateCount = static_cast<int>(templatePaths.size());
+    if (templateCount > 1) {
+        std::string tpl = "×" + std::to_string(templateCount);
+        if (templateMatchMode == ImageFindTemplateMatchMode::All) {
+            tpl += "·전부";
+        }
+        parts.push_back(tpl);
+    }
+
+    char thresholdText[16];
+    std::snprintf(thresholdText, sizeof(thresholdText), "%.2f", threshold);
+    parts.push_back(thresholdText);
+
+    std::string result;
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0) {
+            result += "·";
+        }
+        result += parts[i];
+    }
+    return result;
+}
+
 MatchOptions ImageFindBlock::matchOptions() const {
     MatchOptions options;
     options.threshold = threshold;
@@ -1138,7 +1178,6 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             result.success = true;
             result.message = "트리거 조건 충족";
             ctx.reportProgress(BlockProgressKind::ImageFindSuccess);
-            ctx.log(result.message);
             return result;
         }
         ctx.log("트리거 매칭 재시도");
@@ -1203,8 +1242,21 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         }
 
         ++pollAttemptCount;
+        DiagnosticHub::touchWorkerHeartbeat();
         const std::vector<CaptureRegion> pollRegions =
             physicalCustomPollRegions(runtimeSearchArea, runtimeWindowPercentRegions);
+        if (pollRegions.empty()) {
+            if (!sleepUnlessStopped(ctx, pollIntervalMs)) {
+                accumulateMatchWork();
+                BlockResult result;
+                result.success = false;
+                result.message = "사용자가 중지함";
+                result.imageFindMatchDurationMs = matchWorkMs;
+                result.imageFindPollAttempts = pollAttemptCount;
+                return result;
+            }
+            continue;
+        }
 
         if (pollAttemptCount == 1 && !triggerMonitorPoll) {
             const CaptureRegion overlayLegacy =
@@ -1623,7 +1675,7 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
 #ifdef _WIN32
     if (resolvedSearchArea == SearchArea::TargetWindow && !ScreenCapture::findTargetWindow()
         && !ScreenCapture::allowsRunWithoutTargetWindow()) {
-        result.errorMessage = "대상 창을 찾을 수 없습니다. 먼저 '창 지정'을 사용하세요.";
+        result.errorMessage = "타겟을 찾을 수 없습니다. 먼저 '타겟 지정'을 사용하세요.";
         return result;
     }
     ScreenCapture::activateTargetWindow();
@@ -1641,7 +1693,7 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
         resolvedSearchArea, resolvedCustomRegion, percentRegion);
     if (result.haystack.empty()) {
         if (resolvedSearchArea == SearchArea::TargetWindow) {
-            result.errorMessage = "대상 창을 캡처하지 못했습니다. 먼저 '창 지정'을 사용하세요.";
+            result.errorMessage = "타겟을 캡처하지 못했습니다. 먼저 '타겟 지정'을 사용하세요.";
         } else if (resolvedSearchArea == SearchArea::CustomRegion) {
             result.errorMessage = "사용자 영역을 캡처하지 못했습니다. X/Y/W/H 값을 확인하세요.";
         } else if (resolvedSearchArea == SearchArea::ScreenPercent) {
@@ -1725,7 +1777,7 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
 #ifdef _WIN32
     if (resolvedSearchArea == SearchArea::TargetWindow && !ScreenCapture::findTargetWindow()
         && !ScreenCapture::allowsRunWithoutTargetWindow()) {
-        result.errorMessage = "대상 창을 찾을 수 없습니다. 먼저 '창 지정'을 사용하세요.";
+        result.errorMessage = "타겟을 찾을 수 없습니다. 먼저 '타겟 지정'을 사용하세요.";
         return result;
     }
     ScreenCapture::activateTargetWindow();
@@ -1788,7 +1840,7 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
 
     if (!capturedAnyHaystack) {
         if (resolvedSearchArea == SearchArea::TargetWindow) {
-            result.errorMessage = "대상 창을 캡처하지 못했습니다. 먼저 '창 지정'을 사용하세요.";
+            result.errorMessage = "타겟을 캡처하지 못했습니다. 먼저 '타겟 지정'을 사용하세요.";
         } else if (resolvedSearchArea == SearchArea::CustomRegion) {
             result.errorMessage = "사용자 영역을 캡처하지 못했습니다. ROI를 확인하세요.";
         } else if (resolvedSearchArea == SearchArea::ScreenPercent) {

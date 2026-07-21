@@ -3,6 +3,7 @@
 #include "ui/editors/ScreenRegionOverlay.h"
 
 #include "core/capture/ScreenCapture.h"
+#include "core/diagnostics/CrashReporter.h"
 
 #include <QApplication>
 #include <QEventLoop>
@@ -448,13 +449,18 @@ void ScreenRegionOverlay::startPick(QWidget* hostWidget,
     RoiPreviewOverlay::dismissAll();
     dismissAll();
 
+    CrashReporter::noteBreadcrumb(QStringLiteral("overlay"),
+                                  QStringLiteral("screen region pick start parkHost=%1")
+                                      .arg(options.parkHostDuringPick ? QStringLiteral("yes")
+                                                                      : QStringLiteral("no")));
+
 #ifdef _WIN32
     const ScreenCapture::ScreenRect target = ScreenCapture::getTargetWindowScreenRect();
     if (!target.valid || target.width <= 0 || target.height <= 0) {
         QMessageBox::warning(messageBoxParent(hostWidget),
                              QObject::tr("템플릿 캡처"),
-                             QObject::tr("대상 창을 찾을 수 없습니다.\n"
-                                         "메인 창에서 '창 지정' 또는 '창 목록'의 '서브 창으로 지정'을 사용하세요."));
+                             QObject::tr("타겟을 찾을 수 없습니다.\n"
+                                         "메인 창에서 '타겟 지정' 또는 '창 목록'의 '서브 지정'을 사용하세요."));
         if (onComplete) {
             onComplete(false, {});
         }
@@ -483,7 +489,7 @@ void ScreenRegionOverlay::startPick(QWidget* hostWidget,
             g_state->existingRoiClientRects.push_back(roiClient);
         }
     }
-    g_state->hintText = QObject::tr("대상 창에서 드래그하여 영역을 선택하세요.\nEsc = 취소")
+    g_state->hintText = QObject::tr("타겟에서 드래그하여 영역을 선택하세요.\nEsc = 취소")
                             .toStdWString();
     g_state->onComplete = std::move(onComplete);
 

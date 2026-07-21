@@ -1,5 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.245 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.246 LANGUAGES CXX)
+
+find_package(Git QUIET)
+set(PIPBONG_GIT_SHA "unknown")
+if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" rev-parse --short HEAD
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE PIPBONG_GIT_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    if(NOT PIPBONG_GIT_SHA)
+        set(PIPBONG_GIT_SHA "unknown")
+    endif()
+endif()
 
 option(PIPBONG_SKIP_WINDEPLOY "Skip windeployqt on incremental dev links; run deploy-qt when DLLs are needed" ON)
 
@@ -20,6 +34,7 @@ set(PIPBONG_SOURCES
     src/app/MainWindow.cpp
     src/app/TemplateCaptureHotkeySettings.cpp
     src/app/ClickCursorHotkeySettings.cpp
+    src/app/ClickContinuousInputHotkeySettings.cpp
     src/app/HotkeyManager.cpp
     src/app/FeatureHotkeyGate.cpp
     src/app/UserInputInterruptMonitor.cpp
@@ -45,6 +60,7 @@ set(PIPBONG_SOURCES
     src/core/capture/DxgiScreenCapture.cpp
     src/core/capture/WindowPicker.cpp
     src/core/capture/CursorPositionPicker.cpp
+    src/core/capture/ClickContinuousInputRecorder.cpp
     src/core/input/InputSimulator.cpp
     src/core/input/HotkeyBinding.cpp
     src/core/vision/ImageMatcher.cpp
@@ -71,7 +87,9 @@ set(PIPBONG_SOURCES
     src/core/diagnostics/CpuCulpritAnalyzer.cpp
     src/core/diagnostics/CpuMonitorWorker.cpp
     src/core/diagnostics/CrashReporter.cpp
+    src/core/diagnostics/CrashManifestBuilder.cpp
     src/core/diagnostics/CrashReportSystemInfo.cpp
+    src/core/diagnostics/DiagnosticHub.cpp
     src/core/diagnostics/Win32StackWalker.cpp
     src/ui/calculator/FormulaEvaluator.cpp
     src/ui/calculator/SpreadsheetModel.cpp

@@ -39,6 +39,9 @@ public:
     /// Records the last notable UI action (button click, etc.) for crash/hang reports.
     static void noteUserAction(const QString& description);
 
+    /// Structured breadcrumb for crash/hang reports (profile switch, run start, etc.).
+    static void noteBreadcrumb(const QString& category, const QString& message);
+
     /// Returns the pending crash from the previous run, if any.
     static bool hasPendingReport();
     static CrashReportSummary pendingReport();

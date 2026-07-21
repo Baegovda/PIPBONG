@@ -5,6 +5,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <cstring>
+#include <mutex>
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -31,6 +32,7 @@ struct DxgiSession {
 };
 
 DxgiSession g_session;
+std::mutex g_sessionMutex;
 
 void releaseSession(DxgiSession& session) {
     if (session.frameAcquired && session.duplication) {
@@ -244,10 +246,12 @@ bool updateDesktopCacheFromTexture(DxgiSession& session, ID3D11Texture2D* deskto
 } // namespace
 
 void DxgiScreenCapture::resetSession() {
+    std::lock_guard<std::mutex> lock(g_sessionMutex);
     releaseSession(g_session);
 }
 
 cv::Mat DxgiScreenCapture::capturePhysicalRect(int x, int y, int width, int height) {
+    std::lock_guard<std::mutex> lock(g_sessionMutex);
     if (width <= 0 || height <= 0) {
         return {};
     }

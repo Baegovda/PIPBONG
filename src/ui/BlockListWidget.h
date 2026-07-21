@@ -51,6 +51,8 @@ class QTimer;
 
 class QVariantAnimation;
 
+class QEventLoop;
+
 class ListColumnHeaderWidget;
 
 
@@ -95,7 +97,11 @@ public:
 
         Failed,
 
-        ReturnToPrevious
+        ReturnToPrevious,
+
+        ClipboardCopy,
+
+        ClipboardPaste
 
     };
 
@@ -103,7 +109,7 @@ public:
 
     explicit BlockListWidget(QWidget* parent = nullptr);
 
-    static constexpr int PreviewColumn = 1;
+    static constexpr int PreviewColumn = 2;
     static constexpr int LastDataColumn = 11;
 
     void setRoiCorrectionColumnVisible(bool visible);
@@ -132,6 +138,13 @@ public:
                       const QString& summary,
 
                       const QPixmap& thumbnail = {});
+
+    /// Per block row: preceding ImageFind index for **직전 매칭** Click blocks, else -1 (tooltips).
+    void setClickLastMatchSources(const QVector<int>& sourceBlockRowPerClickRow);
+
+    int clickLastMatchSourceBlockRow(int blockRow) const;
+
+    bool hasLastMatchLinkChrome() const;
 
     void setBlockMatchResult(int row,
 
@@ -197,6 +210,14 @@ public:
     const BlockListRowMeta& rowMeta(int tableRow) const;
 
     void selectBlockRow(int blockRow);
+
+    void flashClipboardCopyRange(int startBlockRow, int endBlockRow);
+
+    void flashClipboardPasteRange(int startBlockRow, int endBlockRow);
+
+    bool viewportRowFlashOverlayVisible() const;
+
+    void paintViewportRowFlashOverlay(QPainter* painter) const;
 
 signals:
 
@@ -269,13 +290,17 @@ private:
 
     void updateDragSourceVisuals();
 
-    void applyActiveRowVisuals();
+    void applyActiveRowVisuals(bool autoScrollToActiveRow = true);
 
     void syncAmbientAnimationTimer();
 
     void updateHoverTableRow(int tableRow);
 
     void refreshDragScrollDependentUi();
+
+    void commitInternalRowDragAt(const QPoint& viewportPos);
+
+    void updateInternalDragFloater();
 
     void applyIdleRowBackground(int tableRow);
 
@@ -289,6 +314,11 @@ private:
                              int secondaryRow,
                              ExecutionHighlight highlight,
                              int durationMs);
+
+    void triggerRangeRowFlash(int startBlockRow,
+                              int endBlockRow,
+                              ExecutionHighlight highlight,
+                              int durationMs);
 
     bool isReturnToPreviousFlashVisible() const;
 
@@ -404,6 +434,12 @@ private:
     QWidget* m_dropIndicator = nullptr;
     QWidget* m_dragSlotPlaceholder = nullptr;
 
+    bool m_internalRowDragActive = false;
+
+    QEventLoop* m_internalRowDragEventLoop = nullptr;
+
+    QWidget* m_internalDragFloater = nullptr;
+
     void playDropSettleAtTableRow(int row);
 
     QVector<bool> m_rowMatchHasScore;
@@ -421,6 +457,8 @@ private:
     QVector<int> m_rowImageFindAttemptCounts;
     QVector<int> m_rowImageFindReturnCounts;
     QVector<int> m_rowImageFindRetryCounts;
+
+    QVector<int> m_clickLastMatchSource;
 
     DragAdjustSpinMouseState m_thresholdDragMouse;
 

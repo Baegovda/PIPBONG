@@ -18,6 +18,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #ifdef _WIN32
@@ -81,8 +82,8 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* event) override;
-    void showEvent(QShowEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 #if defined(Q_OS_WIN)
     bool nativeEvent(const QByteArray& eventType, void* message, qintptr* result) override;
 #endif
@@ -124,6 +125,7 @@ private slots:
     void onShowTargetWindow();
     void onShowSubTargetWindow();
     void onPinTargetWindowCenterToggled(bool checked);
+    void onPinSubTargetWindowCenterToggled(bool checked);
     void onProfileSelectionChanged();
     void onAddProfile();
     void onRenameProfile();
@@ -192,6 +194,8 @@ private:
     bool isFeatureInActiveWorkflowRun(const std::string& featureId) const;
     bool hasAnyRunningSession() const;
     bool hasAnyActiveWorkflowEngine() const;
+    bool hasAnyActiveWorkflowBurst() const;
+    bool applyCenterPinToEnabledTargets(bool forceSnap);
     QSet<QString> activeWorkflowFeatureIds() const;
     QSet<QString> runningFeatureIds() const;
     QString featureDisplayName(const std::string& featureId) const;
@@ -205,6 +209,7 @@ private:
     void stopSessionEngineForProfileSwitch(FeatureRunSession& session, Feature* feature);
     void abandonSessionEngine(FeatureRunSession& session);
     void pruneAbandonedEngines();
+    void schedulePruneAbandonedEngines();
     void flushDeferredProfileSwitchIfIdle();
     bool hasTriggerMonitoringSessions() const;
     void appendLog(const QString& message, LogLineKind kind = LogLineKind::Info);
@@ -234,6 +239,8 @@ private:
     void onFeatureDroppedOnProfile(const QString& targetProfileId, const QMimeData* mime);
     void syncProfileListSelection();
     void syncMemoDialogProfile();
+    void updateAuxiliaryToolButtonStates();
+    void wireAuxiliaryDialogVisibility(QWidget* dialog);
     bool switchToProfile(const QString& profileId, bool automatic = false);
     void saveActiveProfileSettings();
     bool profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
@@ -267,6 +274,7 @@ private:
     void continueRepeatSession(FeatureRunSession& session, Feature* feature, bool success, const QString& message);
     bool shouldContinueRunSession(const FeatureRunSession& session, Feature* feature) const;
     void finishRunSession(const std::string& featureId, bool success, const QString& message);
+    void finalizeDeferredStopSessions();
     void scheduleRepeatIteration(FeatureRunSession& session,
                                  Feature* feature,
                                  bool success,
@@ -309,15 +317,30 @@ private:
     /// Run/trigger capture target locked at session start (foreground-aware; sub binding supported).
     std::wstring resolveRunCaptureTargetTitleW(const Feature* feature = nullptr) const;
     std::wstring resolveAutoRunCaptureTargetTitleW() const;
+    /// Stored main/sub binding for HWND lookup — not gated by foreground (display + idle sync).
+    std::wstring linkedTargetLookupTitleW() const;
     bool scopedTargetForegroundActive(const Feature* feature) const;
+    bool runForegroundGateActive(const Feature* feature) const;
+    bool triggerBackgroundRunGateActive(const Feature* feature) const;
+    bool foregroundProfileMatchesActive() const;
+    QString foregroundProfileIdForActiveWindow() const;
+    bool activeProfileForegroundBindingMatches() const;
+    bool profileMainOrSubForegroundActive() const;
     bool deferRunUntilScopedTargetForeground(FeatureRunSession& session, Feature* feature);
     void scheduleScopedTargetForegroundResumePoll();
     void resumeWaitingScopedTargetForegroundSessions();
+    void reconcileRunSessionsWithForegroundGate();
     void refreshSessionCaptureTarget(FeatureRunSession& session);
     std::wstring sessionCaptureTargetTitleW(FeatureRunSession& session);
     void applySessionCaptureTarget(const std::wstring& title) const;
     void syncTargetWindowTitleToCapture();
-    void prepareCenterPinTargetWindow();
+#ifdef _WIN32
+    HWND findMainTargetHwndForCenterPin() const;
+    HWND findSubTargetHwndForCenterPin() const;
+    HWND findLinkedTargetHwndForDisplay(const QString& mainBinding,
+                                        const QString& subBinding,
+                                        const QString& processPath) const;
+#endif
     /// Applies resolveEffectiveTargetTitleW() to ScreenCapture (used at feature run start).
     void syncEffectiveTargetWindowTitleToCapture();
     void saveSelectedFeaturePreference();
@@ -337,7 +360,7 @@ private:
     void onEngineSessionPrepared(std::shared_ptr<Workflow> workflow, std::shared_ptr<ExecutionContext> context);
     void applyAlwaysOnTop(bool enabled);
     void restoreAlwaysOnTopPreference();
-    void applyTargetWindowCenterPin(bool enabled);
+    void applyTargetWindowCenterPin();
     QString alwaysOnTopPreferenceKey() const;
     void showTransientStatus(const QString& message, int timeoutMs = 3000);
     void setPersistentStatus(const QString& message);
@@ -355,7 +378,7 @@ private:
 
     void onUserInputInterrupt(const std::string& featureId);
     void syncUserInputInterruptForSession(FeatureRunSession& session, Feature* feature);
-    bool shouldSuppressFeatureHotkeyExecution() const;
+    bool shouldSuppressFeatureHotkeyExecution(const Feature* feature = nullptr) const;
     void notifyFeatureHotkeySuppressed();
 
     QString buildCrashReportContextSnapshot() const;
@@ -383,6 +406,7 @@ private:
     QToolButton* m_showSubTargetWindowButton = nullptr;
     QToolButton* m_showTargetWindowButton = nullptr;
     QToolButton* m_pinTargetWindowCenterButton = nullptr;
+    QToolButton* m_pinSubTargetWindowCenterButton = nullptr;
     QCheckBox* m_alwaysOnTopCheck = nullptr;
     QPushButton* m_exitButton = nullptr;
     QPushButton* m_updateButton = nullptr;
@@ -409,6 +433,8 @@ private:
     void* m_profileForegroundEventHook = nullptr;
     UpdateChecker* m_updateChecker = nullptr;
     bool m_initialUpdateCheckDone = false;
+
+    bool m_initialForegroundSyncDone = false;
     bool m_lastUpdateCheckWasSilent = false;
     bool m_autoUpdateDeferred = false;
     bool m_autoUpdateInstallStarted = false;
@@ -437,9 +463,11 @@ private:
     QString m_deferredProfileSwitchId;
     QElapsedTimer m_lastAutomaticProfileSwitchTimer;
     std::vector<std::unique_ptr<WorkflowEngine>> m_abandonedEngines;
+    std::unordered_map<const WorkflowEngine*, std::string> m_abandonedEngineFeatureIds;
     QElapsedTimer m_pendingDefaultProfileSwitchTimer;
     QString m_lastLinkedForegroundProfileId;
     QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;
     bool m_scopedTargetForegroundResumePending = false;
     bool m_ensureTriggerMonitorPending = false;
+    bool m_pruneAbandonedEnginesPending = false;
 };

@@ -249,6 +249,7 @@ private:
     std::string m_projectDirectory;
     ScopedTargetPollGate m_scopedTargetPollGate;
 #ifdef _WIN32
+    mutable HWND m_cachedTargetWindow = nullptr;
     bool m_runKeyboardSessionActive = false;
     SessionModifierSnapshot m_runKeyboardSessionStart;
     std::unordered_set<int> m_pipbongHeldVirtualKeys;

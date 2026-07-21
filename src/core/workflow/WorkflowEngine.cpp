@@ -1,6 +1,8 @@
 #include "core/workflow/WorkflowEngine.h"
 
 #include "core/input/InputSimulator.h"
+#include "core/diagnostics/CrashReporter.h"
+#include "core/diagnostics/DiagnosticHub.h"
 #include "core/workflow/Block.h"
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/WorkflowRunner.h"
@@ -32,6 +34,8 @@ protected:
 #ifdef _WIN32
         timeBeginPeriod(1);
 #endif
+        DiagnosticHub::setWorkerLabel(QStringLiteral("WorkflowEngine"));
+        DiagnosticHub::touchWorkerHeartbeat();
         while (true) {
             std::shared_ptr<Workflow> workflow;
             std::shared_ptr<ExecutionContext> context;
@@ -110,6 +114,12 @@ protected:
 
             WorkflowRunHooks hooks;
             hooks.onBlockStarted = [this, context](int i, const std::string& summary) {
+                DiagnosticHub::touchWorkerHeartbeat();
+                CrashReporter::noteBreadcrumb(
+                    QStringLiteral("workflow"),
+                    QStringLiteral("block start #%1 %2")
+                        .arg(i + 1)
+                        .arg(QString::fromStdString(summary)));
                 if (context->suppressRepeatUi()) {
                     return;
                 }
@@ -121,6 +131,12 @@ protected:
                                                      qint64 durationMs,
                                                      int64_t imageFindMatchDurationMs,
                                                      int imageFindPollAttempts) {
+                CrashReporter::noteBreadcrumb(
+                    QStringLiteral("workflow"),
+                    QStringLiteral("block finish #%1 success=%2 attempts=%3")
+                        .arg(i + 1)
+                        .arg(success ? QStringLiteral("yes") : QStringLiteral("no"))
+                        .arg(imageFindPollAttempts));
                 if (context->suppressRepeatUi()) {
                     return;
                 }
@@ -187,6 +203,7 @@ protected:
             const bool workerFastRepeat = context->hasWorkerFastRepeat();
             int workerFastRepeatPass = 0;
             for (;;) {
+                DiagnosticHub::touchWorkerHeartbeat();
                 if (workerFastRepeatPass > 0) {
                     context->setSuppressRepeatUi(true);
                 }
@@ -253,6 +270,7 @@ protected:
 #ifdef _WIN32
         timeEndPeriod(1);
 #endif
+        DiagnosticHub::clearWorkerLabel();
     }
 
 private:

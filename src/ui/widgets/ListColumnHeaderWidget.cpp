@@ -105,7 +105,11 @@ void ListColumnHeaderWidget::paintDividerGuides(QPainter* painter,
     pipeColor.setAlpha(dark ? 150 : 130);
     painter->setPen(pipeColor);
     QFont pipeFont = painter->font();
-    pipeFont.setPointSize(qMax(8, pipeFont.pointSize() - 1));
+    if (pipeFont.pointSize() > 0) {
+        pipeFont.setPointSize(qMax(8, pipeFont.pointSize() - 1));
+    } else if (pipeFont.pixelSize() > 0) {
+        pipeFont.setPixelSize(qMax(8, pipeFont.pixelSize() - 1));
+    }
     pipeFont.setBold(false);
     painter->setFont(pipeFont);
     const QString pipe = QStringLiteral("|");

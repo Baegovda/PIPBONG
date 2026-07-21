@@ -14,6 +14,7 @@
 #include "ui/editors/MatchTestOverlay.h"
 #include "ui/editors/RoiPreviewOverlay.h"
 #include "ui/editors/ScreenRegionOverlay.h"
+#include "core/capture/ClickContinuousInputRecorder.h"
 #include "ui/UiStrings.h"
 #include "ui/widgets/HintLabel.h"
 
@@ -61,6 +62,20 @@ BlockEditorDialog::BlockEditorDialog(Block* block, const QString& projectDirecto
     reloadEditorForType(m_block->type());
     m_stack->setCurrentIndex(stackIndexFor(m_block->type()));
     fitToCurrentPage();
+}
+
+void BlockEditorDialog::setContinuousClickInsertHandler(ContinuousClickInsertHandler handler) {
+    m_continuousClickInsertHandler = std::move(handler);
+    if (m_clickEditor) {
+        m_clickEditor->setContinuousInputBlockHandler(
+            m_continuousClickInsertHandler
+                ? [this](std::unique_ptr<ClickBlock> block) {
+                      if (m_continuousClickInsertHandler && block) {
+                          m_continuousClickInsertHandler(std::move(block));
+                      }
+                  }
+                : ClickEditor::ContinuousInputBlockHandler{});
+    }
 }
 
 void BlockEditorDialog::setWorkflowEditorContext(int blockCount, int editingBlockIndex) {
@@ -160,6 +175,12 @@ void BlockEditorDialog::setupUi() {
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     connect(m_clickEditor, &ClickEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
+    m_clickEditor->setContinuousInputBlockHandler(
+        [this](std::unique_ptr<ClickBlock> block) {
+            if (m_continuousClickInsertHandler && block) {
+                m_continuousClickInsertHandler(std::move(block));
+            }
+        });
     connect(m_waitEditor, &WaitEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
     connect(m_textEditor, &TextEditor::layoutChanged, this, &BlockEditorDialog::fitToCurrentPage);
     connect(m_stack, &QStackedWidget::currentChanged, this, [this](int) {
@@ -283,6 +304,7 @@ std::unique_ptr<Block> BlockEditorDialog::takeBlock() {
 }
 
 void BlockEditorDialog::dismissCaptureOverlays() {
+    ClickContinuousInputRecorder::endSession();
     ScreenRegionOverlay::dismissAll();
     MatchTestOverlay::dismissAll();
     RoiPreviewOverlay::dismissAll();

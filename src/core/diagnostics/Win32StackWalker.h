@@ -12,8 +12,19 @@ typedef struct _CONTEXT CONTEXT;
 namespace Win32StackWalker {
 
 #ifdef _WIN32
+struct StackFrame {
+    QString address;
+    QString symbol;
+    QString module;
+    quintptr moduleOffset = 0;
+    QString file;
+    int line = 0;
+};
+
 void initialize();
 void shutdown();
+
+std::vector<StackFrame> collectStackFrames(CONTEXT* context, int maxFrames = 32);
 
 /// Walks stack for the given thread context (exception or suspended GUI thread).
 void appendStackTrace(QStringList& lines, CONTEXT* context, int maxFrames = 32);

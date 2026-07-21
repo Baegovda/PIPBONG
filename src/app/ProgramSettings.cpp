@@ -14,6 +14,7 @@ constexpr const char* kRunAsAdministratorKey = "program/runAsAdministrator";
 constexpr const char* kAutoInstallUpdatesKey = "program/autoInstallUpdates";
 constexpr const char* kUpdateCheckIntervalMinutesKey = "program/updateCheckIntervalMinutes";
 constexpr const char* kPinTargetWindowToScreenCenterKey = "program/pinTargetWindowToScreenCenter";
+constexpr const char* kPinSubTargetWindowToScreenCenterKey = "program/pinSubTargetWindowToScreenCenter";
 constexpr const char* kImageFindCaptureModeKey = "program/imageFindCaptureMode";
 constexpr const char* kRunWithoutTargetWindowKey = "program/runWithoutTargetWindow";
 constexpr const char* kLogMaxLinesKey = "program/logMaxLines";
@@ -105,6 +106,16 @@ void ProgramSettings::setPinTargetWindowToScreenCenter(bool enabled) {
     settings.setValue(kPinTargetWindowToScreenCenterKey, enabled);
 }
 
+bool ProgramSettings::pinSubTargetWindowToScreenCenter() {
+    QSettings settings;
+    return settings.value(kPinSubTargetWindowToScreenCenterKey, false).toBool();
+}
+
+void ProgramSettings::setPinSubTargetWindowToScreenCenter(bool enabled) {
+    QSettings settings;
+    settings.setValue(kPinSubTargetWindowToScreenCenterKey, enabled);
+}
+
 ProgramSettings::ImageFindCaptureMode ProgramSettings::imageFindCaptureMode() {
     QSettings settings;
     const int stored = settings.value(
@@ -166,6 +177,7 @@ ProgramSettings::ProfileSettings ProgramSettings::profileSettings() {
     ProfileSettings snapshot;
     snapshot.autoSelectRunningFeature = autoSelectRunningFeature();
     snapshot.pinTargetWindowToScreenCenter = pinTargetWindowToScreenCenter();
+    snapshot.pinSubTargetWindowToScreenCenter = pinSubTargetWindowToScreenCenter();
     snapshot.imageFindCaptureMode = imageFindCaptureMode();
     snapshot.runWithoutTargetWindow = runWithoutTargetWindow();
     return snapshot;
@@ -174,6 +186,7 @@ ProgramSettings::ProfileSettings ProgramSettings::profileSettings() {
 void ProgramSettings::applyProfileSettings(const ProfileSettings& settings) {
     setAutoSelectRunningFeature(settings.autoSelectRunningFeature);
     setPinTargetWindowToScreenCenter(settings.pinTargetWindowToScreenCenter);
+    setPinSubTargetWindowToScreenCenter(settings.pinSubTargetWindowToScreenCenter);
     setImageFindCaptureMode(settings.imageFindCaptureMode);
     setRunWithoutTargetWindow(settings.runWithoutTargetWindow);
 }

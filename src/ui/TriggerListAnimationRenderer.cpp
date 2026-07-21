@@ -197,8 +197,8 @@ void paintCooldownRunButton(QPainter* painter,
     const int phase = scaledAnimationPhase(animationPhase, settings.speed);
     QColor spinColor = resolvedAccentColor(TriggerAnimationState::Cooldown, settings);
     if (!settings.accentColor.isValid()) {
-        const qreal pulse = 0.55 + 0.25 * std::sin(phase * M_PI / 24.0);
-        spinColor.setAlpha(static_cast<int>(pulse * 200.0));
+        const qreal pulse = 0.62 + 0.28 * std::sin(phase * M_PI / 24.0);
+        spinColor.setAlpha(static_cast<int>(130 + pulse * 90));
     }
 
     painter->save();
@@ -243,7 +243,12 @@ qreal rowPulseFactor(TriggerAnimationState state,
                      const TriggerListStateAnimationSettings& settings) {
     const int phase = scaledAnimationPhase(animationPhase, settings.speed);
     const qreal basePeriod = state == TriggerAnimationState::Watch ? 36.0 : 24.0;
-    return 0.5 + 0.5 * std::sin(phase * M_PI / basePeriod);
+    const qreal wave = 0.5 + 0.5 * std::sin(phase * M_PI / basePeriod);
+    if (state == TriggerAnimationState::Cooldown) {
+        // Keep cooldown breathing visible — never fade highlights/text to near-black.
+        return 0.62 + 0.38 * wave;
+    }
+    return wave;
 }
 
 } // namespace TriggerListAnimationRenderer

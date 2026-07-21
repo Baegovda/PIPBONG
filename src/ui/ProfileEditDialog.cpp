@@ -78,7 +78,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
 
     if (m_fixedDefaultProfile) {
         auto* hint = new HintLabel(
-            tr("시스템 기본 프로필입니다. 이름·대상 창·프로필 순서는 변경할 수 없으며, 목록 맨 위에 고정됩니다."),
+            tr("시스템 기본 프로필입니다. 이름·타겟·프로필 순서는 변경할 수 없으며, 목록 맨 위에 고정됩니다."),
             this);
         layout->addWidget(hint);
 
@@ -98,12 +98,12 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         layout->addWidget(m_fixedDefaultNameLabel);
 
         auto* lockedHint = new HintLabel(
-            tr("전역으로 동작하며 대상 창을 지정하지 않습니다. 연결된 프로그램이 없을 때 자동으로 선택됩니다."),
+            tr("전역으로 동작하며 타겟을 지정하지 않습니다. 연결된 프로그램이 없을 때 자동으로 선택됩니다."),
             this);
         layout->addWidget(lockedHint);
     } else {
         auto* hint = new HintLabel(
-            tr("프로필마다 이름과 연결된 프로그램(메인·서브 창)을 따로 저장합니다. 기본 프로필은 대상 창 없이 전역으로 동작합니다."),
+            tr("프로필마다 이름과 연결된 프로그램(메인·서브 창)을 따로 저장합니다. 기본 프로필은 타겟 없이 전역으로 동작합니다."),
             this);
         layout->addWidget(hint);
 
@@ -124,11 +124,11 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     linkedLayout->addWidget(targetLabel);
 
     m_targetWindowTitleEdit = new QLineEdit(m_linkedProgramSection);
-    m_targetWindowTitleEdit->setPlaceholderText(tr("대상 창 제목 또는 일부 문자열"));
+    m_targetWindowTitleEdit->setPlaceholderText(tr("타겟 제목 또는 일부 문자열"));
     linkedLayout->addWidget(m_targetWindowTitleEdit);
 
     auto* targetHint = new HintLabel(
-        tr("기능 실행 시 기본으로 이 제목을 기준으로 대상 창을 찾습니다. 비워두면 창 미지정 상태로 저장됩니다."),
+        tr("기능 실행 시 기본으로 이 제목을 기준으로 타겟을 찾습니다. 비워두면 타겟 미지정 상태로 저장됩니다."),
         m_linkedProgramSection);
     linkedLayout->addWidget(targetHint);
 
@@ -172,7 +172,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     linkedLayout->addWidget(m_subTargetWindowTitleEdit);
 
     auto* subHint = new HintLabel(
-        tr("같은 프로필로 자동 전환되는 추가 감지 창입니다. 이 창이 포커스일 때 기능을 실행하면 서브 창이 대상이 됩니다."),
+        tr("같은 프로필로 자동 전환되는 추가 감지 창입니다. 이 창이 포커스일 때 기능을 실행하면 서브 타겟이 적용됩니다."),
         m_linkedProgramSection);
     linkedLayout->addWidget(subHint);
 
@@ -209,7 +209,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         layout->addWidget(m_defaultProfileCheck);
 
         auto* defaultHint = new HintLabel(
-            tr("기본 프로필은 하나만 유지되며, 다음 실행부터 이 프로필이 먼저 열립니다. 대상 창은 지정할 수 없고 창 미지정 상태에서도 동작합니다."),
+            tr("기본 프로필은 하나만 유지되며, 다음 실행부터 이 프로필이 먼저 열립니다. 타겟은 지정할 수 없고 타겟 미지정 상태에서도 동작합니다."),
             this);
         layout->addWidget(defaultHint);
 

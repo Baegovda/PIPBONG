@@ -28,6 +28,24 @@ inline QString blockTypeDisplayName(BlockType type) {
     return QStringLiteral("알 수 없음");
 }
 
+/// Shorter block-type labels for the workflow block list **종류** column (editors keep `blockTypeDisplayName`).
+inline QString blockTypeWorkflowListName(BlockType type) {
+    switch (type) {
+    case BlockType::ImageFind:
+        return QStringLiteral("매칭");
+    case BlockType::Click:
+        return QStringLiteral("마우스");
+    case BlockType::KeyPress:
+        return QStringLiteral("키");
+    case BlockType::Wait:
+        return QStringLiteral("딜레이");
+    case BlockType::Text:
+        return QStringLiteral("텍스트");
+    default:
+        return blockTypeDisplayName(type);
+    }
+}
+
 inline QString blockTypeWorkflowActionName(BlockType type) {
     switch (type) {
     case BlockType::ImageFind:

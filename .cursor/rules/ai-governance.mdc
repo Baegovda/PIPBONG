@@ -16,11 +16,18 @@ alwaysApply: true
 - **Code, comments, docs, rules, changelog, handover**: English only.
 - **In-app UI**: Korean via `tr()` / `QStringLiteral`. Keep JSON block `type` values in English.
 
+## User preference profile (mandatory — cumulative in AGENTS.md only)
+
+- **Read** [AGENTS.md §9.5](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only) at **task start** before UI, workflow, docs, or architecture choices.
+- **Append** dated bullets in §9.5 **same task** when the user states or clearly implies work style, aesthetics, collaboration habits, or anti-preferences — **never** a separate `USER_*.md` file; **never delete** prior §9.5 bullets.
+- If a preference must constrain every future agent, add a **one-line pointer** here or in `immediate-handover.mdc`; full wording stays in §9.5.
+
 ## After Every Completed Task
 
 1. Append entries under `[Unreleased]` in **AGENTS.md** section **11. Changelog and Version History** as you implement.
-2. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per **AGENTS.md** §3.6.
-3. Keep diffs minimal; match existing C++ / Qt conventions in surrounding code.
+2. If this chat surfaced preference signal not yet in §9.5, append it there before close.
+3. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per **AGENTS.md** §3.6.
+4. Keep diffs minimal; match existing C++ / Qt conventions in surrounding code.
 
 ## References
 

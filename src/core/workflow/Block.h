@@ -34,6 +34,8 @@ public:
     virtual BlockType type() const = 0;
     virtual std::string displayName() const = 0;
     virtual std::string summary() const = 0;
+    /// Workflow block-list **동작** column (tap/hold/ROI/delay detail; keys/buttons live in the icon column).
+    virtual std::string listDetailSummary() const { return summary(); }
     virtual BlockResult execute(ExecutionContext& ctx) = 0;
     virtual nlohmann::json toJson() const = 0;
     virtual std::unique_ptr<Block> clone() const = 0;

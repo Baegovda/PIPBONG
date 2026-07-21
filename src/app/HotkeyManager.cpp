@@ -1,6 +1,7 @@
 #include "app/HotkeyManager.h"
 
 #include "app/FeatureHotkeyGate.h"
+#include "core/diagnostics/CrashReporter.h"
 #include "core/input/HotkeyBinding.h"
 #include "model/Feature.h"
 #include "model/FeatureRunMode.h"
@@ -452,6 +453,8 @@ void HotkeyManager::emitHotkeyTriggered(const std::string& featureId) {
         this,
         [this, qFeatureId, previousForeground]() {
             restoreForegroundWindow(previousForeground);
+            CrashReporter::noteBreadcrumb(QStringLiteral("hotkey"),
+                                          QStringLiteral("trigger %1").arg(qFeatureId));
             emit hotkeyTriggered(qFeatureId);
         },
         Qt::QueuedConnection);
@@ -464,6 +467,8 @@ void HotkeyManager::emitHotkeyHoldStarted(const std::string& featureId) {
         this,
         [this, qFeatureId, previousForeground]() {
             restoreForegroundWindow(previousForeground);
+            CrashReporter::noteBreadcrumb(QStringLiteral("hotkey"),
+                                          QStringLiteral("hold start %1").arg(qFeatureId));
             emit hotkeyHoldStarted(qFeatureId);
         },
         Qt::QueuedConnection);
@@ -473,7 +478,11 @@ void HotkeyManager::emitHotkeyHoldEnded(const std::string& featureId) {
     const QString qFeatureId = QString::fromStdString(featureId);
     QMetaObject::invokeMethod(
         this,
-        [this, qFeatureId]() { emit hotkeyHoldEnded(qFeatureId); },
+        [this, qFeatureId]() {
+            CrashReporter::noteBreadcrumb(QStringLiteral("hotkey"),
+                                          QStringLiteral("hold end %1").arg(qFeatureId));
+            emit hotkeyHoldEnded(qFeatureId);
+        },
         Qt::QueuedConnection);
 }
 

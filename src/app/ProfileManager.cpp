@@ -559,6 +559,9 @@ ProgramSettings::ProfileSettings ProfileManager::loadSettings(const QString& id)
         root.value(QStringLiteral("autoSelectRunningFeature")).toBool(settings.autoSelectRunningFeature);
     settings.pinTargetWindowToScreenCenter =
         root.value(QStringLiteral("pinTargetWindowToScreenCenter")).toBool(settings.pinTargetWindowToScreenCenter);
+    settings.pinSubTargetWindowToScreenCenter =
+        root.value(QStringLiteral("pinSubTargetWindowToScreenCenter"))
+            .toBool(settings.pinSubTargetWindowToScreenCenter);
     settings.imageFindCaptureMode =
         root.value(QStringLiteral("imageFindCaptureMode")).toInt(
             static_cast<int>(settings.imageFindCaptureMode))
@@ -618,6 +621,9 @@ bool ProfileManager::saveSettings(const QString& id,
     root.insert(QStringLiteral("version"), 1);
     root.insert(QStringLiteral("autoSelectRunningFeature"), toWrite.autoSelectRunningFeature);
     root.insert(QStringLiteral("pinTargetWindowToScreenCenter"), toWrite.pinTargetWindowToScreenCenter);
+    if (toWrite.pinSubTargetWindowToScreenCenter) {
+        root.insert(QStringLiteral("pinSubTargetWindowToScreenCenter"), true);
+    }
     root.insert(QStringLiteral("imageFindCaptureMode"), static_cast<int>(toWrite.imageFindCaptureMode));
     root.insert(QStringLiteral("runWithoutTargetWindow"), toWrite.runWithoutTargetWindow);
     if (!toWrite.linkedTargetProcessPath.isEmpty()) {

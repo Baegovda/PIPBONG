@@ -24,6 +24,7 @@ public:
     BlockType type() const override { return BlockType::Click; }
     std::string displayName() const override { return "Click"; }
     std::string summary() const override;
+    std::string listDetailSummary() const override;
     BlockResult execute(ExecutionContext& ctx) override;
     nlohmann::json toJson() const override;
     std::unique_ptr<Block> clone() const override;

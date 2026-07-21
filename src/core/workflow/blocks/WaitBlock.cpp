@@ -51,7 +51,6 @@ BlockResult WaitBlock::execute(ExecutionContext& ctx) {
     BlockResult result;
     result.success = true;
     result.message = std::to_string(delay) + "ms 대기";
-    ctx.log(result.message);
     return result;
 }
 

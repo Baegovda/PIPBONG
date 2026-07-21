@@ -20,12 +20,17 @@ namespace {
 
 #ifdef _WIN32
 constexpr wchar_t kOverlayClassName[] = L"PipbongWorkflowRoiFlashOverlay";
+constexpr wchar_t kSelectionOverlayClassName[] = L"PipbongWorkflowImageFindSelectionRoiOverlay";
 constexpr UINT_PTR kTimerId = 1;
+constexpr UINT_PTR kSelectionTimerId = 2;
 constexpr UINT kTimerMs = 200;
+constexpr UINT kSelectionTimerMs = 280;
 constexpr int kBorderThickness = 2;
+constexpr int kSelectionBorderThickness = 1;
 constexpr int kMinRoiSize = 2;
 /// Outward padding so the drawn border sits outside the real capture ROI.
 constexpr int kDisplayOutsetPx = 10;
+constexpr int kSelectionDisplayOutsetPx = 6;
 
 struct OverlayState {
     HWND hwnd = nullptr;
@@ -33,7 +38,15 @@ struct OverlayState {
     std::vector<QRect> clientRects;
 };
 
+struct SelectionOverlayState : OverlayState {
+    SearchArea searchArea = SearchArea::TargetWindow;
+    CaptureRegion customRegion{};
+    PercentRegion percentRegion{};
+    std::vector<CaptureRegion> customRegions;
+};
+
 std::unique_ptr<OverlayState> g_state;
+std::unique_ptr<SelectionOverlayState> g_selectionState;
 
 void destroyOverlayWindow() {
     if (!g_state || !g_state->hwnd) {
@@ -53,11 +66,11 @@ QRect roiClientRectOnTargetWindow(const QRect& roiPhysical, const QRect& targetP
     return roiClient.intersected(targetClient);
 }
 
-QRect outwardDisplayRect(const QRect& actualRoi, const QRect& targetClient) {
+QRect outwardDisplayRect(const QRect& actualRoi, const QRect& targetClient, int displayOutsetPx) {
     if (actualRoi.width() < kMinRoiSize || actualRoi.height() < kMinRoiSize) {
         return {};
     }
-    QRect display = actualRoi.adjusted(-kDisplayOutsetPx, -kDisplayOutsetPx, kDisplayOutsetPx, kDisplayOutsetPx);
+    QRect display = actualRoi.adjusted(-displayOutsetPx, -displayOutsetPx, displayOutsetPx, displayOutsetPx);
     display = display.intersected(targetClient);
     if (display.width() < kMinRoiSize || display.height() < kMinRoiSize) {
         return {};
@@ -73,7 +86,8 @@ std::vector<QRect> resolveDisplayClientRects(SearchArea searchArea,
                                              const CaptureRegion& customRegion,
                                              const PercentRegion& percentRegion,
                                              const std::vector<CaptureRegion>& customRegions,
-                                             const QRect& targetPhysical) {
+                                             const QRect& targetPhysical,
+                                             int displayOutsetPx) {
     const QRect targetClient(0, 0, targetPhysical.width(), targetPhysical.height());
     std::vector<QRect> displayRects;
 
@@ -84,7 +98,8 @@ std::vector<QRect> resolveDisplayClientRects(SearchArea searchArea,
             return;
         }
         const QRect actualRoi = roiClientRectOnTargetWindow(roiPhysical, targetPhysical);
-        if (const QRect display = outwardDisplayRect(actualRoi, targetClient); !display.isEmpty()) {
+        if (const QRect display = outwardDisplayRect(actualRoi, targetClient, displayOutsetPx);
+            !display.isEmpty()) {
             displayRects.push_back(display);
         }
     };
@@ -107,7 +122,7 @@ std::vector<QRect> resolveDisplayClientRects(SearchArea searchArea,
         return displayRects;
     }
     const QRect actualRoi = roiClientRectOnTargetWindow(roiPhysical, targetPhysical);
-    if (const QRect display = outwardDisplayRect(actualRoi, targetClient); !display.isEmpty()) {
+    if (const QRect display = outwardDisplayRect(actualRoi, targetClient, displayOutsetPx); !display.isEmpty()) {
         displayRects.push_back(display);
     }
     return displayRects;
@@ -163,13 +178,18 @@ void drawRectBorder(uint32_t* pixels,
     }
 }
 
-void renderOverlayFrame() {
-    if (!g_state || !g_state->hwnd || g_state->clientRects.empty()) {
+void renderOverlayFrame(OverlayState& state,
+                        int borderThickness,
+                        uint8_t alpha,
+                        uint8_t r,
+                        uint8_t g,
+                        uint8_t b) {
+    if (!state.hwnd || state.clientRects.empty()) {
         return;
     }
 
-    const int width = g_state->physicalBounds.width();
-    const int height = g_state->physicalBounds.height();
+    const int width = state.physicalBounds.width();
+    const int height = state.physicalBounds.height();
     if (width <= 0 || height <= 0) {
         return;
     }
@@ -196,22 +216,18 @@ void renderOverlayFrame() {
     auto* pixels = static_cast<uint32_t*>(bits);
     std::fill(pixels, pixels + pixelCount, 0u);
 
-    constexpr uint8_t kAlpha = 185;
-    constexpr uint8_t kR = 125;
-    constexpr uint8_t kG = 211;
-    constexpr uint8_t kB = 252;
-    for (const QRect& rect : g_state->clientRects) {
-        drawRectBorder(pixels, width, height, rect, kBorderThickness, kAlpha, kR, kG, kB);
+    for (const QRect& rect : state.clientRects) {
+        drawRectBorder(pixels, width, height, rect, borderThickness, alpha, r, g, b);
     }
 
-    POINT ptDst{g_state->physicalBounds.x(), g_state->physicalBounds.y()};
+    POINT ptDst{state.physicalBounds.x(), state.physicalBounds.y()};
     SIZE size{width, height};
     POINT ptSrc{0, 0};
     BLENDFUNCTION blend{};
     blend.BlendOp = AC_SRC_OVER;
     blend.SourceConstantAlpha = 255;
     blend.AlphaFormat = AC_SRC_ALPHA;
-    UpdateLayeredWindow(g_state->hwnd, hdcScreen, &ptDst, &size, hdcMem, &ptSrc, 0, &blend, ULW_ALPHA);
+    UpdateLayeredWindow(state.hwnd, hdcScreen, &ptDst, &size, hdcMem, &ptSrc, 0, &blend, ULW_ALPHA);
 
     SelectObject(hdcMem, oldBitmap);
     DeleteObject(bitmap);
@@ -219,11 +235,33 @@ void renderOverlayFrame() {
     ReleaseDC(nullptr, hdcScreen);
 }
 
+void renderRunOverlayFrame() {
+    if (!g_state) {
+        return;
+    }
+    constexpr uint8_t kAlpha = 185;
+    constexpr uint8_t kR = 125;
+    constexpr uint8_t kG = 211;
+    constexpr uint8_t kB = 252;
+    renderOverlayFrame(*g_state, kBorderThickness, kAlpha, kR, kG, kB);
+}
+
+void renderSelectionOverlayFrame() {
+    if (!g_selectionState) {
+        return;
+    }
+    constexpr uint8_t kAlpha = 108;
+    constexpr uint8_t kR = 168;
+    constexpr uint8_t kG = 188;
+    constexpr uint8_t kB = 214;
+    renderOverlayFrame(*g_selectionState, kSelectionBorderThickness, kAlpha, kR, kG, kB);
+}
+
 LRESULT CALLBACK overlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
     case WM_TIMER:
         if (wParam == kTimerId && g_state) {
-            renderOverlayFrame();
+            renderRunOverlayFrame();
             return 0;
         }
         break;
@@ -299,6 +337,138 @@ bool ensureOverlayWindow(const QRect& physicalBounds) {
     return true;
 }
 
+void destroySelectionOverlayWindow() {
+    if (!g_selectionState || !g_selectionState->hwnd) {
+        g_selectionState.reset();
+        return;
+    }
+
+    KillTimer(g_selectionState->hwnd, kSelectionTimerId);
+    DestroyWindow(g_selectionState->hwnd);
+    g_selectionState->hwnd = nullptr;
+    g_selectionState.reset();
+}
+
+void refreshSelectionOverlayGeometry() {
+    if (!g_selectionState || !g_selectionState->hwnd) {
+        return;
+    }
+    if (!ScreenCapture::findTargetWindow()) {
+        destroySelectionOverlayWindow();
+        return;
+    }
+
+    const ScreenCapture::ScreenRect target = ScreenCapture::getTargetWindowScreenRect();
+    if (!target.valid || target.width <= 0 || target.height <= 0) {
+        destroySelectionOverlayWindow();
+        return;
+    }
+
+    const QRect targetPhysical(target.x, target.y, target.width, target.height);
+    std::vector<QRect> clientRects = resolveDisplayClientRects(g_selectionState->searchArea,
+                                                               g_selectionState->customRegion,
+                                                               g_selectionState->percentRegion,
+                                                               g_selectionState->customRegions,
+                                                               targetPhysical,
+                                                               kSelectionDisplayOutsetPx);
+    if (clientRects.empty()) {
+        destroySelectionOverlayWindow();
+        return;
+    }
+
+    g_selectionState->physicalBounds = targetPhysical;
+    g_selectionState->clientRects = std::move(clientRects);
+
+    SetWindowPos(g_selectionState->hwnd,
+                 HWND_TOPMOST,
+                 targetPhysical.x(),
+                 targetPhysical.y(),
+                 targetPhysical.width(),
+                 targetPhysical.height(),
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    renderSelectionOverlayFrame();
+}
+
+LRESULT CALLBACK selectionOverlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    switch (message) {
+    case WM_TIMER:
+        if (wParam == kSelectionTimerId && g_selectionState) {
+            refreshSelectionOverlayGeometry();
+            return 0;
+        }
+        break;
+    case WM_DESTROY:
+        KillTimer(hwnd, kSelectionTimerId);
+        return 0;
+    default:
+        break;
+    }
+    return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+bool ensureSelectionOverlayClassRegistered() {
+    static const ATOM atom = []() -> ATOM {
+        WNDCLASSEXW wc{};
+        wc.cbSize = sizeof(wc);
+        wc.lpfnWndProc = selectionOverlayWndProc;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.lpszClassName = kSelectionOverlayClassName;
+        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        return RegisterClassExW(&wc);
+    }();
+    return atom != 0;
+}
+
+bool ensureSelectionOverlayWindow(const QRect& physicalBounds) {
+    if (g_selectionState && g_selectionState->hwnd && g_selectionState->physicalBounds == physicalBounds) {
+        return true;
+    }
+
+    if (g_selectionState && g_selectionState->hwnd) {
+        KillTimer(g_selectionState->hwnd, kSelectionTimerId);
+        DestroyWindow(g_selectionState->hwnd);
+        g_selectionState->hwnd = nullptr;
+    }
+
+    if (!g_selectionState) {
+        g_selectionState = std::make_unique<SelectionOverlayState>();
+    }
+    g_selectionState->physicalBounds = physicalBounds;
+
+    if (!ensureSelectionOverlayClassRegistered()) {
+        return false;
+    }
+
+    g_selectionState->hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT
+                                                 | WS_EX_NOACTIVATE,
+                                             kSelectionOverlayClassName,
+                                             L"",
+                                             WS_POPUP,
+                                             physicalBounds.x(),
+                                             physicalBounds.y(),
+                                             physicalBounds.width(),
+                                             physicalBounds.height(),
+                                             nullptr,
+                                             nullptr,
+                                             GetModuleHandleW(nullptr),
+                                             nullptr);
+    if (!g_selectionState->hwnd) {
+        g_selectionState.reset();
+        return false;
+    }
+
+    ShowWindow(g_selectionState->hwnd, SW_SHOWNOACTIVATE);
+    SetWindowPos(g_selectionState->hwnd,
+                 HWND_TOPMOST,
+                 physicalBounds.x(),
+                 physicalBounds.y(),
+                 physicalBounds.width(),
+                 physicalBounds.height(),
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    SetTimer(g_selectionState->hwnd, kSelectionTimerId, kSelectionTimerMs, nullptr);
+    return true;
+}
+
 #endif // _WIN32
 
 } // namespace
@@ -319,7 +489,7 @@ void WorkflowRoiFlashOverlay::showSearchArea(SearchArea searchArea,
 
     const QRect targetPhysical(target.x, target.y, target.width, target.height);
     std::vector<QRect> clientRects =
-        resolveDisplayClientRects(searchArea, customRegion, percentRegion, customRegions, targetPhysical);
+        resolveDisplayClientRects(searchArea, customRegion, percentRegion, customRegions, targetPhysical, kDisplayOutsetPx);
     if (clientRects.empty()) {
         return;
     }
@@ -329,7 +499,7 @@ void WorkflowRoiFlashOverlay::showSearchArea(SearchArea searchArea,
     }
 
     g_state->clientRects = std::move(clientRects);
-    renderOverlayFrame();
+    renderRunOverlayFrame();
 #else
     (void)searchArea;
     (void)customRegion;
@@ -341,5 +511,59 @@ void WorkflowRoiFlashOverlay::showSearchArea(SearchArea searchArea,
 void WorkflowRoiFlashOverlay::dismissAll() {
 #ifdef _WIN32
     destroyOverlayWindow();
+#endif
+}
+
+void WorkflowImageFindSelectionRoiOverlay::showSearchArea(SearchArea searchArea,
+                                                          const CaptureRegion& customRegion,
+                                                          const PercentRegion& percentRegion,
+                                                          const std::vector<CaptureRegion>& customRegions) {
+#ifdef _WIN32
+    if (!ScreenCapture::findTargetWindow()) {
+        return;
+    }
+
+    const ScreenCapture::ScreenRect target = ScreenCapture::getTargetWindowScreenRect();
+    if (!target.valid || target.width <= 0 || target.height <= 0) {
+        return;
+    }
+
+    const QRect targetPhysical(target.x, target.y, target.width, target.height);
+    std::vector<QRect> clientRects = resolveDisplayClientRects(searchArea,
+                                                               customRegion,
+                                                               percentRegion,
+                                                               customRegions,
+                                                               targetPhysical,
+                                                               kSelectionDisplayOutsetPx);
+    if (clientRects.empty()) {
+        WorkflowImageFindSelectionRoiOverlay::dismissAll();
+        return;
+    }
+
+    if (!g_selectionState) {
+        g_selectionState = std::make_unique<SelectionOverlayState>();
+    }
+    g_selectionState->searchArea = searchArea;
+    g_selectionState->customRegion = customRegion;
+    g_selectionState->percentRegion = percentRegion;
+    g_selectionState->customRegions = customRegions;
+
+    if (!ensureSelectionOverlayWindow(targetPhysical)) {
+        return;
+    }
+
+    g_selectionState->clientRects = std::move(clientRects);
+    renderSelectionOverlayFrame();
+#else
+    (void)searchArea;
+    (void)customRegion;
+    (void)percentRegion;
+    (void)customRegions;
+#endif
+}
+
+void WorkflowImageFindSelectionRoiOverlay::dismissAll() {
+#ifdef _WIN32
+    destroySelectionOverlayWindow();
 #endif
 }

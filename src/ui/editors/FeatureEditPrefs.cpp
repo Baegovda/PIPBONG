@@ -83,6 +83,10 @@ void applySettingsJson(const nlohmann::json& json, Feature& feature) {
     if (json.contains("requireScopedTargetForeground")) {
         feature.setRequireScopedTargetForeground(json.value("requireScopedTargetForeground", false));
     }
+    if (json.contains("triggerRunWithoutTargetForeground")) {
+        feature.setTriggerRunWithoutTargetForeground(
+            json.value("triggerRunWithoutTargetForeground", false));
+    }
     if (json.contains("triggerListAnimations")) {
         feature.setTriggerListAnimations(triggerModeListAnimationsFromJson(json["triggerListAnimations"]));
     }
@@ -116,6 +120,9 @@ nlohmann::json featureSettingsToJson(const Feature& feature) {
     json["captureTargetScope"] = featureCaptureTargetScopeToString(feature.captureTargetScope());
     if (feature.requireScopedTargetForeground()) {
         json["requireScopedTargetForeground"] = true;
+    }
+    if (feature.triggerRunWithoutTargetForeground()) {
+        json["triggerRunWithoutTargetForeground"] = true;
     }
     const nlohmann::json triggerAnimationsJson =
         triggerModeListAnimationsToJson(feature.triggerListAnimations());

@@ -111,7 +111,7 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
     // Static stylesheet only — never call setStyleSheet from changeEvent (see AGENTS.md §8.4).
 
     updateThemeColors();
-    showMessage(tr("'창 지정'으로 대상 창을 선택하세요."));
+    showMessage(tr("'타겟 지정'으로 타겟을 선택하세요."));
     updateAdaptiveLayout();
 }
 
@@ -388,7 +388,7 @@ void TargetWindowDetailPanel::showDetails(const TargetWindowDetailData& data) {
     QString panelTooltip = tr("프로세스 경로: %1").arg(data.processPath.isEmpty() ? tr("알 수 없음") : data.processPath);
     panelTooltip += QStringLiteral("\n") + tr("창·모니터 크기는 물리 픽셀 기준입니다.");
     if (data.monitorDpi > 0) {
-        panelTooltip += QStringLiteral("\n") + tr("모니터 DPI는 대상 창이 위치한 디스플레이 기준입니다.");
+        panelTooltip += QStringLiteral("\n") + tr("모니터 DPI는 타겟이 위치한 디스플레이 기준입니다.");
     }
     setToolTip(panelTooltip);
 }
@@ -407,8 +407,8 @@ void TargetWindowDetailPanel::showGlobalDefaultProfile() {
     refreshGlobalDefaultProfileText();
     updateThemeColors();
 
-    setToolTip(tr("전역 기본 프로필은 대상 창을 지정하지 않습니다.\n"
-                  "연결된 프로그램이 없을 때 자동으로 선택되며, 대상 창 설정은 변경할 수 없습니다."));
+    setToolTip(tr("전역 기본 프로필은 타겟을 지정하지 않습니다.\n"
+                  "연결된 프로그램이 없을 때 자동으로 선택되며, 타겟 설정은 변경할 수 없습니다."));
 }
 
 void TargetWindowDetailPanel::refreshGlobalDefaultProfileText() {
@@ -426,12 +426,12 @@ void TargetWindowDetailPanel::refreshGlobalDefaultProfileText() {
                                      .arg(stateColor.name(), badgeText.name()));
 
     const QVector<QPair<QString, QString>> primaryFields = {
-        {tr("대상 창"), tr("미지정")},
+        {tr("타겟"), tr("미지정")},
         {tr("실행 범위"), tr("전역")},
     };
     m_primaryLine->setText(formatFieldsHtml(primaryFields, m_layoutDensity, muted, text));
 
-    m_secondaryLine->setText(valueSpan(tr("모든 프로그램에서 동작하며, 대상 창 설정은 변경할 수 없습니다."), muted));
+    m_secondaryLine->setText(valueSpan(tr("모든 프로그램에서 동작하며, 타겟 설정은 변경할 수 없습니다."), muted));
 }
 
 void TargetWindowDetailPanel::showStoredTargetBinding(const QString& title,

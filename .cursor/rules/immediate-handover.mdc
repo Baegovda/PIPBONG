@@ -28,6 +28,7 @@ Do **not** defer handover to a follow-up chat or assume the user will ask “doc
 | New subsystem / critical pattern (overlay, input, etc.) | §8 + dedicated `.cursor/rules/*.mdc` if always-applied |
 | New scripts in `scripts/` that agents must run | §3 or §4 path table |
 | User-facing Korean update log (`UpdateLog/update_log.md`) | §3.7 + changelog step in `changelog-versioning.mdc` |
+| User work style / UI taste / aesthetic / collaboration preference (stated or implied) | [§9.5 User preference profile](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only) — append dated bullet same task; no separate file |
 
 ## Same-task checklist (before closing)
 

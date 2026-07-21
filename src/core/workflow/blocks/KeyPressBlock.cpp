@@ -89,6 +89,20 @@ void appendModifierSummary(QStringList& parts, const QString& name, ModifierKeyA
     parts.append(name + QString::fromStdString(modifierKeyActionDisplaySuffix(action)));
 }
 
+std::string modifierKeyActionDisplayName(ModifierKeyAction action) {
+    switch (action) {
+    case ModifierKeyAction::Down:
+        return "누름";
+    case ModifierKeyAction::Up:
+        return "뗌";
+    case ModifierKeyAction::Tap:
+        return "탭";
+    case ModifierKeyAction::None:
+    default:
+        return "";
+    }
+}
+
 QString keyPressBindingLabel(int virtualKey,
                              const KeyPressModifierActions& modifierActions,
                              bool useMainKey) {
@@ -119,12 +133,34 @@ std::string KeyPressBlock::summary() const {
     return label.toStdString() + " " + keyActionDisplayName(action);
 }
 
+std::string KeyPressBlock::listDetailSummary() const {
+    if (useMainKey) {
+        return keyActionDisplayName(action);
+    }
+    QStringList verbs;
+    const auto appendVerb = [&](ModifierKeyAction modifierAction) {
+        if (modifierAction == ModifierKeyAction::None) {
+            return;
+        }
+        const QString verb = QString::fromStdString(modifierKeyActionDisplayName(modifierAction));
+        if (!verb.isEmpty() && !verbs.contains(verb)) {
+            verbs.append(verb);
+        }
+    };
+    appendVerb(modifierActions.ctrl);
+    appendVerb(modifierActions.alt);
+    appendVerb(modifierActions.shift);
+    if (verbs.isEmpty()) {
+        return "수정키";
+    }
+    return verbs.join(QStringLiteral("·")).toStdString();
+}
+
 BlockResult KeyPressBlock::execute(ExecutionContext& ctx) {
     if (!useMainKey && !modifierActions.hasAny()) {
         BlockResult result;
         result.success = false;
         result.message = "수정키 동작이 없습니다";
-        ctx.log(result.message);
         return result;
     }
 
@@ -132,7 +168,6 @@ BlockResult KeyPressBlock::execute(ExecutionContext& ctx) {
     BlockResult result;
     result.success = true;
     result.message = summary();
-    ctx.log(result.message);
     return result;
 }
 

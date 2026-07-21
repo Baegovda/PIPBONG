@@ -1,6 +1,30 @@
 # Shared helpers for incremental Release builds — stale vcpkg lock / stuck configure recovery.
 $ErrorActionPreference = "Stop"
 
+function Get-RepoVcpkgLockHolders {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    $buildMarker = (($RepoRoot -replace '\\', '/') + '/build/').ToLowerInvariant()
+    $holders = @()
+
+    foreach ($proc in Get-Process cmake, vcpkg -ErrorAction SilentlyContinue) {
+        try {
+            $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId=$($proc.Id)" -ErrorAction SilentlyContinue).CommandLine
+            if ($cmd -and $cmd.ToLowerInvariant().Contains($buildMarker)) {
+                $holders += $proc
+            }
+        } catch {
+            # If command line is unavailable, assume the process may hold the lock.
+            $holders += $proc
+        }
+    }
+
+    return $holders
+}
+
 function Clear-StaleVcpkgLock {
     param(
         [Parameter(Mandatory = $true)]
@@ -12,13 +36,13 @@ function Clear-StaleVcpkgLock {
         return $false
     }
 
-    $holding = Get-Process cmake, vcpkg -ErrorAction SilentlyContinue
+    $holding = Get-RepoVcpkgLockHolders -RepoRoot $RepoRoot
     if ($holding) {
         return $false
     }
 
     Remove-Item $lock -Force -ErrorAction SilentlyContinue
-    Write-Host "Cleared stale vcpkg-running.lock" -ForegroundColor Yellow
+    Write-Host "Cleared stale vcpkg-running.lock (no PIPBONG cmake/vcpkg using build/)" -ForegroundColor Yellow
     return $true
 }
 

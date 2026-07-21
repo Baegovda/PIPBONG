@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.245` (from `project(PIPBONG VERSION 0.8.245)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.246` (from `project(PIPBONG VERSION 0.8.246)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -23,6 +23,7 @@ This is the **only development document** — AI handover, user quick start, dev
 7. [JSON and Project Format](#7-json-and-project-format)
 8. [Critical Implementation Patterns](#8-critical-implementation-patterns)
 9. [Development Governance](#9-development-governance)
+   - [9.5 User preference profile (cumulative)](#95-user-preference-profile-cumulative--agents-only)
 10. [Versioning Policy](#10-versioning-policy)
 11. [Changelog and Version History](#11-changelog-and-version-history)
 12. [Risk and Legal Notices](#12-risk-and-legal-notices)
@@ -563,7 +564,9 @@ Sbm1.0/                        # repo root (local workspace)
 - **Install:** `CrashReporter::install()` in `main.cpp` immediately after `QApplication` construction — Win32 unhandled-exception filter, `std::terminate` / purecall / invalid-parameter handlers, and Qt `qInstallMessageHandler` ring buffer (~800 lines). `Win32StackWalker` (DbgHelp `StackWalk64` / `SymFromAddr` / `SymGetLineFromAddr64`) resolves function names when PDBs are present; symbol search path includes the executable directory.
 - **GUI hang (Not Responding):** `CrashReporter::installGuiHangWatchdog()` after `install()` — `QTimer` heartbeat on the GUI thread refreshes a cached application-context snapshot; background thread writes a report when heartbeat is silent ~6 s, captures **GUI thread stack** via `SuspendThread` + `GetThreadContext`, **all other process thread stacks** (workflow workers included) in `threads.txt`, hang diagnostics (silent ms, heartbeat age), and launches detached `PIPBONG.exe --crash-report <folder>` (Win32 `MessageBox` fallback if spawn fails). Does not terminate the process.
 - **Application context:** `MainWindow` registers `CrashReporter::setContextProvider` — profile, target windows (resolved HWND), selected feature scope, running/abandoned sessions (trigger phase, cooldown, capture lock, block summary, ImageFind poll state), open dialogs, modeless tools, mouse lock, status messages, last button click (`CrashReporter::noteUserAction`) — included in every `report.txt` under `--- application context ---`.
-- **On crash:** writes a timestamped folder under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{yyyyMMdd_HHmmss}/` with `report.txt` (`kind: crash|hang|qt_fatal`, RtlGetVersion OS build, memory/CPU, foreground window, context, WARN/CRIT/FATAL digest, symbolic stacks when available), `recent_log.txt`, `threads.txt` (hang), `kind.txt`, optional `crash.dmp` (minidump with thread/handle data; hang dumps include extra segments); `pending.txt` in the crash root points at the folder. Retains the last 10 crash folders.
+- **On crash:** writes a timestamped folder under `%LOCALAPPDATA%/PIPBONG/PIPBONG/crash/{yyyyMMdd_HHmmss}/` with `report.txt` (`kind: crash|hang|qt_fatal`, build fingerprint incl. **git SHA**, suspected-cause hints, RtlGetVersion OS build, memory/CPU, foreground window, context, WARN/CRIT/FATAL digest, symbolic stacks when available), **`manifest.json`** (structured JSON for AI agents: fingerprint, exception, stack frames, breadcrumbs, workers, `suspectedCauses[]`), `recent_log.txt`, `breadcrumbs.txt`, `app_log.txt`, `worker_status.txt`, `threads.txt` (hang), `kind.txt`, optional `crash.dmp`; crash root **`incidents.json`** index (newest first, capped). Retains the last 10 crash folders.
+- **Breadcrumbs:** `CrashReporter::noteBreadcrumb` / `DiagnosticHub` timeline — UI actions, profile switch, run stop, engine abandon, workflow block start/finish, hotkey trigger/hold, overlay pick (`WorkflowEngine`, `HotkeyManager`, `ScreenRegionOverlay`, `MainWindow`).
+- **ZIP export:** `CrashReporter::exportReportFolderAsZip` includes `manifest.json` when present.
 - **Immediate UI:** Qt fatal messages show modal `CrashReportDialog` on the GUI thread before exit; SEH / CRT / hang handlers spawn a detached `PIPBONG.exe --crash-report <folder>` viewer when in-process UI is unsafe. Startup `showPendingCrashReportIfAny()` remains a fallback when the immediate viewer did not run.
 - **Manual:** title bar **도움말 → 오류 보고서** opens the latest saved `report.txt` (or shows a short status when none exist). `CrashReportDialog`: hang vs crash titles, optional user note (`user_note.txt`), **ZIP으로 저장** via `tar.exe`, **복사**, **폴더 열기**. `CrashReporter::exportReportFolderAsZip` packages report artifacts (including `threads.txt` when present).
 
@@ -1173,7 +1176,8 @@ Cursor rule: `.cursor/rules/program-settings-dialog.mdc`.
 ### After every completed task
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
-2. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release).
+2. If the chat surfaced a new user preference signal, append a dated bullet under [§9.5 User preference profile](#95-user-preference-profile-cumulative--agents-only) in the **same task** (append-only; no separate files).
+3. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release).
 3. Keep diffs minimal; match existing C++ / Qt conventions.
 4. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
 5. **Do not regress IDE build / F5 workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files, `cmake.enabled: false`, empty `launch.json` configurations, F5 → Build and Run task only (`.cursor/rules/f5-build-and-run.mdc`); never replace F5 with CMake Tools or CodeLLDB.
@@ -1183,6 +1187,54 @@ Cursor rule: `.cursor/rules/program-settings-dialog.mdc`.
 - Focused changes only; no drive-by refactors.
 - Reuse existing abstractions (`ScreenCapture`, `ImageMatcher`, `BlockFactory`, etc.).
 - Comments only for non-obvious logic.
+
+### 9.5 User preference profile (cumulative — agents only)
+
+**Status:** Added 2026-07-21. **Not** user-facing copy for `UpdateLog/update_log.md` unless a preference directly changes in-app UI.
+
+**Purpose:** Stable record of the human director’s **work style**, **collaboration habits**, **UI/aesthetic taste**, and **technical leanings** so every new agent session starts aligned — without relying on chat history.
+
+#### Recording policy (mandatory for every agent)
+
+| Rule | Detail |
+| ---- | ------ |
+| **Where** | **This section only** in `AGENTS.md` — **no** `USER_STYLE.md`, `PREFERENCES.md`, or other files |
+| **When** | Same task when the user states or clearly implies a preference, habit, aesthetic direction, or anti-preference (even in passing) |
+| **How** | **Append** a dated bullet (`YYYY-MM-DD:`) under the best-matching subsection below — **never delete or rewrite** prior bullets; refine only by adding a newer dated bullet that supersedes in practice |
+| **Task start** | Skim this section before implementing UI, docs, agent workflow, or architecture choices |
+| **Task close** | If the chat surfaced new preference signal and it is not yet here → append before closing |
+| **Changelog** | §11 may note “documented user preference in §9.5” for governance tasks; **full text lives here**, not in §11 |
+| **Cursor rules** | If a preference must be always-applied (e.g. “never tell user to copy files”), add a one-line pointer in `.cursor/rules/ai-governance.mdc` or `immediate-handover.mdc` — **content stays in §9.5** |
+
+#### Work and collaboration style
+
+- **2026-07-21:** Directs work in **Korean chat only**; expects the codebase to stay **100% AI-maintained** (implement, document, changelog via agent).
+- **2026-07-21:** Prefers the agent to **execute end-to-end** — scripts, rules, handover included — not hand the user a checklist of “copy this file / paste step 3”.
+- **2026-07-21:** When asking for **prompts or policy packs** for other projects, wants **one single copy block** (통째 복붙) — not split instructions where the user must paste multiple follow-up pieces.
+- **2026-07-21:** For prompt-only requests, deliver **the prompt block only** — avoid wrapping meta-explanation unless asked.
+- **2026-07-21:** May **defer version bump / git push / GitHub release** until explicitly requested; do not assume every task close must ship immediately when the user has paused release cadence (default policy in §10 still applies when they ask to close a versioned task).
+
+#### UI, visual, and aesthetic
+
+- **2026-07-21:** Wants the app **prettier and more polished** but **without changing the stack** — stay on **Qt6 + C++ + Win32**; no Electron/Flutter migration for looks alone.
+- **2026-07-21:** Favors **compact, scannable** workflow UI — short column headers and list labels (**시간**, **매칭**, **종류**), breadcrumb/status chips, less redundant Korean wording in dense tables.
+- **2026-07-21:** Prefers **subtle** in-game/target-window feedback (soft ROI outline, restrained glass pulses) over loud/neon chrome unless the feature is explicitly “look at me” (e.g. trigger watch may use distinct but **refined** accent families, not harsh cyan/neon).
+- **2026-07-21:** Pulse/blink animations (e.g. trigger **쿨다운**) must stay **readable on dark theme** — text and row chrome must not fade to near-black or match the background at the pulse minimum.
+- **2026-07-21:** Likes **terminal- / tool-style** density where appropriate (stat chips, log panel aesthetic) alongside readable Korean `tr()` strings.
+
+#### Technical and architecture preferences
+
+- **2026-07-21:** **Incremental builds only** — strong intolerance for full `cmake --preset` / vcpkg reinstall loops; agent must use `build-release.ps1` and documented IDE path (§3.1–§3.2).
+- **2026-07-21:** **Single master handover doc** — `AGENTS.md` only (plus high-level `README.md`); policies and ops procedures must be **in the same task**, not “document later”.
+- **2026-07-21:** Policy transplant to other repos should remain **self-contained** (scripts + `.cursor/rules` + `AGENTS.md` sections) so another agent can adopt behavior without PIPBONG chat context.
+- **2026-07-21:** Prefer **minimal diffs** and existing abstractions; avoid drive-by refactors and new one-off patterns when a shared widget/policy already exists.
+
+#### Anti-preferences (explicit don’ts)
+
+- **2026-07-21:** Do **not** create separate preference/style memo files outside `AGENTS.md`.
+- **2026-07-21:** Do **not** tell the user to manually copy policy fragments the agent could write to the repo.
+- **2026-07-21:** Do **not** “fix” slow IDE by re-enabling CMake Tools configure-on-open or CodeLLDB as daily F5.
+- **2026-07-21:** Do **not** replace verified Win32 overlay / input / keyboard patterns with Qt shortcuts without explicit request and regression plan.
 
 ---
 
@@ -1247,6 +1299,58 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Changed
 
 ### Fixed
+
+### Removed
+
+## [0.8.246] - 2026-07-22
+
+### Added
+
+- **`CrashManifestBuilder`**: per-incident **`manifest.json`** (structured crash/hang report for AI: fingerprint, exception, symbolic stack frames, breadcrumbs, workers, `suspectedCauses[]`); crash-root **`incidents.json`** index; git SHA in build fingerprint via `PIPBONG_GIT_SHA` (`PipbongVersion.h.in`, CMake `rev-parse`); `Win32StackWalker::collectStackFrames` for JSON stacks.
+- **AGENTS.md §9.5 User preference profile (cumulative):** mandatory append-only record of director work/UI/technical preferences in the master handover doc only — no separate style files; agents skim at task start and append same-task when new signals appear (`ai-governance.mdc`, `immediate-handover.mdc`).
+- **`DiagnosticHub`**: thread-safe breadcrumb timeline, mirrored application log (`app_log.txt`), and workflow worker heartbeats (`worker_status.txt`); integrated into crash/hang `report.txt`, ZIP export, and `CrashReporter::noteBreadcrumb` (`DiagnosticHub`, `CrashReporter`, `MainWindow`, `WorkflowEngine`).
+- **대상 창** 서브 행 **중앙 고정** toggle: profile-scoped `pinSubTargetWindowToScreenCenter` in `profile-settings.json`; main and sub windows pin independently on their monitors (`MainWindow`, `ProgramSettings`, `TargetWindowCenterPin::syncWindow`).
+- **마우스** block editor **고정 좌표** **연속 입력**: configurable arm hotkey (default **F2**); each target-window click while armed appends a fixed-coordinate Click block to the workflow using current button/action/modifier settings (`ClickContinuousInputRecorder`, `ClickContinuousInputHotkeySettings`, `ClickEditor`, `WorkflowEditorPanel::wireBlockEditorContinuousInput`).
+- Workflow block list: selecting a **템플릿 매칭** block shows a subtle ROI outline on the linked target window while the row stays selected (`WorkflowImageFindSelectionRoiOverlay`, `WorkflowEditorPanel`); dismissed during run, loop-region pick, block editor, or multi-select.
+- Workflow block list **Ctrl+C** / **Ctrl+V**: pasted blocks are all selected (including the last row); copy flashes sky-blue and paste flashes green glass across the **full row** (viewport overlay + uniform cell wash); **마우스** blocks in the range also pulse click feedback on the target window (`BlockListWidget`, `WorkflowEditorPanel`).
+- Workflow block list: **직전 매칭** **마우스** blocks show `↳ 클릭·#N` in **동작** (suffix accent + tooltip) and a uniform 1 px `[` bracket on the left when the template block is immediately above (top hook on source row, vertical stem, bottom hook on click row); non-adjacent links show only the bottom hook on the click row (`BlockListWidget`, `WorkflowEditorPanel`).
+- Trigger mode **타겟이 포커스가 아니어도 감지하고 동작**: per-feature option in **기능 편집**; JSON `triggerRunWithoutTargetForeground`; background poll/run when capture target is visible without foreground activation (`Feature`, `FeatureEditDialog`, `JsonSerializer`, `MainWindow::triggerBackgroundRunGateActive`).
+
+### Changed
+
+- Crash/hang **`report.txt`** adds **suspected causes (AI hints)**; ZIP export includes **`manifest.json`** (`CrashReporter`, `CrashManifestBuilder`).
+- DiagnosticHub build fingerprint adds **gitSha**, Qt, and OpenCV versions (`DiagnosticHub`, `PipbongVersion.h.in`).
+- Expanded diagnostic breadcrumbs: workflow block start/finish, hotkey trigger/hold, screen-region overlay pick, engine abandon (`WorkflowEngine`, `HotkeyManager`, `ScreenRegionOverlay`, `MainWindow`).
+- Bottom **메모장** / **CPU 감시** / **계산기** buttons show toggle-on chrome (highlight fill) while their modeless dialogs are open; state syncs on show, hide, close, and tray minimize (`MainWindow::updateAuxiliaryToolButtonStates`).
+- UI terminology **대상 창** → **타겟** (panel group, **타겟 지정**, settings/help, status/log, overlay messages); **창 지정** → **타겟 지정**; **창 미지정** → **타겟 미지정**; feature edit row **타겟**; click-block **대상** (Fixed/LastMatch/CurrentPosition) unchanged (`MainWindow`, `TargetWindowDetailPanel`, `ProfileEditDialog`, `FeatureEditDialog`, editors, `README.md`).
+- Workflow block list column order and labels: **# → 종류 → 아이콘 → 동작** (was `# → ◻ → 동작 → 요약`); **종류** uses compact `blockTypeWorkflowListName` (매칭, 키, …); **동작** shows tap/hold/ROI/delay detail and **마우스** coordinate suffix (`·120,340`, `·직전`, `·현재`, `·+offset`) (`BlockListWidget`, `Block::listDetailSummary`, `ClickBlock`, `KeyPressBlock`, `WorkflowEditorPanel`).
+- Workflow block list labels shortened where redundant: metric headers (**시간**, **탐색**, **시도**, **복귀**, **ROI**), loop-region chips (**반복**, `loopExitConditionShortLabel`), **종류**/**동작** text (`blockTypeWorkflowListName`, `ImageFindBlock::listDetailSummary`, `ClickBlock::listDetailSummary`).
+- Main center-pin resolves the **메인** binding only (not auto main/sub); sub center-pin uses the profile sub binding (`MainWindow::findMainTargetHwndForCenterPin`, `findSubTargetHwndForCenterPin`).
+- Crash/hang artifacts now include `breadcrumbs.txt`, `app_log.txt`, `worker_status.txt`, build fingerprint, breadcrumb digest, and stale-worker hints; `_purecall` / invalid-parameter handlers capture stack context via `RtlCaptureContext` (`CrashReporter`).
+
+### Fixed
+
+- Stopping a feature during ImageFind poll (e.g. **환전** infinite repeat with **계산기** open) no longer crashes with worker-thread `EXCEPTION_ACCESS_VIOLATION` write to null: `stopFeatureRun` defers `finishRunSession` until the abandoned engine worker exits; `sessionForEngine` resolves abandoned engines; worker fast-repeat `shouldContinue` checks `ExecutionContext::shouldStop()` before reading `m_runSessions` (`MainWindow`, `ExecutionContext`).
+- **홀드** / repeat sessions no longer keep looping when PIPBONG, Cursor, or another non-target app is foreground: removed `isPipbongProcessForeground` bypass from `runForegroundGateActive`; worker fast-repeat `shouldContinue` and `reconcileRunSessionsWithForegroundGate` stop the engine when the gate closes; hold/repeat pause (`waitingForScopedTargetForeground`) instead of `finishRunSession` when the binding is still held; feature hotkeys suppressed when the linked target HWND is not foreground (`MainWindow`).
+- Linked-profile features no longer run while foreground maps to the default profile (no profile binding match): `foregroundProfileMatchesActive` no longer treats PIPBONG focus as a match; `runForegroundGateActive` blocks when `profileIdForForegroundTitle` resolves to the default profile while a linked profile is active (`MainWindow`).
+- Direct focus on a linked target window no longer requires a PIPBONG focus detour: profile auto-switch to the foreground-matched linked profile is immediate (not blocked by trigger **감시** or the 800 ms linked↔linked throttle when leaving **기본**); deferred linked switches flush when foreground already matches; main-only HWND binding accepts foreground HWND after title/path match (`syncProfileToForegroundWindow`, `flushDeferredProfileSwitchIfIdle`, `activeProfileForegroundBindingMatches`).
+- Global feature hotkeys work while the linked target window stays foreground (PIPBONG never focused): startup, hotkey dispatch, and `startFeatureRun` sync profile/capture HWND from the foreground window before gate checks; `profileMainOrSubForegroundActive` uses foreground HWND title/path match for main-only bindings (`MainWindow`).
+- Target panel no longer shows **● 미실행** while the linked game window is actually running: idle `syncEffectiveTargetWindowTitleToCapture` keeps the stored main binding for HWND lookup when the foreground gate blocks run capture; `updateTargetWindowDetails` resolves HWND read-only during active sessions; `findVisibleWindowMatchingTitle` falls back to title match when a stored exe path is stale (`MainWindow`, `ScreenCapture`).
+- Linked-profile features no longer capture or run against a visible main/sub target while another app is foreground: `resolveAutoRunCaptureTargetTitleW` applies the foreground gate when only the main binding is set (no sub), removes background `findVisibleWindowMatchingTitle` fallback, and `foregroundMatchesScopedMainTarget` requires the foreground HWND to be the resolved main window; `runForegroundGateActive` final check uses HWND/path binding match only (`MainWindow`).
+- Workflow block list drag-reorder works during trigger **감시** / **쿨다운** (and while other features are watching): trigger watch ambient repaint no longer recenters the viewport on the monitor block every 50 ms, and auto-scroll is skipped while a row drag is active (`BlockListWidget::applyActiveRowVisuals`).
+- Workflow block list drag-reorder no longer blocks the GUI thread in Windows OLE `QDrag::exec()` (hang false-positive ~6 s with elevated PIPBONG over other apps): internal mouse-tracked reorder via `QEventLoop` + floating row pixmap instead of native DnD (`BlockListWidget::startDrag`).
+- Trigger mode **감시** armed state (`triggerArmedFeatureIds` in `profile-settings.json`) no longer cleared on app exit or bulk `stopAllSessions`: shutdown/update teardown suppresses trigger persist disarm so the next launch restores **감시** via `restorePersistedTriggerSessions` (`MainWindow::stopAllSessions`).
+- Trigger mode **쿨다운** feature-list blink: name text keeps alpha pulse (readable floor ~155) instead of fading to invisible or removing blink entirely (`FeatureListPanel`, `TriggerListAnimationRenderer`).
+- Trigger cooldown run-button countdown arc/text and workflow block-list cooldown glass use higher minimum intensity so the row does not read as flat black on dark theme (`TriggerListAnimationRenderer`, `BlockListWidget`).
+- Startup with the linked target window already foreground: profile/capture HWND binding and foreground gate reconcile on first `showEvent`; `syncProfileToForegroundWindow` binds capture when the active profile already matches; `resolveAutoRunCaptureTargetTitleW` resolves visible main/sub HWND without requiring a PIPBONG focus cycle; foreground WinEvent always refreshes effective capture title (`MainWindow`).
+- Run log lines from workflow `logMessage` (e.g. ImageFind retry hints) now include the `[기능명]` prefix via `appendSessionLog`; removed duplicate unprefixed block-result lines that repeated `단계 N · 성공 · …` (`MainWindow::onEngineLog`, block `execute` paths).
+- Profile-linked features no longer run against a visible target window while another app is foreground: **자동** capture resolution no longer falls back to background main/sub HWNDs; runs require profile main/sub foreground (or PIPBONG for in-app/hotkey start); trigger/workflow resume uses the same gate (`MainWindow::runForegroundGateActive`, `resolveAutoRunCaptureTargetTitleW`, `deferRunUntilScopedTargetForeground`).
+- Unrelated profile features no longer run while another profile's linked window is foreground: `foregroundProfileMatchesActive` compares `ProfileManager::profileIdForForegroundTitle` to the active profile (default profile blocked when foreground matches a linked non-default profile) (`MainWindow`, `runForegroundGateActive`, `resolveAutoRunCaptureTargetTitleW`).
+- Manual profile selection + focus on that profile's linked window is recognized again: active profile binding match uses foreground HWND title and linked exe path before cross-profile title heuristics; HWND disambiguation falls back to longer binding when enum order disagrees (`activeProfileForegroundBindingMatches`, `foregroundMatchesScopedMainTarget` / `SubTarget`).
+- Trigger **감시** and ImageFind poll loops no longer match/capture a background game window while another app is foreground: `applyFeatureRunPoliciesToContext` installs `runForegroundGateActive` as the worker poll gate for all non-default profile sessions (not only `requireScopedTargetForeground`); foreground loss marks sessions `waitingForScopedTargetForeground` and resumes via `reconcileRunSessionsWithForegroundGate` on profile/foreground sync (`MainWindow`, `ImageFindBlock`, `ExecutionContext`).
+- **중앙 고정** resolves HWND via linked `linkedTargetProcessPath` / `subLinkedTargetProcessPath` so substring title matches do not pin unrelated windows (`ScreenCapture::findVisibleWindowMatchingTitle`, `MainWindow::findMainTargetHwndForCenterPin`).
+- Worker-thread crash (`EXCEPTION_ACCESS_VIOLATION` read `0x0`) when multiple trigger **감시** sessions ran concurrently: DXGI desktop duplication is mutex-serialized; workflow capture uses per-session cached target `HWND` via `ExecutionContext` instead of mutating global `ScreenCapture` on every ImageFind poll (`DxgiScreenCapture`, `ExecutionContext`, `ScreenCapture`, `ImageFindBlock`).
+- GUI hang (~6 s) with trigger watch + feature edit **확인**: crash-context snapshot no longer runs `EnumWindows` on every 400 ms GUI heartbeat (throttled to 2 s; refreshed once on hang capture); removed per-poll `refreshSessionCaptureTarget` from `onBlockImageFindAttempt` (worker already refreshes HWND); crash snapshot prefers cached target `HWND`; deferred feature-list refresh after **기능 편집** accept; coalesced `pruneAbandonedEngines`; removed `FeatureEditDialog::adjustSize` on mode UI updates; safe font sizing when `QFont::pointSize()` is unset (`CrashReporter`, `MainWindow`, `FeatureListPanel`, `FeatureEditDialog`).
 
 ### Removed
 
@@ -4780,7 +4884,12 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **100% AI-maintained** codebase.
 - User replies: Korean. Code/docs/changelog: English. UI: Korean. JSON types: English.
 - After every task: append `[Unreleased]` bullets, then **bump version before closing** ([§10](#10-versioning-policy)); minimal diffs.
+- **User preference profile:** read and append [§9.5](#95-user-preference-profile-cumulative--agents-only) (cumulative; no separate style files).
 - Primary documentation: **this file (`AGENTS.md`) only**.
+
+### `immediate-handover.mdc`
+
+- Same-task handover in AGENTS.md (not changelog-only); includes user preference signals → §9.5 append.
 
 ### `changelog-versioning.mdc`
 

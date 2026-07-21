@@ -437,7 +437,7 @@ void ImageFindEditor::setupUi() {
     m_removeTemplateButton->setToolTip(tr("목록에서 선택한 템플릿을 제거합니다."));
     m_matchTestButton = new QPushButton(tr("매칭 테스트"), this);
     m_matchTestButton->setCheckable(true);
-    m_matchTestButton->setToolTip(tr("등록된 모든 템플릿의 매칭 결과를 대상 창 위에 표시합니다. 다시 누르거나 Esc로 닫습니다."));
+    m_matchTestButton->setToolTip(tr("등록된 모든 템플릿의 매칭 결과를 타겟 위에 표시합니다. 다시 누르거나 Esc로 닫습니다."));
 
     auto* templateToolbar = new QHBoxLayout();
     templateToolbar->setSpacing(8);
@@ -511,12 +511,12 @@ void ImageFindEditor::setupUi() {
     m_roiList->setToolTip(tr("탐색 ROI 목록입니다. 순서대로 화면을 탐색합니다."));
 
     m_pickRoiButton = new QPushButton(tr("추가"), this);
-    m_pickRoiButton->setToolTip(tr("대상 창 위에서 드래그하여 탐색 ROI를 추가합니다. 다시 누르면 취소합니다."));
+    m_pickRoiButton->setToolTip(tr("타겟 위에서 드래그하여 탐색 ROI를 추가합니다. 다시 누르면 취소합니다."));
     m_removeRoiButton = new QPushButton(tr("삭제"), this);
     m_removeRoiButton->setToolTip(tr("목록에서 선택한 ROI를 제거합니다."));
     m_roiPreviewButton = new QPushButton(tr("미리보기"), this);
     m_roiPreviewButton->setCheckable(true);
-    m_roiPreviewButton->setToolTip(tr("대상 창 위에 탐색 ROI를 반투명 오버레이로 표시합니다."));
+    m_roiPreviewButton->setToolTip(tr("타겟 위에 탐색 ROI를 반투명 오버레이로 표시합니다."));
 
     auto* roiToolbar = new QHBoxLayout();
     roiToolbar->setSpacing(8);
@@ -526,7 +526,7 @@ void ImageFindEditor::setupUi() {
     roiToolbar->addStretch(1);
     applyRoiToolbarButtonStyles(m_roiPreviewButton, m_pickRoiButton, m_removeRoiButton);
 
-    auto* roiHint = new HintLabel(tr("ROI가 없으면 대상 창 전체에서 탐색합니다."), this);
+    auto* roiHint = new HintLabel(tr("ROI가 없으면 타겟 전체에서 탐색합니다."), this);
 
     auto* roiGroup = new QGroupBox(tr("탐색 ROI"), this);
     auto* roiLayout = new QVBoxLayout(roiGroup);
@@ -557,7 +557,7 @@ void ImageFindEditor::setupUi() {
     matchFeedbackLayout->addLayout(matchFeedbackRow);
 
     auto* matchFeedbackHint = new HintLabel(
-        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 템플릿 감지 시 대상 창에 표시되는 애니메이션입니다."),
+        tr("기능 편집의 실행 위치 표시가 켜진 기능에서 템플릿 감지 시 타겟에 표시되는 애니메이션입니다."),
         m_matchFeedbackGroup);
     matchFeedbackHint->setWordWrap(true);
     matchFeedbackLayout->addWidget(matchFeedbackHint);
@@ -834,8 +834,8 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
         if (!silentErrors) {
             QMessageBox::warning(this,
                                  tr("ROI 미리보기"),
-                                 tr("대상 창을 찾을 수 없습니다.\n"
-                                    "메인 창에서 '창 지정' 또는 '창 목록'의 '서브 창으로 지정'을 사용하세요."));
+                                 tr("타겟을 찾을 수 없습니다.\n"
+                                    "메인 창에서 '타겟 지정' 또는 '창 목록'의 '서브 지정'을 사용하세요."));
         }
         return;
     }
@@ -1045,7 +1045,7 @@ void ImageFindEditor::onRemoveTemplate() {
 void ImageFindEditor::startRoiPick() {
 #ifdef _WIN32
     if (!ScreenCapture::findTargetWindow()) {
-        QMessageBox::warning(this, tr("추가"), tr("대상 창을 찾을 수 없습니다. '창 지정' 또는 '서브 창으로 지정'을 사용하세요."));
+        QMessageBox::warning(this, tr("추가"), tr("타겟을 찾을 수 없습니다. '타겟 지정' 또는 '서브 지정'을 사용하세요."));
         return;
     }
 #endif

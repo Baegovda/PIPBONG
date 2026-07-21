@@ -6,6 +6,9 @@
 #include <QEvent>
 #include <QKeyEvent>
 
+#include <functional>
+#include <memory>
+
 class QComboBox;
 class QGroupBox;
 class QShowEvent;
@@ -32,15 +35,21 @@ public:
     bool lockMouseToScreenCenterDuringRun() const;
     bool lockMouseToCurrentPositionDuringRun() const;
 
+    using ContinuousInputBlockHandler = std::function<void(std::unique_ptr<ClickBlock>)>;
+    void setContinuousInputBlockHandler(ContinuousInputBlockHandler handler);
+
 signals:
     void layoutChanged();
 
 public slots:
     void triggerCursorPositionFromHotkey();
+    void toggleContinuousInputArmed();
     void refreshClickCursorHotkeyHook();
 
     bool isClickCursorHotkeyHookActive() const;
     bool isCapturingCursorHotkey() const { return m_capturingCursorHotkey; }
+    bool isCapturingContinuousInputHotkey() const { return m_capturingContinuousInputHotkey; }
+    bool isContinuousInputHotkeyHookEligible() const;
 
 private slots:
     void onPickCoordinates();
@@ -70,6 +79,14 @@ private:
     void startCursorHotkeyCapture();
     void stopCursorHotkeyCapture();
     void applyCursorHotkeyCapture(int virtualKey, Qt::KeyboardModifiers modifiers);
+    void updateContinuousInputUi();
+    void syncContinuousInputSession();
+    void startContinuousInputHotkeyCapture();
+    void stopContinuousInputHotkeyCapture();
+    void applyContinuousInputHotkeyCapture(int virtualKey, Qt::KeyboardModifiers modifiers);
+    void updateContinuousInputHotkeyDisplay();
+    void updateContinuousInputHotkeyCaptureUi();
+    std::unique_ptr<ClickBlock> buildFixedClickBlockAt(int x, int y) const;
     int buttonComboIndexForBlock() const;
     int actionComboIndexForBlock() const;
 
@@ -90,6 +107,12 @@ private:
     QPushButton* m_pickCoordButton = nullptr;
     QLabel* m_cursorHotkeyLabel = nullptr;
     bool m_capturingCursorHotkey = false;
+    QWidget* m_continuousInputRow = nullptr;
+    QLabel* m_continuousInputStatusLabel = nullptr;
+    QLabel* m_continuousInputHotkeyLabel = nullptr;
+    bool m_capturingContinuousInputHotkey = false;
+    bool m_continuousInputArmed = false;
+    ContinuousInputBlockHandler m_continuousInputBlockHandler;
     QCheckBox* m_clientCoordsCheck = nullptr;
     QGroupBox* m_actionGroup = nullptr;
     QComboBox* m_buttonCombo = nullptr;

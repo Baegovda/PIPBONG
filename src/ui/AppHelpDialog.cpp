@@ -33,13 +33,13 @@ QString pipbongHelpHtml() {
                        .arg(QCoreApplication::translate(
                                 "AppHelpDialog",
                                 "PIPBONG은 블록으로 조립하는 Windows 화면 자동화 도구입니다. "
-                                "대상 창을 지정하고 워크플로우를 만들어 단축키로 실행합니다.")
+                                "타겟을 지정하고 워크플로우를 만들어 단축키로 실행합니다.")
                                 .toHtmlEscaped());
 
     html += helpSectionHtml(
         QCoreApplication::translate("AppHelpDialog", "빠른 시작"),
         {QCoreApplication::translate("AppHelpDialog",
-                                    "창 지정 또는 창 목록으로 자동화할 프로그램 창을 고릅니다."),
+                                    "타겟 지정 또는 창 목록으로 자동화할 프로그램 창을 고릅니다."),
          QCoreApplication::translate("AppHelpDialog", "왼쪽에서 기능을 추가하고 오른쪽에 블록을 쌓습니다."),
          QCoreApplication::translate("AppHelpDialog",
                                     "각 블록을 편집합니다(템플릿 캡처, 좌표, 키, 딜레이 등)."),
@@ -57,18 +57,18 @@ QString pipbongHelpHtml() {
                                     "마우스 — 고정 좌표, 직전 매칭, 현재 커서 위치에서 클릭·누름·이동."),
          QCoreApplication::translate("AppHelpDialog", "키보드 — 키 탭, 누름, 뗌 및 조합키 동작."),
          QCoreApplication::translate("AppHelpDialog", "딜레이 — 고정 또는 랜덤 시간만큼 대기."),
-         QCoreApplication::translate("AppHelpDialog", "텍스트 — 설정한 문자열을 대상 앱에 입력."),
+         QCoreApplication::translate("AppHelpDialog", "텍스트 — 설정한 문자열을 타겟 앱에 입력."),
          QCoreApplication::translate("AppHelpDialog",
                                     "구간 반복 — 블록 범위를 조건에 맞을 때까지 반복(워크플로우 도구 모음).")});
 
     html += helpSectionHtml(
         QCoreApplication::translate("AppHelpDialog", "참고"),
         {QCoreApplication::translate("AppHelpDialog",
-                                    "템플릿 매칭 편집기의 화면에서 캡처로 대상 창 위 영역을 드래그해 "
+                                    "템플릿 매칭 편집기의 화면에서 캡처로 타겟 위 영역을 드래그해 "
                                     "템플릿을 만듭니다."),
-         QCoreApplication::translate("AppHelpDialog", "매칭 테스트로 탐지 결과를 대상 창 위에 미리 볼 수 있습니다."),
+         QCoreApplication::translate("AppHelpDialog", "매칭 테스트로 탐지 결과를 타겟 위에 미리 볼 수 있습니다."),
          QCoreApplication::translate("AppHelpDialog",
-                                    "대상 프로그램이 관리자 권한으로 실행 중이면 PIPBONG도 같은 권한으로 "
+                                    "타겟 프로그램이 관리자 권한으로 실행 중이면 PIPBONG도 같은 권한으로 "
                                     "실행해야 입력이 전달될 수 있습니다."),
          QCoreApplication::translate("AppHelpDialog", "하단 업데이트 버튼으로 GitHub 최신 버전을 확인합니다."),
          QCoreApplication::translate("AppHelpDialog",
@@ -185,7 +185,7 @@ void AppHelpDialog::showAbout(QWidget* parent) {
                                            .toHtmlEscaped(),
                                        QCoreApplication::translate(
                                            "AppHelpDialog",
-                                           "주의: 자동화는 대상 프로그램의 이용 약관을 위반할 수 있습니다. "
+                                           "주의: 자동화는 타겟 프로그램의 이용 약관을 위반할 수 있습니다. "
                                            "사용자 책임 하에 이용하세요.")
                                            .toHtmlEscaped(),
                                        releasesUrl.toHtmlEscaped());

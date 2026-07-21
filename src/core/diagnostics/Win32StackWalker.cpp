@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include <vector>
 
 namespace {
 
@@ -68,6 +69,56 @@ void appendModuleForAddress(QStringList& lines, void* address) {
                      .arg(offset, 0, 16));
 }
 
+Win32StackWalker::StackFrame resolveStackFrame(void* address) {
+    Win32StackWalker::StackFrame frame;
+    frame.address =
+        QStringLiteral("0x%1").arg(reinterpret_cast<quintptr>(address), 16, 16, QLatin1Char('0'));
+
+    MEMORY_BASIC_INFORMATION memoryInfo{};
+    if (VirtualQuery(address, &memoryInfo, sizeof(memoryInfo))) {
+        wchar_t modulePath[MAX_PATH]{};
+        const DWORD length =
+            GetModuleFileNameW(static_cast<HMODULE>(memoryInfo.AllocationBase), modulePath, MAX_PATH);
+        if (length > 0) {
+            frame.module = QString::fromWCharArray(modulePath, static_cast<int>(length));
+        }
+        frame.moduleOffset = reinterpret_cast<quintptr>(address)
+                               - reinterpret_cast<quintptr>(memoryInfo.AllocationBase);
+    }
+
+    if (!ensureSymbolsInitialized()) {
+        return frame;
+    }
+
+    alignas(SYMBOL_INFO) unsigned char symbolBuffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME]{};
+    auto* symbol = reinterpret_cast<SYMBOL_INFO*>(symbolBuffer);
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    symbol->MaxNameLen = MAX_SYM_NAME;
+
+    DWORD64 displacement = 0;
+    if (SymFromAddr(GetCurrentProcess(),
+                    reinterpret_cast<DWORD64>(address),
+                    &displacement,
+                    symbol)) {
+        frame.symbol = QString::fromLocal8Bit(symbol->Name);
+        IMAGEHLP_LINE64 lineInfo{};
+        lineInfo.SizeOfStruct = sizeof(lineInfo);
+        DWORD lineDisplacement = 0;
+        if (SymGetLineFromAddr64(GetCurrentProcess(),
+                                 reinterpret_cast<DWORD64>(address),
+                                 &lineDisplacement,
+                                 &lineInfo)
+            && lineInfo.FileName) {
+            const QString fileName = QString::fromLocal8Bit(lineInfo.FileName);
+            const int slash = qMax(fileName.lastIndexOf(QLatin1Char('/')),
+                                   fileName.lastIndexOf(QLatin1Char('\\')));
+            frame.file = slash >= 0 ? fileName.mid(slash + 1) : fileName;
+            frame.line = static_cast<int>(lineInfo.LineNumber);
+        }
+    }
+    return frame;
+}
+
 void appendSymbolForAddress(QStringList& lines, void* address) {
     if (!ensureSymbolsInitialized()) {
         appendModuleForAddress(lines, address);
@@ -112,7 +163,11 @@ void appendSymbolForAddress(QStringList& lines, void* address) {
     appendModuleForAddress(lines, address);
 }
 
-void walkContextStack(QStringList& lines, CONTEXT* context, int maxFrames, HANDLE threadHandle = nullptr) {
+void walkContextStack(QStringList& lines,
+                      CONTEXT* context,
+                      int maxFrames,
+                      HANDLE threadHandle,
+                      std::vector<Win32StackWalker::StackFrame>* outFrames) {
     if (!context || maxFrames <= 0) {
         return;
     }
@@ -126,7 +181,11 @@ void walkContextStack(QStringList& lines, CONTEXT* context, int maxFrames, HANDL
         const USHORT captured = CaptureStackBackTrace(
             0, static_cast<DWORD>(std::min(maxFrames, 64)), frames, nullptr);
         for (USHORT index = 0; index < captured; ++index) {
-            appendModuleForAddress(lines, frames[index]);
+            if (outFrames) {
+                outFrames->push_back(resolveStackFrame(frames[index]));
+            } else {
+                appendModuleForAddress(lines, frames[index]);
+            }
         }
         return;
     }
@@ -167,7 +226,12 @@ void walkContextStack(QStringList& lines, CONTEXT* context, int maxFrames, HANDL
         if (frame.AddrPC.Offset == 0) {
             break;
         }
-        appendSymbolForAddress(lines, reinterpret_cast<void*>(frame.AddrPC.Offset));
+        void* address = reinterpret_cast<void*>(frame.AddrPC.Offset);
+        if (outFrames) {
+            outFrames->push_back(resolveStackFrame(address));
+        } else {
+            appendSymbolForAddress(lines, address);
+        }
     }
 }
 
@@ -208,13 +272,20 @@ void shutdown() {
 }
 
 void appendStackTrace(QStringList& lines, CONTEXT* context, int maxFrames) {
-    walkContextStack(lines, context, maxFrames);
+    walkContextStack(lines, context, maxFrames, nullptr, nullptr);
+}
+
+std::vector<StackFrame> collectStackFrames(CONTEXT* context, int maxFrames) {
+    std::vector<StackFrame> frames;
+    QStringList unused;
+    walkContextStack(unused, context, maxFrames, nullptr, &frames);
+    return frames;
 }
 
 void appendCurrentThreadStackTrace(QStringList& lines, int maxFrames) {
     CONTEXT context{};
     RtlCaptureContext(&context);
-    walkContextStack(lines, &context, maxFrames);
+    walkContextStack(lines, &context, maxFrames, nullptr, nullptr);
 }
 
 bool appendGuiThreadStackTrace(QStringList& lines, unsigned long mainThreadId, int maxFrames) {
@@ -238,7 +309,7 @@ bool appendGuiThreadStackTrace(QStringList& lines, unsigned long mainThreadId, i
         return false;
     }
 
-    walkContextStack(lines, &context, maxFrames, guard.handle());
+    walkContextStack(lines, &context, maxFrames, guard.handle(), nullptr);
     return true;
 }
 
@@ -293,7 +364,7 @@ int appendAllProcessThreadStackTraces(QStringList& lines,
             }
 
             lines.append(QStringLiteral("--- thread id %1 ---").arg(entry.th32ThreadID));
-            walkContextStack(lines, &context, maxFramesPerThread, guard.handle());
+            walkContextStack(lines, &context, maxFramesPerThread, guard.handle(), nullptr);
             lines.append(QString());
 
             ++captured;

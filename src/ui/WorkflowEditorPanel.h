@@ -20,6 +20,7 @@
 class QLabel;
 class QPushButton;
 class QSplitter;
+class QTimer;
 class ListColumnHeaderWidget;
 class WorkflowRunStatusBar;
 class Feature;
@@ -46,7 +47,10 @@ public:
                              double matchThreshold,
                              double confidence,
                              const QPixmap& image,
-                             bool matched);
+                             bool matched,
+                             bool hasClientPoint = false,
+                             int clientX = 0,
+                             int clientY = 0);
     void markBlockMatchSuccess(int blockIndex);
     void setBlockDuration(int blockIndex, qint64 durationMs);
     void setBlockImageFindMatchDuration(int blockIndex, qint64 matchDurationMs);
@@ -93,6 +97,8 @@ private slots:
     void onLoopRegionDeleteRequested(const QString& regionId);
     void onImageFindThresholdChanged(int blockRow, double threshold);
     void onImageFindRoiCorrectionChanged(int blockRow, bool enabled);
+    void onBlockSelectionChanged();
+    void onClickBlockSelectionPreviewTick();
     void onLoopRegionsButtonContextMenu(const QPoint& pos);
     void openLoopRegionsListDialog();
     void setLoopRegionPickMode(bool active);
@@ -108,10 +114,17 @@ private:
     void selectBlockRows(const QList<int>& rows);
     void removeSelectedBlocks();
     void pushUndoSnapshot();
+    void wireBlockEditorContinuousInput(class BlockEditorDialog& dialog, int initialInsertAt);
     void restoreFromSnapshot(const Workflow& snapshot);
     void clearWorkflowHistory();
     void updateWorkflowToolButtonStates();
     void updateTitleText();
+    void updateClickBlockSelectionPreview();
+    void stopClickBlockSelectionPreview();
+    void updateImageFindSelectionRoiPreview();
+    void stopImageFindSelectionRoiPreview();
+    void onImageFindSelectionRoiPreviewTick();
+    void pulseClickBlocksAtRows(const QList<int>& blockRows);
 
     static constexpr int kMaxUndoDepth = 100;
 
@@ -120,6 +133,9 @@ private:
         QVector<double> rowMatchConfidences;
         QVector<double> rowMatchThresholds;
         QVector<bool> rowMatchMatched;
+        QVector<bool> rowMatchHasClientPoint;
+        QVector<int> rowMatchClientX;
+        QVector<int> rowMatchClientY;
         QVector<qint64> rowBlockDurations;
         QVector<qint64> rowImageFindMatchDurations;
         QVector<int> rowImageFindAttemptCounts;
@@ -166,6 +182,9 @@ private:
     QVector<double> m_rowMatchConfidences;
     QVector<double> m_rowMatchThresholds;
     QVector<bool> m_rowMatchMatched;
+    QVector<bool> m_rowMatchHasClientPoint;
+    QVector<int> m_rowMatchClientX;
+    QVector<int> m_rowMatchClientY;
     QVector<qint64> m_rowBlockDurations;
     QVector<qint64> m_rowImageFindMatchDurations;
     QVector<int> m_rowImageFindAttemptCounts;
@@ -177,4 +196,9 @@ private:
     std::vector<std::unique_ptr<Block>> m_clipboardBlocks;
     std::vector<std::unique_ptr<Workflow>> m_undoStack;
     std::vector<std::unique_ptr<Workflow>> m_redoStack;
+
+    QTimer* m_clickSelectionPreviewTimer = nullptr;
+    int m_clickSelectionPreviewBlockRow = -1;
+    QTimer* m_imageFindSelectionRoiTimer = nullptr;
+    int m_imageFindSelectionRoiBlockRow = -1;
 };

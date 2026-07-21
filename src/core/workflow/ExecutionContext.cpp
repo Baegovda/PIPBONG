@@ -98,7 +98,7 @@ void ExecutionContext::notifyWorkerFastRepeatIteration(bool lastSuccess,
 }
 
 bool ExecutionContext::shouldContinueWorkerFastRepeat(bool lastSuccess) const {
-    if (!hasWorkerFastRepeat()) {
+    if (shouldStop() || !hasWorkerFastRepeat()) {
         return false;
     }
     return m_workerFastRepeat->shouldContinue(lastSuccess, m_detectionFailedThisRun);
@@ -529,11 +529,11 @@ void ExecutionContext::clearRememberedPositions() {
 
 void ExecutionContext::setTargetWindowTitle(const std::wstring& title) {
     m_targetWindowTitle = title;
-    ScreenCapture::setTargetWindowTitle(title);
+    m_cachedTargetWindow = nullptr;
 }
 
 void ExecutionContext::setTargetWindowTitleForWorker(const std::wstring& title) {
-    m_targetWindowTitle = title;
+    setTargetWindowTitle(title);
 }
 
 std::wstring ExecutionContext::targetWindowTitle() const {
@@ -542,25 +542,21 @@ std::wstring ExecutionContext::targetWindowTitle() const {
 
 #ifdef _WIN32
 HWND ExecutionContext::targetWindow() const {
-    HWND hwnd = ScreenCapture::targetWindow();
-    if (hwnd && IsWindow(hwnd)) {
-        return hwnd;
+    if (m_cachedTargetWindow && IsWindow(m_cachedTargetWindow)) {
+        return m_cachedTargetWindow;
     }
-    return ScreenCapture::findTargetWindow();
+    refreshTargetWindowHandle();
+    return m_cachedTargetWindow;
 }
 
 void ExecutionContext::refreshTargetWindowHandle() const {
-    if (!m_targetWindowTitle.empty()) {
-        ScreenCapture::setTargetWindowTitle(m_targetWindowTitle);
-    }
-    HWND hwnd = ScreenCapture::targetWindow();
-    if (hwnd && IsWindow(hwnd)) {
+    m_cachedTargetWindow = nullptr;
+    if (m_targetWindowTitle.empty()) {
         return;
     }
-    ScreenCapture::setTargetWindow(nullptr);
-    hwnd = ScreenCapture::findTargetWindow();
-    if (hwnd) {
-        ScreenCapture::setTargetWindow(hwnd);
+    HWND hwnd = ScreenCapture::findVisibleWindowMatchingTitle(m_targetWindowTitle);
+    if (hwnd && IsWindow(hwnd)) {
+        m_cachedTargetWindow = hwnd;
     }
 }
 #endif

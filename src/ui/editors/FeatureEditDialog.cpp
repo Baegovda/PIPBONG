@@ -70,6 +70,7 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
                                      bool hotkeyAllowExtraModifiers,
                                      FeatureCaptureTargetScope captureTargetScope,
                                      bool requireScopedTargetForeground,
+                                     bool triggerRunWithoutTargetForeground,
                                      FeatureRunMode runMode,
                                      int repeatCount,
                                      int infiniteExitAfterConsecutiveMisses,
@@ -142,6 +143,9 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     if (m_requireScopedTargetForegroundCheck) {
         m_requireScopedTargetForegroundCheck->setChecked(requireScopedTargetForeground);
     }
+    if (m_triggerRunWithoutTargetForegroundCheck) {
+        m_triggerRunWithoutTargetForegroundCheck->setChecked(triggerRunWithoutTargetForeground);
+    }
     updateScopedTargetForegroundUi();
     if (m_loopIntervalMsSpin) {
         m_loopIntervalMsSpin->setValue(snapWaitDelayMs(loopIntervalMs));
@@ -213,12 +217,12 @@ void FeatureEditDialog::setupUi() {
     m_captureTargetScopeCombo->addItem(tr("서브 창만"),
                                        static_cast<int>(FeatureCaptureTargetScope::SubOnly));
     m_captureTargetScopeCombo->setToolTip(
-        tr("이 기능이 동작할 대상 창입니다. 프로필의 메인·서브 창 지정과 함께 사용합니다. "
+        tr("이 기능이 동작할 타겟입니다. 프로필의 메인·서브 타겟 지정과 함께 사용합니다. "
            "자동은 포커스·실행 중인 창에 따라 메인 또는 서브를 선택합니다."));
-    form->addRow(tr("대상 창"), m_captureTargetScopeCombo);
+    form->addRow(tr("타겟"), m_captureTargetScopeCombo);
 
     m_requireScopedTargetForegroundCheck =
-        new QCheckBox(tr("지정한 대상 창이 활성(포커스)일 때만 동작"), this);
+        new QCheckBox(tr("지정한 타겟이 활성(포커스)일 때만 동작"), this);
     m_requireScopedTargetForegroundCheck->setToolTip(
         tr("메인 창만·서브 창만을 선택했을 때 사용합니다. 체크하면 해당 창이 "
            "포커스되어 있지 않을 때는 감시·실행을 하지 않습니다."));
@@ -334,10 +338,31 @@ void FeatureEditDialog::setupUi() {
     triggerCooldownLayout->setSpacing(4);
     triggerCooldownLayout->addWidget(m_triggerCooldownSpin);
     triggerCooldownLayout->addWidget(new QLabel(tr("초"), m_triggerCooldownRow));
-    form->addRow(m_triggerCooldownLabel, m_triggerCooldownRow);
+    form->addRow(QString(), m_triggerCooldownRow);
     connect(m_triggerCooldownSpin, &QAbstractSpinBox::editingFinished, this, [this]() {
         m_triggerCooldownSpin->setValue(
             std::clamp(m_triggerCooldownSpin->value(), 0, kTriggerCooldownMaxSeconds));
+    });
+
+    m_triggerRunWithoutTargetForegroundCheck =
+        new QCheckBox(tr("타겟이 포커스가 아니어도 감지하고 동작"), this);
+    m_triggerRunWithoutTargetForegroundCheck->setToolTip(
+        tr("트리거 모드에서 타겟 창이 화면에 보이기만 하면 포커스가 없어도 감시·실행합니다. "
+           "다른 창을 사용하는 동안에도 백그라운드로 템플릿을 찾습니다. "
+           "「지정한 타겟이 활성(포커스)일 때만 동작」과 함께 켤 수 없습니다."));
+    form->addRow(QString(), m_triggerRunWithoutTargetForegroundCheck);
+    connect(m_triggerRunWithoutTargetForegroundCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        if (checked && m_requireScopedTargetForegroundCheck
+            && m_requireScopedTargetForegroundCheck->isChecked()) {
+            m_requireScopedTargetForegroundCheck->setChecked(false);
+        }
+        updateScopedTargetForegroundUi();
+    });
+    connect(m_requireScopedTargetForegroundCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        if (checked && m_triggerRunWithoutTargetForegroundCheck
+            && m_triggerRunWithoutTargetForegroundCheck->isChecked()) {
+            m_triggerRunWithoutTargetForegroundCheck->setChecked(false);
+        }
     });
 
     m_triggerAnimationRow = new QWidget(this);
@@ -374,7 +399,7 @@ void FeatureEditDialog::setupUi() {
     m_pointerVisualFeedbackCheck =
         new QCheckBox(tr("실행 위치 표시"), this);
     m_pointerVisualFeedbackCheck->setToolTip(
-        tr("실행 중 대상 창에 클릭·감지 위치를 펄스로 표시합니다."));
+        tr("실행 중 타겟에 클릭·감지 위치를 펄스로 표시합니다."));
     form->addRow(QString(), m_pointerVisualFeedbackCheck);
 
     m_restoreMousePositionOnEndCheck = new QCheckBox(tr("마우스 위치 복귀"), this);
@@ -448,7 +473,7 @@ void FeatureEditDialog::setupUi() {
     m_editFirstTemplateRoiOnStartCheck =
         new QCheckBox(tr("첫 시작 시 첫 번째 템플릿의 ROI 수정한 뒤 바로 시작"), this);
     m_editFirstTemplateRoiOnStartCheck->setToolTip(
-        tr("기능 실행 직전에 워크플로 첫 템플릿 매칭 블록의 탐색 ROI를 대상 창에서 조정합니다. "
+        tr("기능 실행 직전에 워크플로 첫 템플릿 매칭 블록의 탐색 ROI를 타겟에서 조정합니다. "
            "확인 후 워크플로가 시작되며, Esc는 실행을 취소합니다. "
            "탐색 ROI가 지정된 템플릿 매칭 블록이 있을 때만 동작합니다."));
     form->addRow(QString(), m_editFirstTemplateRoiOnStartCheck);
@@ -575,6 +600,9 @@ void FeatureEditDialog::updateModeDependentUi() {
     if (m_triggerAnimationRow) {
         m_triggerAnimationRow->setVisible(triggerMode);
     }
+    if (m_triggerRunWithoutTargetForegroundCheck) {
+        m_triggerRunWithoutTargetForegroundCheck->setVisible(triggerMode);
+    }
 
     const bool roiCorrectionEligible = mode == FeatureRunMode::RepeatInfinite
                                        || triggerMode
@@ -593,8 +621,6 @@ void FeatureEditDialog::updateModeDependentUi() {
         applyFeatureRunModeChipLabel(m_modePreviewChip, mode, m_repeatSpin->value());
     }
     applyFeatureRunModeComboAccent(m_modeCombo, mode);
-
-    adjustSize();
 }
 
 void FeatureEditDialog::updateLoopIntervalInputUi() {
@@ -749,6 +775,11 @@ FeatureCaptureTargetScope FeatureEditDialog::captureTargetScope() const {
 
 bool FeatureEditDialog::requireScopedTargetForeground() const {
     return m_requireScopedTargetForegroundCheck && m_requireScopedTargetForegroundCheck->isChecked();
+}
+
+bool FeatureEditDialog::triggerRunWithoutTargetForeground() const {
+    return m_triggerRunWithoutTargetForegroundCheck
+           && m_triggerRunWithoutTargetForegroundCheck->isChecked();
 }
 
 FeatureRunMode FeatureEditDialog::runMode() const {

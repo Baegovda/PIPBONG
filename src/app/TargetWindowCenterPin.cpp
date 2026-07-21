@@ -12,18 +12,8 @@
 #include <cstdlib>
 #endif
 
-bool TargetWindowCenterPin::sync() {
+bool TargetWindowCenterPin::syncWindow(HWND hwnd, bool forceSnap) {
 #ifdef _WIN32
-    HWND hwnd = ScreenCapture::targetWindow();
-    if (!hwnd || !IsWindow(hwnd) || IsIconic(hwnd)) {
-        if (hwnd) {
-            ScreenCapture::setTargetWindow(nullptr);
-        }
-        hwnd = ScreenCapture::findTargetWindow();
-        if (hwnd) {
-            ScreenCapture::setTargetWindow(hwnd);
-        }
-    }
     if (!hwnd || !IsWindow(hwnd) || IsIconic(hwnd)) {
         return false;
     }
@@ -52,7 +42,8 @@ bool TargetWindowCenterPin::sync() {
     const int targetY = centerY - winHeight / 2;
 
     constexpr int kTolerancePx = 2;
-    if (std::abs(dwmRect.left - targetX) <= kTolerancePx
+    if (!forceSnap
+        && std::abs(dwmRect.left - targetX) <= kTolerancePx
         && std::abs(dwmRect.top - targetY) <= kTolerancePx) {
         return false;
     }
@@ -64,6 +55,24 @@ bool TargetWindowCenterPin::sync() {
                         0,
                         0,
                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) != FALSE;
+#else
+    return false;
+#endif
+}
+
+bool TargetWindowCenterPin::sync() {
+#ifdef _WIN32
+    HWND hwnd = ScreenCapture::targetWindow();
+    if (!hwnd || !IsWindow(hwnd) || IsIconic(hwnd)) {
+        if (hwnd) {
+            ScreenCapture::setTargetWindow(nullptr);
+        }
+        hwnd = ScreenCapture::findTargetWindow();
+        if (hwnd) {
+            ScreenCapture::setTargetWindow(hwnd);
+        }
+    }
+    return syncWindow(hwnd);
 #else
     return false;
 #endif

@@ -33,6 +33,7 @@ public:
                       bool hotkeyAllowExtraModifiers,
                       FeatureCaptureTargetScope captureTargetScope,
                       bool requireScopedTargetForeground,
+                      bool triggerRunWithoutTargetForeground,
                       FeatureRunMode runMode,
                       int repeatCount,
                       int infiniteExitAfterConsecutiveMisses,
@@ -59,6 +60,7 @@ public:
     bool hotkeyAllowExtraModifiers() const;
     FeatureCaptureTargetScope captureTargetScope() const;
     bool requireScopedTargetForeground() const;
+    bool triggerRunWithoutTargetForeground() const;
     FeatureRunMode runMode() const;
     int repeatCount() const;
     int infiniteExitAfterConsecutiveMisses() const;
@@ -115,6 +117,7 @@ private:
     QCheckBox* m_hotkeyAllowExtraModifiersCheck = nullptr;
     QComboBox* m_captureTargetScopeCombo = nullptr;
     QCheckBox* m_requireScopedTargetForegroundCheck = nullptr;
+    QCheckBox* m_triggerRunWithoutTargetForegroundCheck = nullptr;
     QComboBox* m_modeCombo = nullptr;
     QLabel* m_modePreviewChip = nullptr;
     QLabel* m_repeatCountLabel = nullptr;

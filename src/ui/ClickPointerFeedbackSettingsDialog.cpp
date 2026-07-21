@@ -393,10 +393,10 @@ void ClickPointerFeedbackSettingsDialog::updateFieldVisibility() {
 void ClickPointerFeedbackSettingsDialog::applyDialogKindUi() {
     if (m_hintLabel) {
         if (m_dialogKind == PointerFeedbackDialogKind::Detection) {
-            m_hintLabel->setText(tr("기능 편집의 실행 위치 표시가 켜진 기능에서 템플릿 감지 시 대상 창에 표시되는 애니메이션입니다. "
+            m_hintLabel->setText(tr("기능 편집의 실행 위치 표시가 켜진 기능에서 템플릿 감지 시 타겟에 표시되는 애니메이션입니다. "
                                    "성공·실패마다 중심·링 색상을 따로 지정할 수 있습니다."));
         } else {
-            m_hintLabel->setText(tr("기능 편집의 실행 위치 표시가 켜진 기능에서 마우스 클릭 시 대상 창에 표시되는 애니메이션입니다."));
+            m_hintLabel->setText(tr("기능 편집의 실행 위치 표시가 켜진 기능에서 마우스 클릭 시 타겟에 표시되는 애니메이션입니다."));
         }
     }
 

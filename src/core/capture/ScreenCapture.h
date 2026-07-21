@@ -57,6 +57,9 @@ public:
     static bool hasVisibleWindowMatchingTitle(const std::wstring& binding);
     /// First visible top-level window whose title contains `binding` (substring match).
     static HWND findVisibleWindowMatchingTitle(const std::wstring& binding);
+    /// Prefer `processPath` when set; returns nullptr when path is set but no window matches it.
+    static HWND findVisibleWindowMatchingTitle(const std::wstring& binding,
+                                               const std::wstring& processPath);
     static void warmupCapture();
 #endif
 

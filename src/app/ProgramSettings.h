@@ -14,6 +14,7 @@ public:
     struct ProfileSettings {
         bool autoSelectRunningFeature = true;
         bool pinTargetWindowToScreenCenter = false;
+        bool pinSubTargetWindowToScreenCenter = false;
         ImageFindCaptureMode imageFindCaptureMode = ImageFindCaptureMode::Hybrid;
         bool runWithoutTargetWindow = false;
         QString linkedTargetProcessPath;
@@ -46,6 +47,10 @@ public:
     /// When enabled, the designated target window is kept centered on its monitor.
     static bool pinTargetWindowToScreenCenter();
     static void setPinTargetWindowToScreenCenter(bool enabled);
+
+    /// When enabled, the profile sub-target window is kept centered on its monitor.
+    static bool pinSubTargetWindowToScreenCenter();
+    static void setPinSubTargetWindowToScreenCenter(bool enabled);
 
     /// ImageFind TargetWindow capture strategy.
     static ImageFindCaptureMode imageFindCaptureMode();

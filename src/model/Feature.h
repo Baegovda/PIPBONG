@@ -113,6 +113,12 @@ public:
     bool requireScopedTargetForeground() const { return m_requireScopedTargetForeground; }
     void setRequireScopedTargetForeground(bool require) { m_requireScopedTargetForeground = require; }
 
+    /// Trigger mode: monitor and run while the capture target is visible, even when it is not foreground.
+    bool triggerRunWithoutTargetForeground() const { return m_triggerRunWithoutTargetForeground; }
+    void setTriggerRunWithoutTargetForeground(bool enabled) {
+        m_triggerRunWithoutTargetForeground = enabled;
+    }
+
     const TriggerModeListAnimationSettings& triggerListAnimations() const {
         return m_triggerListAnimations;
     }
@@ -151,6 +157,7 @@ private:
     bool m_hotkeyAllowExtraModifiers = false;
     FeatureCaptureTargetScope m_captureTargetScope = FeatureCaptureTargetScope::Auto;
     bool m_requireScopedTargetForeground = false;
+    bool m_triggerRunWithoutTargetForeground = false;
     TriggerModeListAnimationSettings m_triggerListAnimations =
         TriggerModeListAnimationSettings::defaults();
     HotkeyBinding m_hotkey;

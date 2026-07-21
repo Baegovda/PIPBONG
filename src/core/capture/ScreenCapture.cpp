@@ -6,6 +6,7 @@
 
 #include <opencv2/imgproc.hpp>
 #include <QSettings>
+#include <QString>
 
 #ifdef _WIN32
 #include <dwmapi.h>
@@ -23,6 +24,19 @@ bool workflowCaptureAborted() {
         return ctx->shouldStop();
     }
     return false;
+}
+
+HWND hwndForWorkflowCapture() {
+    if (ExecutionContext* ctx = InputSimulator::activeExecutionContext()) {
+        if (HWND hwnd = ctx->targetWindow()) {
+            return hwnd;
+        }
+    }
+    HWND hwnd = ScreenCapture::targetWindow();
+    if (!hwnd || !IsWindow(hwnd)) {
+        hwnd = ScreenCapture::findTargetWindow();
+    }
+    return hwnd;
 }
 
 using PhysicalToLogicalForDpiFn = BOOL(WINAPI*)(HWND, LPPOINT);
@@ -364,31 +378,90 @@ bool ScreenCapture::hasVisibleWindowMatchingTitle(const std::wstring& binding) {
     return data.found;
 }
 
-HWND ScreenCapture::findVisibleWindowMatchingTitle(const std::wstring& binding) {
+bool windowTitleContainsBinding(HWND hwnd, const std::wstring& binding) {
+    if (!hwnd || !IsWindow(hwnd) || binding.empty()) {
+        return false;
+    }
+    wchar_t buffer[512]{};
+    GetWindowTextW(hwnd, buffer, 512);
+    const std::wstring title(buffer);
+    return title.find(binding) != std::wstring::npos;
+}
+
+bool processPathMatchesBinding(const std::wstring& actual, const std::wstring& expected) {
+    if (expected.empty()) {
+        return true;
+    }
+    if (actual.empty()) {
+        return false;
+    }
+    return QString::fromStdWString(actual).compare(QString::fromStdWString(expected),
+                                                  Qt::CaseInsensitive)
+           == 0;
+}
+
+HWND findVisibleWindowMatchingTitleImpl(const std::wstring& binding,
+                                        const std::wstring& processPath) {
     if (binding.empty()) {
         return nullptr;
     }
+
+    if (ScreenCapture::targetWindow() && IsWindow(ScreenCapture::targetWindow())
+        && windowTitleContainsBinding(ScreenCapture::targetWindow(), binding)) {
+        if (processPath.empty()) {
+            return ScreenCapture::targetWindow();
+        }
+        ScreenCapture::TargetWindowInfo info;
+        if (ScreenCapture::queryWindowInfo(ScreenCapture::targetWindow(), info)
+            && processPathMatchesBinding(info.processPath, processPath)) {
+            return ScreenCapture::targetWindow();
+        }
+    }
+
     struct EnumData {
-        std::wstring title;
-        HWND result = nullptr;
-    } data{binding, nullptr};
+        std::wstring binding;
+        std::wstring processPath;
+        HWND pathMatch = nullptr;
+        HWND titleMatch = nullptr;
+    } data{binding, processPath, nullptr, nullptr};
+
     EnumWindows(
         [](HWND hwnd, LPARAM lParam) -> BOOL {
             auto* enumData = reinterpret_cast<EnumData*>(lParam);
             if (!IsWindowVisible(hwnd)) {
                 return TRUE;
             }
-            wchar_t buffer[512]{};
-            GetWindowTextW(hwnd, buffer, 512);
-            const std::wstring title(buffer);
-            if (title.find(enumData->title) != std::wstring::npos) {
-                enumData->result = hwnd;
-                return FALSE;
+            if (!windowTitleContainsBinding(hwnd, enumData->binding)) {
+                return TRUE;
+            }
+            if (!enumData->titleMatch) {
+                enumData->titleMatch = hwnd;
+            }
+            if (!enumData->processPath.empty()) {
+                ScreenCapture::TargetWindowInfo info;
+                if (ScreenCapture::queryWindowInfo(hwnd, info)
+                    && processPathMatchesBinding(info.processPath, enumData->processPath)) {
+                    enumData->pathMatch = hwnd;
+                    return FALSE;
+                }
             }
             return TRUE;
         },
         reinterpret_cast<LPARAM>(&data));
-    return data.result;
+
+    if (data.pathMatch) {
+        return data.pathMatch;
+    }
+    return data.titleMatch;
+}
+
+HWND ScreenCapture::findVisibleWindowMatchingTitle(const std::wstring& binding) {
+    return findVisibleWindowMatchingTitleImpl(binding, {});
+}
+
+HWND ScreenCapture::findVisibleWindowMatchingTitle(const std::wstring& binding,
+                                                   const std::wstring& processPath) {
+    return findVisibleWindowMatchingTitleImpl(binding, processPath);
 }
 
 void ScreenCapture::warmupCapture() {
@@ -561,10 +634,7 @@ cv::Mat ScreenCapture::captureSearchAreaForImageFind(SearchArea area,
                                                      const PercentRegion& percent) {
 #ifdef _WIN32
     if (area == SearchArea::TargetWindow) {
-        HWND hwnd = targetWindow();
-        if (!hwnd || !IsWindow(hwnd)) {
-            hwnd = findTargetWindow();
-        }
+        HWND hwnd = hwndForWorkflowCapture();
         if (!hwnd) {
             if (runWithoutTargetWindowEnabled()) {
                 return captureSearchAreaForImageFind(SearchArea::FullScreen, custom, percent);
@@ -622,10 +692,7 @@ cv::Point ScreenCapture::haystackTopLeftToPhysical(SearchArea area,
 #ifdef _WIN32
     switch (area) {
     case SearchArea::TargetWindow: {
-        HWND hwnd = targetWindow();
-        if (!hwnd || !IsWindow(hwnd)) {
-            hwnd = findTargetWindow();
-        }
+        HWND hwnd = hwndForWorkflowCapture();
         // Client-sized haystack (ClientOnly / PrintWindow fallback): origin is client (0,0).
         // DWM frame origin + client pixels pushes clicks into the title bar / outside the game.
         if (hwnd && haystackWidth > 0 && haystackHeight > 0) {
@@ -780,7 +847,7 @@ cv::Mat ScreenCapture::capturePhysicalRectForTemplate(int x, int y, int width, i
 
 ScreenCapture::ScreenRect ScreenCapture::getTargetWindowScreenRect() {
     ScreenRect rect;
-    HWND hwnd = findTargetWindow();
+    HWND hwnd = hwndForWorkflowCapture();
     if (!hwnd) {
         return rect;
     }

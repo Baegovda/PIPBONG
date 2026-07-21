@@ -12,6 +12,7 @@
 
 #include <QDialog>
 
+#include <functional>
 #include <memory>
 
 class QButtonGroup;
@@ -38,6 +39,9 @@ public:
     bool lockMouseToCurrentPositionDuringRun() const;
     std::unique_ptr<Block> takeBlock();
 
+    using ContinuousClickInsertHandler = std::function<void(std::unique_ptr<Block>)>;
+    void setContinuousClickInsertHandler(ContinuousClickInsertHandler handler);
+
 private:
     void setupUi();
     void setupTypeButtons(class QHBoxLayout* row);
@@ -58,6 +62,7 @@ protected:
     QString m_projectDirectory;
     int m_workflowBlockCount = 0;
     int m_editingBlockIndex = -1;
+    ContinuousClickInsertHandler m_continuousClickInsertHandler;
 
     QButtonGroup* m_typeButtonGroup = nullptr;
     QLabel* m_typeChangeNote = nullptr;

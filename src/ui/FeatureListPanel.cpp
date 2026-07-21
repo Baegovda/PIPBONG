@@ -69,6 +69,36 @@ constexpr int kMaxEnableColumnWidth = 48;
 constexpr int kMinRunColumnWidth = 20;
 constexpr int kMaxRunColumnWidth = 40;
 
+QFont fontWithMinPointSize(QFont font, int minPointSize) {
+    if (font.pointSize() > 0) {
+        font.setPointSize(qMax(font.pointSize(), minPointSize));
+        return font;
+    }
+    if (font.pixelSize() > 0) {
+        font.setPixelSize(qMax(font.pixelSize(), minPointSize));
+        return font;
+    }
+    font.setPointSize(minPointSize);
+    return font;
+}
+
+QFont fontShrunkFromBase(const QFont& font, int delta, int minPointSize) {
+    if (font.pointSize() > 0) {
+        QFont result = font;
+        result.setPointSize(qMax(font.pointSize() + delta, minPointSize));
+        return result;
+    }
+    if (font.pixelSize() > 0) {
+        QFont result = font;
+        const qreal shrunk = static_cast<qreal>(font.pixelSize() + delta);
+        result.setPixelSize(qMax(shrunk, static_cast<qreal>(minPointSize)));
+        return result;
+    }
+    QFont result = font;
+    result.setPointSize(minPointSize);
+    return result;
+}
+
 struct FeatureListColumnRects {
     QRect enable;
     QRect run;
@@ -201,6 +231,7 @@ void paintFeatureEnableToggle(QPainter* painter,
                               const QRect& enableColumnRect,
                               bool enabled,
                               const QPalette& palette,
+                              const QColor* modeAccent = nullptr,
                               const QColor* runningAccent = nullptr) {
     const QRect box = featureEnableToggleHitRect(enableColumnRect);
     painter->save();
@@ -208,6 +239,9 @@ void paintFeatureEnableToggle(QPainter* painter,
 
     const QColor content = primaryContentTextColor(palette, false);
     QColor accent = content.lightness() < 128 ? QColor(0x4a, 0x90, 0xd9) : QColor(0x1e, 0x88, 0xe5);
+    if (modeAccent && modeAccent->isValid()) {
+        accent = *modeAccent;
+    }
     if (runningAccent && runningAccent->isValid()) {
         accent = *runningAccent;
     }
@@ -261,23 +295,36 @@ void paintFeatureRunButton(QPainter* painter,
                            bool showStop,
                            bool enabled,
                            const QPalette& palette,
+                           const QColor* modeAccent = nullptr,
                            const QColor* runningAccent = nullptr) {
     const QRect btnRect = featureRunButtonHitRect(runColumnRect);
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing, true);
 
-    QColor fill = enabled ? palette.color(QPalette::Highlight) : palette.color(QPalette::Mid);
+    QColor fill = palette.color(QPalette::Mid);
     if (!enabled) {
         fill.setAlpha(120);
-    } else if (showStop && runningAccent && runningAccent->isValid()) {
-        fill = *runningAccent;
-        fill.setAlpha(static_cast<int>(qBound(150, fill.alpha() > 0 ? fill.alpha() : 220, 255)));
     } else if (showStop) {
-        fill = fill.darker(108);
+        if (runningAccent && runningAccent->isValid()) {
+            fill = *runningAccent;
+            fill.setAlpha(static_cast<int>(qBound(150, fill.alpha() > 0 ? fill.alpha() : 220, 255)));
+        } else if (modeAccent && modeAccent->isValid()) {
+            fill = *modeAccent;
+            fill.setAlpha(220);
+        } else {
+            fill = palette.color(QPalette::Highlight).darker(108);
+        }
+    } else if (modeAccent && modeAccent->isValid()) {
+        fill = *modeAccent;
+    } else {
+        fill = palette.color(QPalette::Highlight);
     }
 
-    if (showStop && runningAccent && runningAccent->isValid()) {
-        QColor glow = *runningAccent;
+    if (showStop && enabled) {
+        QColor glow = (runningAccent && runningAccent->isValid()) ? *runningAccent
+                                                                  : (modeAccent && modeAccent->isValid()
+                                                                         ? *modeAccent
+                                                                         : palette.color(QPalette::Highlight));
         glow.setAlpha(48);
         painter->setPen(Qt::NoPen);
         painter->setBrush(glow);
@@ -552,7 +599,7 @@ void paintFeatureListRowChrome(QPainter* painter,
                                                   : featureRunModeTriggerWatchWash(dark));
         const int washAlpha =
             watch ? static_cast<int>(12 + pulse * 14)
-                  : (cooldown ? static_cast<int>(8 + pulse * 8) : static_cast<int>(10 + pulse * 12));
+                  : (cooldown ? static_cast<int>(12 + pulse * 10) : static_cast<int>(10 + pulse * 12));
         QColor wash = washBase;
         wash.setAlpha(washAlpha);
         const QRect inner = rect.adjusted(1, 2, -1, -2);
@@ -583,7 +630,7 @@ void paintFeatureListRowChrome(QPainter* painter,
                                                                        listAnimations.cooldown);
             const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
                 TriggerAnimationState::Cooldown, animationPhase, listAnimations.cooldown);
-            accent.setAlpha(static_cast<int>(pulse * 150.0));
+            accent.setAlpha(static_cast<int>(100 + pulse * 90));
         } else if (visualKind == FeatureRunVisualKind::ActiveRun) {
             if (triggerActionUsesCustomAnimation
                 && listAnimations.action.style != TriggerListAnimationStyle::DefaultPrism) {
@@ -659,13 +706,16 @@ void paintFeatureName(QPainter* painter,
     }
 
     if (visualKind == FeatureRunVisualKind::TriggerCooldown) {
-        const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
-            TriggerAnimationState::Cooldown, animationPhase, listAnimations.cooldown);
+        const int phase = TriggerListAnimationRenderer::scaledAnimationPhase(
+            animationPhase, listAnimations.cooldown.speed);
+        const qreal textPulse = 0.5 + 0.5 * std::sin(phase * M_PI / 24.0);
         QColor nameColor = baseText;
         if (selected) {
             nameColor = option.palette.color(QPalette::HighlightedText);
         }
-        nameColor.setAlpha(static_cast<int>(pulse * 255.0));
+        constexpr int kCooldownNameAlphaMin = 155;
+        nameColor.setAlpha(
+            qBound(kCooldownNameAlphaMin, static_cast<int>(textPulse * 255.0), 255));
         painter->setFont(nameFont);
         painter->setPen(nameColor);
         painter->drawText(rect, align, elided);
@@ -883,6 +933,8 @@ public:
         const FeatureRunMode runMode =
             feature ? feature->runMode()
                     : static_cast<FeatureRunMode>(index.data(kRunModeRole).toInt());
+        const QColor modeAccentColor =
+            featureRunModeTheme(runMode, darkThemeFromPalette(opt.palette)).accent;
 
         paintFeatureListRowChrome(painter,
                                   opt.rect,
@@ -938,7 +990,7 @@ public:
                     TriggerAnimationState::Cooldown, listAnimations.cooldown);
                 const qreal pulse = TriggerListAnimationRenderer::rowPulseFactor(
                     TriggerAnimationState::Cooldown, animationPhase, listAnimations.cooldown);
-                triggerAccent.setAlpha(static_cast<int>(pulse * 165.0));
+                triggerAccent.setAlpha(static_cast<int>(120 + pulse * 85));
                 runAccent = &triggerAccent;
             } else if (triggerActionCustom) {
                 triggerAccent = TriggerListAnimationRenderer::resolvedAccentColor(
@@ -950,7 +1002,12 @@ public:
             }
         }
 
-        paintFeatureEnableToggle(painter, cols.enable, featureEnabled, opt.palette, runAccent);
+        paintFeatureEnableToggle(painter,
+                                 cols.enable,
+                                 featureEnabled,
+                                 opt.palette,
+                                 &modeAccentColor,
+                                 runAccent);
 
         const bool isRunningFeature = isRunning;
         const bool holdMode =
@@ -977,6 +1034,7 @@ public:
                                   isRunningFeature,
                                   runEnabled,
                                   opt.palette,
+                                  &modeAccentColor,
                                   runAccent);
         }
 
@@ -990,8 +1048,7 @@ public:
                          listAnimations,
                          triggerActionCustom);
 
-        QFont secondaryFont = opt.font;
-        secondaryFont.setPointSize(qMax(secondaryFont.pointSize() - 1, 8));
+        QFont secondaryFont = fontShrunkFromBase(opt.font, -1, 8);
         const QColor dragMuted = featureListMutedTextColor(opt.palette);
         const QColor* modeAccentOverride = nullptr;
         QColor modeAccent;
@@ -2247,6 +2304,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
                              feature->hotkeyAllowExtraModifiers(),
                              feature->captureTargetScope(),
                              feature->requireScopedTargetForeground(),
+                             feature->triggerRunWithoutTargetForeground(),
                              feature->runMode(),
                              feature->repeatCount(),
                              feature->infiniteExitAfterConsecutiveMisses(),
@@ -2277,6 +2335,7 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setHotkeyAllowExtraModifiers(dialog.hotkeyAllowExtraModifiers());
     feature->setCaptureTargetScope(dialog.captureTargetScope());
     feature->setRequireScopedTargetForeground(dialog.requireScopedTargetForeground());
+    feature->setTriggerRunWithoutTargetForeground(dialog.triggerRunWithoutTargetForeground());
     feature->setRunMode(dialog.runMode());
     feature->setRepeatCount(dialog.repeatCount());
     feature->setInfiniteExitAfterConsecutiveMisses(dialog.infiniteExitAfterConsecutiveMisses());
@@ -2295,17 +2354,26 @@ bool FeatureListPanel::editFeatureAt(int index) {
     feature->setLoopIntervalMinMs(dialog.loopIntervalMinMs());
     feature->setLoopIntervalMaxMs(dialog.loopIntervalMaxMs());
     saveLastFeatureEditSettings(*feature);
-    refresh();
-    m_list->setCurrentRow(index);
-    emit projectModified();
-    if (previousHotkey != feature->hotkey() || previousMode != feature->runMode()
+    const bool shouldEmitHotkeysChanged =
+        previousHotkey != feature->hotkey() || previousMode != feature->runMode()
         || previousHotkeyAllowExtraModifiers != feature->hotkeyAllowExtraModifiers()
-        || previousEnabled != feature->enabled()) {
-        emit hotkeysChanged();
-    }
-    if (previousEnabled != feature->enabled()) {
-        emit featureEnabledChanged(QString::fromStdString(feature->id()), feature->enabled());
-    }
+        || previousEnabled != feature->enabled();
+    const bool enabledChanged = previousEnabled != feature->enabled();
+    const QString featureIdQString = QString::fromStdString(feature->id());
+    const bool featureEnabledNow = feature->enabled();
+    QTimer::singleShot(0, this, [this, index, shouldEmitHotkeysChanged, enabledChanged, featureIdQString, featureEnabledNow]() {
+        refresh();
+        if (m_list->currentRow() != index) {
+            m_list->setCurrentRow(index);
+        }
+        emit projectModified();
+        if (shouldEmitHotkeysChanged) {
+            emit hotkeysChanged();
+        }
+        if (enabledChanged) {
+            emit featureEnabledChanged(featureIdQString, featureEnabledNow);
+        }
+    });
     return true;
 }
 void FeatureListPanel::onEditFeature() {
@@ -2428,7 +2496,7 @@ void FeatureListPanel::wireListColumnHeader(ListColumnHeaderWidget* header, Feat
         const FeatureListColumnEdges edges =
             featureListColumnEdges(ctx.rect, panel->columnLayout());
         QFont headerFont = ctx.painter->font();
-        headerFont.setPointSize(qMax(headerFont.pointSize(), 9));
+        headerFont = fontWithMinPointSize(headerFont, 9);
         headerFont.setBold(true);
         ctx.painter->setFont(headerFont);
         ctx.painter->setPen(ListColumnHeaderWidget::headerTextColor(ctx.palette));

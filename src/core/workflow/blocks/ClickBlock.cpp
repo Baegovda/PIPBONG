@@ -187,6 +187,19 @@ std::string modifierPrefix(const KeyModifiers& mods) {
     return prefix;
 }
 
+std::string clickListCoordinateSuffix(const ClickBlock& block) {
+    if (block.target == ClickBlock::ClickTarget::CurrentPosition) {
+        return "·현재";
+    }
+    if (block.target == ClickBlock::ClickTarget::LastMatch) {
+        if (block.lastMatchRelativeOffset && (block.x != 0 || block.y != 0)) {
+            return "·+" + std::to_string(block.x) + "," + std::to_string(block.y);
+        }
+        return "·직전";
+    }
+    return "·" + std::to_string(block.x) + "," + std::to_string(block.y);
+}
+
 #ifdef _WIN32
 bool clientPointForPointerFeedback(ExecutionContext& ctx,
                                    int pointX,
@@ -225,6 +238,22 @@ std::string ClickBlock::summary() const {
         return modPrefix + std::string("현재 위치 ") + actionText;
     }
     return modPrefix + std::to_string(x) + "," + std::to_string(y) + " " + actionText;
+}
+
+std::string ClickBlock::listDetailSummary() const {
+    std::string actionText;
+    if (action == ClickAction::MoveOnly) {
+        actionText = "이동만";
+    } else if (button == MouseButton::WheelUp) {
+        actionText = "올림";
+    } else if (button == MouseButton::WheelDown) {
+        actionText = "내림";
+    } else if (button == MouseButton::Middle && action == ClickAction::Tap) {
+        actionText = "휠";
+    } else {
+        actionText = clickActionDisplayName(action);
+    }
+    return actionText + clickListCoordinateSuffix(*this);
 }
 
 BlockResult ClickBlock::execute(ExecutionContext& ctx) {
@@ -348,7 +377,6 @@ BlockResult ClickBlock::execute(ExecutionContext& ctx) {
         result.message = clickActionDisplayName(action) + " · (" + std::to_string(clickX) + ","
                          + std::to_string(clickY) + ")";
     }
-    ctx.log(result.message);
     return result;
 }
 

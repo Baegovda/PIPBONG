@@ -401,8 +401,8 @@ bool MatchTestOverlay::show(const std::vector<MatchResult>& matches,
     if (!ScreenCapture::findTargetWindow()) {
         QMessageBox::warning(messageBoxParent(hostWidget),
                              QObject::tr("매칭 테스트"),
-                             QObject::tr("대상 창을 찾을 수 없습니다.\n"
-                                         "메인 창에서 먼저 '창 지정'을 사용하세요."));
+                             QObject::tr("타겟을 찾을 수 없습니다.\n"
+                                         "메인 창에서 먼저 '타겟 지정'을 사용하세요."));
         return false;
     }
 
@@ -410,7 +410,7 @@ bool MatchTestOverlay::show(const std::vector<MatchResult>& matches,
     if (!target.valid || target.width <= 0 || target.height <= 0) {
         QMessageBox::warning(messageBoxParent(hostWidget),
                              QObject::tr("매칭 테스트"),
-                             QObject::tr("대상 창 영역을 확인할 수 없습니다."));
+                             QObject::tr("타겟 영역을 확인할 수 없습니다."));
         return false;
     }
 

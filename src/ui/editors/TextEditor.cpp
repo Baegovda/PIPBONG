@@ -48,7 +48,7 @@ void TextEditor::setupUi() {
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(8);
 
-    auto* hint = new QLabel(tr("실행 시 대상 앱에 아래 텍스트를 그대로 입력합니다. Enter로 줄바꿈하면 실행 시 Enter 키가 입력됩니다."),
+    auto* hint = new QLabel(tr("실행 시 타겟 앱에 아래 텍스트를 그대로 입력합니다. Enter로 줄바꿈하면 실행 시 Enter 키가 입력됩니다."),
                             this);
     hint->setWordWrap(true);
     layout->addWidget(hint);

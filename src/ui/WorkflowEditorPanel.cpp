@@ -33,7 +33,10 @@
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QItemSelection>
+
+#include <memory>
 #include <QItemSelectionModel>
+#include <QAbstractItemView>
 #include <QKeySequence>
 #include <QLabel>
 #include <QRadialGradient>
@@ -46,6 +49,12 @@
 #include <QScreen>
 #include <QSettings>
 #include <QSizePolicy>
+#include <QTimer>
+
+#include "app/PointerFeedbackSettings.h"
+#include "core/capture/ScreenCapture.h"
+#include "ui/editors/WorkflowMatchFeedbackOverlay.h"
+#include "ui/editors/WorkflowRoiFlashOverlay.h"
 #include <QSplitter>
 #include <QFrame>
 #include <QVBoxLayout>
@@ -54,6 +63,46 @@
 
 #include <algorithm>
 #include <list>
+
+namespace {
+
+std::vector<CaptureRegion> physicalCustomRegionsForSelectionOverlay(const ImageFindBlock& block) {
+    std::vector<CaptureRegion> physical;
+    physical.reserve(block.customRegionsWindowPercent.size());
+    for (const PercentRegion& percent : block.customRegionsWindowPercent) {
+        if (percent.width <= 0.0 || percent.height <= 0.0) {
+            continue;
+        }
+        physical.push_back(ScreenCapture::resolveWindowPercentRegion(percent));
+    }
+    return physical;
+}
+
+void showImageFindSelectionRoiOverlay(const ImageFindBlock& block) {
+#ifdef _WIN32
+    if (!ScreenCapture::findTargetWindow()) {
+        WorkflowImageFindSelectionRoiOverlay::dismissAll();
+        return;
+    }
+
+    const std::vector<CaptureRegion> physicalRegions = physicalCustomRegionsForSelectionOverlay(block);
+    const CaptureRegion physicalLegacy =
+        physicalRegions.empty() ? block.customRegion : physicalRegions.front();
+    std::vector<CaptureRegion> overlayRegions = physicalRegions;
+    if (block.searchArea != SearchArea::CustomRegion) {
+        overlayRegions.clear();
+    }
+
+    WorkflowImageFindSelectionRoiOverlay::showSearchArea(block.searchArea,
+                                                           physicalLegacy,
+                                                           block.percentRegion,
+                                                           overlayRegions);
+#else
+    (void)block;
+#endif
+}
+
+} // namespace
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -122,6 +171,103 @@ void beginWorkflowPreviewPaint(QPainter& painter) {
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+}
+
+int nearestPrecedingImageFindBlockIndex(const std::vector<std::unique_ptr<Block>>& blocks,
+                                        int fromBlockIndex) {
+    for (int i = fromBlockIndex - 1; i >= 0; --i) {
+        if (blocks[static_cast<size_t>(i)]->type() == BlockType::ImageFind) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool resolveClickBlockPreviewClientPoint(const ClickBlock& click,
+                                         int clickBlockIndex,
+                                         const Workflow& workflow,
+                                         const QVector<bool>& rowMatchMatched,
+                                         const QVector<bool>& rowMatchHasClientPoint,
+                                         const QVector<int>& rowMatchClientX,
+                                         const QVector<int>& rowMatchClientY,
+                                         int& clientX,
+                                         int& clientY) {
+#ifdef _WIN32
+    HWND hwnd = ScreenCapture::findTargetWindow();
+    if (!hwnd) {
+        return false;
+    }
+
+    auto toClientPoint = [&](int pointX, int pointY, bool useClientCoordinates) -> bool {
+        if (useClientCoordinates) {
+            clientX = pointX;
+            clientY = pointY;
+            return true;
+        }
+        int screenX = pointX;
+        int screenY = pointY;
+        return InputSimulator::screenToClient(hwnd, screenX, screenY, clientX, clientY);
+    };
+
+    switch (click.target) {
+    case ClickBlock::ClickTarget::Fixed:
+        return toClientPoint(click.x, click.y, click.useClientCoordinates);
+    case ClickBlock::ClickTarget::CurrentPosition: {
+        int screenX = 0;
+        int screenY = 0;
+        if (!InputSimulator::getCursorScreenPosition(screenX, screenY)) {
+            return false;
+        }
+        return InputSimulator::screenToClient(hwnd, screenX, screenY, clientX, clientY);
+    }
+    case ClickBlock::ClickTarget::LastMatch: {
+        int matchX = 0;
+        int matchY = 0;
+        bool foundMatch = false;
+        for (int i = clickBlockIndex - 1; i >= 0; --i) {
+            if (i >= rowMatchMatched.size() || !rowMatchMatched[i]) {
+                continue;
+            }
+            if (i >= rowMatchHasClientPoint.size() || !rowMatchHasClientPoint[i]) {
+                continue;
+            }
+            if (i >= rowMatchClientX.size() || i >= rowMatchClientY.size()) {
+                continue;
+            }
+            const auto& blocks = workflow.blocks();
+            if (i < 0 || i >= static_cast<int>(blocks.size())
+                || blocks[static_cast<size_t>(i)]->type() != BlockType::ImageFind) {
+                continue;
+            }
+            matchX = rowMatchClientX[i];
+            matchY = rowMatchClientY[i];
+            foundMatch = true;
+            break;
+        }
+        if (!foundMatch) {
+            return false;
+        }
+        if (click.lastMatchRelativeOffset) {
+            matchX += click.x;
+            matchY += click.y;
+        }
+        clientX = matchX;
+        clientY = matchY;
+        return true;
+    }
+    }
+#else
+    (void)click;
+    (void)clickBlockIndex;
+    (void)workflow;
+    (void)rowMatchMatched;
+    (void)rowMatchHasClientPoint;
+    (void)rowMatchClientX;
+    (void)rowMatchClientY;
+    (void)clientX;
+    (void)clientY;
+#endif
+    return false;
 }
 
 int lastBulkInsertWaitMs() {
@@ -649,6 +795,20 @@ void WorkflowEditorPanel::setupUi() {
     connect(m_blockList, &BlockListWidget::undoRequested, this, &WorkflowEditorPanel::onUndo);
     connect(m_blockList, &BlockListWidget::redoRequested, this, &WorkflowEditorPanel::onRedo);
 
+    m_clickSelectionPreviewTimer = new QTimer(this);
+    m_clickSelectionPreviewTimer->setTimerType(Qt::CoarseTimer);
+    connect(m_clickSelectionPreviewTimer, &QTimer::timeout, this,
+            &WorkflowEditorPanel::onClickBlockSelectionPreviewTick);
+
+    m_imageFindSelectionRoiTimer = new QTimer(this);
+    m_imageFindSelectionRoiTimer->setTimerType(Qt::CoarseTimer);
+    connect(m_imageFindSelectionRoiTimer, &QTimer::timeout, this,
+            &WorkflowEditorPanel::onImageFindSelectionRoiPreviewTick);
+    if (m_blockList->selectionModel()) {
+        connect(m_blockList->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+                &WorkflowEditorPanel::onBlockSelectionChanged);
+    }
+
     auto* toolsPane = new QWidget(this);
     auto* toolsLayout = new QVBoxLayout(toolsPane);
     toolsLayout->setContentsMargins(0, 0, 0, 0);
@@ -773,6 +933,9 @@ void WorkflowEditorPanel::clearCurrentRunFeedbackVectors() {
     m_rowMatchConfidences.clear();
     m_rowMatchThresholds.clear();
     m_rowMatchMatched.clear();
+    m_rowMatchHasClientPoint.clear();
+    m_rowMatchClientX.clear();
+    m_rowMatchClientY.clear();
     m_rowBlockDurations.clear();
     m_rowImageFindMatchDurations.clear();
     m_rowImageFindAttemptCounts.clear();
@@ -796,6 +959,9 @@ void WorkflowEditorPanel::saveRunFeedbackForFeature(const std::string& featureId
     feedback.rowMatchConfidences = m_rowMatchConfidences;
     feedback.rowMatchThresholds = m_rowMatchThresholds;
     feedback.rowMatchMatched = m_rowMatchMatched;
+    feedback.rowMatchHasClientPoint = m_rowMatchHasClientPoint;
+    feedback.rowMatchClientX = m_rowMatchClientX;
+    feedback.rowMatchClientY = m_rowMatchClientY;
     feedback.rowBlockDurations = m_rowBlockDurations;
     feedback.rowImageFindMatchDurations = m_rowImageFindMatchDurations;
     feedback.rowImageFindAttemptCounts = m_rowImageFindAttemptCounts;
@@ -833,6 +999,9 @@ void WorkflowEditorPanel::restoreRunFeedbackForFeature(const std::string& featur
     m_rowMatchConfidences = feedback.rowMatchConfidences;
     m_rowMatchThresholds = feedback.rowMatchThresholds;
     m_rowMatchMatched = feedback.rowMatchMatched;
+    m_rowMatchHasClientPoint = feedback.rowMatchHasClientPoint;
+    m_rowMatchClientX = feedback.rowMatchClientX;
+    m_rowMatchClientY = feedback.rowMatchClientY;
     m_rowBlockDurations = feedback.rowBlockDurations;
     m_rowImageFindMatchDurations = feedback.rowImageFindMatchDurations;
     m_rowImageFindAttemptCounts = feedback.rowImageFindAttemptCounts;
@@ -851,11 +1020,17 @@ void WorkflowEditorPanel::clearExecutionHighlight() {
     m_activeBlockIndex = -1;
     m_executionHighlight = BlockListWidget::ExecutionHighlight::None;
     m_blockList->clearActiveRow();
+    updateClickBlockSelectionPreview();
+    updateImageFindSelectionRoiPreview();
 }
 
 void WorkflowEditorPanel::setActiveBlockIndex(int index, BlockListWidget::ExecutionHighlight highlight) {
     m_activeBlockIndex = index;
     m_executionHighlight = index >= 0 ? highlight : BlockListWidget::ExecutionHighlight::None;
+    if (m_executionHighlight != BlockListWidget::ExecutionHighlight::None) {
+        stopClickBlockSelectionPreview();
+        stopImageFindSelectionRoiPreview();
+    }
     m_blockList->setActiveRow(index, m_executionHighlight);
 }
 
@@ -883,7 +1058,10 @@ void WorkflowEditorPanel::setBlockMatchResult(int blockIndex,
                                               double matchThreshold,
                                               double confidence,
                                               const QPixmap& image,
-                                              bool matched) {
+                                              bool matched,
+                                              bool hasClientPoint,
+                                              int clientX,
+                                              int clientY) {
     if (!matched && m_blockList->isMatchSuccessLocked(blockIndex)) {
         return;
     }
@@ -898,11 +1076,21 @@ void WorkflowEditorPanel::setBlockMatchResult(int blockIndex,
         m_rowMatchThresholds.resize(blockIndex + 1, 0.0);
         m_rowMatchMatched.resize(blockIndex + 1, false);
         m_rowMatchImages.resize(blockIndex + 1);
+        m_rowMatchHasClientPoint.resize(blockIndex + 1, false);
+        m_rowMatchClientX.resize(blockIndex + 1, 0);
+        m_rowMatchClientY.resize(blockIndex + 1, 0);
     }
     m_rowMatchThresholds[blockIndex] = matchThreshold;
     m_rowMatchConfidences[blockIndex] = confidence;
     m_rowMatchMatched[blockIndex] = matched;
     m_rowMatchImages[blockIndex] = image;
+    if (matched && hasClientPoint) {
+        m_rowMatchHasClientPoint[blockIndex] = true;
+        m_rowMatchClientX[blockIndex] = clientX;
+        m_rowMatchClientY[blockIndex] = clientY;
+    } else if (!matched) {
+        m_rowMatchHasClientPoint[blockIndex] = false;
+    }
     m_blockList->setBlockMatchResult(blockIndex, matchThreshold, confidence, image, matched);
 }
 
@@ -989,6 +1177,8 @@ void WorkflowEditorPanel::setFeature(Feature* feature) {
     if (m_feature && m_feature != feature) {
         saveRunFeedbackForFeature(m_feature->id());
         setLoopRegionPickMode(false);
+        stopClickBlockSelectionPreview();
+        stopImageFindSelectionRoiPreview();
     }
 
     m_feature = feature;
@@ -1106,11 +1296,29 @@ void WorkflowEditorPanel::refresh() {
     m_blockList->setRoiCorrectionColumnVisible(perBlockRoiCorrection);
 
     m_blockList->setLoopRegions(m_feature->workflow().loopRegions());
+
+    QVector<int> lastMatchSources(static_cast<int>(blocks.size()), -1);
     for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
-        const Block& block = *blocks[i];
+        if (blocks[static_cast<size_t>(i)]->type() != BlockType::Click) {
+            continue;
+        }
+        const auto& click = static_cast<const ClickBlock&>(*blocks[static_cast<size_t>(i)]);
+        if (click.target != ClickBlock::ClickTarget::LastMatch) {
+            continue;
+        }
+        lastMatchSources[i] = nearestPrecedingImageFindBlockIndex(blocks, i);
+    }
+
+    for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
+        const Block& block = *blocks[static_cast<size_t>(i)];
+        QString summary = QString::fromStdString(block.listDetailSummary());
+        if (lastMatchSources[i] >= 0) {
+            summary.replace(QStringLiteral("·직전"),
+                            QStringLiteral("·#%1").arg(lastMatchSources[i] + 1));
+        }
         m_blockList->setBlockInfo(i,
-                                  blockTypeWorkflowActionName(block.type()),
-                                  QString::fromStdString(block.summary()),
+                                  blockTypeWorkflowListName(block.type()),
+                                  summary,
                                   loadBlockThumbnail(block, m_projectDirectory));
 
         if (block.type() != BlockType::ImageFind) {
@@ -1139,6 +1347,8 @@ void WorkflowEditorPanel::refresh() {
         }
     }
 
+    m_blockList->setClickLastMatchSources(lastMatchSources);
+
     for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
         if (i < m_rowBlockDurations.size() && m_rowBlockDurations[i] >= 0) {
             m_blockList->setBlockDuration(i, m_rowBlockDurations[i]);
@@ -1162,6 +1372,8 @@ void WorkflowEditorPanel::refresh() {
         m_blockList->setActiveRow(m_activeBlockIndex, m_executionHighlight);
     }
     updateWorkflowToolButtonStates();
+    updateClickBlockSelectionPreview();
+    updateImageFindSelectionRoiPreview();
 }
 
 void WorkflowEditorPanel::updateWorkflowToolButtonStates() {
@@ -1225,6 +1437,8 @@ void WorkflowEditorPanel::addBlockOfType(BlockType type) {
         dialog.setRoiCorrectionUiPolicy(m_feature->roiCorrection(), m_feature->roiCorrectionSessionEligible());
         dialog.setClickFeatureRunOptions(m_feature->lockMouseToScreenCenterDuringRun(),
                                          m_feature->lockMouseToCurrentPositionDuringRun());
+        wireBlockEditorContinuousInput(
+            dialog, static_cast<int>(m_feature->workflow().blocks().size()));
     }
     if (dialog.exec() != QDialog::Accepted) {
         return;
@@ -1269,21 +1483,32 @@ void WorkflowEditorPanel::selectBlockRows(const QList<int>& rows) {
         return;
     }
 
-    QItemSelection selection;
+    QItemSelectionModel* selectionModel = m_blockList->selectionModel();
+    QSignalBlocker selectionBlocker(selectionModel);
+    selectionModel->clearSelection();
+
     const int lastColumn = BlockListWidget::LastDataColumn;
+    bool firstRow = true;
+    int lastTableRow = -1;
     for (int blockRow : rows) {
         const int tableRow = m_blockList->tableRowForBlockRow(blockRow);
         if (tableRow < 0) {
             continue;
         }
-        selection.select(m_blockList->model()->index(tableRow, 0),
-                         m_blockList->model()->index(tableRow, lastColumn));
+        const QModelIndex topLeft = m_blockList->model()->index(tableRow, 0);
+        const QModelIndex bottomRight = m_blockList->model()->index(tableRow, lastColumn);
+        const QItemSelection rowSelection(topLeft, bottomRight);
+        const QItemSelectionModel::SelectionFlags command =
+            firstRow ? QItemSelectionModel::ClearAndSelect : QItemSelectionModel::Select;
+        selectionModel->select(rowSelection, command | QItemSelectionModel::Rows);
+        firstRow = false;
+        lastTableRow = tableRow;
     }
-    m_blockList->selectionModel()->select(selection, QItemSelectionModel::ClearAndSelect);
-    if (!rows.isEmpty()) {
-        const int tableRow = m_blockList->tableRowForBlockRow(rows.last());
-        if (tableRow >= 0) {
-            m_blockList->setCurrentCell(tableRow, 0);
+
+    if (lastTableRow >= 0) {
+        m_blockList->setCurrentCell(lastTableRow, 0);
+        if (QTableWidgetItem* anchor = m_blockList->item(lastTableRow, 0)) {
+            m_blockList->scrollToItem(anchor, QAbstractItemView::PositionAtCenter);
         }
     }
 }
@@ -1305,6 +1530,9 @@ void WorkflowEditorPanel::onCopyBlocks() {
             m_clipboardBlocks.push_back(blocks[row]->clone());
         }
     }
+
+    m_blockList->flashClipboardCopyRange(rows.first(), rows.last());
+    pulseClickBlocksAtRows(rows);
 }
 
 void WorkflowEditorPanel::onPasteBlocks() {
@@ -1326,7 +1554,13 @@ void WorkflowEditorPanel::onPasteBlocks() {
     }
 
     refresh();
-    selectBlockRows(pastedRows);
+    const QList<int> rowsToSelect = pastedRows;
+    QTimer::singleShot(0, this, [this, rowsToSelect]() {
+        selectBlockRows(rowsToSelect);
+        updateClickBlockSelectionPreview();
+    });
+    m_blockList->flashClipboardPasteRange(pastedRows.first(), pastedRows.last());
+    pulseClickBlocksAtRows(pastedRows);
     emit workflowModified();
 }
 
@@ -1421,6 +1655,13 @@ void WorkflowEditorPanel::setLoopRegionPickMode(bool active) {
     }
     m_loopRegionPickActive = active;
     m_blockList->setLoopRegionPickMode(active);
+    if (active) {
+        stopClickBlockSelectionPreview();
+        stopImageFindSelectionRoiPreview();
+    } else {
+        updateClickBlockSelectionPreview();
+        updateImageFindSelectionRoiPreview();
+    }
     if (m_loopRegionsButton) {
         m_loopRegionsButton->setChecked(active);
         m_loopRegionsButton->setText(active ? tr("구간 드래그…") : tr("구간 반복"));
@@ -1749,11 +1990,13 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
     if (auto* mainWindow = qobject_cast<MainWindow*>(window())) {
         mainWindow->refreshCaptureTargetForEditing();
     }
+    stopImageFindSelectionRoiPreview();
     BlockEditorDialog dialog(block, m_projectDirectory, this);
     dialog.setWorkflowEditorContext(static_cast<int>(m_feature->workflow().blocks().size()), row);
     dialog.setRoiCorrectionUiPolicy(m_feature->roiCorrection(), m_feature->roiCorrectionSessionEligible());
     dialog.setClickFeatureRunOptions(m_feature->lockMouseToScreenCenterDuringRun(),
                                      m_feature->lockMouseToCurrentPositionDuringRun());
+    wireBlockEditorContinuousInput(dialog, row + 1);
     if (dialog.exec() != QDialog::Accepted) {
         return false;
     }
@@ -1787,6 +2030,37 @@ void WorkflowEditorPanel::pushUndoSnapshot() {
         m_undoStack.erase(m_undoStack.begin());
     }
     m_redoStack.clear();
+}
+
+void WorkflowEditorPanel::wireBlockEditorContinuousInput(BlockEditorDialog& dialog,
+                                                         int initialInsertAt) {
+    if (!m_feature) {
+        return;
+    }
+
+    struct ContinuousInsertState {
+        int insertAt = 0;
+        bool undoPrepared = false;
+    };
+    auto state = std::make_shared<ContinuousInsertState>();
+    state->insertAt = qMax(0, initialInsertAt);
+
+    dialog.setContinuousClickInsertHandler([this, state](std::unique_ptr<Block> block) {
+        if (!m_feature || !block) {
+            return;
+        }
+        if (!state->undoPrepared) {
+            pushUndoSnapshot();
+            state->undoPrepared = true;
+        }
+        const int blockCount = static_cast<int>(m_feature->workflow().blocks().size());
+        const int index = qBound(0, state->insertAt, blockCount);
+        m_feature->workflow().insertBlock(index, std::move(block));
+        ++state->insertAt;
+        refresh();
+        m_blockList->selectBlockRow(state->insertAt - 1);
+        emit workflowModified();
+    });
 }
 
 void WorkflowEditorPanel::restoreFromSnapshot(const Workflow& snapshot) {
@@ -1829,4 +2103,193 @@ void WorkflowEditorPanel::onRedo() {
     std::unique_ptr<Workflow> snapshot = std::move(m_redoStack.back());
     m_redoStack.pop_back();
     restoreFromSnapshot(*snapshot);
+}
+
+void WorkflowEditorPanel::stopClickBlockSelectionPreview() {
+    m_clickSelectionPreviewBlockRow = -1;
+    if (m_clickSelectionPreviewTimer) {
+        m_clickSelectionPreviewTimer->stop();
+    }
+}
+
+void WorkflowEditorPanel::stopImageFindSelectionRoiPreview() {
+    m_imageFindSelectionRoiBlockRow = -1;
+    if (m_imageFindSelectionRoiTimer) {
+        m_imageFindSelectionRoiTimer->stop();
+    }
+    WorkflowImageFindSelectionRoiOverlay::dismissAll();
+}
+
+void WorkflowEditorPanel::updateImageFindSelectionRoiPreview() {
+    if (!m_imageFindSelectionRoiTimer) {
+        return;
+    }
+    if (m_activeBlockIndex >= 0 && m_executionHighlight != BlockListWidget::ExecutionHighlight::None) {
+        stopImageFindSelectionRoiPreview();
+        return;
+    }
+    if (m_loopRegionPickActive) {
+        stopImageFindSelectionRoiPreview();
+        return;
+    }
+
+    const QList<int> rows = selectedBlockRows();
+    if (!m_feature || rows.size() != 1) {
+        stopImageFindSelectionRoiPreview();
+        return;
+    }
+
+    const int blockRow = rows.first();
+    const auto& blocks = m_feature->workflow().blocks();
+    if (blockRow < 0 || blockRow >= static_cast<int>(blocks.size())
+        || blocks[static_cast<size_t>(blockRow)]->type() != BlockType::ImageFind) {
+        stopImageFindSelectionRoiPreview();
+        return;
+    }
+
+    if (m_imageFindSelectionRoiBlockRow != blockRow) {
+        m_imageFindSelectionRoiBlockRow = blockRow;
+        onImageFindSelectionRoiPreviewTick();
+    }
+
+    constexpr int kRefreshMs = 280;
+    if (!m_imageFindSelectionRoiTimer->isActive()) {
+        m_imageFindSelectionRoiTimer->start(kRefreshMs);
+    } else {
+        m_imageFindSelectionRoiTimer->setInterval(kRefreshMs);
+    }
+}
+
+void WorkflowEditorPanel::onImageFindSelectionRoiPreviewTick() {
+    if (!m_feature || m_imageFindSelectionRoiBlockRow < 0) {
+        return;
+    }
+    if (m_activeBlockIndex >= 0 && m_executionHighlight != BlockListWidget::ExecutionHighlight::None) {
+        return;
+    }
+
+    const auto& blocks = m_feature->workflow().blocks();
+    const int blockRow = m_imageFindSelectionRoiBlockRow;
+    if (blockRow < 0 || blockRow >= static_cast<int>(blocks.size())
+        || blocks[static_cast<size_t>(blockRow)]->type() != BlockType::ImageFind) {
+        return;
+    }
+
+    const auto& imageFind = static_cast<const ImageFindBlock&>(*blocks[static_cast<size_t>(blockRow)]);
+    showImageFindSelectionRoiOverlay(imageFind);
+}
+
+void WorkflowEditorPanel::updateClickBlockSelectionPreview() {
+    if (!m_clickSelectionPreviewTimer) {
+        return;
+    }
+    if (m_activeBlockIndex >= 0 && m_executionHighlight != BlockListWidget::ExecutionHighlight::None) {
+        stopClickBlockSelectionPreview();
+        return;
+    }
+    if (m_loopRegionPickActive) {
+        stopClickBlockSelectionPreview();
+        return;
+    }
+
+    const QList<int> rows = selectedBlockRows();
+    if (!m_feature || rows.size() != 1) {
+        stopClickBlockSelectionPreview();
+        return;
+    }
+
+    const int blockRow = rows.first();
+    const auto& blocks = m_feature->workflow().blocks();
+    if (blockRow < 0 || blockRow >= static_cast<int>(blocks.size())
+        || blocks[static_cast<size_t>(blockRow)]->type() != BlockType::Click) {
+        stopClickBlockSelectionPreview();
+        return;
+    }
+
+    if (m_clickSelectionPreviewBlockRow != blockRow) {
+        m_clickSelectionPreviewBlockRow = blockRow;
+        onClickBlockSelectionPreviewTick();
+    }
+
+    const int intervalMs =
+        qMax(120, static_cast<int>(PointerFeedbackSettings::click().displayDurationMs * 0.85));
+    if (!m_clickSelectionPreviewTimer->isActive()) {
+        m_clickSelectionPreviewTimer->start(intervalMs);
+    } else {
+        m_clickSelectionPreviewTimer->setInterval(intervalMs);
+    }
+}
+
+void WorkflowEditorPanel::onBlockSelectionChanged() {
+    updateClickBlockSelectionPreview();
+    updateImageFindSelectionRoiPreview();
+}
+
+void WorkflowEditorPanel::onClickBlockSelectionPreviewTick() {
+    if (!m_feature || m_clickSelectionPreviewBlockRow < 0) {
+        return;
+    }
+    if (m_activeBlockIndex >= 0 && m_executionHighlight != BlockListWidget::ExecutionHighlight::None) {
+        return;
+    }
+
+    const auto& blocks = m_feature->workflow().blocks();
+    const int blockRow = m_clickSelectionPreviewBlockRow;
+    if (blockRow < 0 || blockRow >= static_cast<int>(blocks.size())
+        || blocks[static_cast<size_t>(blockRow)]->type() != BlockType::Click) {
+        return;
+    }
+
+    const auto& click = static_cast<const ClickBlock&>(*blocks[static_cast<size_t>(blockRow)]);
+    int clientX = 0;
+    int clientY = 0;
+    if (!resolveClickBlockPreviewClientPoint(click,
+                                             blockRow,
+                                             m_feature->workflow(),
+                                             m_rowMatchMatched,
+                                             m_rowMatchHasClientPoint,
+                                             m_rowMatchClientX,
+                                             m_rowMatchClientY,
+                                             clientX,
+                                             clientY)) {
+        return;
+    }
+
+    WorkflowMatchFeedbackOverlay::pulseAtClientPoint(
+        clientX, clientY, RunPointerFeedbackKind::Click, PointerFeedbackSettings::click());
+}
+
+void WorkflowEditorPanel::pulseClickBlocksAtRows(const QList<int>& blockRows) {
+#ifdef _WIN32
+    if (!m_feature || blockRows.isEmpty()) {
+        return;
+    }
+    const auto& blocks = m_feature->workflow().blocks();
+    for (int blockRow : blockRows) {
+        if (blockRow < 0 || blockRow >= static_cast<int>(blocks.size())) {
+            continue;
+        }
+        if (blocks[static_cast<size_t>(blockRow)]->type() != BlockType::Click) {
+            continue;
+        }
+        const auto& click = static_cast<const ClickBlock&>(*blocks[static_cast<size_t>(blockRow)]);
+        int clientX = 0;
+        int clientY = 0;
+        if (!resolveClickBlockPreviewClientPoint(click,
+                                                 blockRow,
+                                                 m_feature->workflow(),
+                                                 m_rowMatchMatched,
+                                                 m_rowMatchHasClientPoint,
+                                                 m_rowMatchClientX,
+                                                 m_rowMatchClientY,
+                                                 clientX,
+                                                 clientY)) {
+            continue;
+        }
+        WorkflowMatchFeedbackOverlay::pulseAtClientPoint(
+            clientX, clientY, RunPointerFeedbackKind::Click, PointerFeedbackSettings::click());
+    }
+#else
+    (void)blockRows;
+#endif
 }

@@ -329,8 +329,8 @@ bool showHighlight(HWND targetHwnd,
         if (showMissingTargetMessage) {
             QMessageBox::warning(messageBoxParent(hostWidget),
                                  QObject::tr("창 표시"),
-                                 QObject::tr("대상 창을 찾을 수 없습니다.\n"
-                                             "먼저 '창 지정'으로 대상 창을 선택하세요."));
+                                 QObject::tr("타겟을 찾을 수 없습니다.\n"
+                                             "먼저 '타겟 지정'으로 타겟을 선택하세요."));
         }
         return false;
     }
@@ -340,7 +340,7 @@ bool showHighlight(HWND targetHwnd,
         if (showMissingTargetMessage) {
             QMessageBox::warning(messageBoxParent(hostWidget),
                                  QObject::tr("창 표시"),
-                                 QObject::tr("대상 창 영역을 확인할 수 없습니다."));
+                                 QObject::tr("타겟 영역을 확인할 수 없습니다."));
         }
         return false;
     }
