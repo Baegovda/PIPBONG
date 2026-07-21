@@ -45,6 +45,8 @@
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QAbstractItemView>
+#include <QPlainTextEdit>
+#include <QTextEdit>
 #include <climits>
 #include <cmath>
 namespace {
@@ -1929,6 +1931,12 @@ void FeatureListPanel::resizeEvent(QResizeEvent* event) {
 }
 
 bool FeatureListPanel::eventFilter(QObject* watched, QEvent* event) {
+    if (m_list && watched == m_list->viewport() && event->type() == QEvent::MouseButtonPress) {
+        const auto* mouseEvent = static_cast<QMouseEvent*>(event);
+        if (mouseEvent->button() == Qt::LeftButton && m_list->itemAt(mouseEvent->pos())) {
+            m_list->setFocus(Qt::MouseFocusReason);
+        }
+    }
     if (m_list && watched == m_list->viewport() && event->type() == QEvent::MouseButtonRelease) {
         const auto* mouseEvent = static_cast<QMouseEvent*>(event);
         if (mouseEvent->button() == Qt::LeftButton) {
@@ -2380,18 +2388,65 @@ void FeatureListPanel::onEditFeature() {
     editFeatureAt(selectedIndex());
 }
 
-void FeatureListPanel::onInlineRenameRequested() {
+bool FeatureListPanel::canInlineRenameFromShortcut() const {
     if (!m_list || !m_project) {
+        return false;
+    }
+    QWidget* top = window();
+    if (!top || !top->isActiveWindow()) {
+        return false;
+    }
+    if (QWidget* focus = QApplication::focusWidget()) {
+        for (const QWidget* ancestor = focus; ancestor; ancestor = ancestor->parentWidget()) {
+            const auto* dialog = qobject_cast<const QDialog*>(ancestor);
+            if (!dialog || !dialog->isVisible()) {
+                continue;
+            }
+            if (!dialog->property("pipbong_featureHotkeyGateExempt").toBool()) {
+                return false;
+            }
+            break;
+        }
+        bool inlineFeatureRenameEditor = false;
+        if (m_list->indexWidget(m_list->currentIndex())) {
+            for (QWidget* ancestor = focus; ancestor; ancestor = ancestor->parentWidget()) {
+                if (ancestor == m_list) {
+                    inlineFeatureRenameEditor = true;
+                    break;
+                }
+            }
+        }
+        if (!inlineFeatureRenameEditor
+            && (qobject_cast<const QLineEdit*>(focus) || qobject_cast<const QTextEdit*>(focus)
+                || qobject_cast<const QPlainTextEdit*>(focus)
+                || qobject_cast<const QAbstractSpinBox*>(focus))) {
+            return false;
+        }
+    }
+    QListWidgetItem* item = m_list->currentItem();
+    if (!item) {
+        return false;
+    }
+    if (m_list->indexWidget(m_list->currentIndex())) {
+        return false;
+    }
+    const int row = m_list->row(item);
+    return isFeatureEditableAt(row) && (item->flags() & Qt::ItemIsEditable);
+}
+
+void FeatureListPanel::requestInlineRename() {
+    onInlineRenameRequested();
+}
+
+void FeatureListPanel::onInlineRenameRequested() {
+    if (!canInlineRenameFromShortcut()) {
         return;
     }
     QListWidgetItem* item = m_list->currentItem();
     if (!item) {
         return;
     }
-    const int row = m_list->row(item);
-    if (!isFeatureEditableAt(row) || !(item->flags() & Qt::ItemIsEditable)) {
-        return;
-    }
+    m_list->setFocus(Qt::ShortcutFocusReason);
     m_inlineRenameRow = m_list->row(item);
     m_renameHotkeyGate = std::make_unique<FeatureHotkeyGateScope>();
     m_list->editItem(item);

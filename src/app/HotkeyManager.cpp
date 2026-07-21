@@ -558,6 +558,9 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
     if (HotkeyBinding::isMouseVirtualKey(vkCode)) {
         return false;
     }
+    if (FeatureHotkeyGate::shouldDeferKeyboardHook(vkCode, keyDown)) {
+        return false;
+    }
 
     const bool hotkeysBlocked = FeatureHotkeyGate::isFeatureHotkeysBlocked();
     bool swallow = false;

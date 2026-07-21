@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.246` (from `project(PIPBONG VERSION 0.8.246)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.247` (from `project(PIPBONG VERSION 0.8.247)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.247] - 2026-07-22
+
+### Fixed
+
+- Feature list **F2** inline rename restored: main-window F2 shortcut and keyboard-hook defer when an editable feature is selected; list click restores keyboard focus; F2 no longer swallowed by feature hotkey bindings while PIPBONG is active (`FeatureListPanel`, `MainWindow`, `FeatureHotkeyGate`, `HotkeyManager`).
 
 ## [0.8.246] - 2026-07-22
 

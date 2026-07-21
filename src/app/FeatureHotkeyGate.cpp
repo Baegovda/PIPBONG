@@ -13,6 +13,7 @@
 namespace {
 
 std::atomic<int> g_featureHotkeyBlockCount{0};
+std::function<bool(int, bool)> g_keyboardHookDeferPredicate;
 
 constexpr char kFeatureHotkeyGateExemptProperty[] = "pipbong_featureHotkeyGateExempt";
 
@@ -73,6 +74,15 @@ bool FeatureHotkeyGate::isFeatureHotkeysBlocked() {
     // Any editing / tool dialog left open (modal or modeless) suppresses feature bindings
     // so hotkeys cannot start unrelated features while the user is configuring UI.
     return anyVisibleAppDialogOpen();
+}
+
+void FeatureHotkeyGate::setKeyboardHookDeferPredicate(
+    std::function<bool(int vkCode, bool keyDown)> predicate) {
+    g_keyboardHookDeferPredicate = std::move(predicate);
+}
+
+bool FeatureHotkeyGate::shouldDeferKeyboardHook(int vkCode, bool keyDown) {
+    return g_keyboardHookDeferPredicate && g_keyboardHookDeferPredicate(vkCode, keyDown);
 }
 
 void FeatureHotkeyGate::addBlocker() {

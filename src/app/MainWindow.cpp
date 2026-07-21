@@ -1572,6 +1572,27 @@ void MainWindow::connectSignals() {
     auto* globalRedoAltShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z), this);
     globalRedoAltShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(globalRedoAltShortcut, &QShortcut::activated, this, &MainWindow::onGlobalRedoRequested);
+
+    FeatureHotkeyGate::setKeyboardHookDeferPredicate([this](int vkCode, bool keyDown) {
+#ifdef _WIN32
+        if (vkCode != VK_F2 || !keyDown) {
+            return false;
+        }
+#else
+        Q_UNUSED(vkCode);
+        Q_UNUSED(keyDown);
+        return false;
+#endif
+        return m_featureList && m_featureList->canInlineRenameFromShortcut();
+    });
+
+    auto* featureRenameShortcut = new QShortcut(QKeySequence(Qt::Key_F2), this);
+    featureRenameShortcut->setContext(Qt::WindowShortcut);
+    connect(featureRenameShortcut, &QShortcut::activated, this, [this]() {
+        if (m_featureList) {
+            m_featureList->requestInlineRename();
+        }
+    });
 }
 
 void MainWindow::onExitRequested() {

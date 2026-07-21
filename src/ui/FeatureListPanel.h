@@ -82,7 +82,8 @@ public:
 
     void selectFeatureById(const QString& featureId);
 
-
+    bool canInlineRenameFromShortcut() const;
+    void requestInlineRename();
 
     QString runningFeatureId() const;
 
