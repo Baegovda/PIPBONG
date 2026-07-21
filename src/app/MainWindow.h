@@ -307,6 +307,7 @@ private:
 #ifdef _WIN32
     void commitActiveProfileTargetWindow(HWND hwnd, const QString& title);
     void commitActiveProfileSubTargetWindow(HWND hwnd, const QString& title);
+    void healLinkedTargetProcessPathFromForeground(HWND hwnd, const QString& foregroundTitle);
     enum class TargetWindowListPickMode { Main, Sub };
     void pickTargetWindowFromList(TargetWindowListPickMode mode);
 #endif

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.248` (from `project(PIPBONG VERSION 0.8.248)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.249` (from `project(PIPBONG VERSION 0.8.249)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.249] - 2026-07-22
+
+### Fixed
+
+- Startup / foreground-target dead hotkeys and zombie trigger **감시**: profile auto-switch used title-based matching while feature runs and hotkeys required stale `linkedTargetProcessPath` exe match — unified `runForegroundGateActive`, hotkey suppression, and capture-title gate on `foregroundProfileMatchesActive()`; foreground HWND binding checks title only; auto-heal linked exe path on profile sync; deferred trigger restore resumes after armed restore; **감시** UI hidden while waiting for foreground gate without an active engine (`MainWindow`).
 
 ## [0.8.248] - 2026-07-22
 
