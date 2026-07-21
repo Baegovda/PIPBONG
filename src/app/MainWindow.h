@@ -460,6 +460,7 @@ private:
     ProgramSettings::ProfileSettings m_lastPersistedProfileSettings{};
     bool m_restoringGlobalUiHistory = false;
     bool m_suppressTriggerArmedPersist = false;
+    bool m_restoreTriggerSessionsScheduled = false;
     std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;

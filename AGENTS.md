@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.250` (from `project(PIPBONG VERSION 0.8.250)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.251` (from `project(PIPBONG VERSION 0.8.251)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.251] - 2026-07-22
+
+### Fixed
+
+- Trigger mode **감시** armed state (`triggerArmedFeatureIds`) no longer cleared after app shutdown or bulk `stopAllSessions` when the workflow engine stops asynchronously: only `FeatureRunSession::disarmPersistedTrigger` (explicit user stop / user-input stop) writes disarm — not `userStopRequested` alone from teardown (`FeatureRunSession`, `MainWindow::stopFeatureRun`, `finishRunSession`, `onUserInputInterrupt`).
+- Persisted trigger **감시** without a live session (restore defer, gate wait, monitor failure) keeps **◎** in the feature list and schedules `restorePersistedTriggerSessions`; **감시** chrome also shows while waiting for scoped-target foreground (`MainWindow::updateRunUiState`).
 
 ## [0.8.250] - 2026-07-22
 

@@ -3009,10 +3009,6 @@ void MainWindow::updateRunUiState() {
             }
             switch (entry.second.triggerPhase) {
             case TriggerSessionPhase::Monitoring:
-                if (entry.second.waitingForScopedTargetForeground
-                    && (!entry.second.engine || !entry.second.engine->isRunning())) {
-                    break;
-                }
                 visualKinds.insert(featureId, FeatureRunVisualKind::TriggerWatch);
                 break;
             case TriggerSessionPhase::Cooldown:
@@ -3039,6 +3035,28 @@ void MainWindow::updateRunUiState() {
             cooldownStates.insert(QString::fromStdString(entry.first), state);
         }
         m_featureList->setTriggerCooldownStates(cooldownStates);
+
+        if (m_profileManager && m_project && !m_suppressTriggerArmedPersist) {
+            const QString profileId = m_profileManager->activeProfileId();
+            const QStringList armedIds = m_profileManager->triggerArmedFeatureIds(profileId);
+            bool needRestore = false;
+            for (const QString& armedId : armedIds) {
+                if (visualKinds.contains(armedId)
+                    || m_runSessions.find(armedId.toStdString()) != m_runSessions.end()) {
+                    continue;
+                }
+                Feature* feature = m_project->featureById(armedId.toStdString());
+                if (!feature || !feature->enabled()
+                    || feature->runMode() != FeatureRunMode::Trigger) {
+                    continue;
+                }
+                visualKinds.insert(armedId, FeatureRunVisualKind::TriggerWatch);
+                needRestore = true;
+            }
+            if (needRestore) {
+                scheduleRestorePersistedTriggerSessions();
+            }
+        }
     }
 
     Feature* selected = m_featureList ? m_featureList->selectedFeature() : nullptr;
@@ -3133,7 +3151,10 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     ++session->triggerCooldownGeneration;
 
     if (session->runningMode == FeatureRunMode::Trigger) {
-        persistTriggerArmedState(QString::fromStdString(featureId), false);
+        session->disarmPersistedTrigger = !m_suppressTriggerArmedPersist;
+        if (session->disarmPersistedTrigger) {
+            persistTriggerArmedState(QString::fromStdString(featureId), false);
+        }
     }
 
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
@@ -5311,7 +5332,7 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
         restoreRunStartCursorPosition(*session);
     }
 
-    if (session && session->runningMode == FeatureRunMode::Trigger && session->userStopRequested) {
+    if (session && session->runningMode == FeatureRunMode::Trigger && session->disarmPersistedTrigger) {
         persistTriggerArmedState(QString::fromStdString(featureId), false);
     }
 
@@ -5351,7 +5372,14 @@ void MainWindow::persistTriggerArmedState(const QString& featureId, bool armed) 
 }
 
 void MainWindow::scheduleRestorePersistedTriggerSessions() {
-    QTimer::singleShot(0, this, &MainWindow::restorePersistedTriggerSessions);
+    if (m_restoreTriggerSessionsScheduled) {
+        return;
+    }
+    m_restoreTriggerSessionsScheduled = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_restoreTriggerSessionsScheduled = false;
+        restorePersistedTriggerSessions();
+    });
 }
 
 void MainWindow::restorePersistedTriggerSessions() {
@@ -7831,6 +7859,10 @@ void MainWindow::onUserInputInterrupt(const std::string& featureId) {
 
     const UserInputInterruptMode mode = feature->userInputInterruptMode();
     if (mode == UserInputInterruptMode::Stop) {
+        if (session->runningMode == FeatureRunMode::Trigger) {
+            session->disarmPersistedTrigger = true;
+            persistTriggerArmedState(QString::fromStdString(featureId), false);
+        }
         session->userStopRequested = true;
         session->repeatSession = false;
         session->holdRunActive = false;

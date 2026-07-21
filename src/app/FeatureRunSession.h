@@ -26,6 +26,8 @@ struct FeatureRunSession {
     bool holdRunActive = false;
     bool holdHotkeyReleasedToTarget = false;
     bool userStopRequested = false;
+    /// When true, session teardown clears `triggerArmedFeatureIds` (explicit user stop only).
+    bool disarmPersistedTrigger = false;
     quint64 holdRepeatGeneration = 0;
     int runningBlockIndex = -1;
     BlockListWidget::ExecutionHighlight runningBlockHighlight = BlockListWidget::ExecutionHighlight::None;
