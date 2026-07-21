@@ -2331,6 +2331,7 @@ void MainWindow::showEvent(QShowEvent* event) {
     if (!m_initialForegroundSyncDone) {
         m_initialForegroundSyncDone = true;
         QTimer::singleShot(0, this, [this]() {
+            switchToForegroundLinkedProfileIfNeeded(true);
             syncProfileToForegroundWindow();
             syncTargetWindowTitleToCapture();
             reconcileRunSessionsWithForegroundGate();
@@ -2361,6 +2362,7 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
     if (eventType == "windows_generic_MSG") {
         auto* msg = static_cast<MSG*>(message);
         if (msg->message == kForegroundProfileSyncMessage) {
+            switchToForegroundLinkedProfileIfNeeded(true);
             syncProfileToForegroundWindow();
             resumeWaitingScopedTargetForegroundSessions();
             syncEffectiveTargetWindowTitleToCapture();
@@ -3252,15 +3254,6 @@ void MainWindow::flushDeferredProfileSwitchIfIdle() {
         return;
     }
     const QString profileId = m_deferredProfileSwitchId;
-#ifdef _WIN32
-    if (hasTriggerMonitoringSessions()
-        && !m_profileManager->isDefaultProfile(profileId)) {
-        const QString foregroundProfileId = foregroundProfileIdForActiveWindow();
-        if (foregroundProfileId != profileId) {
-            return;
-        }
-    }
-#endif
     if (profileId == m_profileManager->activeProfileId()) {
         m_deferredProfileSwitchId.clear();
         return;
@@ -4042,6 +4035,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
     bool deferTriggerRestoreStart = false;
 #ifdef _WIN32
     if (!ProgramSettings::runWithoutTargetWindow()) {
+        switchToForegroundLinkedProfileIfNeeded(true);
         syncProfileToForegroundWindow();
         syncEffectiveTargetWindowTitleToCapture();
         reconcileRunSessionsWithForegroundGate();
@@ -5366,6 +5360,7 @@ void MainWindow::restorePersistedTriggerSessions() {
     }
 
     syncProfileToForegroundWindow();
+    switchToForegroundLinkedProfileIfNeeded(true);
     syncTargetWindowTitleToCapture();
     reconcileRunSessionsWithForegroundGate();
 
@@ -5435,6 +5430,7 @@ void MainWindow::onHotkeyTriggered(const QString& featureId) {
         return;
     }
 #ifdef _WIN32
+    switchToForegroundLinkedProfileIfNeeded(true);
     syncProfileToForegroundWindow();
     syncEffectiveTargetWindowTitleToCapture();
     reconcileRunSessionsWithForegroundGate();
@@ -5465,6 +5461,7 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
         return;
     }
 #ifdef _WIN32
+    switchToForegroundLinkedProfileIfNeeded(true);
     syncProfileToForegroundWindow();
     syncEffectiveTargetWindowTitleToCapture();
     reconcileRunSessionsWithForegroundGate();
@@ -6603,20 +6600,27 @@ void MainWindow::syncProfileToForegroundWindow() {
         m_pendingDefaultProfileSwitchTimer.invalidate();
         return;
     }
-    if (isAltTabModifierHeld()) {
-        m_pendingDefaultProfileSwitchTimer.invalidate();
-        return;
-    }
 
     const QString targetProfileId = m_profileManager->profileIdForForegroundTitle(foregroundTitle);
     if (targetProfileId != m_profileManager->defaultProfileId()) {
         m_lastLinkedForegroundProfileId = targetProfileId;
     }
+
+    // Always refresh capture HWND when the foreground window belongs to the active profile,
+    // even while Alt is held during Alt+Tab (binding only — profile switch may still defer).
     if (targetProfileId == m_profileManager->activeProfileId()) {
         m_pendingDefaultProfileSwitchTimer.invalidate();
         ScreenCapture::setForegroundHintWindow(hwnd);
         ScreenCapture::setTargetWindow(hwnd);
         healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
+        return;
+    }
+
+    if (isAltTabModifierHeld()) {
+        if (!m_profileManager->isDefaultProfile(targetProfileId)) {
+            m_deferredProfileSwitchId = targetProfileId;
+        }
+        m_pendingDefaultProfileSwitchTimer.invalidate();
         return;
     }
 
@@ -6667,18 +6671,6 @@ void MainWindow::syncProfileToForegroundWindow() {
         m_recentAutomaticDefaultProfileSwitchTimer.invalidate();
     }
 
-    constexpr int kAutomaticProfileSwitchMinIntervalMs = 800;
-    const QString activeProfileId = m_profileManager->activeProfileId();
-    const bool throttleLinkedToLinkedSwitch =
-        !fallingBackToDefault
-        && !m_profileManager->isDefaultProfile(activeProfileId);
-    if (throttleLinkedToLinkedSwitch
-        && m_lastAutomaticProfileSwitchTimer.isValid()
-        && m_lastAutomaticProfileSwitchTimer.elapsed() < kAutomaticProfileSwitchMinIntervalMs) {
-        m_deferredProfileSwitchId = targetProfileId;
-        return;
-    }
-
     switchToProfile(targetProfileId, true);
     m_lastAutomaticProfileSwitchTimer.start();
 #else
@@ -6691,6 +6683,8 @@ void MainWindow::reconcileRunSessionsWithForegroundGate() {
     if (!m_project || ProgramSettings::runWithoutTargetWindow() || isActiveDefaultProfile()) {
         return;
     }
+
+    switchToForegroundLinkedProfileIfNeeded(true);
 
     bool needResumePoll = false;
     for (auto& entry : m_runSessions) {
@@ -7036,13 +7030,62 @@ bool MainWindow::foregroundProfileMatchesActive() const {
     if (foregroundProfileId.isEmpty()) {
         return false;
     }
-    if (m_profileManager->isDefaultProfile(activeId)) {
-        return foregroundProfileId == activeId
-               || foregroundProfileId == m_profileManager->defaultProfileId();
+    if (m_profileManager->isDefaultProfile(foregroundProfileId)) {
+        return m_profileManager->isDefaultProfile(activeId);
     }
+    // Any linked profile target in the foreground is a valid run context once synced.
     return foregroundProfileId == activeId;
 #else
     return true;
+#endif
+}
+
+bool MainWindow::switchToForegroundLinkedProfileIfNeeded(bool forceImmediate) {
+#ifdef _WIN32
+    if (!m_profileManager || m_switchingProfile) {
+        return false;
+    }
+
+    HWND hwnd = GetForegroundWindow();
+    if (!hwnd || !IsWindow(hwnd) || isPipbongProcessForeground(hwnd)) {
+        return false;
+    }
+    hwnd = GetAncestor(hwnd, GA_ROOT);
+    if (!hwnd || !IsWindow(hwnd) || isShellTransientForegroundWindow(hwnd)) {
+        return false;
+    }
+
+    wchar_t titleBuffer[512]{};
+    GetWindowTextW(hwnd, titleBuffer, 512);
+    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+    if (foregroundTitle.isEmpty()) {
+        return false;
+    }
+
+    const QString targetProfileId = m_profileManager->profileIdForForegroundTitle(foregroundTitle);
+    if (targetProfileId.isEmpty() || m_profileManager->isDefaultProfile(targetProfileId)) {
+        return false;
+    }
+
+    ScreenCapture::setForegroundHintWindow(hwnd);
+    ScreenCapture::setTargetWindow(hwnd);
+    healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
+
+    if (targetProfileId == m_profileManager->activeProfileId()) {
+        m_deferredProfileSwitchId.clear();
+        return true;
+    }
+    if (!forceImmediate) {
+        m_deferredProfileSwitchId = targetProfileId;
+        return false;
+    }
+
+    m_deferredProfileSwitchId.clear();
+    m_pendingDefaultProfileSwitchTimer.invalidate();
+    return switchToProfile(targetProfileId, true);
+#else
+    Q_UNUSED(forceImmediate);
+    return false;
 #endif
 }
 

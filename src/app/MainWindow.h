@@ -324,6 +324,7 @@ private:
     bool runForegroundGateActive(const Feature* feature) const;
     bool triggerBackgroundRunGateActive(const Feature* feature) const;
     bool foregroundProfileMatchesActive() const;
+    bool switchToForegroundLinkedProfileIfNeeded(bool forceImmediate);
     QString foregroundProfileIdForActiveWindow() const;
     bool activeProfileForegroundBindingMatches() const;
     bool profileMainOrSubForegroundActive() const;

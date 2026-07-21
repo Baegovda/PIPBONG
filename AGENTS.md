@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.249` (from `project(PIPBONG VERSION 0.8.249)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.250` (from `project(PIPBONG VERSION 0.8.250)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.250] - 2026-07-22
+
+### Fixed
+
+- Alt+Tab / rapid profile-target focus: linked-profile auto-switch is immediate (removed 800 ms linked-to-linked throttle); active-profile HWND bind runs even while Alt is held; `switchToForegroundLinkedProfileIfNeeded` forces sync before hotkeys, feature runs, session gate reconcile, restore, and foreground WinEvents; deferred profile flush no longer blocked during trigger **감시** (`MainWindow`).
 
 ## [0.8.249] - 2026-07-22
 
