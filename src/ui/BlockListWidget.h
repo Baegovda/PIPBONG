@@ -368,6 +368,10 @@ private:
 
     void endThresholdDragInteraction();
 
+    void syncScoreColumnResizeCursor(const QPoint& viewportPos);
+
+    void cancelStaleThresholdDragForRowReorder();
+
     void applyColumnLayoutToTable(bool reconcileSlack = false);
     void reconcileSummarySlack();
     void applyPairwiseColumnResize(int rightColumnIndex,

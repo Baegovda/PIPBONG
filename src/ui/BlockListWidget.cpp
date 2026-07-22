@@ -2235,6 +2235,53 @@ void BlockListWidget::endThresholdDragInteraction() {
     }
 }
 
+void BlockListWidget::syncScoreColumnResizeCursor(const QPoint& viewportPos) {
+    if (!viewport() || m_loopRegionPickActive || m_internalRowDragActive) {
+        return;
+    }
+
+    if (m_thresholdDragBlockRow >= 0 || m_thresholdDragMouse.dragging) {
+        if (viewport()->cursor().shape() != Qt::SizeHorCursor) {
+            viewport()->setCursor(Qt::SizeHorCursor);
+        }
+        return;
+    }
+
+    // While the user holds the button (row reorder, selection drag), skip cursor changes —
+    // setCursor/unsetCursor during MouseMove re-enters Qt and can stack-overflow.
+    if (QApplication::mouseButtons().testFlag(Qt::LeftButton)) {
+        return;
+    }
+
+    if (viewportPos.x() < 0) {
+        if (viewport()->cursor().shape() != Qt::ArrowCursor) {
+            viewport()->setCursor(Qt::ArrowCursor);
+        }
+        return;
+    }
+
+    int blockRow = -1;
+    const bool overScore = imageFindScoreColumnAt(viewportPos, blockRow);
+    const Qt::CursorShape target = overScore ? Qt::SizeHorCursor : Qt::ArrowCursor;
+    if (viewport()->cursor().shape() != target) {
+        viewport()->setCursor(target);
+    }
+}
+
+void BlockListWidget::cancelStaleThresholdDragForRowReorder() {
+    if (m_thresholdDragBlockRow < 0 && !m_thresholdDragMouse.pressPending
+        && !m_thresholdDragMouse.dragging) {
+        return;
+    }
+
+    m_thresholdDragMouse = {};
+    m_thresholdDragBlockRow = -1;
+    endThresholdDragInteraction();
+    if (viewport()) {
+        viewport()->setCursor(Qt::ArrowCursor);
+    }
+}
+
 void BlockListWidget::beginThresholdDragInteraction(int blockRow, QMouseEvent* mouseEvent) {
     if (!dragAdjustBeginPress(m_thresholdDragMouse, mouseEvent)) {
         return;
@@ -2259,7 +2306,7 @@ void BlockListWidget::beginThresholdDragInteraction(int blockRow, QMouseEvent* m
         m_thresholdDragUsesAppFilter = true;
     }
     viewport()->grabMouse();
-    viewport()->setCursor(Qt::SizeHorCursor);
+    syncScoreColumnResizeCursor(mouseEvent->pos());
 }
 
 void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
@@ -2270,10 +2317,10 @@ void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
     const DragAdjustReleaseResult result =
         dragAdjustFinishRelease(m_thresholdDragMouse, mouseEvent, viewport());
 
-    viewport()->unsetCursor();
     const int blockRow = m_thresholdDragBlockRow;
     m_thresholdDragBlockRow = -1;
     endThresholdDragInteraction();
+    syncScoreColumnResizeCursor(viewport()->mapFromGlobal(QCursor::pos()));
 
     if (result == DragAdjustReleaseResult::NotHandled) {
         return;
@@ -2401,11 +2448,8 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
                 return true;
             }
             int hoverBlockRow = -1;
-            if (imageFindScoreColumnAt(mouseEvent->pos(), hoverBlockRow)) {
-                viewport()->setCursor(Qt::SizeHorCursor);
-            } else if (viewport()->cursor().shape() == Qt::SizeHorCursor) {
-                viewport()->unsetCursor();
-            }
+            Q_UNUSED(hoverBlockRow);
+            syncScoreColumnResizeCursor(mouseEvent->pos());
             break;
         }
         case QEvent::MouseButtonRelease: {
@@ -2435,6 +2479,7 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
         }
         case QEvent::Leave:
             updateHoverTableRow(-1);
+            syncScoreColumnResizeCursor(QPoint(-1, -1));
             break;
         default:
             break;
@@ -3540,10 +3585,7 @@ void BlockListWidget::applyActiveRowVisuals(bool autoScrollToActiveRow) {
 
 void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
     Q_UNUSED(supportedActions);
-    if (m_thresholdDragBlockRow >= 0 || m_thresholdDragMouse.pressPending
-        || m_thresholdDragMouse.dragging) {
-        return;
-    }
+    cancelStaleThresholdDragForRowReorder();
     int scoreBlockRow = -1;
     if (imageFindScoreColumnAt(viewport()->mapFromGlobal(QCursor::pos()), scoreBlockRow)) {
         return;
