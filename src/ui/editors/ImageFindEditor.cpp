@@ -28,6 +28,7 @@
 #include <QSignalBlocker>
 #include <QDialogButtonBox>
 #include <QFileInfo>
+#include <QFontMetrics>
 #include <QFormLayout>
 #include <QFrame>
 #include <QGroupBox>
@@ -79,6 +80,16 @@ void applyRoiToolbarButtonStyles(QPushButton* previewButton,
     if (removeButton) {
         removeButton->setStyleSheet(roiToolbarButtonStyleSheet("#b91c1c", "#dc2626", "#f87171"));
     }
+}
+
+void applyHintLabelText(HintLabel* label, const QString& text) {
+    if (!label) {
+        return;
+    }
+    label->setText(text);
+    const int lineCount = qMax(1, text.count(QLatin1Char('\n')) + 1);
+    const QFontMetrics fm(label->fontMetrics());
+    label->setMinimumHeight(fm.lineSpacing() * lineCount + 4);
 }
 
 #ifdef _WIN32
@@ -459,7 +470,7 @@ void ImageFindEditor::setupUi() {
     templateToolbar->addWidget(m_matchTestButton);
 
     m_templateList = new QListWidget(this);
-    m_templateList->setMinimumHeight(96);
+    m_templateList->setMinimumHeight(132);
     m_templateList->setMinimumWidth(148);
     m_templateList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_templateList->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -474,26 +485,31 @@ void ImageFindEditor::setupUi() {
     m_templatePreviewLabel->setFrameShape(QFrame::Box);
     m_templatePreviewLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
-    m_templateSizeLabel = new HintLabel(tr("—"), this);
-    m_templateSizeLabel->setAlignment(Qt::AlignCenter);
+    m_templateSizeLabel = new HintLabel(tr("—"), this, HintLabel::Tone::Secondary, 10);
+    m_templateSizeLabel->setAlignment(Qt::AlignHCenter);
+    m_templateSizeLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
-    m_templateResolutionLabel = new HintLabel(tr("—"), this);
-    m_templateResolutionLabel->setAlignment(Qt::AlignCenter);
-    m_templateResolutionLabel->setWordWrap(true);
-    m_templateResolutionLabel->setMaximumWidth(148);
+    m_templateResolutionLabel = new HintLabel(tr("—"), this, HintLabel::Tone::Secondary, 10);
+    m_templateResolutionLabel->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
+    m_templateResolutionLabel->setWordWrap(false);
+    m_templateResolutionLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
-    auto* previewColumn = new QVBoxLayout();
-    previewColumn->setSpacing(3);
+    auto* previewColumnHost = new QWidget(this);
+    previewColumnHost->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Minimum);
+    previewColumnHost->setMinimumWidth(168);
+    previewColumnHost->setMaximumWidth(180);
+
+    auto* previewColumn = new QVBoxLayout(previewColumnHost);
+    previewColumn->setSpacing(2);
     previewColumn->setContentsMargins(0, 0, 0, 0);
     previewColumn->addWidget(m_templatePreviewLabel, 0, Qt::AlignHCenter);
     previewColumn->addWidget(m_templateSizeLabel, 0, Qt::AlignHCenter);
     previewColumn->addWidget(m_templateResolutionLabel, 0, Qt::AlignHCenter);
-    previewColumn->addStretch(1);
 
     auto* templateContent = new QHBoxLayout();
     templateContent->setSpacing(10);
     templateContent->addWidget(m_templateList, 1);
-    templateContent->addLayout(previewColumn);
+    templateContent->addWidget(previewColumnHost, 0, Qt::AlignTop);
 
     m_templateCaptureHotkeyLabel = new QLabel(this);
     m_templateCaptureHotkeyLabel->setAlignment(Qt::AlignCenter);
@@ -1257,7 +1273,7 @@ void ImageFindEditor::updatePreview() {
         m_templatePreviewLabel->setPixmap({});
         m_templatePreviewLabel->setToolTip({});
         if (m_templateSizeLabel) {
-            m_templateSizeLabel->setText(tr("템플릿: —"));
+            applyHintLabelText(m_templateSizeLabel, tr("—"));
         }
         updateCaptureResolutionInfo();
         return;
@@ -1269,7 +1285,7 @@ void ImageFindEditor::updatePreview() {
         m_templatePreviewLabel->setPixmap({});
         m_templatePreviewLabel->setToolTip(absolute);
         if (m_templateSizeLabel) {
-            m_templateSizeLabel->setText(tr("템플릿: —"));
+            applyHintLabelText(m_templateSizeLabel, tr("—"));
         }
         updateCaptureResolutionInfo();
         return;
@@ -1283,8 +1299,8 @@ void ImageFindEditor::updatePreview() {
     m_templatePreviewLabel->setPixmap(
         pixmap.scaled(kPreviewSlot, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     if (m_templateSizeLabel) {
-        m_templateSizeLabel->setText(
-            tr("%1×%2 px").arg(pixmap.width()).arg(pixmap.height()));
+        applyHintLabelText(m_templateSizeLabel,
+                           tr("%1×%2 px").arg(pixmap.width()).arg(pixmap.height()));
     }
     updateCaptureResolutionInfo();
 }
@@ -1383,7 +1399,7 @@ void ImageFindEditor::updateCaptureResolutionInfo() {
 
     if (m_templateResolutionLabel) {
         if (absolute.isEmpty()) {
-            m_templateResolutionLabel->setText(tr("—"));
+            applyHintLabelText(m_templateResolutionLabel, tr("—"));
             m_templateResolutionLabel->setToolTip(QString());
         } else {
             const std::string absolutePath = absolute.toStdString();
@@ -1403,20 +1419,22 @@ void ImageFindEditor::updateCaptureResolutionInfo() {
 #endif
 
             if (!captureSize) {
-                m_templateResolutionLabel->setText(
+                applyHintLabelText(
+                    m_templateResolutionLabel,
                     hasTarget ? tr("현재 %1×%2").arg(currentClientWidth).arg(currentClientHeight)
                               : tr("메타 없음"));
             } else if (!hasTarget) {
-                m_templateResolutionLabel->setText(
-                    tr("캡처 %1×%2").arg(captureSize->width).arg(captureSize->height));
+                applyHintLabelText(m_templateResolutionLabel,
+                                   tr("캡처 %1×%2").arg(captureSize->width).arg(captureSize->height));
             } else {
                 const double factor = TemplateCaptureMetadata::resolutionScaleFactor(
                     captureSize->width,
                     captureSize->height,
                     currentClientWidth,
                     currentClientHeight);
-                m_templateResolutionLabel->setText(
-                    tr("캡처 %1×%2 → %3×%4 (%5%)")
+                applyHintLabelText(
+                    m_templateResolutionLabel,
+                    tr("캡처 %1×%2\n→ %3×%4 (%5%)")
                         .arg(captureSize->width)
                         .arg(captureSize->height)
                         .arg(currentClientWidth)

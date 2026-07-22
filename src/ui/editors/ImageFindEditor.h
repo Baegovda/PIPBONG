@@ -223,7 +223,7 @@ private:
 
     AnimatedTwoWaySwitch* m_matchModeSwitch = nullptr;
 
-    QLabel* m_templateSizeLabel = nullptr;
+    HintLabel* m_templateSizeLabel = nullptr;
 
     HintLabel* m_templateResolutionLabel = nullptr;
 

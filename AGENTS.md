@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.257` (from `project(PIPBONG VERSION 0.8.257)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.258` (from `project(PIPBONG VERSION 0.8.258)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.258] - 2026-07-22
+
+### Fixed
+
+- ImageFind template preview metadata under the thumbnail no longer clips: explicit two-line capture/scale text (`캡처 WxH\n→ WxH (N%)`), fixed column width, line-count-based minimum height, and taller template list row (`ImageFindEditor`).
 
 ## [0.8.257] - 2026-07-22
 
