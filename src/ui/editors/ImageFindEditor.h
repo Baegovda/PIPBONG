@@ -137,6 +137,10 @@ private:
 
     void startTemplateNicknameEdit();
 
+    bool finalizeTemplateNicknameEdit(QListWidgetItem* item);
+
+    void commitPendingTemplateNicknameEdit();
+
     void syncBlockTemplatePathsFromList();
 
     void refreshRoiList();

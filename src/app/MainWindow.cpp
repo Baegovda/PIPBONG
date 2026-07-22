@@ -6595,6 +6595,9 @@ void MainWindow::syncProfileToForegroundWindow() {
     if (!m_profileManager || m_switchingProfile) {
         return;
     }
+    if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
+        return;
+    }
     pruneAbandonedEngines();
     reconcileRunSessionsWithForegroundGate();
     resumeWaitingScopedTargetForegroundSessions();

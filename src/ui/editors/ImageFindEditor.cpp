@@ -292,6 +292,7 @@ void ImageFindEditor::updateReturnToPreviousMissLimitUi() {
 }
 
 void ImageFindEditor::apply() {
+    commitPendingTemplateNicknameEdit();
     syncUiToBlockValues();
 }
 
@@ -1331,9 +1332,19 @@ void ImageFindEditor::onTemplateItemChanged(QListWidgetItem* item) {
         || !item) {
         return;
     }
+    if (!finalizeTemplateNicknameEdit(item)) {
+        return;
+    }
+    refreshTemplateList();
+}
+
+bool ImageFindEditor::finalizeTemplateNicknameEdit(QListWidgetItem* item) {
+    if (!m_block || !m_templateList || m_templateNicknameEditRow < 0 || !item) {
+        return false;
+    }
     const int row = m_templateList->row(item);
     if (row != m_templateNicknameEditRow) {
-        return;
+        return false;
     }
 
     const QString path = item->data(Qt::UserRole).toString();
@@ -1347,8 +1358,24 @@ void ImageFindEditor::onTemplateItemChanged(QListWidgetItem* item) {
     m_templateNicknameEditRow = -1;
     m_templateRenameHotkeyGate.reset();
     item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-    refreshTemplateList();
-    apply();
+    return true;
+}
+
+void ImageFindEditor::commitPendingTemplateNicknameEdit() {
+    if (!m_templateList || m_templateNicknameEditRow < 0) {
+        return;
+    }
+    QListWidgetItem* item = m_templateList->item(m_templateNicknameEditRow);
+    if (!item) {
+        m_templateNicknameEditRow = -1;
+        m_templateRenameHotkeyGate.reset();
+        return;
+    }
+    m_templateList->closePersistentEditor(item);
+    if (m_templateNicknameEditRow >= 0) {
+        finalizeTemplateNicknameEdit(item);
+        refreshTemplateList();
+    }
 }
 
 void ImageFindEditor::updateCaptureResolutionInfo() {

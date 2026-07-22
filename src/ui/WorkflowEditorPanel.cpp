@@ -1421,6 +1421,7 @@ void WorkflowEditorPanel::addBlockOfType(BlockType type) {
         return;
     }
 
+    const std::string editingFeatureId = m_feature->id();
     auto draft = BlockFactory::create(type);
     if (type == BlockType::ImageFind) {
         if (auto* imageFind = dynamic_cast<ImageFindBlock*>(draft.get())) {
@@ -1444,9 +1445,16 @@ void WorkflowEditorPanel::addBlockOfType(BlockType type) {
         return;
     }
 
+    if (!m_feature || m_feature->id() != editingFeatureId) {
+        return;
+    }
+
     pushUndoSnapshot();
     auto newBlock = dialog.takeBlock();
-    if (m_feature && newBlock && newBlock->type() == BlockType::Click) {
+    if (!newBlock) {
+        return;
+    }
+    if (newBlock->type() == BlockType::Click) {
         m_feature->setLockMouseToScreenCenterDuringRun(dialog.lockMouseToScreenCenterDuringRun());
         m_feature->setLockMouseToCurrentPositionDuringRun(
             dialog.lockMouseToCurrentPositionDuringRun());
@@ -1986,6 +1994,7 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
         return false;
     }
 
+    const std::string editingFeatureId = m_feature->id();
     Block* block = m_feature->workflow().blocks()[row].get();
     if (auto* mainWindow = qobject_cast<MainWindow*>(window())) {
         mainWindow->refreshCaptureTargetForEditing();
@@ -2001,9 +2010,17 @@ bool WorkflowEditorPanel::editBlockAt(int row) {
         return false;
     }
 
+    if (!m_feature || m_feature->id() != editingFeatureId
+        || row < 0 || row >= static_cast<int>(m_feature->workflow().blocks().size())) {
+        return false;
+    }
+
     pushUndoSnapshot();
     auto updatedBlock = dialog.takeBlock();
-    if (updatedBlock && updatedBlock->type() == BlockType::Click) {
+    if (!updatedBlock) {
+        return false;
+    }
+    if (updatedBlock->type() == BlockType::Click) {
         m_feature->setLockMouseToScreenCenterDuringRun(dialog.lockMouseToScreenCenterDuringRun());
         m_feature->setLockMouseToCurrentPositionDuringRun(
             dialog.lockMouseToCurrentPositionDuringRun());

@@ -1897,6 +1897,7 @@ void BlockListWidget::rebuildTableRows() {
 
     int extraRows = static_cast<int>(m_loopRegions.size());
 
+    setRowCount(0);
     setRowCount(m_blockCount + extraRows);
     m_loopRegionMember = QVector<bool>(rowCount(), false);
     m_loopRegionStart = QVector<bool>(rowCount(), false);

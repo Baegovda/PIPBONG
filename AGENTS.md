@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.255` (from `project(PIPBONG VERSION 0.8.255)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.256` (from `project(PIPBONG VERSION 0.8.256)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.256] - 2026-07-22
+
+### Fixed
+
+- Block editor **확인** crash (`EXCEPTION_ACCESS_VIOLATION` read `0x108`) when profile auto-switch or feature deselection cleared `WorkflowEditorPanel::m_feature` during `BlockEditorDialog::exec()`: re-validate feature id and row bounds after the dialog closes; defer foreground profile auto-switch while any edit dialog is open (`WorkflowEditorPanel::editBlockAt`, `addBlockOfType`, `MainWindow::syncProfileToForegroundWindow`).
+- Workflow block list rebuild clears stale loop-region header cell widgets before repopulating rows (`BlockListWidget::rebuildTableRows`).
+- ImageFind template nickname inline edit commits before block editor **확인** applies (`ImageFindEditor::commitPendingTemplateNicknameEdit`).
 
 ## [0.8.255] - 2026-07-22
 
