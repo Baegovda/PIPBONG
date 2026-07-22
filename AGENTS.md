@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.276` (from `project(PIPBONG VERSION 0.8.276)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.277` (from `project(PIPBONG VERSION 0.8.277)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.277] - 2026-07-23
+
+### Changed
+
+- Trigger monitor ImageFind polls **yield** while another feature is in an active capture burst (hold/repeat/trigger action); `SessionRunPolicy::isCapturingWorkflowBurst` excludes trigger **Monitoring** (`SessionRunPolicy`, `ExecutionContext`, `ImageFindBlock`, `MainWindow`).
+- `capture_imagefind` profiling events are **sampled** at standard (1/50) and detailed (1/10) depth instead of every poll (`WorkflowRunProfiler::shouldRecordCaptureImageFind`).
+- ImageFind screen capture is **serialized** via a global mutex so concurrent trigger monitors and hold loops do not BitBlt in parallel (`ScreenCapture`).
+
+### Fixed
+
+- Trigger **감시** no longer ends permanently when the monitor engine stops without user stop (e.g. foreground gate / transient stop): `handleTriggerEngineFinished` restarts monitoring when `repeatSession` remains armed (`MainWindow`).
+- **`run_without_target`** profiles no longer apply scoped foreground poll gate (`requireScopedTargetForeground` + MainOnly/SubOnly) — avoids idle polling when no HWND binding is required (`MainWindow::applyFeatureRunPoliciesToContext`).
 
 ## [0.8.276] - 2026-07-22
 

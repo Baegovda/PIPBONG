@@ -52,6 +52,26 @@ bool hasAnyActiveWorkflowEngine(const std::vector<SessionRunPolicyInput>& sessio
     return false;
 }
 
+bool isCapturingWorkflowBurst(const SessionRunPolicyInput& session) {
+    if (!session.engineRunning) {
+        return false;
+    }
+    if (session.runningMode == FeatureRunMode::Trigger
+        && session.triggerPhase == TriggerSessionPhase::Monitoring) {
+        return false;
+    }
+    return true;
+}
+
+bool hasAnyCapturingWorkflowBurst(const std::vector<SessionRunPolicyInput>& sessions) {
+    for (const SessionRunPolicyInput& session : sessions) {
+        if (isCapturingWorkflowBurst(session)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool hasAnyRunningSession(const std::vector<SessionRunPolicyInput>& sessions) {
     for (const SessionRunPolicyInput& session : sessions) {
         if (isSessionActive(session)) {

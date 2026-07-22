@@ -196,6 +196,18 @@ bool ExecutionContext::scopedTargetPollAllowed() const {
     return !m_scopedTargetPollGate || m_scopedTargetPollGate();
 }
 
+void ExecutionContext::setTriggerMonitorYieldGate(ScopedTargetPollGate gate) {
+    m_triggerMonitorYieldGate = std::move(gate);
+}
+
+void ExecutionContext::clearTriggerMonitorYieldGate() {
+    m_triggerMonitorYieldGate = nullptr;
+}
+
+bool ExecutionContext::triggerMonitorCaptureAllowed() const {
+    return !m_triggerMonitorYieldGate || m_triggerMonitorYieldGate();
+}
+
 void ExecutionContext::setImageFindMaxMissAttempts(int attempts) {
     m_imageFindMaxMissAttempts = attempts < 0 ? 0 : attempts;
 }

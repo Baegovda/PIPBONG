@@ -16,9 +16,13 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <mutex>
+#include <optional>
 
 #ifdef _WIN32
 namespace {
+
+std::mutex g_imageFindCaptureMutex;
 
 bool workflowCaptureAborted() {
     if (ExecutionContext* ctx = InputSimulator::activeExecutionContext()) {
@@ -637,14 +641,21 @@ cv::Mat ScreenCapture::captureSearchArea(SearchArea area,
 cv::Mat ScreenCapture::captureSearchAreaForImageFind(SearchArea area,
                                                      const CaptureRegion& custom,
                                                      const PercentRegion& percent) {
-    PIPBONG_PROFILE_CAT("capture_imagefind",
-                        QStringLiteral("area=%1").arg(static_cast<int>(area)));
+    std::optional<WfProfileScope> captureProfileScope;
+    if (WorkflowRunProfiler::shouldRecordCaptureImageFind()) {
+        captureProfileScope.emplace(
+            "capture_imagefind",
+            QStringLiteral("area=%1").arg(static_cast<int>(area)));
+    }
+#ifdef _WIN32
+    std::lock_guard<std::mutex> captureLock(g_imageFindCaptureMutex);
+#endif
 #ifdef _WIN32
     if (area == SearchArea::TargetWindow) {
         HWND hwnd = hwndForWorkflowCapture();
         if (!hwnd) {
             if (runWithoutTargetWindowEnabled()) {
-                return captureSearchAreaForImageFind(SearchArea::FullScreen, custom, percent);
+                return captureSearchArea(SearchArea::FullScreen, custom, percent);
             }
             return {};
         }

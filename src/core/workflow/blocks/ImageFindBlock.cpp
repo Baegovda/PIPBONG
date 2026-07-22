@@ -1412,6 +1412,18 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             }
             continue;
         }
+        if (triggerMonitorPoll && !ctx.triggerMonitorCaptureAllowed()) {
+            if (!sleepUnlessStopped(ctx, pollIntervalMs)) {
+                accumulateMatchWork();
+                BlockResult result;
+                result.success = false;
+                result.message = "사용자가 중지함";
+                result.imageFindMatchDurationMs = matchWorkMs;
+                result.imageFindPollAttempts = pollAttemptCount;
+                return result;
+            }
+            continue;
+        }
 
         ++pollAttemptCount;
         qint64 pollCaptureUs = 0;

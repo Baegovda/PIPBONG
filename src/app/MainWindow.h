@@ -195,6 +195,7 @@ private:
     bool hasAnyRunningSession() const;
     bool hasAnyActiveWorkflowEngine() const;
     bool hasAnyActiveWorkflowBurst() const;
+    bool hasAnyCapturingWorkflowBurstExcept(const std::string& excludeFeatureId) const;
     bool applyCenterPinToEnabledTargets(bool forceSnap);
     QSet<QString> activeWorkflowFeatureIds() const;
     QSet<QString> runningFeatureIds() const;

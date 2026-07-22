@@ -19,6 +19,7 @@
 #include <QStringConverter>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <deque>
@@ -42,6 +43,8 @@ constexpr qint64 kSpikeUiFlushUs = 8000;
 constexpr qint64 kSpikeClickUs = 12000;
 constexpr qint64 kSpikeImageFindPollUs = 8000;
 constexpr qint64 kStandardImageFindPollUs = 16000;
+
+std::atomic<uint64_t> g_captureImageFindSeq{0};
 
 QString profilingDepthLabel(ProgramSettings::WorkflowRunProfilingDepth depth) {
     switch (depth) {
@@ -1068,6 +1071,21 @@ bool WorkflowRunProfiler::shouldRecordImageFindPoll(bool matched, qint64 totalPo
         return matched || pollNum <= 1 || totalPollUs >= kSpikeImageFindPollUs;
     }
     return matched || pollNum <= 1 || totalPollUs >= kStandardImageFindPollUs;
+}
+
+bool WorkflowRunProfiler::shouldRecordCaptureImageFind() {
+    if (!g_enabled) {
+        return false;
+    }
+    const uint64_t seq = ++g_captureImageFindSeq;
+    switch (depth()) {
+    case ProfilingDepth::Ultra:
+        return true;
+    case ProfilingDepth::Detailed:
+        return seq % 10 == 0;
+    default:
+        return seq % 50 == 0;
+    }
 }
 
 void WorkflowRunProfiler::recordImageFindPoll(int blockIndex,

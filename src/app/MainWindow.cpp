@@ -4443,6 +4443,7 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
     session.sessionContext->setRunLoopNumber(session.sessionIteration + 1);
 
     session.sessionContext->clearScopedTargetPollGate();
+    session.sessionContext->clearTriggerMonitorYieldGate();
     if (!ProgramSettings::runWithoutTargetWindow() && !isActiveDefaultProfile()) {
         QPointer<MainWindow> self(this);
         const std::string featureId = session.featureId;
@@ -4454,7 +4455,8 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
                 self->m_project ? self->m_project->featureById(featureId) : nullptr;
             return self->runForegroundGateActive(activeFeature);
         });
-    } else if (feature->requireScopedTargetForeground()
+    } else if (!ProgramSettings::runWithoutTargetWindow()
+               && feature->requireScopedTargetForeground()
                && feature->captureTargetScope() != FeatureCaptureTargetScope::Auto) {
         QPointer<MainWindow> self(this);
         const std::string featureId = session.featureId;
@@ -4465,6 +4467,17 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
             Feature* activeFeature =
                 self->m_project ? self->m_project->featureById(featureId) : nullptr;
             return self->scopedTargetForegroundActive(activeFeature);
+        });
+    }
+
+    if (triggerMonitoring) {
+        QPointer<MainWindow> self(this);
+        const std::string featureId = session.featureId;
+        session.sessionContext->setTriggerMonitorYieldGate([self, featureId]() {
+            if (!self) {
+                return true;
+            }
+            return !self->hasAnyCapturingWorkflowBurstExcept(featureId);
         });
     }
 }
@@ -5321,6 +5334,12 @@ void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
             if (!message.isEmpty()) {
                 appendSessionLog(session, message, LogLineKind::Warning);
             }
+            if (!session.userStopRequested && session.repeatSession
+                && shouldContinueRunSession(session, feature)) {
+                appendSessionLog(session, tr("감시를 다시 시작합니다"), LogLineKind::Accent);
+                launchTriggerMonitor(session, feature, false);
+                return;
+            }
             appendSessionLog(session, tr("트리거 감시가 종료되었습니다"), LogLineKind::Warning);
             finishRunSession(session.featureId, false, message);
             return;
@@ -6005,6 +6024,18 @@ bool MainWindow::hasAnyActiveWorkflowBurst() const {
         }
     }
     return false;
+}
+
+bool MainWindow::hasAnyCapturingWorkflowBurstExcept(const std::string& excludeFeatureId) const {
+    std::vector<SessionRunPolicyInput> inputs;
+    inputs.reserve(m_runSessions.size());
+    for (const auto& entry : m_runSessions) {
+        if (entry.first == excludeFeatureId) {
+            continue;
+        }
+        inputs.push_back(sessionPolicyInputFrom(entry.second));
+    }
+    return SessionRunPolicy::hasAnyCapturingWorkflowBurst(inputs);
 }
 
 bool MainWindow::applyCenterPinToEnabledTargets(bool forceSnap) {

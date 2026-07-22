@@ -36,6 +36,9 @@ bool isInActiveWorkflowRun(const SessionRunPolicyInput& session);
 bool isEarlyLoopMouseLockWindow(const SessionRunPolicyInput& session);
 
 bool hasAnyActiveWorkflowEngine(const std::vector<SessionRunPolicyInput>& sessions);
+/// Hold / repeat / trigger-action bursts that compete with trigger-watch screen capture (not trigger monitor polls).
+bool isCapturingWorkflowBurst(const SessionRunPolicyInput& session);
+bool hasAnyCapturingWorkflowBurst(const std::vector<SessionRunPolicyInput>& sessions);
 bool hasAnyRunningSession(const std::vector<SessionRunPolicyInput>& sessions);
 
 WorkflowRefreshDecision workflowRefreshOnProjectEdit(const SessionRunPolicyInput& session);

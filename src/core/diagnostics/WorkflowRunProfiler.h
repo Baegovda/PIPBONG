@@ -69,6 +69,9 @@ public:
 
     static bool shouldRecordImageFindPoll(bool matched, qint64 totalPollUs, int pollNum);
 
+    /// Sampled capture profiling — avoids logging every trigger-monitor BitBlt at standard depth.
+    static bool shouldRecordCaptureImageFind();
+
     static void flushPendingSessions(const QString& reason);
 
     /// High-resolution monotonic clock for profiling scopes (microseconds).

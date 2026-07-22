@@ -79,6 +79,10 @@ public:
     void clearScopedTargetPollGate();
     bool scopedTargetPollAllowed() const;
 
+    void setTriggerMonitorYieldGate(ScopedTargetPollGate gate);
+    void clearTriggerMonitorYieldGate();
+    bool triggerMonitorCaptureAllowed() const;
+
     void setImageFindMaxMissAttempts(int attempts);
     int imageFindMaxMissAttempts() const;
 
@@ -248,6 +252,7 @@ private:
     std::wstring m_targetWindowTitle;
     std::string m_projectDirectory;
     ScopedTargetPollGate m_scopedTargetPollGate;
+    ScopedTargetPollGate m_triggerMonitorYieldGate;
 #ifdef _WIN32
     mutable HWND m_cachedTargetWindow = nullptr;
     bool m_runKeyboardSessionActive = false;
