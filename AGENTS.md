@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.266` (from `project(PIPBONG VERSION 0.8.266)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.267` (from `project(PIPBONG VERSION 0.8.267)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.267] - 2026-07-22
+
+### Fixed
+
+- Workflow block list **기준/감지** threshold horizontal drag works again: restored viewport `eventFilter` handling (v0.8.264 `viewportEvent` path never received presses on Windows); score column still omits `ItemIsDragEnabled` so row reorder does not start (`BlockListWidget`).
 
 ## [0.8.266] - 2026-07-22
 

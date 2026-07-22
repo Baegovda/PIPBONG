@@ -256,8 +256,6 @@ protected:
 
     bool eventFilter(QObject* watched, QEvent* event) override;
 
-    bool viewportEvent(QEvent* event) override;
-
     void keyPressEvent(QKeyEvent* event) override;
 
     void startDrag(Qt::DropActions supportedActions) override;

@@ -2290,59 +2290,6 @@ void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
     }
 }
 
-bool BlockListWidget::viewportEvent(QEvent* event) {
-    if (!m_loopRegionPickActive) {
-        switch (event->type()) {
-        case QEvent::MouseButtonPress: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            int blockRow = -1;
-            if (imageFindScoreColumnAt(mouseEvent->position().toPoint(), blockRow)) {
-                beginThresholdDragInteraction(blockRow, mouseEvent);
-                if (m_thresholdDragBlockRow >= 0) {
-                    return true;
-                }
-            }
-            break;
-        }
-        case QEvent::MouseMove: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            if (m_thresholdDragBlockRow >= 0) {
-                if (!dragAdjustContinueMove(m_thresholdDragMouse, mouseEvent, viewport())) {
-                    if (!mouseEvent->buttons().testFlag(Qt::LeftButton)) {
-                        finishThresholdDrag(mouseEvent);
-                    }
-                    return true;
-                }
-                const int deltaPx = dragAdjustDeltaPx(m_thresholdDragMouse, mouseEvent);
-                const double step = imageFindThresholdDragStep(mouseEvent->modifiers());
-                const double nextValue = m_thresholdDragStartValue + static_cast<double>(deltaPx) * step;
-                updateImageFindThresholdDisplay(m_thresholdDragBlockRow, nextValue);
-                return true;
-            }
-            int hoverBlockRow = -1;
-            if (imageFindScoreColumnAt(mouseEvent->position().toPoint(), hoverBlockRow)) {
-                viewport()->setCursor(Qt::SizeHorCursor);
-            } else if (viewport()->cursor().shape() == Qt::SizeHorCursor) {
-                viewport()->unsetCursor();
-            }
-            break;
-        }
-        case QEvent::MouseButtonRelease: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            if (m_thresholdDragBlockRow >= 0) {
-                finishThresholdDrag(mouseEvent);
-                return true;
-            }
-            break;
-        }
-        default:
-            break;
-        }
-    }
-
-    return QTableWidget::viewportEvent(event);
-}
-
 bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
     if (watched == qApp && m_thresholdDragBlockRow >= 0) {
         switch (event->type()) {
@@ -2418,6 +2365,60 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
         auto* wheelEvent = static_cast<QWheelEvent*>(event);
         if (m_dragAutoScroll->handleWheel(wheelEvent)) {
             return true;
+        }
+    }
+
+    if (watched == viewport() && !m_loopRegionPickActive) {
+        switch (event->type()) {
+        case QEvent::MouseButtonPress: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            int blockRow = -1;
+            if (!imageFindScoreColumnAt(mouseEvent->pos(), blockRow)) {
+                break;
+            }
+            beginThresholdDragInteraction(blockRow, mouseEvent);
+            if (m_thresholdDragBlockRow < 0) {
+                break;
+            }
+            mouseEvent->accept();
+            return true;
+        }
+        case QEvent::MouseMove: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (m_thresholdDragBlockRow >= 0) {
+                if (!dragAdjustContinueMove(m_thresholdDragMouse, mouseEvent, viewport())) {
+                    if (!mouseEvent->buttons().testFlag(Qt::LeftButton)) {
+                        finishThresholdDrag(mouseEvent);
+                    }
+                    mouseEvent->accept();
+                    return true;
+                }
+                const int deltaPx = dragAdjustDeltaPx(m_thresholdDragMouse, mouseEvent);
+                const double step = imageFindThresholdDragStep(mouseEvent->modifiers());
+                const double nextValue = m_thresholdDragStartValue + static_cast<double>(deltaPx) * step;
+                updateImageFindThresholdDisplay(m_thresholdDragBlockRow, nextValue);
+                mouseEvent->accept();
+                return true;
+            }
+            int hoverBlockRow = -1;
+            if (imageFindScoreColumnAt(mouseEvent->pos(), hoverBlockRow)) {
+                viewport()->setCursor(Qt::SizeHorCursor);
+            } else if (viewport()->cursor().shape() == Qt::SizeHorCursor) {
+                viewport()->unsetCursor();
+            }
+            break;
+        }
+        case QEvent::MouseButtonRelease: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (m_thresholdDragBlockRow < 0) {
+                break;
+            }
+            finishThresholdDrag(mouseEvent);
+            mouseEvent->accept();
+            return true;
+        }
+        default:
+            break;
         }
     }
 
