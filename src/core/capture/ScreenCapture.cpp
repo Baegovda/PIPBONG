@@ -1,6 +1,7 @@
 #include "core/capture/ScreenCapture.h"
 
 #include "core/capture/DxgiScreenCapture.h"
+#include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/input/InputSimulator.h"
 #include "core/workflow/ExecutionContext.h"
 
@@ -636,6 +637,8 @@ cv::Mat ScreenCapture::captureSearchArea(SearchArea area,
 cv::Mat ScreenCapture::captureSearchAreaForImageFind(SearchArea area,
                                                      const CaptureRegion& custom,
                                                      const PercentRegion& percent) {
+    PIPBONG_PROFILE_CAT("capture_imagefind",
+                        QStringLiteral("area=%1").arg(static_cast<int>(area)));
 #ifdef _WIN32
     if (area == SearchArea::TargetWindow) {
         HWND hwnd = hwndForWorkflowCapture();

@@ -3,6 +3,8 @@
 #include "core/input/InputSimulator.h"
 #include "core/diagnostics/CrashReporter.h"
 #include "core/diagnostics/DiagnosticHub.h"
+#include "core/diagnostics/WorkflowRunProfiler.h"
+#include "core/workflow/Block.h"
 #include "core/workflow/Block.h"
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/WorkflowRunner.h"
@@ -125,12 +127,24 @@ protected:
                 }
                 emit m_engine->blockStarted(i, QString::fromStdString(summary));
             };
-            hooks.onBlockFinished = [this, context](int i,
+            hooks.onBlockFinished = [this, context, workflow](int i,
                                                      bool success,
                                                      const std::string& message,
                                                      qint64 durationMs,
                                                      int64_t imageFindMatchDurationMs,
                                                      int imageFindPollAttempts) {
+                Q_UNUSED(message);
+                Q_UNUSED(imageFindMatchDurationMs);
+                Q_UNUSED(imageFindPollAttempts);
+                if (WorkflowRunProfiler::isEnabled() && workflow) {
+                    const auto& blocks = workflow->blocks();
+                    std::string blockTypeStr = "unknown";
+                    if (i >= 0 && i < static_cast<int>(blocks.size()) && blocks[static_cast<size_t>(i)]) {
+                        blockTypeStr = blockTypeToString(blocks[static_cast<size_t>(i)]->type());
+                    }
+                    WorkflowRunProfiler::recordBlockEnd(
+                        i, blockTypeStr.c_str(), success, durationMs * 1000);
+                }
                 CrashReporter::noteBreadcrumb(
                     QStringLiteral("workflow"),
                     QStringLiteral("block finish #%1 success=%2 attempts=%3")
@@ -208,10 +222,17 @@ protected:
                     context->setSuppressRepeatUi(true);
                 }
 
+                WorkflowRunProfiler::recordLoopBegin(workerFastRepeatPass);
+
                 const auto loopStart = std::chrono::steady_clock::now();
                 const WorkflowRunResult runResult = WorkflowRunner::run(*workflow, *context, &hooks);
+                const auto loopEnd = std::chrono::steady_clock::now();
                 const auto loopElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - loopStart);
+                    loopEnd - loopStart);
+                const auto loopElapsedUs =
+                    std::chrono::duration_cast<std::chrono::microseconds>(loopEnd - loopStart).count();
+
+                WorkflowRunProfiler::recordLoopEnd(workerFastRepeatPass, loopElapsedUs);
 
                 overallSuccess = runResult.success;
                 finalMessage = QString::fromStdString(runResult.message);
@@ -231,8 +252,15 @@ protected:
                 }
 
                 const int delayMs = context->workerFastRepeatDelayMs();
-                if (delayMs > 0 && !context->interruptibleSleepMs(delayMs)) {
-                    break;
+                if (delayMs > 0) {
+                    const auto sleepStart = std::chrono::steady_clock::now();
+                    if (!context->interruptibleSleepMs(delayMs)) {
+                        break;
+                    }
+                    const auto sleepUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - sleepStart)
+                                             .count();
+                    WorkflowRunProfiler::recordLoopIntervalSleep(delayMs, sleepUs);
                 }
                 if (context->shouldStop()) {
                     break;

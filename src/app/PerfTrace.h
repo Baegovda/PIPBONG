@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/diagnostics/WorkflowRunProfiler.h"
+
 #include <QElapsedTimer>
 #include <QLoggingCategory>
 
@@ -16,14 +18,20 @@ public:
 
     ~PerfTrace() {
 #if defined(QT_DEBUG)
-        const bool enabled = true;
+        const bool logEnabled = true;
 #else
-        const bool enabled = QLoggingCategory("pipbong.perf.trace").isDebugEnabled();
+        const bool logEnabled = QLoggingCategory("pipbong.perf.trace").isDebugEnabled();
 #endif
-        if (!enabled) {
-            return;
+        const qint64 elapsedMs = m_timer.elapsed();
+        if (WorkflowRunProfiler::isEnabled()) {
+            WorkflowRunProfiler::event(
+                m_label,
+                QStringLiteral("elapsed_ms=%1").arg(elapsedMs),
+                elapsedMs * 1000);
         }
-        qCDebug(perfTrace).noquote() << m_label << m_timer.elapsed() << "ms";
+        if (logEnabled) {
+            qCDebug(perfTrace).noquote() << m_label << elapsedMs << "ms";
+        }
     }
 
     qint64 elapsedMs() const { return m_timer.elapsed(); }

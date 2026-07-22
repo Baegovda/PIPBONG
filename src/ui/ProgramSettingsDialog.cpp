@@ -2,6 +2,7 @@
 
 #include "app/PointerFeedbackSettings.h"
 #include "app/ProgramSettings.h"
+#include "core/diagnostics/WorkflowRunProfiler.h"
 #include "app/WindowsRunAsAdmin.h"
 #include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/WindowSelectionFeedbackSettingsDialog.h"
@@ -306,6 +307,24 @@ void ProgramSettingsDialog::setupUi() {
     windowSectionLayout->addLayout(windowSelectionRow);
     visualLayout->addWidget(windowSection);
 
+    // --- 진단 ---
+    auto* diagnosticsGroup = addSettingsGroup(
+        layout,
+        tr("진단"),
+        tr("성능 스터터·지연 원인 분석용 로그입니다. 일반 사용 시에는 끄세요."));
+    auto* diagnosticsLayout = new QVBoxLayout(diagnosticsGroup);
+    diagnosticsLayout->setSpacing(6);
+
+    m_workflowRunProfilingCheck = addGroupCheck(
+        diagnosticsLayout,
+        diagnosticsGroup,
+        tr("앱 전체 초정밀 프로파일링"),
+        tr("앱 실행부터 종료까지 UI·프로필 전환·자동 저장·핫키·캡처·워크플로 실행을 "
+           "마이크로초 단위로 기록합니다. 기능 세션 종료 또는 앱 종료 시 저장소 루트의 "
+           "workflow-profile\\latest.md 에 저장됩니다 (F5 실행 시 프로젝트 폴더). "
+           "환경 변수 PIPBONG_APP_PROFILE=1 또는 PIPBONG_WORKFLOW_PROFILE=1 로도 켤 수 있습니다."),
+        ProgramSettings::workflowRunProfiling());
+
     layout->addStretch();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -322,6 +341,8 @@ void ProgramSettingsDialog::setupUi() {
         ProgramSettings::setRunAsAdministrator(m_runAsAdministratorCheck->isChecked());
         ProgramSettings::setRunWithoutTargetWindow(m_runWithoutTargetWindowCheck->isChecked());
         ProgramSettings::setLogMaxLines(m_logMaxLinesSpin->value());
+        ProgramSettings::setWorkflowRunProfiling(m_workflowRunProfilingCheck->isChecked());
+        WorkflowRunProfiler::reloadEnabledFromSettings();
         ProgramSettings::setImageFindCaptureMode(
             static_cast<ProgramSettings::ImageFindCaptureMode>(
                 m_imageFindCaptureModeCombo->currentData().toInt()));

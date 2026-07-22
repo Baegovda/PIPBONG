@@ -1,0 +1,53 @@
+---
+description: App-wide microsecond profiling for stutter diagnosis — enable, log path, AI analysis workflow
+alwaysApply: true
+---
+
+# App-Wide Profiling (Mandatory — Stutter Diagnosis)
+
+**Status:** v0.8.269 workflow; v0.8.273 **app-wide trace** (Markdown v3). Use for Hold / **무한 반복** / UI latency — not daily use.
+
+## Purpose
+
+Record microsecond timing for the **whole app session** to **`<repo-root>/workflow-profile/`** so the user reproduces issues in F5 and the AI reads logs **inside the workspace**.
+
+## Enable
+
+| Method | When |
+|--------|------|
+| **프로그램 설정 → 진단 → 앱 전체 초정밀 프로파일링** | `QSettings` `program/workflowRunProfiling` |
+| `PIPBONG_APP_PROFILE=1` or `PIPBONG_WORKFLOW_PROFILE=1` | Force on for that process |
+
+## User workflow
+
+1. Enable profiling → **F5** (or restart if toggled mid-session).
+2. Use the app: profile switch, features, settings, etc.
+3. Stop feature runs; **exit PIPBONG** (tray **종료**) to flush final `latest.md`.
+4. Paths (**repo root**, walk-up from exe to `CMakeLists.txt`):
+   - **Latest:** `workflow-profile/latest.md`
+   - **Archive:** `workflow-profile/sessions/session_*.md` (also on feature session end)
+5. User says **「분석해줘」** → AI reads summary + **Event series** tables (+ optional `.\scripts\analyze-workflow-profile.ps1`).
+
+Override repo root: `PIPBONG_REPO_ROOT`.
+
+## Log format (Markdown v3)
+
+- `format: pipbong-app-profile`, `format_version: 3`
+- Workflow spike tables + **Event series** (all events: `profile_switch`, `auto_save`, `capture_imagefind`, `hotkey_*`, `loop_*`, …)
+- Fenced ` ```tsv ` event log
+
+## AI analysis rules
+
+1. Read **`workflow-profile/latest.md`** — **Event series** + spike tables first.
+2. `.\scripts\analyze-workflow-profile.ps1` for extra percentile view.
+3. Correlate spikes: **loop_gap** / **ui_fast_repeat_flush** / **mouse_click** / **capture_imagefind** / **profile_switch** / **auto_save**.
+4. Fix root cause in the matching subsystem.
+
+## Key files
+
+- `src/core/diagnostics/WorkflowRunProfiler.*`
+- `src/app/PerfTrace.h` (routes scopes to profiler when enabled)
+- `workflow-profile/` (gitignored; `.gitkeep` tracked)
+- `scripts/analyze-workflow-profile.ps1`
+
+Full handover: [AGENTS.md](../../AGENTS.md) — **§8.14 App-wide microsecond profiling**.

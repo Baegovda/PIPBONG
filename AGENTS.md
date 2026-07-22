@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.268` (from `project(PIPBONG VERSION 0.8.268)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.273` (from `project(PIPBONG VERSION 0.8.273)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -414,6 +414,7 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
 │   ├── run-policy-sim.ps1     # build PIPBONGPolicySim only + run (manual)
 │   ├── run-policy-sim-postbuild.ps1  # POST_BUILD hook: run sim after PIPBONG link
+│   ├── analyze-workflow-profile.ps1  # summarize workflow-profile/latest.md spikes
 │   ├── recover-ide-build.ps1  # IDE recovery (local default; optional -KillGlobalBuildProcesses)
 │   ├── ensure-dev-isolation.ps1  # dual-Cursor setup: settings check, F5 fix, deploy-qt if needed
 │   ├── fix-pipbong-cursor-f5.ps1  # workspace-gated F5 -> Build and Run (config.pipbong.f5BuildAndRun)
@@ -1138,6 +1139,29 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 **Stage 2 (not yet):** workflow `WorkflowRunner` dry-run with mocks — blocked by OpenCV/UI block dependencies; track as future `PIPBONGWorkflowDryRunSim`.
 
+### 8.14 App-wide microsecond profiling (mandatory — stutter diagnosis)
+
+**Status:** Added 2026-07 (v0.8.269). Markdown v3 app-wide trace (v0.8.273). Microsecond log for Hold / **무한 반복** / UI latency — **off by default**.
+
+| Layer | Role |
+| ----- | ---- |
+| `WorkflowRunProfiler` | App trace from launch (`app_trace_begin`) until shutdown (`app_trace_end`); feature sessions are `session_begin` / `session_end` markers inside the same buffer |
+| Format | Markdown v3 (`pipbong-app-profile`): YAML frontmatter, workflow spike tables, **Event series** table (all event types), fenced TSV log |
+| Enable | `ProgramSettings` `program/workflowRunProfiling` or env `PIPBONG_APP_PROFILE=1` / `PIPBONG_WORKFLOW_PROFILE=1` |
+| Output | **Repo root** `workflow-profile/latest.md` (+ `sessions/`) on feature session end **and** app shutdown |
+| `WorkflowEngine` | `loop_*`, `block_end` (feature session only) |
+| `MainWindow` | `profile_switch`, `auto_save`, `profile_package_seal`, `ui_fast_repeat_flush`; `PerfTrace` scopes → profiler events |
+| `HotkeyManager` | `hotkey_*_dispatch` on UI thread |
+| `ScreenCapture` | `capture_imagefind` per ImageFind haystack capture |
+| `InputSimulator` | `mouse_click` scopes |
+| `scripts/analyze-workflow-profile.ps1` | Percentile + spike table; reads `.md` TSV fence |
+
+**User → AI workflow:** Enable profiling → F5 → use app (profile switch, features, etc.) → exit → **`workflow-profile/latest.md`** in workspace → agent reads Event series + spike tables.
+
+**Event log columns:** `rel_us`, `thread` (`ui`/`worker`), `event`, `detail`, optional `dur_us` (inside ` ```tsv ` fence).
+
+Cursor rule: `.cursor/rules/workflow-run-profiling.mdc`.
+
 ### 8.13 Program settings dialog (mandatory — grouped + tooltips)
 
 **Status:** Verified working on Windows (2026-07, v0.8.245). **프로그램 설정** (`ProgramSettingsDialog`) must stay compact: options in category **QGroupBox** sections; detailed help on **tooltips** only — no inline `HintLabel` under each row.
@@ -1145,6 +1169,7 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 | Group | Contents |
 | ----- | -------- |
 | **기능 실행** | Auto-select running feature, profile-switch focus to target window, run without target window, log max lines |
+| **진단** | Workflow run microsecond profiling (`program/workflowRunProfiling`) |
 | **시작·종료** | Windows startup launch, close to tray |
 | **업데이트** | Periodic update check + interval, auto-install |
 | **권한·호환** | Run as administrator (+ one-line elevated status when applicable) |
@@ -1301,6 +1326,44 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.273] - 2026-07-22
+
+### Added
+
+- **App-wide microsecond profiling** (`WorkflowRunProfiler` v3): records from app launch until shutdown — profile switch, auto-save, package seal, hotkey dispatch, ImageFind capture, `PerfTrace` UI paths, plus existing workflow loop/click metrics; Markdown **Event series** table aggregates all event types; env `PIPBONG_APP_PROFILE=1` alias.
+
+### Changed
+
+- **프로그램 설정 → 진단** label **앱 전체 초정밀 프로파일링**; log format `pipbong-app-profile` v3; feature session end writes incremental archive without clearing the app trace buffer.
+
+### Fixed
+
+- Workflow `block_end` log showed empty `type=` — dangling `c_str()` on temporary `blockTypeToString` result (`WorkflowEngine`).
+
+## [0.8.272] - 2026-07-22
+
+### Changed
+
+- Workflow run profiling logs write to **repo root** `workflow-profile/latest.md` (+ `workflow-profile/sessions/`) instead of `%LOCALAPPDATA%`; repo detected by walking up from exe/cwd to `CMakeLists.txt` (`PIPBONG_REPO_ROOT` override); `workflow-profile/*` gitignored; `analyze-workflow-profile.ps1` defaults to repo path (`WorkflowRunProfiler`, `.gitignore`, docs).
+
+## [0.8.271] - 2026-07-22
+
+### Fixed
+
+- Workflow run profiling log not written on session end when `g_enabled` was stale: `endSession` always flushes an active session; `reloadEnabledFromSettings()` runs at app startup; `beginSession` moves to `startFeatureRun` so deferred/scoped launches still record; write failures log via `qWarning` (`WorkflowRunProfiler`, `MainWindow`, `main.cpp`).
+
+## [0.8.270] - 2026-07-22
+
+### Changed
+
+- Workflow run profiling output is Markdown v2: `workflow-profile/latest.md` (+ `sessions/session_*.md` archive) with YAML frontmatter, summary/spike tables, and fenced TSV event log for AI analysis (`WorkflowRunProfiler`, `scripts/analyze-workflow-profile.ps1`, `ProgramSettingsDialog` hint).
+
+## [0.8.269] - 2026-07-22
+
+### Added
+
+- **Workflow run profiling** (`WorkflowRunProfiler`): microsecond log per feature session to repo-root `workflow-profile/latest.md`; enable via **프로그램 설정 → 진단** or `PIPBONG_WORKFLOW_PROFILE=1`; analysis helper `scripts/analyze-workflow-profile.ps1`; handover §8.14 + `.cursor/rules/workflow-run-profiling.mdc`.
 
 ## [0.8.268] - 2026-07-22
 
@@ -5127,6 +5190,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **프로그램 설정:** grouped `QGroupBox` sections; option detail on **tooltips** only — no inline `HintLabel` per row.
 - Full rules in [§8.13](#813-program-settings-dialog-mandatory--grouped--tooltips).
 
+### `workflow-run-profiling.mdc`
+
+- **Stutter diagnosis:** enable profiling → F5 reproduce → **`workflow-profile/latest.md`** in repo root → AI reads in workspace + `analyze-workflow-profile.ps1`.
+- Full rules in [§8.14](#814-app-wide-microsecond-profiling-mandatory--stutter-diagnosis).
+
 ### Korean update log (§3.7)
 
 - **`UpdateLog/update_log.md`** — user-facing Korean changelog; linked from `README.md`.
@@ -5135,4 +5203,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-15. Current application version: 0.8.141._
+_Last consolidated: 2026-07-22. Current application version: 0.8.272._

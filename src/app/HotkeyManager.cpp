@@ -2,6 +2,7 @@
 
 #include "app/FeatureHotkeyGate.h"
 #include "core/diagnostics/CrashReporter.h"
+#include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/input/HotkeyBinding.h"
 #include "model/Feature.h"
 #include "model/FeatureRunMode.h"
@@ -452,6 +453,7 @@ void HotkeyManager::emitHotkeyTriggered(const std::string& featureId) {
     QMetaObject::invokeMethod(
         this,
         [this, qFeatureId, previousForeground]() {
+            PIPBONG_PROFILE_CAT("hotkey_trigger_dispatch", qFeatureId);
             restoreForegroundWindow(previousForeground);
             CrashReporter::noteBreadcrumb(QStringLiteral("hotkey"),
                                           QStringLiteral("trigger %1").arg(qFeatureId));
@@ -466,6 +468,7 @@ void HotkeyManager::emitHotkeyHoldStarted(const std::string& featureId) {
     QMetaObject::invokeMethod(
         this,
         [this, qFeatureId, previousForeground]() {
+            PIPBONG_PROFILE_CAT("hotkey_hold_start_dispatch", qFeatureId);
             restoreForegroundWindow(previousForeground);
             CrashReporter::noteBreadcrumb(QStringLiteral("hotkey"),
                                           QStringLiteral("hold start %1").arg(qFeatureId));
@@ -479,6 +482,7 @@ void HotkeyManager::emitHotkeyHoldEnded(const std::string& featureId) {
     QMetaObject::invokeMethod(
         this,
         [this, qFeatureId]() {
+            PIPBONG_PROFILE_CAT("hotkey_hold_end_dispatch", qFeatureId);
             CrashReporter::noteBreadcrumb(QStringLiteral("hotkey"),
                                           QStringLiteral("hold end %1").arg(qFeatureId));
             emit hotkeyHoldEnded(qFeatureId);

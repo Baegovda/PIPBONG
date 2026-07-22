@@ -22,6 +22,7 @@
 #include "core/capture/CursorPositionPicker.h"
 #include "core/capture/ClickContinuousInputRecorder.h"
 #include "core/capture/WindowPicker.h"
+#include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/input/InputSimulator.h"
 #include "core/input/HotkeyBinding.h"
 #include "ui/WindowPickerHoverOverlay.h"
@@ -73,6 +74,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QEvent>
 #include <QEventLoop>
 #include <QFile>
@@ -2544,6 +2546,7 @@ void MainWindow::prepareForShutdown() {
     saveActiveProfileSettings();
     sealActiveProfilePackage(true);
     pruneAbandonedEngines();
+    WorkflowRunProfiler::flushPendingSessions(QStringLiteral("app_shutdown"));
     if (m_uiState) {
         m_uiState->saveNow();
     }
@@ -2691,6 +2694,7 @@ bool MainWindow::ensureProjectFilePath() {
 }
 
 void MainWindow::autoSaveProject(bool quiet) {
+    PIPBONG_PROFILE("auto_save", quiet ? QStringLiteral("quiet=yes") : QStringLiteral("quiet=no"));
     if (!ensureProjectFilePath()) {
         return;
     }
@@ -2716,6 +2720,8 @@ void MainWindow::scheduleProfilePackageSeal() {
 }
 
 void MainWindow::sealActiveProfilePackage(bool synchronous) {
+    PIPBONG_PROFILE_CAT("profile_package_seal",
+                        synchronous ? QStringLiteral("sync=yes") : QStringLiteral("sync=no"));
     if (!m_profileManager) {
         return;
     }
@@ -4177,6 +4183,16 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
     activeSession.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW(feature);
     applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
+    {
+        const QString profileName =
+            m_profileManager && m_profileManager->activeProfile()
+                ? m_profileManager->activeProfile()->name
+                : QString();
+        WorkflowRunProfiler::beginSession(QString::fromStdString(feature->id()),
+                                          QString::fromStdString(feature->name()),
+                                          QString::fromStdString(featureRunModeToString(feature->runMode())),
+                                          profileName);
+    }
     const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
     if (!hotkeyHoldStart) {
         selectRunningFeatureForDisplay(feature);
@@ -4459,6 +4475,11 @@ void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
         return;
     }
 
+    QElapsedTimer flushTimer;
+    if (WorkflowRunProfiler::isEnabled()) {
+        flushTimer.start();
+    }
+
     auto coalesceIt = m_fastRepeatUiCoalesce.find(featureId);
     if (coalesceIt == m_fastRepeatUiCoalesce.end() || !coalesceIt->second) {
         return;
@@ -4503,6 +4524,10 @@ void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
     }
 
     publishLoopCompletionUi(*session, lastSuccess, lastMessage);
+
+    if (WorkflowRunProfiler::isEnabled() && flushTimer.isValid()) {
+        WorkflowRunProfiler::recordUiFlush(iterations, flushTimer.nsecsElapsed() / 1000);
+    }
 
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
     if (feature) {
@@ -5314,6 +5339,9 @@ void MainWindow::finalizeDeferredStopSessions() {
 }
 
 void MainWindow::finishRunSession(const std::string& featureId, bool success, const QString& message) {
+    WorkflowRunProfiler::endSession(
+        QStringLiteral("finish success=%1").arg(success ? QStringLiteral("yes") : QStringLiteral("no")));
+
     FeatureRunSession* session = sessionFor(featureId);
     if (session && isDisplayedRunningFeature(session)) {
         m_workflowEditor->clearExecutionHighlight();
@@ -6528,6 +6556,9 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         }
     } guard{this};
 
+    PIPBONG_PROFILE_CAT("profile_switch",
+                        QStringLiteral("id=%1 auto=%2").arg(profileId).arg(automatic ? QStringLiteral("yes")
+                                                                                     : QStringLiteral("no")));
     PIPBONG_PERF_SCOPE("switchToProfile");
 
     if (m_profileList) {
