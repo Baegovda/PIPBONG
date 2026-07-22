@@ -629,6 +629,14 @@ MainWindow::MainWindow(QWidget* parent)
     m_targetWindowCenterPinTimer->setInterval(200);
     connect(m_targetWindowCenterPinTimer, &QTimer::timeout, this, &MainWindow::syncTargetWindowCenterPin);
 
+    m_targetWindowDetailRefreshTimer = new QTimer(this);
+    m_targetWindowDetailRefreshTimer->setInterval(250);
+    connect(m_targetWindowDetailRefreshTimer,
+            &QTimer::timeout,
+            this,
+            &MainWindow::updateTargetWindowDetails);
+    m_targetWindowDetailRefreshTimer->start();
+
     m_profileAutoSwitchTimer = new QTimer(this);
     m_profileAutoSwitchTimer->setTimerType(Qt::PreciseTimer);
     m_profileAutoSwitchTimer->setInterval(50);

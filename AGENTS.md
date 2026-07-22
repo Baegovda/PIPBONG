@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.256` (from `project(PIPBONG VERSION 0.8.256)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.257` (from `project(PIPBONG VERSION 0.8.257)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.257] - 2026-07-22
+
+### Fixed
+
+- **대상 창** detail panel (창 영역 / 클라이언트 / 모니터) now refreshes live while the linked target window is resized — 250 ms poll via `m_targetWindowDetailRefreshTimer` calling `updateTargetWindowDetails()` (`MainWindow`); `TargetWindowDetailPanel::showDetails` skips redundant repaints when geometry is unchanged.
 
 ## [0.8.256] - 2026-07-22
 

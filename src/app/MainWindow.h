@@ -431,6 +431,7 @@ private:
     QTimer* m_updateCheckTimer = nullptr;
     QTimer* m_mouseLockSyncTimer = nullptr;
     QTimer* m_targetWindowCenterPinTimer = nullptr;
+    QTimer* m_targetWindowDetailRefreshTimer = nullptr;
     QTimer* m_profileAutoSwitchTimer = nullptr;
     void* m_profileForegroundEventHook = nullptr;
     UpdateChecker* m_updateChecker = nullptr;

@@ -372,6 +372,17 @@ void TargetWindowDetailPanel::showMessage(const QString& message) {
 }
 
 void TargetWindowDetailPanel::showDetails(const TargetWindowDetailData& data) {
+    if (!m_globalDefaultProfileMode && !m_storedTargetBindingMode && !m_lastDetailData.hwnd.isEmpty()
+        && m_lastDetailData.hwnd == data.hwnd && m_lastDetailData.title == data.title
+        && m_lastDetailData.className == data.className
+        && m_lastDetailData.frameBounds == data.frameBounds
+        && m_lastDetailData.clientSize == data.clientSize && m_lastDetailData.monitor == data.monitor
+        && m_lastDetailData.processName == data.processName
+        && m_lastDetailData.stateText == data.stateText && m_lastDetailData.subTarget == data.subTarget
+        && m_lastDetailData.minimized == data.minimized && m_lastDetailData.visible == data.visible) {
+        return;
+    }
+
     m_globalDefaultProfileMode = false;
     m_storedTargetBindingMode = false;
     m_lastDetailData = data;
