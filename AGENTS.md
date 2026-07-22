@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.265` (from `project(PIPBONG VERSION 0.8.265)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.266` (from `project(PIPBONG VERSION 0.8.266)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.266] - 2026-07-22
+
+### Changed
+
+- Template resolution compensation (no block **멀티 스케일**): single `matchTemplate` at the frame-size **estimated scale** only — no ±4% band or multi-step sweep (`TemplateCaptureMetadata::matchOptionsForTemplate`); block **멀티 스케일** still scales the user band by the estimate.
 
 ## [0.8.265] - 2026-07-22
 
