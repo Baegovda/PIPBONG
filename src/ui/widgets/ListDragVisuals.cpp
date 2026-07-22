@@ -16,6 +16,7 @@ class DragSettleOverlay : public QWidget {
 public:
     explicit DragSettleOverlay(QWidget* parent)
         : QWidget(parent) {
+        setObjectName(QStringLiteral("ListDragSettleOverlay"));
         setAttribute(Qt::WA_TransparentForMouseEvents);
         setAttribute(Qt::WA_NoSystemBackground);
         if (parent) {
@@ -99,6 +100,7 @@ class DragSlotPlaceholder : public QWidget {
 public:
     explicit DragSlotPlaceholder(QWidget* parent)
         : QWidget(parent) {
+        setObjectName(QStringLiteral("ListDragSlotPlaceholder"));
         setAttribute(Qt::WA_TransparentForMouseEvents);
         setAttribute(Qt::WA_NoSystemBackground);
     }
@@ -281,6 +283,31 @@ void hideDragSlotPlaceholder(QWidget** slotOut) {
         return;
     }
     (*slotOut)->hide();
+    (*slotOut)->deleteLater();
+    *slotOut = nullptr;
+}
+
+void dismissTransientDragChrome(QWidget* viewport, QWidget** slotOut) {
+    hideDragSlotPlaceholder(slotOut);
+    if (!viewport) {
+        return;
+    }
+
+    const auto settleOverlays =
+        viewport->findChildren<QWidget*>(QStringLiteral("ListDragSettleOverlay"));
+    for (QWidget* overlay : settleOverlays) {
+        overlay->hide();
+        overlay->deleteLater();
+    }
+
+    const auto directChildren = viewport->findChildren<QWidget*>(Qt::FindDirectChildrenOnly);
+    for (QWidget* child : directChildren) {
+        if (child->objectName() != QStringLiteral("ListDragSlotPlaceholder")) {
+            continue;
+        }
+        child->hide();
+        child->deleteLater();
+    }
 }
 
 void playDropSettle(QWidget* viewport,

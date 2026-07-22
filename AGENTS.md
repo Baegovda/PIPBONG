@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.252` (from `project(PIPBONG VERSION 0.8.252)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.253` (from `project(PIPBONG VERSION 0.8.253)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.253] - 2026-07-22
+
+### Fixed
+
+- Workflow block list drag-reorder no longer leaves a dashed drag-slot ghost after fast consecutive drops: `dismissTransientDragChrome` tears down slot placeholders and settle overlays; `BlockListWidget::clearInternalDragVisuals` resets internal drag state before table rebuild; placeholder tracks scroll during drag (`ListDragVisuals`, `BlockListWidget`).
 
 ## [0.8.252] - 2026-07-22
 

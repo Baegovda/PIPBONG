@@ -30,6 +30,8 @@ void applyToDrag(QDrag* drag, const LiftedPixmap& lifted);
 /// Dashed empty slot left behind while the row is dragged.
 void showDragSlotPlaceholder(QWidget* viewport, const QRect& rowRectInViewport, QWidget** slotOut);
 void hideDragSlotPlaceholder(QWidget** slotOut);
+/// Hides/removes drag slot placeholders and in-flight drop-settle overlays on a viewport.
+void dismissTransientDragChrome(QWidget* viewport, QWidget** slotOut);
 
 /// Snap-in bounce after a successful reorder drop.
 void playDropSettle(QWidget* viewport,

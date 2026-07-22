@@ -1888,6 +1888,7 @@ bool BlockListWidget::hasLastMatchLinkChrome() const {
 }
 
 void BlockListWidget::rebuildTableRows() {
+    clearInternalDragVisuals();
     clearSpans();
     m_tableRowBlockIndex.clear();
     m_tableRowRegionId.clear();
@@ -2973,6 +2974,13 @@ void BlockListWidget::refreshDragScrollDependentUi() {
             m_dropInsertionIndex = insertIdx;
         }
         updateDropIndicator();
+        if (m_dragSlotPlaceholder && m_dragSourceRow >= 0 && m_dragSourceRow < rowCount()) {
+            const QRect rowRect = visualRect(model()->index(m_dragSourceRow, 0));
+            if (!rowRect.isEmpty()) {
+                const QRect slotRect(0, rowRect.top(), viewport()->width(), rowRect.height());
+                ListDragVisuals::showDragSlotPlaceholder(viewport(), slotRect, &m_dragSlotPlaceholder);
+            }
+        }
         return;
     }
 
@@ -3008,6 +3016,38 @@ void BlockListWidget::updateInternalDragFloater() {
         return;
     }
     static_cast<InternalDragFloater*>(m_internalDragFloater)->moveToGlobalCursor();
+}
+
+void BlockListWidget::clearInternalDragVisuals() {
+    if (m_internalRowDragActive) {
+        qApp->removeEventFilter(this);
+        if (m_internalRowDragEventLoop) {
+            m_internalRowDragEventLoop->quit();
+        }
+    }
+    m_internalRowDragEventLoop = nullptr;
+    m_internalRowDragActive = false;
+    m_dragSourceRow = -1;
+    m_dropInsertionIndex = -1;
+    m_pendingReorderFrom = -1;
+    m_pendingReorderTo = -1;
+
+    if (m_internalDragFloater) {
+        auto* floater = static_cast<InternalDragFloater*>(m_internalDragFloater);
+        floater->setLifted({});
+        floater->hide();
+    }
+
+    if (viewport()) {
+        ListDragVisuals::dismissTransientDragChrome(viewport(), &m_dragSlotPlaceholder);
+    } else {
+        ListDragVisuals::hideDragSlotPlaceholder(&m_dragSlotPlaceholder);
+    }
+
+    clearDropIndicator();
+    if (m_dragAutoScroll) {
+        m_dragAutoScroll->end();
+    }
 }
 
 void BlockListWidget::clearActiveRow() {
@@ -3395,6 +3435,10 @@ void BlockListWidget::applyActiveRowVisuals(bool autoScrollToActiveRow) {
 
 void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
     Q_UNUSED(supportedActions);
+    if (m_internalRowDragActive) {
+        clearInternalDragVisuals();
+    }
+
     m_dragSourceRow = currentRow();
     m_pendingReorderFrom = -1;
     m_pendingReorderTo = -1;
@@ -3403,6 +3447,11 @@ void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
         m_dragSourceRow = -1;
         return;
     }
+
+    const QAbstractItemView::DragDropMode previousDragDropMode = dragDropMode();
+    setDragDropMode(QAbstractItemView::NoDragDrop);
+
+    ListDragVisuals::dismissTransientDragChrome(viewport(), &m_dragSlotPlaceholder);
 
     updateDragSourceVisuals();
 
@@ -3440,19 +3489,25 @@ void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
 
     qApp->removeEventFilter(this);
     m_dragAutoScroll->end();
-    if (m_internalDragFloater) {
-        m_internalDragFloater->hide();
-    }
 
-    ListDragVisuals::hideDragSlotPlaceholder(&m_dragSlotPlaceholder);
+    m_dragSourceRow = -1;
+    updateDragSourceVisuals();
+
+    ListDragVisuals::dismissTransientDragChrome(viewport(), &m_dragSlotPlaceholder);
+    if (m_internalDragFloater) {
+        auto* dragFloater = static_cast<InternalDragFloater*>(m_internalDragFloater);
+        dragFloater->setLifted({});
+        dragFloater->hide();
+    }
     clearDropIndicator();
     syncAmbientAnimationTimer();
     applyActiveRowVisuals();
 
+    setDragDropMode(previousDragDropMode);
+
     const int fromBlock =
         m_pendingReorderFrom >= 0 ? m_pendingReorderFrom : blockRowForTableRow(sourceRow);
     const int toBlock = m_pendingReorderTo >= 0 ? m_pendingReorderTo : fromBlock;
-    m_dragSourceRow = -1;
     m_pendingReorderFrom = -1;
     m_pendingReorderTo = -1;
 

@@ -302,6 +302,8 @@ private:
 
     void updateInternalDragFloater();
 
+    void clearInternalDragVisuals();
+
     void applyIdleRowBackground(int tableRow);
 
     void onFlashAnimationValueChanged(const QVariant& value);
