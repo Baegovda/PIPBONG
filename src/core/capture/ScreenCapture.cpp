@@ -317,6 +317,10 @@ void ScreenCapture::setTargetWindow(HWND hwnd) {
     s_targetWindow = hwnd;
 }
 
+void ScreenCapture::invalidateTargetWindowCache() {
+    s_targetWindow = nullptr;
+}
+
 void ScreenCapture::setForegroundHintWindow(HWND hwnd) {
     s_foregroundHintHwnd = hwnd;
     s_foregroundHintMs = GetTickCount64();

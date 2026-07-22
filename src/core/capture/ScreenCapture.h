@@ -44,6 +44,8 @@ public:
 #ifdef _WIN32
     static HWND findTargetWindow();
     static void setTargetWindow(HWND hwnd);
+    /// Clears the cached target HWND so the next lookup re-resolves (e.g. after in-game resolution change).
+    static void invalidateTargetWindowCache();
     static HWND targetWindow();
     /// Reuse a foreground HWND from profile auto-switch for a short TTL (avoids EnumWindows).
     static void setForegroundHintWindow(HWND hwnd);

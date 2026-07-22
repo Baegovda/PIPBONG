@@ -4857,6 +4857,11 @@ void MainWindow::deferHoldSessionUiAfterStart(const std::string& featureId) {
         syncLoopTimingToWorkflowEditor(session);
         m_workflowEditor->clearBlockMatchResults();
         m_workflowEditor->clearExecutionHighlight();
+        if (session->runningBlockIndex >= 0
+            && session->runningBlockHighlight != BlockListWidget::ExecutionHighlight::None) {
+            m_workflowEditor->setActiveBlockIndex(session->runningBlockIndex,
+                                                  session->runningBlockHighlight);
+        }
         m_workflowEditor->persistRunFeedbackForCurrentFeature();
     }
     if (shouldLogRunDetails(*session)) {

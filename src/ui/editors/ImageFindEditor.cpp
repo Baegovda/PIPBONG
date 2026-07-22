@@ -180,7 +180,7 @@ ImageFindEditor::ImageFindEditor(ImageFindBlock* block, const QString& projectDi
     , m_embedded(embedded) {
     if (!m_embedded) {
         setWindowTitle(tr("템플릿 매칭 블록 편집"));
-        resize(500, 460);
+        resize(500, 520);
     }
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     setupUi();
@@ -463,14 +463,28 @@ void ImageFindEditor::setupUi() {
     m_templatePreviewLabel->setFrameShape(QFrame::Box);
     m_templatePreviewLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
-    m_templateSizeLabel = new HintLabel(tr("해상도: —"), this);
+    m_templateSizeLabel = new HintLabel(tr("템플릿: —"), this);
     m_templateSizeLabel->setAlignment(Qt::AlignCenter);
 
+    m_templateCaptureMetaLabel = new HintLabel(tr("캡처 클라: —"), this);
+    m_templateCaptureMetaLabel->setAlignment(Qt::AlignCenter);
+    m_templateCaptureMetaLabel->setWordWrap(true);
+    m_templateCaptureMetaLabel->setMaximumWidth(160);
+
+    m_templateCurrentClientLabel = new HintLabel(tr("현재 클라: —"), this);
+    m_templateCurrentClientLabel->setAlignment(Qt::AlignCenter);
+
+    m_templateMatchScaleLabel = new HintLabel(tr("탐색 스케일: —"), this);
+    m_templateMatchScaleLabel->setAlignment(Qt::AlignCenter);
+
     auto* previewColumn = new QVBoxLayout();
-    previewColumn->setSpacing(4);
+    previewColumn->setSpacing(2);
     previewColumn->setContentsMargins(0, 0, 0, 0);
     previewColumn->addWidget(m_templatePreviewLabel, 0, Qt::AlignHCenter);
     previewColumn->addWidget(m_templateSizeLabel, 0, Qt::AlignHCenter);
+    previewColumn->addWidget(m_templateCaptureMetaLabel, 0, Qt::AlignHCenter);
+    previewColumn->addWidget(m_templateCurrentClientLabel, 0, Qt::AlignHCenter);
+    previewColumn->addWidget(m_templateMatchScaleLabel, 0, Qt::AlignHCenter);
     previewColumn->addStretch(1);
 
     auto* templateContent = new QHBoxLayout();
@@ -611,6 +625,10 @@ void ImageFindEditor::setupUi() {
         updateTemplateHotkeyDisplay();
         syncTemplateCaptureHotkeyHook();
     });
+
+    m_resolutionRefreshTimer = new QTimer(this);
+    m_resolutionRefreshTimer->setInterval(500);
+    connect(m_resolutionRefreshTimer, &QTimer::timeout, this, &ImageFindEditor::updateCaptureResolutionInfo);
     refreshTemplateList();
     refreshRoiList();
     m_matchModeSwitch->setRightSelected(m_block->templateMatchMode == ImageFindTemplateMatchMode::All, false);
@@ -1222,8 +1240,9 @@ void ImageFindEditor::updatePreview() {
         m_templatePreviewLabel->setPixmap({});
         m_templatePreviewLabel->setToolTip({});
         if (m_templateSizeLabel) {
-            m_templateSizeLabel->setText(tr("해상도: —"));
+            m_templateSizeLabel->setText(tr("템플릿: —"));
         }
+        updateCaptureResolutionInfo();
         return;
     }
 
@@ -1233,8 +1252,9 @@ void ImageFindEditor::updatePreview() {
         m_templatePreviewLabel->setPixmap({});
         m_templatePreviewLabel->setToolTip(absolute);
         if (m_templateSizeLabel) {
-            m_templateSizeLabel->setText(tr("해상도: —"));
+            m_templateSizeLabel->setText(tr("템플릿: —"));
         }
+        updateCaptureResolutionInfo();
         return;
     }
 
@@ -1247,7 +1267,66 @@ void ImageFindEditor::updatePreview() {
         pixmap.scaled(kPreviewSlot, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     if (m_templateSizeLabel) {
         m_templateSizeLabel->setText(
-            tr("해상도: %1 × %2 px").arg(pixmap.width()).arg(pixmap.height()));
+            tr("템플릿: %1 × %2 px").arg(pixmap.width()).arg(pixmap.height()));
+    }
+    updateCaptureResolutionInfo();
+}
+
+void ImageFindEditor::updateCaptureResolutionInfo() {
+    const QString absolute = selectedTemplateAbsolutePath();
+
+    if (m_templateCaptureMetaLabel) {
+        if (absolute.isEmpty()) {
+            m_templateCaptureMetaLabel->setText(tr("캡처 클라: —"));
+        } else {
+            const std::string absolutePath = absolute.toStdString();
+            const QString metaRelative =
+                QDir(m_projectDirectory).relativeFilePath(QString::fromStdString(
+                    TemplateCaptureMetadata::metadataPathForTemplate(absolutePath)));
+            const std::optional<TemplateCaptureMetadata::ClientSize> captureSize =
+                TemplateCaptureMetadata::load(absolutePath);
+            if (captureSize) {
+                m_templateCaptureMetaLabel->setText(
+                    tr("캡처 당시 클라: %1 × %2\n저장: %3")
+                        .arg(captureSize->width)
+                        .arg(captureSize->height)
+                        .arg(metaRelative));
+            } else {
+                m_templateCaptureMetaLabel->setText(
+                    tr("캡처 당시 클라: — (메타 없음)\n저장: %1").arg(metaRelative));
+            }
+        }
+    }
+
+    ScreenCapture::invalidateTargetWindowCache();
+    ScreenCapture::TargetWindowInfo targetInfo;
+    const bool hasTarget = ScreenCapture::queryTargetWindowInfo(targetInfo) && targetInfo.clientWidth > 0
+                           && targetInfo.clientHeight > 0;
+
+    if (m_templateCurrentClientLabel) {
+        m_templateCurrentClientLabel->setText(
+            hasTarget ? tr("현재 클라: %1 × %2").arg(targetInfo.clientWidth).arg(targetInfo.clientHeight)
+                      : tr("현재 클라: — (타겟 창 없음)"));
+    }
+
+    if (m_templateMatchScaleLabel) {
+        if (absolute.isEmpty() || !hasTarget) {
+            m_templateMatchScaleLabel->setText(tr("탐색 스케일: —"));
+        } else {
+            const std::optional<TemplateCaptureMetadata::ClientSize> captureSize =
+                TemplateCaptureMetadata::load(absolute.toStdString());
+            if (!captureSize) {
+                m_templateMatchScaleLabel->setText(tr("탐색 스케일: 100% (메타 없음)"));
+            } else {
+                const double factor = TemplateCaptureMetadata::resolutionScaleFactor(
+                    captureSize->width,
+                    captureSize->height,
+                    targetInfo.clientWidth,
+                    targetInfo.clientHeight);
+                m_templateMatchScaleLabel->setText(
+                    tr("탐색 스케일: %1%").arg(qRound(factor * 100.0)));
+            }
+        }
     }
 }
 
@@ -1264,9 +1343,16 @@ void ImageFindEditor::showEvent(QShowEvent* event) {
     if (isTemplateCaptureHotkeyHookActive()) {
         showRoiPreviewOverlay(true);
     }
+    if (m_resolutionRefreshTimer) {
+        m_resolutionRefreshTimer->start();
+    }
+    updateCaptureResolutionInfo();
 }
 
 void ImageFindEditor::hideEvent(QHideEvent* event) {
+    if (m_resolutionRefreshTimer) {
+        m_resolutionRefreshTimer->stop();
+    }
     stopTemplateHotkeyCapture();
     syncTemplateCaptureHotkeyHook();
     dismissRoiPreviewOverlay();

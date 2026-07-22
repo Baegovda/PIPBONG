@@ -2872,6 +2872,9 @@ void BlockListWidget::setActiveRow(int row, ExecutionHighlight highlight) {
     }
     syncAmbientAnimationTimer();
     applyActiveRowVisuals();
+    if (viewport()) {
+        viewport()->update();
+    }
 }
 
 void BlockListWidget::syncAmbientAnimationTimer() {
@@ -3613,6 +3616,7 @@ void BlockListWidget::updateDragSourceVisuals() {
     const QBrush normalBrush = palette().brush(QPalette::Base);
     const QColor dragSourceBg(235, 235, 235);
     const QColor dragSourceFg(130, 130, 130);
+    const int activeTableRow = m_activeRow >= 0 ? tableRowForBlockRow(m_activeRow) : -1;
 
     for (int r = 0; r < rowCount(); ++r) {
         const bool isSource = m_dragSourceRow >= 0 && r == m_dragSourceRow;
@@ -3624,11 +3628,15 @@ void BlockListWidget::updateDragSourceVisuals() {
             if (isSource) {
                 item->setBackground(dragSourceBg);
                 item->setForeground(dragSourceFg);
-            } else if (r != m_activeRow) {
+            } else if (r != activeTableRow) {
                 item->setBackground(normalBrush);
                 item->setForeground(palette().color(QPalette::Text));
             }
         }
+    }
+
+    if (!m_internalRowDragActive && m_activeRow >= 0) {
+        applyActiveRowVisuals(false);
     }
 }
 

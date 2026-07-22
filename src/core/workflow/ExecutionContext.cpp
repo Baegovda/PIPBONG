@@ -551,6 +551,7 @@ HWND ExecutionContext::targetWindow() const {
 
 void ExecutionContext::refreshTargetWindowHandle() const {
     m_cachedTargetWindow = nullptr;
+    ScreenCapture::invalidateTargetWindowCache();
     if (m_targetWindowTitle.empty()) {
         return;
     }

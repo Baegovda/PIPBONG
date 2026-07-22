@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.253` (from `project(PIPBONG VERSION 0.8.253)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.254` (from `project(PIPBONG VERSION 0.8.254)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.254] - 2026-07-22
+
+### Added
+
+- ImageFind block editor thumbnail panel shows capture-time target client resolution and `.capture.json` path, live current client size, and computed match search scale % (`ImageFindEditor`, `TemplateCaptureMetadata`).
+
+### Changed
+
+- Target window HWND cache is invalidated on each ImageFind poll and in the template editor so in-game client resolution changes are picked up sooner (`ScreenCapture::invalidateTargetWindowCache`, `ExecutionContext::refreshTargetWindowHandle`, `ImageFindBlock`).
+
+### Fixed
+
+- Workflow block list execution highlight: drag-source dimming used table row index vs block row index; Hold hotkey deferred UI clear wiped active step highlight after run start (`BlockListWidget::updateDragSourceVisuals`, `MainWindow::deferHoldSessionUiAfterStart`).
 
 ## [0.8.253] - 2026-07-22
 

@@ -354,10 +354,11 @@ std::string imageFindSearchRoiListLabel(SearchArea area,
 #ifdef _WIN32
 std::pair<int, int> currentTargetClientSize(HWND hwnd) {
     ScreenCapture::TargetWindowInfo info;
-    if (hwnd != nullptr && ScreenCapture::queryWindowInfo(hwnd, info) && info.clientWidth > 0
-        && info.clientHeight > 0) {
+    if (hwnd != nullptr && IsWindow(hwnd) && ScreenCapture::queryWindowInfo(hwnd, info)
+        && info.clientWidth > 0 && info.clientHeight > 0) {
         return {info.clientWidth, info.clientHeight};
     }
+    ScreenCapture::invalidateTargetWindowCache();
     if (ScreenCapture::queryTargetWindowInfo(info) && info.clientWidth > 0 && info.clientHeight > 0) {
         return {info.clientWidth, info.clientHeight};
     }

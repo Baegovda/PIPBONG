@@ -24,6 +24,8 @@ class QListWidget;
 
 class QPushButton;
 
+class QTimer;
+
 class QShowEvent;
 
 class QHideEvent;
@@ -103,6 +105,8 @@ private slots:
     void onRemoveRoi();
 
     void updatePreview();
+
+    void updateCaptureResolutionInfo();
 
     void triggerTemplateCaptureFromHotkey();
 
@@ -217,6 +221,14 @@ private:
     QLabel* m_templatePreviewLabel = nullptr;
 
     QLabel* m_templateSizeLabel = nullptr;
+
+    HintLabel* m_templateCaptureMetaLabel = nullptr;
+
+    HintLabel* m_templateCurrentClientLabel = nullptr;
+
+    HintLabel* m_templateMatchScaleLabel = nullptr;
+
+    QTimer* m_resolutionRefreshTimer = nullptr;
 
     QPushButton* m_roiPreviewButton = nullptr;
 
