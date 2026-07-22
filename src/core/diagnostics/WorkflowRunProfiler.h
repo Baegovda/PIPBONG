@@ -4,6 +4,8 @@
 
 #include <cstdint>
 
+class Feature;
+
 /// High-resolution app + workflow profiler for stutter / latency diagnosis.
 /// Enable via program setting or PIPBONG_APP_PROFILE=1 / PIPBONG_WORKFLOW_PROFILE=1.
 /// Writes `<repo-root>/workflow-profile/latest.md` on feature session end and app shutdown.
@@ -23,7 +25,9 @@ public:
     static void beginSession(const QString& featureId,
                              const QString& featureName,
                              const QString& runMode,
-                             const QString& profileName);
+                             const QString& profileName,
+                             const Feature* feature = nullptr,
+                             const QString& startSource = QString());
     static void endSession(const QString& reason);
 
     static void event(const char* eventName,

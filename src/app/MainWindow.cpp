@@ -4188,10 +4188,18 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
             m_profileManager && m_profileManager->activeProfile()
                 ? m_profileManager->activeProfile()->name
                 : QString();
+        QString startSource = QStringLiteral("ui");
+        if (fromHotkey) {
+            startSource = QStringLiteral("hotkey");
+        } else if (silentRestoreStart) {
+            startSource = QStringLiteral("restore");
+        }
         WorkflowRunProfiler::beginSession(QString::fromStdString(feature->id()),
                                           QString::fromStdString(feature->name()),
                                           QString::fromStdString(featureRunModeToString(feature->runMode())),
-                                          profileName);
+                                          profileName,
+                                          feature,
+                                          startSource);
     }
     const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
     if (!hotkeyHoldStart) {
@@ -5075,6 +5083,10 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
     const bool triggerBackgroundRun =
         featurePtr->runMode() == FeatureRunMode::Trigger
         && featurePtr->triggerRunWithoutTargetForeground();
+    if (WorkflowRunProfiler::isEnabled()) {
+        WorkflowRunProfiler::event("trigger_monitor_start",
+                                   QStringLiteral("block=#%1").arg(session.triggerBlockIndex + 1));
+    }
     engine->runPrepared([this, featurePtr, &session, targetTitle, projectDir, skipTargetActivation, triggerBackgroundRun]() {
         PreparedWorkflowRun run;
         run.workflow = session.sessionWorkflow;
@@ -5120,6 +5132,12 @@ void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* fea
         session.sessionContext->setImageFindPrimedBlockIndex(session.triggerBlockIndex);
     }
     appendSessionLog(session, tr("화면에서 찾음 — 워크플로 실행"), LogLineKind::Success);
+    if (WorkflowRunProfiler::isEnabled()) {
+        WorkflowRunProfiler::event("trigger_action_start",
+                                   QStringLiteral("feature=%1 block=#%2")
+                                       .arg(QString::fromStdString(feature->name()))
+                                       .arg(session.triggerBlockIndex + 1));
+    }
     launchWorkflowRun(session, feature, false);
 }
 
@@ -5239,6 +5257,9 @@ void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* fe
 
     session.triggerCooldownTotalMs = cooldownMs;
     session.triggerCooldownEndsAtEpochMs = QDateTime::currentMSecsSinceEpoch() + cooldownMs;
+    if (WorkflowRunProfiler::isEnabled()) {
+        WorkflowRunProfiler::event("trigger_cooldown_start", QStringLiteral("ms=%1").arg(cooldownMs));
+    }
     updateRunUiState();
     if (session.triggerBlockIndex >= 0) {
         applyRunningBlockVisuals(session, session.triggerBlockIndex,

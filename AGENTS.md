@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.273` (from `project(PIPBONG VERSION 0.8.273)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.274` (from `project(PIPBONG VERSION 0.8.274)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1141,22 +1141,23 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 ### 8.14 App-wide microsecond profiling (mandatory — stutter diagnosis)
 
-**Status:** Added 2026-07 (v0.8.269). Markdown v3 app-wide trace (v0.8.273). Microsecond log for Hold / **무한 반복** / UI latency — **off by default**.
+**Status:** Added 2026-07 (v0.8.269). Markdown v4 auto-context (v0.8.274). Microsecond log for Hold / **무한 반복** / UI latency — **off by default**.
 
 | Layer | Role |
 | ----- | ---- |
 | `WorkflowRunProfiler` | App trace from launch (`app_trace_begin`) until shutdown (`app_trace_end`); feature sessions are `session_begin` / `session_end` markers inside the same buffer |
-| Format | Markdown v3 (`pipbong-app-profile`): YAML frontmatter, workflow spike tables, **Event series** table (all event types), fenced TSV log |
+| `WorkflowProfileSnapshot` | At `session_begin`, freezes **Feature settings** + per-block config (Wait ms, Click count, ImageFind poll/threshold, …) into the report |
+| Format | Markdown v4 (`pipbong-app-profile`): YAML frontmatter, **Feature settings**, **Workflow blocks**, **Block execution (measured)**, **Auto diagnosis** (Korean), spike tables, **Event series**, fenced TSV log |
 | Enable | `ProgramSettings` `program/workflowRunProfiling` or env `PIPBONG_APP_PROFILE=1` / `PIPBONG_WORKFLOW_PROFILE=1` |
 | Output | **Repo root** `workflow-profile/latest.md` (+ `sessions/`) on feature session end **and** app shutdown |
-| `WorkflowEngine` | `loop_*`, `block_end` (feature session only) |
-| `MainWindow` | `profile_switch`, `auto_save`, `profile_package_seal`, `ui_fast_repeat_flush`; `PerfTrace` scopes → profiler events |
+| `WorkflowEngine` | `loop_*`, `block_end` with per-block aggregates (feature session only) |
+| `MainWindow` | `session_start_source` (`ui`/`hotkey`/`restore`); trigger `trigger_monitor_start` / `trigger_action_start` / `trigger_cooldown_start`; `profile_switch`, `auto_save`, `ui_fast_repeat_flush`; `PerfTrace` scopes |
 | `HotkeyManager` | `hotkey_*_dispatch` on UI thread |
 | `ScreenCapture` | `capture_imagefind` per ImageFind haystack capture |
 | `InputSimulator` | `mouse_click` scopes |
-| `scripts/analyze-workflow-profile.ps1` | Percentile + spike table; reads `.md` TSV fence |
+| `scripts/analyze-workflow-profile.ps1` | Prints **Auto diagnosis** + percentiles; reads `.md` TSV fence |
 
-**User → AI workflow:** Enable profiling → F5 → use app (profile switch, features, etc.) → exit → **`workflow-profile/latest.md`** in workspace → agent reads Event series + spike tables.
+**User → AI workflow (zero manual workflow description):** Enable profiling → F5 → reproduce issue → exit → **`workflow-profile/latest.md`** → agent reads **Auto diagnosis** + snapshot tables (do **not** ask the user for Wait ms / block list).
 
 **Event log columns:** `rel_us`, `thread` (`ui`/`worker`), `event`, `detail`, optional `dur_us` (inside ` ```tsv ` fence).
 
@@ -1326,6 +1327,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.274] - 2026-07-22
+
+### Added
+
+- **Workflow profile auto-context** (`WorkflowProfileSnapshot`, `WorkflowRunProfiler` v4): at feature `session_begin`, report embeds **Feature settings**, **Workflow blocks** (Wait ms, Click target/count, ImageFind poll/threshold/templates, …), **Block execution (measured)** aggregates, and Korean **Auto diagnosis** — no manual workflow description from the user; `session_start_source` (`ui`/`hotkey`/`restore`); trigger phase events `trigger_monitor_start` / `trigger_action_start` / `trigger_cooldown_start` (`MainWindow`).
+
+### Changed
+
+- `analyze-workflow-profile.ps1` prints frontmatter + **Auto diagnosis** section before percentiles; format `pipbong-app-profile` v4.
+
+### Fixed
+
+- Preempted feature session overwrote next session metrics — `resetFeatureSessionMetrics` on session preemption (`WorkflowRunProfiler`).
 
 ## [0.8.273] - 2026-07-22
 

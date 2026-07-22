@@ -1,7 +1,9 @@
 #include "core/diagnostics/WorkflowRunProfiler.h"
 
+#include "core/diagnostics/WorkflowProfileSnapshot.h"
 #include "PipbongVersion.h"
 #include "app/ProgramSettings.h"
+#include "model/Feature.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -57,6 +59,17 @@ struct LoopGapSample {
     int afterLoopIteration = 0;
 };
 
+struct BlockRunAggregate {
+    int oneBasedIndex = 0;
+    QString type;
+    QString config;
+    int execCount = 0;
+    int successCount = 0;
+    int failCount = 0;
+    qint64 totalDurationUs = 0;
+    qint64 maxDurationUs = 0;
+};
+
 struct SessionState {
     bool appActive = false;
     bool featureSessionActive = false;
@@ -82,6 +95,13 @@ struct SessionState {
     int clickCount = 0;
     int uiFlushCount = 0;
     int droppedEvents = 0;
+
+    QString startSource;
+    int workflowBlockCount = 0;
+    QStringList featureSettingsLines;
+    std::vector<WorkflowBlockSnapshotRow> blockSnapshots;
+    std::vector<BlockRunAggregate> blockAggregates;
+    qint64 featureSessionBeginRelUs = 0;
 };
 
 std::mutex g_mutex;
@@ -283,6 +303,10 @@ void appendEventSeriesTable(QStringList& lines, const SessionState& session) {
     }
 }
 
+void resetFeatureSessionMetrics(SessionState& session);
+std::vector<ProfileEventLite> featureSessionEvents(const SessionState& session);
+std::vector<BlockRunMeasuredRow> measuredRowsFromAggregates(const SessionState& session);
+
 QString buildMarkdownReport(const SessionState& session, const QString& endReason) {
     const QString sessionStart =
         QDateTime::fromMSecsSinceEpoch(session.sessionStartEpochMs).toString(Qt::ISODateWithMs);
@@ -303,7 +327,7 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
     QStringList lines;
     lines << QStringLiteral("---");
     lines << QStringLiteral("format: pipbong-app-profile");
-    lines << QStringLiteral("format_version: 3");
+    lines << QStringLiteral("format_version: 4");
     lines << QStringLiteral("app_version: %1").arg(QStringLiteral(PIPBONG_VERSION));
     lines << QStringLiteral("git_sha: %1").arg(QStringLiteral(PIPBONG_GIT_SHA));
     lines << QStringLiteral("session_start: %1").arg(sessionStart);
@@ -313,6 +337,10 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
     lines << QStringLiteral("feature_name: %1").arg(escapeMd(session.featureName));
     lines << QStringLiteral("run_mode: %1").arg(escapeMd(session.runMode));
     lines << QStringLiteral("profile_name: %1").arg(escapeMd(session.profileName));
+    lines << QStringLiteral("workflow_block_count: %1").arg(session.workflowBlockCount);
+    if (!session.startSource.isEmpty()) {
+        lines << QStringLiteral("session_start_source: %1").arg(escapeMd(session.startSource));
+    }
     lines << QStringLiteral("events_recorded: %1").arg(session.events.size());
     lines << QStringLiteral("events_dropped: %1").arg(session.droppedEvents);
     lines << QStringLiteral("---");
@@ -328,6 +356,10 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
         lines << QStringLiteral("| Feature | %1 (`%2`) |")
                      .arg(escapeMd(session.featureName), escapeMd(session.featureId));
         lines << QStringLiteral("| Run mode | %1 |").arg(escapeMd(session.runMode));
+        if (!session.startSource.isEmpty()) {
+            lines << QStringLiteral("| Start source | %1 |").arg(escapeMd(session.startSource));
+        }
+        lines << QStringLiteral("| Workflow blocks | %1 |").arg(session.workflowBlockCount);
     } else {
         lines << QStringLiteral("| Feature | (no feature session) |");
     }
@@ -383,6 +415,31 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
     lines << QStringLiteral("| mouse_click | >12 ms | %1 |")
                  .arg(countAbove(session.clickDurationsUs, kSpikeClickUs));
     lines << QString();
+
+    const std::vector<BlockRunMeasuredRow> measuredRows = measuredRowsFromAggregates(session);
+    lines += buildFeatureSettingsMarkdown(session.featureSettingsLines);
+    lines << QString();
+    lines += buildWorkflowBlocksMarkdown(session.blockSnapshots);
+    lines << QString();
+    lines += buildBlockExecutionMarkdown(measuredRows);
+    lines << QString();
+
+    ProfileDiagnosisInput diagnosisInput;
+    diagnosisInput.featureName = session.featureName;
+    diagnosisInput.runMode = session.runMode;
+    diagnosisInput.endReason = endReason;
+    diagnosisInput.startSource = session.startSource;
+    diagnosisInput.workflowBlockCount = session.workflowBlockCount;
+    diagnosisInput.featureSettings = session.featureSettingsLines;
+    diagnosisInput.blockSnapshots = session.blockSnapshots;
+    diagnosisInput.blockMeasured = measuredRows;
+    diagnosisInput.sessionEvents = featureSessionEvents(session);
+    diagnosisInput.loopBeginCount = session.loopBeginCount;
+    diagnosisInput.loopEndCount = session.loopEndCount;
+    diagnosisInput.clickCount = session.clickCount;
+    diagnosisInput.maxLoopGapUs = maxValue(loopGapValuesUs);
+    lines += buildAutoDiagnosis(diagnosisInput);
+    lines << QString();
     lines << QStringLiteral("## Top loop_gap spikes");
     lines << QString();
     lines << QStringLiteral("| rel (ms) | gap (ms) | after_loop |");
@@ -435,6 +492,10 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
     lines << QString();
     lines << QStringLiteral("## Analysis hints");
     lines << QString();
+    lines << QStringLiteral(
+        "- **Feature settings** / **Workflow blocks**: frozen at `session_begin` — do not ask the user to describe the workflow.");
+    lines << QStringLiteral(
+        "- **Auto diagnosis**: Korean summary from snapshot + measured `block_end` / events.");
     lines << QStringLiteral(
         "- **app_trace_begin** / **app_trace_end**: full app lifetime while profiling is enabled.");
     lines << QStringLiteral(
@@ -522,6 +583,69 @@ void pushEventLocked(SessionState& session,
     session.events.push_back(std::move(event));
 }
 
+void resetFeatureSessionMetrics(SessionState& session) {
+    session.loops.clear();
+    session.loopGapSamples.clear();
+    session.uiFlushDurationsUs.clear();
+    session.clickDurationsUs.clear();
+    session.lastLoopEndRelUs = -1;
+    session.lastLoopIteration = 0;
+    session.loopBeginCount = 0;
+    session.loopEndCount = 0;
+    session.blockEndCount = 0;
+    session.clickCount = 0;
+    session.uiFlushCount = 0;
+    session.startSource.clear();
+    session.workflowBlockCount = 0;
+    session.featureSettingsLines.clear();
+    session.blockSnapshots.clear();
+    session.blockAggregates.clear();
+    session.featureSessionBeginRelUs = 0;
+}
+
+std::vector<ProfileEventLite> featureSessionEvents(const SessionState& session) {
+    std::vector<ProfileEventLite> window;
+    qint64 windowBeginUs = session.featureSessionBeginRelUs;
+    if (windowBeginUs < 0) {
+        for (const ProfileEvent& event : session.events) {
+            if (event.eventName == QLatin1String("session_begin")) {
+                windowBeginUs = event.relUs;
+                break;
+            }
+        }
+    }
+    for (const ProfileEvent& event : session.events) {
+        if (windowBeginUs >= 0 && event.relUs < windowBeginUs) {
+            continue;
+        }
+        ProfileEventLite lite;
+        lite.relUs = event.relUs;
+        lite.eventName = event.eventName;
+        lite.detail = event.detail;
+        lite.durationUs = event.durationUs;
+        window.push_back(std::move(lite));
+    }
+    return window;
+}
+
+std::vector<BlockRunMeasuredRow> measuredRowsFromAggregates(const SessionState& session) {
+    std::vector<BlockRunMeasuredRow> rows;
+    rows.reserve(session.blockAggregates.size());
+    for (const BlockRunAggregate& aggregate : session.blockAggregates) {
+        BlockRunMeasuredRow row;
+        row.oneBasedIndex = aggregate.oneBasedIndex;
+        row.type = aggregate.type;
+        row.config = aggregate.config;
+        row.execCount = aggregate.execCount;
+        row.successCount = aggregate.successCount;
+        row.failCount = aggregate.failCount;
+        row.totalDurationUs = aggregate.totalDurationUs;
+        row.maxDurationUs = aggregate.maxDurationUs;
+        rows.push_back(std::move(row));
+    }
+    return rows;
+}
+
 } // namespace
 
 bool WorkflowRunProfiler::isEnabled() {
@@ -591,7 +715,9 @@ QString WorkflowRunProfiler::latestLogPath() {
 void WorkflowRunProfiler::beginSession(const QString& featureId,
                                        const QString& featureName,
                                        const QString& runMode,
-                                       const QString& profileName) {
+                                       const QString& profileName,
+                                       const Feature* feature,
+                                       const QString& startSource) {
     reloadEnabledFromSettings();
     if (!g_enabled) {
         return;
@@ -610,6 +736,7 @@ void WorkflowRunProfiler::beginSession(const QString& featureId,
                         "session_end",
                         QStringLiteral("reason=preempted_by_new_session"));
         writeSessionOutputs(g_trace, QStringLiteral("preempted_by_new_session"));
+        resetFeatureSessionMetrics(g_trace);
     }
 
     g_trace.featureSessionActive = true;
@@ -617,12 +744,33 @@ void WorkflowRunProfiler::beginSession(const QString& featureId,
     g_trace.featureName = featureName;
     g_trace.runMode = runMode;
     g_trace.profileName = profileName;
+    g_trace.startSource = startSource;
+    g_trace.featureSessionBeginRelUs = monotonicUs() - g_trace.originUs;
 
-    pushEventLocked(g_trace,
-                    "session_begin",
-                    QStringLiteral("feature=%1 mode=%2 profile=%3")
-                        .arg(featureName, runMode, profileName),
-                    -1);
+    if (feature != nullptr) {
+        const WorkflowProfileSnapshotData snapshot = captureWorkflowProfileSnapshot(*feature);
+        g_trace.featureSettingsLines = snapshot.featureSettings;
+        g_trace.blockSnapshots = snapshot.blocks;
+        g_trace.workflowBlockCount = snapshot.blockCount;
+        g_trace.blockAggregates.clear();
+        g_trace.blockAggregates.reserve(snapshot.blocks.size());
+        for (const WorkflowBlockSnapshotRow& row : snapshot.blocks) {
+            BlockRunAggregate aggregate;
+            aggregate.oneBasedIndex = row.oneBasedIndex;
+            aggregate.type = row.type;
+            aggregate.config = row.config;
+            g_trace.blockAggregates.push_back(std::move(aggregate));
+        }
+    }
+
+    QString beginDetail = QStringLiteral("feature=%1 mode=%2 profile=%3").arg(featureName, runMode, profileName);
+    if (!startSource.isEmpty()) {
+        beginDetail += QStringLiteral(" source=%1").arg(startSource);
+    }
+    if (g_trace.workflowBlockCount > 0) {
+        beginDetail += QStringLiteral(" blocks=%1").arg(g_trace.workflowBlockCount);
+    }
+    pushEventLocked(g_trace, "session_begin", beginDetail, -1);
 }
 
 void WorkflowRunProfiler::endSession(const QString& reason) {
@@ -725,6 +873,17 @@ void WorkflowRunProfiler::recordBlockEnd(int blockIndex,
         return;
     }
     ++g_trace.blockEndCount;
+    if (blockIndex >= 0 && blockIndex < static_cast<int>(g_trace.blockAggregates.size())) {
+        BlockRunAggregate& aggregate = g_trace.blockAggregates[static_cast<size_t>(blockIndex)];
+        ++aggregate.execCount;
+        if (success) {
+            ++aggregate.successCount;
+        } else {
+            ++aggregate.failCount;
+        }
+        aggregate.totalDurationUs += durationUs;
+        aggregate.maxDurationUs = std::max(aggregate.maxDurationUs, durationUs);
+    }
     pushEventLocked(g_trace,
                     "block_end",
                     QStringLiteral("#%1 type=%2 success=%3")
