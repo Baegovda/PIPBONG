@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.277` (from `project(PIPBONG VERSION 0.8.277)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.278` (from `project(PIPBONG VERSION 0.8.278)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.278] - 2026-07-23
+
+### Fixed
+
+- LoL-style main/sub HWND cache no longer pins the launcher after the in-game client starts: `findTargetWindow` validates linked exe path when set, main-title lookup no longer falls back to sub, profile foreground sync records hints and invalidates cache instead of pinning foreground HWND (`ScreenCapture`, `MainWindow`).
+- Feature run / hotkey start resolves capture HWND via process-path-aware `findVisibleWindowMatchingTitle` instead of title-only `hasVisibleWindowMatchingTitle` (`MainWindow::startFeatureRun`, `refreshSessionCaptureTarget`).
+- Auto capture target title falls back to a visible main (then sub) window by exe path when the in-game title does not match title bindings (`MainWindow::resolveAutoRunCaptureTargetTitleW`, `syncEffectiveTargetWindowTitleToCapture`).
+- Scoped foreground poll gate (`requireScopedTargetForeground` + MainOnly/SubOnly) applies even when **run without target window** is enabled (`MainWindow::applyFeatureRunPoliciesToContext`).
 
 ## [0.8.277] - 2026-07-23
 

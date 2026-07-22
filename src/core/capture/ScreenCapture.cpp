@@ -212,6 +212,8 @@ bool runWithoutTargetWindowEnabled() {
 
 std::wstring ScreenCapture::s_targetTitle;
 std::wstring ScreenCapture::s_subTargetTitle;
+std::wstring ScreenCapture::s_mainProcessPath;
+std::wstring ScreenCapture::s_subProcessPath;
 #ifdef _WIN32
 HWND ScreenCapture::s_targetWindow = nullptr;
 HWND ScreenCapture::s_foregroundHintHwnd = nullptr;
@@ -252,13 +254,43 @@ std::wstring ScreenCapture::subTargetWindowTitle() {
     return s_subTargetTitle;
 }
 
+void ScreenCapture::setLinkedTargetProcessPaths(const std::wstring& mainProcessPath,
+                                                const std::wstring& subProcessPath) {
+    s_mainProcessPath = mainProcessPath;
+    s_subProcessPath = subProcessPath;
+}
+
 #ifdef _WIN32
+bool windowTitleContainsBinding(HWND hwnd, const std::wstring& binding);
+bool processPathMatchesBinding(const std::wstring& actual, const std::wstring& expected);
+HWND findVisibleWindowMatchingTitleImpl(const std::wstring& binding,
+                                        const std::wstring& processPath);
+
 HWND ScreenCapture::findTargetWindow() {
     if (s_targetWindow && !IsWindow(s_targetWindow)) {
         s_targetWindow = nullptr;
     }
     if (s_targetWindow && IsWindow(s_targetWindow)) {
-        return s_targetWindow;
+        const std::wstring& expectedBinding =
+            s_targetTitle.empty() ? s_subTargetTitle : s_targetTitle;
+        const std::wstring& expectedProcess =
+            s_targetTitle.empty() ? s_subProcessPath : s_mainProcessPath;
+        bool valid = true;
+        if (!expectedBinding.empty()
+            && !windowTitleContainsBinding(s_targetWindow, expectedBinding)) {
+            valid = false;
+        }
+        if (valid && !expectedProcess.empty()) {
+            ScreenCapture::TargetWindowInfo info;
+            if (!ScreenCapture::queryWindowInfo(s_targetWindow, info)
+                || !processPathMatchesBinding(info.processPath, expectedProcess)) {
+                valid = false;
+            }
+        }
+        if (valid) {
+            return s_targetWindow;
+        }
+        s_targetWindow = nullptr;
     }
 
     const auto foregroundHintFor = [](const std::wstring& binding) -> HWND {
@@ -275,47 +307,28 @@ HWND ScreenCapture::findTargetWindow() {
         return nullptr;
     };
 
-    const auto enumBySubstring = [](const std::wstring& binding) -> HWND {
-        if (binding.empty()) {
-            return nullptr;
+    if (!s_targetTitle.empty()) {
+        if (HWND hint = foregroundHintFor(s_targetTitle)) {
+            s_targetWindow = hint;
+            return s_targetWindow;
         }
-        struct EnumData {
-            std::wstring title;
-            HWND result = nullptr;
-        } data{binding, nullptr};
-        EnumWindows(
-            [](HWND hwnd, LPARAM lParam) -> BOOL {
-                auto* enumData = reinterpret_cast<EnumData*>(lParam);
-                if (!IsWindowVisible(hwnd)) {
-                    return TRUE;
-                }
-                wchar_t buffer[512]{};
-                GetWindowTextW(hwnd, buffer, 512);
-                const std::wstring title(buffer);
-                if (title.find(enumData->title) != std::wstring::npos) {
-                    enumData->result = hwnd;
-                    return FALSE;
-                }
-                return TRUE;
-            },
-            reinterpret_cast<LPARAM>(&data));
-        return data.result;
-    };
+        if (HWND found = findVisibleWindowMatchingTitleImpl(s_targetTitle, s_mainProcessPath)) {
+            s_targetWindow = found;
+            return s_targetWindow;
+        }
+        return nullptr;
+    }
 
-    if (HWND hint = foregroundHintFor(s_targetTitle)) {
-        s_targetWindow = hint;
+    if (!s_subTargetTitle.empty()) {
+        if (HWND subHint = foregroundHintFor(s_subTargetTitle)) {
+            s_targetWindow = subHint;
+            return s_targetWindow;
+        }
+        s_targetWindow = findVisibleWindowMatchingTitleImpl(s_subTargetTitle, s_subProcessPath);
         return s_targetWindow;
     }
-    if (HWND found = enumBySubstring(s_targetTitle)) {
-        s_targetWindow = found;
-        return s_targetWindow;
-    }
-    if (HWND subHint = foregroundHintFor(s_subTargetTitle)) {
-        s_targetWindow = subHint;
-        return s_targetWindow;
-    }
-    s_targetWindow = enumBySubstring(s_subTargetTitle);
-    return s_targetWindow;
+
+    return nullptr;
 }
 
 void ScreenCapture::setTargetWindow(HWND hwnd) {

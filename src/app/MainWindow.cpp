@@ -4112,25 +4112,40 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
             } else {
                 return;
             }
-        } else if (!ScreenCapture::hasVisibleWindowMatchingTitle(captureTitle)) {
-            if (!silentRestoreStart) {
-                QString message;
+        } else {
+            std::wstring processPath;
+            if (m_profileManager && !isActiveDefaultProfile()) {
+                const QString profileId = m_profileManager->activeProfileId();
                 if (scope == FeatureCaptureTargetScope::SubOnly) {
-                    message = tr("서브 창을 찾을 수 없습니다. 해당 창이 실행 중인지 확인하세요.");
-                } else if (scope == FeatureCaptureTargetScope::MainOnly) {
-                    message = tr("메인 창을 찾을 수 없습니다. '타겟 지정'으로 타겟을 선택하거나, "
-                                 "프로그램 설정에서 '창을 지정하지 않은 상태에서도 동작'을 켜세요.");
+                    processPath =
+                        m_profileManager->subLinkedTargetProcessPath(profileId).toStdWString();
                 } else {
-                    message = tr("타겟을 찾을 수 없습니다. 메인·서브 창이 실행 중인지 확인하거나, "
-                                 "'타겟 지정'·프로필 편집을 확인하세요.");
+                    processPath =
+                        m_profileManager->linkedTargetProcessPath(profileId).toStdWString();
                 }
-                QMessageBox::information(this, tr("실행"), message);
-                return;
             }
-            if (triggerRestore) {
-                deferTriggerRestoreStart = true;
-            } else {
-                return;
+            const HWND captureHwnd =
+                ScreenCapture::findVisibleWindowMatchingTitle(captureTitle, processPath);
+            if (!captureHwnd) {
+                if (!silentRestoreStart) {
+                    QString message;
+                    if (scope == FeatureCaptureTargetScope::SubOnly) {
+                        message = tr("서브 창을 찾을 수 없습니다. 해당 창이 실행 중인지 확인하세요.");
+                    } else if (scope == FeatureCaptureTargetScope::MainOnly) {
+                        message = tr("메인 창을 찾을 수 없습니다. '타겟 지정'으로 타겟을 선택하거나, "
+                                     "프로그램 설정에서 '창을 지정하지 않은 상태에서도 동작'을 켜세요.");
+                    } else {
+                        message = tr("타겟을 찾을 수 없습니다. 메인·서브 창이 실행 중인지 확인하거나, "
+                                     "'타겟 지정'·프로필 편집을 확인하세요.");
+                    }
+                    QMessageBox::information(this, tr("실행"), message);
+                    return;
+                }
+                if (triggerRestore) {
+                    deferTriggerRestoreStart = true;
+                } else {
+                    return;
+                }
             }
         }
     }
@@ -4455,8 +4470,7 @@ void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Fe
                 self->m_project ? self->m_project->featureById(featureId) : nullptr;
             return self->runForegroundGateActive(activeFeature);
         });
-    } else if (!ProgramSettings::runWithoutTargetWindow()
-               && feature->requireScopedTargetForeground()
+    } else if (feature->requireScopedTargetForeground()
                && feature->captureTargetScope() != FeatureCaptureTargetScope::Auto) {
         QPointer<MainWindow> self(this);
         const std::string featureId = session.featureId;
@@ -6757,8 +6771,8 @@ void MainWindow::syncProfileToForegroundWindow() {
     if (targetProfileId == m_profileManager->activeProfileId()) {
         m_pendingDefaultProfileSwitchTimer.invalidate();
         ScreenCapture::setForegroundHintWindow(hwnd);
-        ScreenCapture::setTargetWindow(hwnd);
         healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
+        ScreenCapture::invalidateTargetWindowCache();
         return;
     }
 
@@ -6808,8 +6822,8 @@ void MainWindow::syncProfileToForegroundWindow() {
     }
 
     ScreenCapture::setForegroundHintWindow(hwnd);
-    ScreenCapture::setTargetWindow(hwnd);
     healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
+    ScreenCapture::invalidateTargetWindowCache();
 
     if (fallingBackToDefault) {
         m_recentAutomaticDefaultProfileSwitchTimer.start();
@@ -7060,6 +7074,22 @@ std::wstring MainWindow::resolveAutoRunCaptureTargetTitleW() const {
     if (mainHit) {
         return mainTitle;
     }
+    if (!mainBinding.isEmpty()) {
+        const QString mainProcess = m_profileManager->linkedTargetProcessPath(profileId);
+        HWND mainHwnd = ScreenCapture::findVisibleWindowMatchingTitle(mainTitle,
+                                                                      mainProcess.toStdWString());
+        if (mainHwnd && IsWindow(mainHwnd) && !IsIconic(mainHwnd)) {
+            return mainTitle;
+        }
+    }
+    if (!subBinding.isEmpty()) {
+        const QString subProcess = m_profileManager->subLinkedTargetProcessPath(profileId);
+        HWND subHwnd = ScreenCapture::findVisibleWindowMatchingTitle(subBinding.toStdWString(),
+                                                                    subProcess.toStdWString());
+        if (subHwnd && IsWindow(subHwnd) && !IsIconic(subHwnd)) {
+            return subBinding.toStdWString();
+        }
+    }
     return {};
 #else
     Q_UNUSED(mainBinding);
@@ -7214,8 +7244,8 @@ bool MainWindow::switchToForegroundLinkedProfileIfNeeded(bool forceImmediate) {
     }
 
     ScreenCapture::setForegroundHintWindow(hwnd);
-    ScreenCapture::setTargetWindow(hwnd);
     healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
+    ScreenCapture::invalidateTargetWindowCache();
 
     if (targetProfileId == m_profileManager->activeProfileId()) {
         m_deferredProfileSwitchId.clear();
@@ -7515,9 +7545,28 @@ void MainWindow::refreshSessionCaptureTarget(FeatureRunSession& session) {
         && session.triggerPhase == TriggerSessionPhase::Monitoring;
 
 #ifdef _WIN32
-    const bool lockedMissing =
-        !session.lockedCaptureTargetTitle.empty()
-        && !ScreenCapture::hasVisibleWindowMatchingTitle(session.lockedCaptureTargetTitle);
+    const bool lockedMissing = [&]() {
+        if (session.lockedCaptureTargetTitle.empty()) {
+            return false;
+        }
+        std::wstring processPath;
+        if (m_profileManager && !isActiveDefaultProfile()) {
+            const QString profileId = m_profileManager->activeProfileId();
+            const QString locked =
+                QString::fromStdWString(session.lockedCaptureTargetTitle).trimmed();
+            const QString subBinding =
+                m_profileManager->subTargetWindowTitle(profileId).trimmed();
+            if (!subBinding.isEmpty()
+                && locked.contains(subBinding, Qt::CaseInsensitive)) {
+                processPath =
+                    m_profileManager->subLinkedTargetProcessPath(profileId).toStdWString();
+            } else {
+                processPath = m_profileManager->linkedTargetProcessPath(profileId).toStdWString();
+            }
+        }
+        return !ScreenCapture::findVisibleWindowMatchingTitle(session.lockedCaptureTargetTitle,
+                                                            processPath);
+    }();
 #else
     const bool lockedMissing = false;
 #endif
@@ -7542,17 +7591,25 @@ void MainWindow::refreshSessionCaptureTarget(FeatureRunSession& session) {
 
 void MainWindow::applySessionCaptureTarget(const std::wstring& title) const {
     QString subBinding;
+    QString mainProcessPath;
+    QString subProcessPath;
     if (m_profileManager && !isActiveDefaultProfile()) {
-        subBinding = m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed();
+        const QString profileId = m_profileManager->activeProfileId();
+        subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
+        mainProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
+        subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
     }
     ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
-#ifdef _WIN32
-    ScreenCapture::setTargetWindow(nullptr);
-#endif
+    ScreenCapture::setLinkedTargetProcessPaths(mainProcessPath.toStdWString(),
+                                               subProcessPath.toStdWString());
+    ScreenCapture::invalidateTargetWindowCache();
     ScreenCapture::setTargetWindowTitle(title);
 #ifdef _WIN32
     if (HWND hwnd = ScreenCapture::findTargetWindow()) {
         ScreenCapture::setTargetWindow(hwnd);
+        ScreenCapture::setForegroundHintWindow(hwnd);
+    } else {
+        ScreenCapture::setTargetWindow(nullptr);
     }
 #endif
 }
@@ -7562,57 +7619,51 @@ void MainWindow::refreshCaptureTargetForEditing() {
 }
 
 void MainWindow::syncTargetWindowTitleToCapture() {
-    QString subBinding;
-    if (m_profileManager && !isActiveDefaultProfile()) {
-        subBinding = m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed();
-    } else {
-        subBinding.clear();
-    }
-    ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
     syncEffectiveTargetWindowTitleToCapture();
-#ifdef _WIN32
-    if (!ScreenCapture::findTargetWindow()) {
-        const std::wstring autoTitle = resolveAutoRunCaptureTargetTitleW();
-        if (!autoTitle.empty()) {
-            ScreenCapture::setTargetWindowTitle(autoTitle);
-        }
-        if (HWND hwnd = ScreenCapture::findTargetWindow()) {
-            ScreenCapture::setTargetWindow(hwnd);
-        }
-    }
-#endif
 }
 
 void MainWindow::syncEffectiveTargetWindowTitleToCapture() {
     QString subBinding;
+    QString mainProcessPath;
+    QString subProcessPath;
     if (m_profileManager && !isActiveDefaultProfile()) {
-        subBinding = m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed();
+        const QString profileId = m_profileManager->activeProfileId();
+        subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
+        mainProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
+        subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
     } else {
         subBinding.clear();
     }
     ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
+    ScreenCapture::setLinkedTargetProcessPaths(mainProcessPath.toStdWString(),
+                                               subProcessPath.toStdWString());
 
     std::wstring title = resolveAutoRunCaptureTargetTitleW();
     if (title.empty()) {
         title = linkedTargetLookupTitleW();
     }
+    ScreenCapture::invalidateTargetWindowCache();
     ScreenCapture::setTargetWindowTitle(title);
 #ifdef _WIN32
-    HWND hwnd = GetForegroundWindow();
-    if (!hwnd || !IsWindow(hwnd)) {
-        return;
-    }
-    hwnd = GetAncestor(hwnd, GA_ROOT);
-    if (!hwnd || !IsWindow(hwnd)) {
-        return;
-    }
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(hwnd, titleBuffer, 512);
-    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
-    const QString binding = QString::fromStdWString(title).trimmed();
-    if (!binding.isEmpty() && foregroundTitle.contains(binding, Qt::CaseInsensitive)) {
+    if (HWND hwnd = ScreenCapture::findTargetWindow()) {
         ScreenCapture::setTargetWindow(hwnd);
         ScreenCapture::setForegroundHintWindow(hwnd);
+    } else {
+        HWND foregroundHwnd = GetForegroundWindow();
+        if (foregroundHwnd && IsWindow(foregroundHwnd)) {
+            foregroundHwnd = GetAncestor(foregroundHwnd, GA_ROOT);
+            if (foregroundHwnd && IsWindow(foregroundHwnd)) {
+                wchar_t titleBuffer[512]{};
+                GetWindowTextW(foregroundHwnd, titleBuffer, 512);
+                const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+                const QString binding = QString::fromStdWString(title).trimmed();
+                if (!binding.isEmpty()
+                    && foregroundTitle.contains(binding, Qt::CaseInsensitive)) {
+                    ScreenCapture::setTargetWindow(foregroundHwnd);
+                    ScreenCapture::setForegroundHintWindow(foregroundHwnd);
+                }
+            }
+        }
     }
 #endif
 

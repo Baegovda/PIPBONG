@@ -40,6 +40,9 @@ public:
     /// Optional secondary binding (profile sub-target); used when the main title cannot be resolved.
     static void setSubTargetWindowTitle(const std::wstring& title);
     static std::wstring subTargetWindowTitle();
+    /// Optional exe paths for disambiguating main vs sub windows with overlapping titles (e.g. LoL).
+    static void setLinkedTargetProcessPaths(const std::wstring& mainProcessPath,
+                                            const std::wstring& subProcessPath);
 
 #ifdef _WIN32
     static HWND findTargetWindow();
@@ -172,6 +175,8 @@ private:
 
     static std::wstring s_targetTitle;
     static std::wstring s_subTargetTitle;
+    static std::wstring s_mainProcessPath;
+    static std::wstring s_subProcessPath;
 #ifdef _WIN32
     static HWND s_targetWindow;
     static HWND s_foregroundHintHwnd;
