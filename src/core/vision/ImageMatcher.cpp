@@ -350,123 +350,6 @@ void appendUniqueScale(std::vector<double>& scales, double scale) {
 
 }
 
-constexpr double kResolutionNormalizeTolerance = 0.005;
-
-MatchOptions optionsForTemplateScaleCache(const MatchOptions& options) {
-    MatchOptions cacheOptions = options;
-    cacheOptions.haystackNormalize = false;
-    cacheOptions.haystackRestoreScaleX = 1.0;
-    cacheOptions.haystackRestoreScaleY = 1.0;
-    cacheOptions.referenceScale = 1.0;
-    return cacheOptions;
-}
-
-struct HaystackPrep {
-    cv::Mat gray;
-    cv::Mat bgr;
-    cv::Size originalSize;
-    double restoreScaleX = 1.0;
-    double restoreScaleY = 1.0;
-    MatchOptions matchOptions;
-};
-
-HaystackPrep prepareGrayHaystack(const cv::Mat& hayGray, const MatchOptions& options) {
-    HaystackPrep prep;
-    prep.originalSize = hayGray.size();
-    prep.matchOptions = optionsForTemplateScaleCache(options);
-    prep.restoreScaleX = options.haystackRestoreScaleX;
-    prep.restoreScaleY = options.haystackRestoreScaleY;
-
-    if (!options.haystackNormalize) {
-        prep.gray = hayGray;
-        prep.restoreScaleX = 1.0;
-        prep.restoreScaleY = 1.0;
-        return prep;
-    }
-
-    const double invX = prep.restoreScaleX > 1e-9 ? (1.0 / prep.restoreScaleX) : 1.0;
-    const double invY = prep.restoreScaleY > 1e-9 ? (1.0 / prep.restoreScaleY) : 1.0;
-    if (std::abs(invX - 1.0) < kResolutionNormalizeTolerance
-        && std::abs(invY - 1.0) < kResolutionNormalizeTolerance) {
-        prep.gray = hayGray;
-        prep.restoreScaleX = 1.0;
-        prep.restoreScaleY = 1.0;
-        return prep;
-    }
-
-    const int width = std::max(1, static_cast<int>(std::lround(hayGray.cols * invX)));
-    const int height = std::max(1, static_cast<int>(std::lround(hayGray.rows * invY)));
-    const int interpolation = (invX < 1.0 || invY < 1.0) ? cv::INTER_AREA : cv::INTER_CUBIC;
-    cv::resize(hayGray, prep.gray, cv::Size(width, height), 0, 0, interpolation);
-    return prep;
-}
-
-HaystackPrep prepareBgrHaystack(const cv::Mat& hayBgr, const MatchOptions& options) {
-    const cv::Mat hay = toBgr(hayBgr);
-    HaystackPrep prep;
-    prep.originalSize = hay.size();
-    prep.matchOptions = optionsForTemplateScaleCache(options);
-    prep.restoreScaleX = options.haystackRestoreScaleX;
-    prep.restoreScaleY = options.haystackRestoreScaleY;
-
-    if (!options.haystackNormalize) {
-        prep.bgr = hay;
-        prep.restoreScaleX = 1.0;
-        prep.restoreScaleY = 1.0;
-        return prep;
-    }
-
-    const double invX = prep.restoreScaleX > 1e-9 ? (1.0 / prep.restoreScaleX) : 1.0;
-    const double invY = prep.restoreScaleY > 1e-9 ? (1.0 / prep.restoreScaleY) : 1.0;
-    if (std::abs(invX - 1.0) < kResolutionNormalizeTolerance
-        && std::abs(invY - 1.0) < kResolutionNormalizeTolerance) {
-        prep.bgr = hay;
-        prep.restoreScaleX = 1.0;
-        prep.restoreScaleY = 1.0;
-        return prep;
-    }
-
-    const int width = std::max(1, static_cast<int>(std::lround(hay.cols * invX)));
-    const int height = std::max(1, static_cast<int>(std::lround(hay.rows * invY)));
-    const int interpolation = (invX < 1.0 || invY < 1.0) ? cv::INTER_AREA : cv::INTER_CUBIC;
-    cv::resize(hay, prep.bgr, cv::Size(width, height), 0, 0, interpolation);
-    return prep;
-}
-
-void remapMatchToOriginalHaystack(MatchResult& match,
-                                  double restoreScaleX,
-                                  double restoreScaleY,
-                                  const cv::Size& originalHaySize) {
-    if (!match.found) {
-        return;
-    }
-
-    if (std::abs(restoreScaleX - 1.0) < kScaleEpsilon && std::abs(restoreScaleY - 1.0) < kScaleEpsilon) {
-        match.found = isWithinBounds(match.location, match.matchedSize, originalHaySize);
-        return;
-    }
-
-    match.location.x = static_cast<int>(std::lround(match.location.x * restoreScaleX));
-    match.location.y = static_cast<int>(std::lround(match.location.y * restoreScaleY));
-    match.matchedSize.width =
-        std::max(1, static_cast<int>(std::lround(match.matchedSize.width * restoreScaleX)));
-    match.matchedSize.height =
-        std::max(1, static_cast<int>(std::lround(match.matchedSize.height * restoreScaleY)));
-    match.center = cv::Point(match.location.x + match.matchedSize.width / 2,
-                             match.location.y + match.matchedSize.height / 2);
-    match.scale *= std::sqrt(restoreScaleX * restoreScaleY);
-    match.found = isWithinBounds(match.location, match.matchedSize, originalHaySize);
-}
-
-void remapMatchesToOriginalHaystack(std::vector<MatchResult>& matches,
-                                    double restoreScaleX,
-                                    double restoreScaleY,
-                                    const cv::Size& originalHaySize) {
-    for (MatchResult& match : matches) {
-        remapMatchToOriginalHaystack(match, restoreScaleX, restoreScaleY, originalHaySize);
-    }
-}
-
 std::string scaleCacheKey(const MatchOptions& options) {
 
     if (!options.multiScale) {
@@ -875,7 +758,7 @@ std::vector<double> ImageMatcher::scaleFactors(const MatchOptions& options) {
 
 
 
-    constexpr int kLogScaleSteps = 9;
+    constexpr int kLogScaleSteps = 13;
 
     const double logMin = std::log(minScale);
 
@@ -913,15 +796,13 @@ MatchResult ImageMatcher::findPeakMatchGray(const cv::Mat& hayGray,
 
 
 
-    const HaystackPrep prep = prepareGrayHaystack(hayGray, options);
-
-    ensureTemplateScaleCache(templ, prep.matchOptions);
+    ensureTemplateScaleCache(templ, options);
 
     for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
 
         const double scale = templ.scaleCacheFactors[i];
 
-        const MatchResult peak = findPeakAtScale(prep.gray, templ.scaleCacheGrays[i], scale);
+        const MatchResult peak = findPeakAtScale(hayGray, templ.scaleCacheGrays[i], scale);
 
         if (peak.found && peak.confidence > best.confidence) {
 
@@ -930,8 +811,6 @@ MatchResult ImageMatcher::findPeakMatchGray(const cv::Mat& hayGray,
         }
 
     }
-
-    remapMatchToOriginalHaystack(best, prep.restoreScaleX, prep.restoreScaleY, prep.originalSize);
 
     return best;
 
@@ -947,7 +826,9 @@ MatchResult ImageMatcher::findPeakMatchBgr(const cv::Mat& hayBgr,
 
     MatchResult best;
 
-    if (hayBgr.empty() || templ.empty()) {
+    const cv::Mat hay = toBgr(hayBgr);
+
+    if (hay.empty() || templ.empty()) {
 
         return best;
 
@@ -955,23 +836,13 @@ MatchResult ImageMatcher::findPeakMatchBgr(const cv::Mat& hayBgr,
 
 
 
-    const HaystackPrep prep = prepareBgrHaystack(hayBgr, options);
-
-    if (prep.bgr.empty()) {
-
-        return best;
-
-    }
-
-
-
-    ensureTemplateBgrScaleCache(templ, prep.matchOptions);
+    ensureTemplateBgrScaleCache(templ, options);
 
     for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
 
         const double scale = templ.scaleCacheFactors[i];
 
-        const MatchResult peak = findPeakAtScale(prep.bgr, templ.scaleCacheBgrs[i], scale);
+        const MatchResult peak = findPeakAtScale(hay, templ.scaleCacheBgrs[i], scale);
 
         if (peak.found && peak.confidence > best.confidence) {
 
@@ -980,8 +851,6 @@ MatchResult ImageMatcher::findPeakMatchBgr(const cv::Mat& hayBgr,
         }
 
     }
-
-    remapMatchToOriginalHaystack(best, prep.restoreScaleX, prep.restoreScaleY, prep.originalSize);
 
     return best;
 
@@ -1013,9 +882,7 @@ void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
 
 
 
-    const HaystackPrep prep = prepareGrayHaystack(hayGray, options);
-
-    ensureTemplateScaleCache(templ, prep.matchOptions);
+    ensureTemplateScaleCache(templ, options);
 
     for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
 
@@ -1023,7 +890,7 @@ void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
 
         const cv::Mat& needleGray = templ.scaleCacheGrays[i];
 
-        if (!fitsInHaystack(needleGray.size(), prep.gray.size())) {
+        if (!fitsInHaystack(needleGray.size(), hayGray.size())) {
 
             continue;
 
@@ -1033,7 +900,7 @@ void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
 
         cv::Mat correlation;
 
-        cv::matchTemplate(prep.gray, needleGray, correlation, cv::TM_CCOEFF_NORMED);
+        cv::matchTemplate(hayGray, needleGray, correlation, cv::TM_CCOEFF_NORMED);
 
 
 
@@ -1049,7 +916,7 @@ void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
 
         const MatchResult scalePeak =
 
-            makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), prep.gray.size());
+            makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), hayGray.size());
 
         if (scalePeak.found && scalePeak.confidence > outPeak.confidence) {
 
@@ -1065,7 +932,7 @@ void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
 
                 MatchResult result =
 
-                    makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), prep.gray.size());
+                    makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), hayGray.size());
 
                 if (result.found) {
 
@@ -1097,7 +964,7 @@ void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
 
             MatchResult result =
 
-                makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), prep.gray.size());
+                makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), hayGray.size());
 
             if (result.found) {
 
@@ -1129,7 +996,7 @@ void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
 
         match.found = meetsThreshold(match.confidence, options.threshold) &&
 
-                      isWithinBounds(match.location, match.matchedSize, prep.gray.size());
+                      isWithinBounds(match.location, match.matchedSize, hayGray.size());
 
     }
 
@@ -1144,10 +1011,6 @@ void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
                      outMatches.end());
 
     std::sort(outMatches.begin(), outMatches.end(), topLeftBefore);
-
-    remapMatchToOriginalHaystack(outPeak, prep.restoreScaleX, prep.restoreScaleY, prep.originalSize);
-
-    remapMatchesToOriginalHaystack(outMatches, prep.restoreScaleX, prep.restoreScaleY, prep.originalSize);
 
 }
 
@@ -1171,9 +1034,7 @@ std::vector<MatchResult> ImageMatcher::findAllTemplatesGray(const cv::Mat& hayGr
 
 
 
-    const HaystackPrep prep = prepareGrayHaystack(hayGray, options);
-
-    ensureTemplateScaleCache(templ, prep.matchOptions);
+    ensureTemplateScaleCache(templ, options);
 
     for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
 
@@ -1181,7 +1042,7 @@ std::vector<MatchResult> ImageMatcher::findAllTemplatesGray(const cv::Mat& hayGr
 
         std::vector<MatchResult> scaleMatches = collectMatchesAtScale(
 
-            prep.gray, templ.scaleCacheGrays[i], scale, options.threshold, enumerateAll);
+            hayGray, templ.scaleCacheGrays[i], scale, options.threshold, enumerateAll);
 
         allMatches.insert(allMatches.end(), scaleMatches.begin(), scaleMatches.end());
 
@@ -1201,7 +1062,7 @@ std::vector<MatchResult> ImageMatcher::findAllTemplatesGray(const cv::Mat& hayGr
 
         match.found = meetsThreshold(match.confidence, options.threshold) &&
 
-                      isWithinBounds(match.location, match.matchedSize, prep.gray.size());
+                      isWithinBounds(match.location, match.matchedSize, hayGray.size());
 
     }
 
@@ -1216,8 +1077,6 @@ std::vector<MatchResult> ImageMatcher::findAllTemplatesGray(const cv::Mat& hayGr
                      allMatches.end());
 
     std::sort(allMatches.begin(), allMatches.end(), topLeftBefore);
-
-    remapMatchesToOriginalHaystack(allMatches, prep.restoreScaleX, prep.restoreScaleY, prep.originalSize);
 
     return allMatches;
 
@@ -1235,7 +1094,9 @@ std::vector<MatchResult> ImageMatcher::findAllTemplatesBgr(const cv::Mat& hayBgr
 
     std::vector<MatchResult> allMatches;
 
-    if (hayBgr.empty() || templ.empty()) {
+    const cv::Mat hay = toBgr(hayBgr);
+
+    if (hay.empty() || templ.empty()) {
 
         return allMatches;
 
@@ -1243,17 +1104,7 @@ std::vector<MatchResult> ImageMatcher::findAllTemplatesBgr(const cv::Mat& hayBgr
 
 
 
-    const HaystackPrep prep = prepareBgrHaystack(hayBgr, options);
-
-    if (prep.bgr.empty()) {
-
-        return allMatches;
-
-    }
-
-
-
-    ensureTemplateBgrScaleCache(templ, prep.matchOptions);
+    ensureTemplateBgrScaleCache(templ, options);
 
     for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
 
@@ -1261,7 +1112,7 @@ std::vector<MatchResult> ImageMatcher::findAllTemplatesBgr(const cv::Mat& hayBgr
 
         std::vector<MatchResult> scaleMatches = collectMatchesAtScale(
 
-            prep.bgr, templ.scaleCacheBgrs[i], scale, options.threshold, enumerateAll);
+            hay, templ.scaleCacheBgrs[i], scale, options.threshold, enumerateAll);
 
         allMatches.insert(allMatches.end(), scaleMatches.begin(), scaleMatches.end());
 
@@ -1281,7 +1132,7 @@ std::vector<MatchResult> ImageMatcher::findAllTemplatesBgr(const cv::Mat& hayBgr
 
         match.found = meetsThreshold(match.confidence, options.threshold) &&
 
-                      isWithinBounds(match.location, match.matchedSize, prep.bgr.size());
+                      isWithinBounds(match.location, match.matchedSize, hay.size());
 
     }
 
@@ -1296,8 +1147,6 @@ std::vector<MatchResult> ImageMatcher::findAllTemplatesBgr(const cv::Mat& hayBgr
                      allMatches.end());
 
     std::sort(allMatches.begin(), allMatches.end(), topLeftBefore);
-
-    remapMatchesToOriginalHaystack(allMatches, prep.restoreScaleX, prep.restoreScaleY, prep.originalSize);
 
     return allMatches;
 

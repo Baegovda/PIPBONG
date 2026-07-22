@@ -24,8 +24,6 @@ double resolutionScaleFactor(int captureClientWidth,
                              int currentClientWidth,
                              int currentClientHeight);
 
-MatchOptions applyResolutionScale(const MatchOptions& base, double resolutionScale);
-
 MatchOptions matchOptionsForTemplate(const MatchOptions& base,
                                      const std::string& resolvedTemplatePath,
                                      int currentClientWidth,

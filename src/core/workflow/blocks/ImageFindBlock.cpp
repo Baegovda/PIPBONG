@@ -374,6 +374,20 @@ std::pair<int, int> currentTargetClientSize(HWND hwnd) {
     }
     return {0, 0};
 }
+
+std::pair<int, int> currentTargetFrameSize(HWND hwnd) {
+    if (hwnd != nullptr && IsWindow(hwnd)) {
+        const ScreenCapture::WindowBounds bounds = ScreenCapture::physicalRectForWindow(hwnd);
+        if (bounds.valid && bounds.width > 0 && bounds.height > 0) {
+            return {bounds.width, bounds.height};
+        }
+    }
+    const ScreenCapture::ScreenRect frame = ScreenCapture::getTargetWindowScreenRect();
+    if (frame.valid && frame.width > 0 && frame.height > 0) {
+        return {frame.width, frame.height};
+    }
+    return currentTargetClientSize(hwnd);
+}
 #endif
 
 PercentRegion percentRegionFromJson(const nlohmann::json& region) {
@@ -1177,7 +1191,7 @@ std::string imageFindWorkflowScanScaleLabel(const ImageFindBlock& block,
         return {};
     }
 
-    const auto [clientW, clientH] = currentTargetClientSize(nullptr);
+    const auto [clientW, clientH] = currentTargetFrameSize(nullptr);
     const MatchOptions base = block.matchOptions();
     double rangeMin = 1e9;
     double rangeMax = -1e9;
@@ -1192,9 +1206,9 @@ std::string imageFindWorkflowScanScaleLabel(const ImageFindBlock& block,
         const MatchOptions opts = TemplateCaptureMetadata::matchOptionsForTemplate(
             base, resolved, clientW, clientH);
         const double resolutionScale =
-            opts.haystackNormalize ? opts.referenceScale : 1.0;
-        const double minS = resolutionScale * (opts.multiScale ? opts.minScale : 1.0);
-        const double maxS = resolutionScale * (opts.multiScale ? opts.maxScale : 1.0);
+            opts.referenceScale != 1.0 ? opts.referenceScale : 1.0;
+        const double minS = opts.multiScale ? opts.minScale : resolutionScale;
+        const double maxS = opts.multiScale ? opts.maxScale : resolutionScale;
         rangeMin = std::min(rangeMin, minS);
         rangeMax = std::max(rangeMax, maxS);
     }
@@ -1461,7 +1475,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         int missHaystackWidth = 0;
         int missHaystackHeight = 0;
 #ifdef _WIN32
-        const auto [currentClientWidth, currentClientHeight] = currentTargetClientSize(targetWindow);
+        const auto [currentClientWidth, currentClientHeight] = currentTargetFrameSize(targetWindow);
 #else
         const int currentClientWidth = 0;
         const int currentClientHeight = 0;
@@ -1910,7 +1924,7 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
 
     MatchOptions matchOptions = options;
 #ifdef _WIN32
-    const auto [currentClientWidth, currentClientHeight] = currentTargetClientSize(nullptr);
+    const auto [currentClientWidth, currentClientHeight] = currentTargetFrameSize(nullptr);
     matchOptions = TemplateCaptureMetadata::matchOptionsForTemplate(
         options, resolved, currentClientWidth, currentClientHeight);
 #endif
@@ -1988,7 +2002,7 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
 #endif
 
 #ifdef _WIN32
-    const auto [currentClientWidth, currentClientHeight] = currentTargetClientSize(nullptr);
+    const auto [currentClientWidth, currentClientHeight] = currentTargetFrameSize(nullptr);
 #else
     const int currentClientWidth = 0;
     const int currentClientHeight = 0;

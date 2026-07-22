@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.262` (from `project(PIPBONG VERSION 0.8.262)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.263` (from `project(PIPBONG VERSION 0.8.263)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.263] - 2026-07-22
+
+### Changed
+
+- Template resolution compensation uses DWM **frame** size (same coordinate system as BitBlt haystack/ROI), not client rect; capture metadata stores `targetFrameWidth/Height` (`TemplateCaptureMetadata`, `ImageFindEditor`, `ImageFindBlock::currentTargetFrameSize`).
+- When capture vs live frame size differs, auto template-scale search spans ±28% around the estimated scale (13 log steps) instead of haystack warp or ±3% band (`TemplateCaptureMetadata::matchOptionsForTemplate`, `ImageMatcher`).
+
+### Fixed
+
+- Resolution-only scale drift (~1.00 → ~0.62): client-vs-frame mismatch and too-narrow scale band; reverted haystack normalization (v0.8.262) in favor of wide template-scale sweep on raw haystack.
 
 ## [0.8.262] - 2026-07-22
 

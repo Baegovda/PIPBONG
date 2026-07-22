@@ -1067,7 +1067,10 @@ void ImageFindEditor::onCaptureTemplate() {
             }
 
             ScreenCapture::TargetWindowInfo targetInfo;
-            if (ScreenCapture::queryTargetWindowInfo(targetInfo) && targetInfo.clientWidth > 0
+            const ScreenCapture::ScreenRect frame = ScreenCapture::getTargetWindowScreenRect();
+            if (frame.valid && frame.width > 0 && frame.height > 0) {
+                TemplateCaptureMetadata::save(absolutePath.toStdString(), frame.width, frame.height);
+            } else if (ScreenCapture::queryTargetWindowInfo(targetInfo) && targetInfo.clientWidth > 0
                 && targetInfo.clientHeight > 0) {
                 TemplateCaptureMetadata::save(absolutePath.toStdString(),
                                               targetInfo.clientWidth,
