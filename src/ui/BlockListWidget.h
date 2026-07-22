@@ -364,6 +364,10 @@ private:
 
     void finishThresholdDrag(QMouseEvent* mouseEvent);
 
+    void beginThresholdDragInteraction(int blockRow, QMouseEvent* mouseEvent);
+
+    void endThresholdDragInteraction();
+
     void applyColumnLayoutToTable(bool reconcileSlack = false);
     void reconcileSummarySlack();
     void applyPairwiseColumnResize(int rightColumnIndex,
@@ -467,6 +471,13 @@ private:
     int m_thresholdDragBlockRow = -1;
 
     double m_thresholdDragStartValue = 0.85;
+
+    QAbstractItemView::DragDropMode m_savedDragDropModeBeforeThreshold =
+        QAbstractItemView::NoDragDrop;
+
+    bool m_thresholdDragSuspendedRowReorder = false;
+
+    bool m_thresholdDragUsesAppFilter = false;
 
     QVector<ExecutionHighlight> m_rowCompletedHighlight;
 

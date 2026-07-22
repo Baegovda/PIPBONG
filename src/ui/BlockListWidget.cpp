@@ -2146,13 +2146,14 @@ bool BlockListWidget::imageFindScoreColumnAt(const QPoint& viewportPos, int& blo
         return false;
     }
 
-    constexpr int kHorizontalSlack = UiResizeHandle::kDividerHalfWidthPx;
-    const QModelIndex scoreIndex = model()->index(tableRow, kColScore);
-    if (!scoreIndex.isValid()) {
+    if (isColumnHidden(kColScore)) {
         return false;
     }
-    const QRect hitRect = visualRect(scoreIndex).adjusted(-kHorizontalSlack, 0, kHorizontalSlack, 0);
-    if (!hitRect.contains(viewportPos)) {
+
+    constexpr int kHorizontalSlack = UiResizeHandle::kDividerHalfWidthPx;
+    const int scoreLeft = columnViewportPosition(kColScore) - kHorizontalSlack;
+    const int scoreRight = scoreLeft + columnWidth(kColScore) + kHorizontalSlack * 2;
+    if (viewportPos.x() < scoreLeft || viewportPos.x() > scoreRight) {
         return false;
     }
 
@@ -2198,16 +2199,59 @@ void BlockListWidget::updateImageFindThresholdDisplay(int blockRow, double thres
     }
 }
 
-void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
-    const DragAdjustReleaseResult result =
-        dragAdjustFinishRelease(m_thresholdDragMouse, mouseEvent, viewport());
-    if (result == DragAdjustReleaseResult::NotHandled) {
+void BlockListWidget::endThresholdDragInteraction() {
+    if (m_thresholdDragUsesAppFilter) {
+        qApp->removeEventFilter(this);
+        m_thresholdDragUsesAppFilter = false;
+    }
+    if (viewport()->mouseGrabber() == viewport()) {
+        viewport()->releaseMouse();
+    }
+    if (m_thresholdDragSuspendedRowReorder) {
+        setDragDropMode(m_savedDragDropModeBeforeThreshold);
+        m_thresholdDragSuspendedRowReorder = false;
+    }
+}
+
+void BlockListWidget::beginThresholdDragInteraction(int blockRow, QMouseEvent* mouseEvent) {
+    if (!dragAdjustBeginPress(m_thresholdDragMouse, mouseEvent)) {
         return;
     }
+
+    m_thresholdDragBlockRow = blockRow;
+    m_thresholdDragStartValue = blockRow < m_rowImageFindThresholds.size()
+                                    ? m_rowImageFindThresholds[blockRow]
+                                    : 0.85;
+
+    if (!m_thresholdDragSuspendedRowReorder) {
+        m_savedDragDropModeBeforeThreshold = dragDropMode();
+        setDragDropMode(QAbstractItemView::NoDragDrop);
+        m_thresholdDragSuspendedRowReorder = true;
+    }
+    if (!m_thresholdDragUsesAppFilter) {
+        qApp->installEventFilter(this);
+        m_thresholdDragUsesAppFilter = true;
+    }
+    viewport()->grabMouse();
+    viewport()->setCursor(Qt::SizeHorCursor);
+}
+
+void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
+    if (m_thresholdDragBlockRow < 0) {
+        return;
+    }
+
+    const DragAdjustReleaseResult result =
+        dragAdjustFinishRelease(m_thresholdDragMouse, mouseEvent, viewport());
 
     viewport()->unsetCursor();
     const int blockRow = m_thresholdDragBlockRow;
     m_thresholdDragBlockRow = -1;
+    endThresholdDragInteraction();
+
+    if (result == DragAdjustReleaseResult::NotHandled) {
+        return;
+    }
 
     if (blockRow < 0 || blockRow >= m_rowImageFindThresholds.size()) {
         return;
@@ -2221,6 +2265,35 @@ void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
 }
 
 bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == qApp && m_thresholdDragBlockRow >= 0) {
+        switch (event->type()) {
+        case QEvent::MouseMove: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (!dragAdjustContinueMove(m_thresholdDragMouse, mouseEvent, viewport())) {
+                mouseEvent->accept();
+                return true;
+            }
+            const int deltaPx = dragAdjustDeltaPx(m_thresholdDragMouse, mouseEvent);
+            const double step = imageFindThresholdDragStep(mouseEvent->modifiers());
+            const double nextValue = m_thresholdDragStartValue + static_cast<double>(deltaPx) * step;
+            updateImageFindThresholdDisplay(m_thresholdDragBlockRow, nextValue);
+            mouseEvent->accept();
+            return true;
+        }
+        case QEvent::MouseButtonRelease: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (mouseEvent->button() == Qt::LeftButton) {
+                finishThresholdDrag(mouseEvent);
+                mouseEvent->accept();
+                return true;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
     if (m_internalRowDragActive && watched == qApp) {
         switch (event->type()) {
         case QEvent::MouseMove: {
@@ -2343,7 +2416,7 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
         }
     }
 
-    if (watched == viewport() && m_reorderEnabled && !m_loopRegionPickActive) {
+    if (watched == viewport() && !m_loopRegionPickActive) {
         switch (event->type()) {
         case QEvent::MouseButtonPress: {
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
@@ -2351,14 +2424,10 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
             if (!imageFindScoreColumnAt(mouseEvent->pos(), blockRow)) {
                 break;
             }
-            if (!dragAdjustBeginPress(m_thresholdDragMouse, mouseEvent)) {
+            beginThresholdDragInteraction(blockRow, mouseEvent);
+            if (m_thresholdDragBlockRow < 0) {
                 break;
             }
-            m_thresholdDragBlockRow = blockRow;
-            m_thresholdDragStartValue = blockRow < m_rowImageFindThresholds.size()
-                                            ? m_rowImageFindThresholds[blockRow]
-                                            : 0.85;
-            viewport()->setCursor(Qt::SizeHorCursor);
             mouseEvent->accept();
             return true;
         }
@@ -2366,7 +2435,11 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
             if (m_thresholdDragBlockRow >= 0) {
                 if (!dragAdjustContinueMove(m_thresholdDragMouse, mouseEvent, viewport())) {
-                    break;
+                    if (!mouseEvent->buttons().testFlag(Qt::LeftButton)) {
+                        finishThresholdDrag(mouseEvent);
+                    }
+                    mouseEvent->accept();
+                    return true;
                 }
                 const int deltaPx = dragAdjustDeltaPx(m_thresholdDragMouse, mouseEvent);
                 const double step = imageFindThresholdDragStep(mouseEvent->modifiers());
@@ -2378,7 +2451,7 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
             int hoverBlockRow = -1;
             if (imageFindScoreColumnAt(mouseEvent->pos(), hoverBlockRow)) {
                 viewport()->setCursor(Qt::SizeHorCursor);
-            } else {
+            } else if (viewport()->cursor().shape() == Qt::SizeHorCursor) {
                 viewport()->unsetCursor();
             }
             break;
@@ -3439,6 +3512,14 @@ void BlockListWidget::applyActiveRowVisuals(bool autoScrollToActiveRow) {
 
 void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
     Q_UNUSED(supportedActions);
+    if (m_thresholdDragBlockRow >= 0 || m_thresholdDragMouse.pressPending
+        || m_thresholdDragMouse.dragging) {
+        return;
+    }
+    int scoreBlockRow = -1;
+    if (imageFindScoreColumnAt(viewport()->mapFromGlobal(QCursor::pos()), scoreBlockRow)) {
+        return;
+    }
     if (m_internalRowDragActive) {
         clearInternalDragVisuals();
     }
