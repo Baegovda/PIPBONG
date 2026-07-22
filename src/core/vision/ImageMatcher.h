@@ -25,8 +25,13 @@ struct MatchOptions {
     bool multiScale = false;
     double minScale = 0.9;
     double maxScale = 1.1;
-    /// Center scale for matching (default 1.0). Resolution compensation sets this to the live target/client ratio.
+    /// Geometric mean of live/capture client size (display + workflow summary). Matching uses haystackNormalize.
     double referenceScale = 1.0;
+    /// Rescale haystack to template capture client resolution before matchTemplate (template stays native).
+    bool haystackNormalize = false;
+    /// Multiply normalized match coordinates/sizes back to the live haystack (currentClient / captureClient per axis).
+    double haystackRestoreScaleX = 1.0;
+    double haystackRestoreScaleY = 1.0;
     TemplateColorMode templateColorMode = TemplateColorMode::Auto;
 };
 

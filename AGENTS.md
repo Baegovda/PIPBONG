@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.261` (from `project(PIPBONG VERSION 0.8.261)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.262` (from `project(PIPBONG VERSION 0.8.262)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.262] - 2026-07-22
+
+### Changed
+
+- Template matching resolution compensation: haystack is warped to capture client resolution before `matchTemplate` (native template at 1.0×); match coordinates remap to the live haystack. Per-axis scale (not template resize ±3%). Block **멀티 스케일** uses log-spaced template scales in capture space after normalize (`ImageMatcher`, `TemplateCaptureMetadata`, `MatchOptions::haystackNormalize`).
+
+### Fixed
+
+- Resolution-only scale drift (e.g. confidence ~1.00 → ~0.60 when only window size changed): removed forced `multiScale` ±3% template resize for capture metadata compensation (`TemplateCaptureMetadata::matchOptionsForTemplate`).
 
 ## [0.8.261] - 2026-07-22
 

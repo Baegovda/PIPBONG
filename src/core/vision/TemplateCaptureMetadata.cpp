@@ -10,7 +10,6 @@ namespace TemplateCaptureMetadata {
 namespace {
 
 constexpr double kResolutionScaleTolerance = 0.005;
-constexpr double kResolutionBandHalfWidth = 0.03;
 constexpr double kMinMatchScale = 0.1;
 constexpr double kMaxMatchScale = 4.0;
 
@@ -75,27 +74,8 @@ double resolutionScaleFactor(int captureClientWidth,
 }
 
 MatchOptions applyResolutionScale(const MatchOptions& base, double resolutionScale) {
-    if (resolutionScale < kMinMatchScale || resolutionScale > kMaxMatchScale) {
-        return base;
-    }
-    if (std::abs(resolutionScale - 1.0) < kResolutionScaleTolerance) {
-        return base;
-    }
-
-    MatchOptions adjusted = base;
-    adjusted.referenceScale = resolutionScale;
-    if (base.multiScale) {
-        adjusted.minScale = base.minScale * resolutionScale;
-        adjusted.maxScale = base.maxScale * resolutionScale;
-    } else {
-        adjusted.multiScale = true;
-        adjusted.minScale = resolutionScale * (1.0 - kResolutionBandHalfWidth);
-        adjusted.maxScale = resolutionScale * (1.0 + kResolutionBandHalfWidth);
-    }
-
-    adjusted.minScale = std::max(kMinMatchScale, adjusted.minScale);
-    adjusted.maxScale = std::min(kMaxMatchScale, std::max(adjusted.minScale + 0.01, adjusted.maxScale));
-    return adjusted;
+    (void)resolutionScale;
+    return base;
 }
 
 MatchOptions matchOptionsForTemplate(const MatchOptions& base,
@@ -107,11 +87,28 @@ MatchOptions matchOptionsForTemplate(const MatchOptions& base,
         return base;
     }
 
-    const double factor = resolutionScaleFactor(captureSize->width,
-                                                captureSize->height,
-                                                currentClientWidth,
-                                                currentClientHeight);
-    return applyResolutionScale(base, factor);
+    const double scaleX =
+        static_cast<double>(currentClientWidth) / static_cast<double>(captureSize->width);
+    const double scaleY =
+        static_cast<double>(currentClientHeight) / static_cast<double>(captureSize->height);
+    if (scaleX < kMinMatchScale || scaleY < kMinMatchScale || scaleX > kMaxMatchScale
+        || scaleY > kMaxMatchScale) {
+        return base;
+    }
+    if (std::abs(scaleX - 1.0) < kResolutionScaleTolerance
+        && std::abs(scaleY - 1.0) < kResolutionScaleTolerance) {
+        return base;
+    }
+
+    MatchOptions adjusted = base;
+    adjusted.referenceScale = resolutionScaleFactor(captureSize->width,
+                                                    captureSize->height,
+                                                    currentClientWidth,
+                                                    currentClientHeight);
+    adjusted.haystackNormalize = true;
+    adjusted.haystackRestoreScaleX = scaleX;
+    adjusted.haystackRestoreScaleY = scaleY;
+    return adjusted;
 }
 
 } // namespace TemplateCaptureMetadata

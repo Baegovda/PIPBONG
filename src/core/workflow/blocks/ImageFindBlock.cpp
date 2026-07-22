@@ -1191,8 +1191,10 @@ std::string imageFindWorkflowScanScaleLabel(const ImageFindBlock& block,
         const std::string resolved = resolveTemplatePath(path, projectDirectory);
         const MatchOptions opts = TemplateCaptureMetadata::matchOptionsForTemplate(
             base, resolved, clientW, clientH);
-        const double minS = opts.multiScale ? opts.minScale : opts.referenceScale;
-        const double maxS = opts.multiScale ? opts.maxScale : opts.referenceScale;
+        const double resolutionScale =
+            opts.haystackNormalize ? opts.referenceScale : 1.0;
+        const double minS = resolutionScale * (opts.multiScale ? opts.minScale : 1.0);
+        const double maxS = resolutionScale * (opts.multiScale ? opts.maxScale : 1.0);
         rangeMin = std::min(rangeMin, minS);
         rangeMax = std::max(rangeMax, maxS);
     }
