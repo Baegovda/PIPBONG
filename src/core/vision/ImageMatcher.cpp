@@ -356,11 +356,12 @@ std::string scaleCacheKey(const MatchOptions& options) {
 
     if (!options.multiScale) {
 
-        return "1";
+        return std::to_string(options.referenceScale);
 
     }
 
-    return std::to_string(options.minScale) + ":" + std::to_string(options.maxScale);
+    return std::to_string(options.minScale) + ":" + std::to_string(options.maxScale) + ":"
+           + std::to_string(options.referenceScale);
 
 }
 
@@ -736,9 +737,12 @@ std::vector<double> ImageMatcher::scaleFactors(const MatchOptions& options) {
 
     std::vector<double> scales;
 
+    const double centerScale =
+        std::abs(options.referenceScale) > 1e-9 ? options.referenceScale : 1.0;
+
     if (!options.multiScale) {
 
-        scales.push_back(1.0);
+        scales.push_back(centerScale);
 
         return scales;
 
@@ -748,7 +752,7 @@ std::vector<double> ImageMatcher::scaleFactors(const MatchOptions& options) {
 
     appendUniqueScale(scales, options.minScale);
 
-    appendUniqueScale(scales, 1.0);
+    appendUniqueScale(scales, centerScale);
 
     appendUniqueScale(scales, options.maxScale);
 

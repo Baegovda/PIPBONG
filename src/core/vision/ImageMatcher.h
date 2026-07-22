@@ -25,6 +25,8 @@ struct MatchOptions {
     bool multiScale = false;
     double minScale = 0.9;
     double maxScale = 1.1;
+    /// Center scale for matching (default 1.0). Resolution compensation sets this to the live target/client ratio.
+    double referenceScale = 1.0;
     TemplateColorMode templateColorMode = TemplateColorMode::Auto;
 };
 

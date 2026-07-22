@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.251 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.252 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -65,6 +65,7 @@ set(PIPBONG_SOURCES
     src/core/input/HotkeyBinding.cpp
     src/core/vision/ImageMatcher.cpp
     src/core/vision/TemplateCache.cpp
+    src/core/vision/TemplateCaptureMetadata.cpp
     src/core/workflow/BlockFactory.cpp
     src/core/workflow/Workflow.cpp
     src/core/workflow/WorkflowEngine.cpp

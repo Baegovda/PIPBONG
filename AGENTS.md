@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.251` (from `project(PIPBONG VERSION 0.8.251)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.252` (from `project(PIPBONG VERSION 0.8.252)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.252] - 2026-07-22
+
+### Added
+
+- Template capture saves target-window client resolution beside each PNG as `{template}.capture.json`; workflow and match-test matching apply a live resolution ratio to template scale each poll (`TemplateCaptureMetadata`, `ImageFindEditor`, `ImageFindBlock`, `ImageMatcher::referenceScale`).
+
+### Changed
+
+- Workflow block list **동작** summary shows **ROI 전체화면** when no custom search ROI is configured (`ImageFindBlock::listDetailSummary`).
+- Feature library template copy includes optional `.capture.json` resolution sidecar (`FeatureLibraryManager`).
 
 ## [0.8.251] - 2026-07-22
 

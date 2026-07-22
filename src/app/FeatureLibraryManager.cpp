@@ -40,6 +40,18 @@ void copyFileOverwrite(const QString& fromPath, const QString& toPath, bool& out
     outOk = QFile::copy(fromPath, toPath);
 }
 
+void copyTemplateWithMetadata(const QString& srcTemplatePath, const QString& dstTemplatePath, bool& outOk) {
+    copyFileOverwrite(srcTemplatePath, dstTemplatePath, outOk);
+    if (!outOk) {
+        return;
+    }
+    const QString metaSrc = srcTemplatePath + QStringLiteral(".capture.json");
+    if (!QFileInfo(metaSrc).exists()) {
+        return;
+    }
+    copyFileOverwrite(metaSrc, dstTemplatePath + QStringLiteral(".capture.json"), outOk);
+}
+
 int countTemplatesRecursive(const nlohmann::json& j) {
     if (j.is_object()) {
         int count = 0;
@@ -365,7 +377,7 @@ bool FeatureLibraryManager::saveFeatureToLibrary(const Feature& feature,
             continue;
         }
         bool ok = true;
-        copyFileOverwrite(src, dst, ok);
+        copyTemplateWithMetadata(src, dst, ok);
         if (!ok && missingTemplatePaths) {
             missingTemplatePaths->push_back(relPath);
         }
@@ -426,7 +438,7 @@ FeatureLibraryManager::ImportResult FeatureLibraryManager::importEntryToProfile(
             continue;
         }
         bool ok = true;
-        copyFileOverwrite(src, dst, ok);
+        copyTemplateWithMetadata(src, dst, ok);
         if (!ok) {
             res.missingTemplatePaths.push_back(relPath);
         }
@@ -448,7 +460,7 @@ QStringList FeatureLibraryManager::copyFeatureTemplatesBetweenDirectories(
             continue;
         }
         bool ok = true;
-        copyFileOverwrite(src, dst, ok);
+        copyTemplateWithMetadata(src, dst, ok);
         if (!ok) {
             missing.push_back(relPath);
         }

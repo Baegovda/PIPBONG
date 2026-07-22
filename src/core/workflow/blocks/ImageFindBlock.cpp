@@ -4,6 +4,7 @@
 #include "core/input/HotkeyBinding.h"
 #include "core/vision/ImageMatcher.h"
 #include "core/vision/TemplateCache.h"
+#include "core/vision/TemplateCaptureMetadata.h"
 #include "core/workflow/ExecutionContext.h"
 #include "ui/editors/WorkflowMatchFeedbackOverlay.h"
 #include "ui/editors/WorkflowRoiFlashOverlay.h"
@@ -326,6 +327,43 @@ void pruneInvalidWindowPercentRegions(std::vector<PercentRegion>& regions) {
                                  }),
                   regions.end());
 }
+
+std::string imageFindSearchRoiListLabel(SearchArea area,
+                                        const std::vector<PercentRegion>& windowPercentRegions,
+                                        const PercentRegion& screenPercentRegion) {
+    if (area == SearchArea::ScreenPercent && isValidWindowPercentRegion(screenPercentRegion)) {
+        return "ROI " + std::to_string(static_cast<int>(screenPercentRegion.x)) + ","
+               + std::to_string(static_cast<int>(screenPercentRegion.y));
+    }
+
+    if (area == SearchArea::CustomRegion || !windowPercentRegions.empty()) {
+        const int roiCount = static_cast<int>(windowPercentRegions.size());
+        if (roiCount > 1) {
+            return "ROI×" + std::to_string(roiCount);
+        }
+        if (roiCount == 1 && isValidWindowPercentRegion(windowPercentRegions.front())) {
+            const PercentRegion& region = windowPercentRegions.front();
+            return "ROI " + std::to_string(static_cast<int>(region.x)) + ","
+                   + std::to_string(static_cast<int>(region.y));
+        }
+    }
+
+    return "ROI 전체화면";
+}
+
+#ifdef _WIN32
+std::pair<int, int> currentTargetClientSize(HWND hwnd) {
+    ScreenCapture::TargetWindowInfo info;
+    if (hwnd != nullptr && ScreenCapture::queryWindowInfo(hwnd, info) && info.clientWidth > 0
+        && info.clientHeight > 0) {
+        return {info.clientWidth, info.clientHeight};
+    }
+    if (ScreenCapture::queryTargetWindowInfo(info) && info.clientWidth > 0 && info.clientHeight > 0) {
+        return {info.clientWidth, info.clientHeight};
+    }
+    return {0, 0};
+}
+#endif
 
 PercentRegion percentRegionFromJson(const nlohmann::json& region) {
     PercentRegion out;
@@ -1065,20 +1103,7 @@ std::string ImageFindBlock::summary() const {
 std::string ImageFindBlock::listDetailSummary() const {
     std::vector<std::string> parts;
 
-    if (searchArea == SearchArea::FullScreen) {
-        parts.push_back("전체");
-    } else if (searchArea == SearchArea::CustomRegion) {
-        const int roiCount = static_cast<int>(customRegionsWindowPercent.size());
-        if (roiCount > 1) {
-            parts.push_back("ROI×" + std::to_string(roiCount));
-        } else if (!customRegionsWindowPercent.empty()) {
-            const PercentRegion& region = customRegionsWindowPercent.front();
-            parts.push_back("ROI " + std::to_string(static_cast<int>(region.x)) + ","
-                            + std::to_string(static_cast<int>(region.y)));
-        } else {
-            parts.push_back("ROI");
-        }
-    }
+    parts.push_back(imageFindSearchRoiListLabel(searchArea, customRegionsWindowPercent, percentRegion));
 
     const int templateCount = static_cast<int>(templatePaths.size());
     if (templateCount > 1) {
@@ -1303,6 +1328,12 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         CaptureRegion missReportRegion = pollRegions.front();
         int missHaystackWidth = 0;
         int missHaystackHeight = 0;
+#ifdef _WIN32
+        const auto [currentClientWidth, currentClientHeight] = currentTargetClientSize(targetWindow);
+#else
+        const int currentClientWidth = 0;
+        const int currentClientHeight = 0;
+#endif
 
         for (const CaptureRegion& activeRegion : pollRegions) {
             missReportRegion = activeRegion;
@@ -1345,8 +1376,11 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                         result.imageFindPollAttempts = pollAttemptCount;
                         return result;
                     }
+                    const std::string resolvedTemplatePath = ctx.resolvePath(relativePaths[index]);
+                    const MatchOptions templateOptions = TemplateCaptureMetadata::matchOptionsForTemplate(
+                        options, resolvedTemplatePath, currentClientWidth, currentClientHeight);
                     const ImageFindSelection selection = trySelectImageFindMatch(
-                        haystack, hayGray, *templates[index], options, ctx, runtimeSearchArea, activeRegion, runtimePercentRegion);
+                        haystack, hayGray, *templates[index], templateOptions, ctx, runtimeSearchArea, activeRegion, runtimePercentRegion);
                     if (selection.ok) {
                         accumulateMatchWork();
                         maybeRememberMultiMatchPositions(ctx,
@@ -1354,7 +1388,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                                                          haystack,
                                                          hayGray,
                                                          *templates[index],
-                                                         options,
+                                                         templateOptions,
                                                          runtimeSearchArea,
                                                          activeRegion,
                                                          runtimePercentRegion,
@@ -1391,9 +1425,19 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             std::vector<ImageFindSelection> selections;
             selections.reserve(templates.size());
             bool allMatched = true;
-            for (const std::shared_ptr<PreparedTemplate>& templ : templates) {
+            for (size_t index = 0; index < templates.size(); ++index) {
+                const std::string resolvedTemplatePath = ctx.resolvePath(relativePaths[index]);
+                const MatchOptions templateOptions = TemplateCaptureMetadata::matchOptionsForTemplate(
+                    options, resolvedTemplatePath, currentClientWidth, currentClientHeight);
                 const ImageFindSelection selection = trySelectImageFindMatch(
-                    haystack, hayGray, *templ, options, ctx, runtimeSearchArea, activeRegion, runtimePercentRegion);
+                    haystack,
+                    hayGray,
+                    *templates[index],
+                    templateOptions,
+                    ctx,
+                    runtimeSearchArea,
+                    activeRegion,
+                    runtimePercentRegion);
                 selections.push_back(selection);
                 if (!selection.ok) {
                     allMatched = false;
@@ -1710,6 +1754,11 @@ ImageFindMatchTestResult ImageFindBlock::testMatch(SearchArea searchArea,
     }
 
     MatchOptions matchOptions = options;
+#ifdef _WIN32
+    const auto [currentClientWidth, currentClientHeight] = currentTargetClientSize(nullptr);
+    matchOptions = TemplateCaptureMetadata::matchOptionsForTemplate(
+        options, resolved, currentClientWidth, currentClientHeight);
+#endif
     const cv::Mat hayGray = ImageMatcher::toGrayscale(result.haystack);
     MatchResult peak = findImageFindPeakMatch(result.haystack, hayGray, templ, matchOptions);
     result.matches = findImageFindAllMatches(result.haystack, hayGray, templ, matchOptions, true);
@@ -1783,7 +1832,13 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
     ScreenCapture::activateTargetWindow();
 #endif
 
-    MatchOptions matchOptions = options;
+#ifdef _WIN32
+    const auto [currentClientWidth, currentClientHeight] = currentTargetClientSize(nullptr);
+#else
+    const int currentClientWidth = 0;
+    const int currentClientHeight = 0;
+#endif
+
     MatchResult bestPeak;
     bool capturedAnyHaystack = false;
     const bool multiCustomRoi =
@@ -1811,13 +1866,15 @@ ImageFindMatchTestResult ImageFindBlock::testMatchTemplates(SearchArea searchAre
             if (result.needle.empty()) {
                 result.needle = templ.bgr;
             }
+            const MatchOptions templateOptions = TemplateCaptureMetadata::matchOptionsForTemplate(
+                options, resolved, currentClientWidth, currentClientHeight);
             std::vector<MatchResult> templateMatches =
-                findImageFindAllMatches(haystack, hayGray, templ, matchOptions, true);
-            MatchResult peak = findImageFindPeakMatch(haystack, hayGray, templ, matchOptions);
+                findImageFindAllMatches(haystack, hayGray, templ, templateOptions, true);
+            MatchResult peak = findImageFindPeakMatch(haystack, hayGray, templ, templateOptions);
             const bool requireGrayscaleHaystack =
-                ImageMatcher::requiresGrayscaleHaystackRegion(matchOptions.templateColorMode, templ);
+                ImageMatcher::requiresGrayscaleHaystackRegion(templateOptions.templateColorMode, templ);
             const bool requireColorHaystack =
-                ImageMatcher::requiresColorHaystackRegion(matchOptions.templateColorMode, templ);
+                ImageMatcher::requiresColorHaystackRegion(templateOptions.templateColorMode, templ);
             applyTemplateColorModeHaystackFilter(haystack,
                                                  requireGrayscaleHaystack,
                                                  requireColorHaystack,

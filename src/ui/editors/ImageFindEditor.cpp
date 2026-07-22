@@ -5,6 +5,7 @@
 #include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/editors/ImageFindPollIntervalPrefs.h"
 #include "core/capture/ScreenCapture.h"
+#include "core/vision/TemplateCaptureMetadata.h"
 #include "core/input/HotkeyBinding.h"
 #include "ui/editors/CaptureConfirmDialog.h"
 #include "ui/editors/MatchTestOverlay.h"
@@ -1018,6 +1019,14 @@ void ImageFindEditor::onCaptureTemplate() {
                 QMessageBox::warning(self.data(), tr("템플릿 캡처"),
                                      tr("템플릿 이미지 저장에 실패했습니다."));
                 return;
+            }
+
+            ScreenCapture::TargetWindowInfo targetInfo;
+            if (ScreenCapture::queryTargetWindowInfo(targetInfo) && targetInfo.clientWidth > 0
+                && targetInfo.clientHeight > 0) {
+                TemplateCaptureMetadata::save(absolutePath.toStdString(),
+                                              targetInfo.clientWidth,
+                                              targetInfo.clientHeight);
             }
 
             self->addTemplatePath(QDir(self->m_projectDirectory).relativeFilePath(absolutePath));
