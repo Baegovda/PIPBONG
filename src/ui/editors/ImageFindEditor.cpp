@@ -348,6 +348,15 @@ void ImageFindEditor::setupUi() {
     matchForm->addRow(tr("임계값"), m_thresholdSpin);
     matchForm->addRow(tr("탐지 재시도"), pollIntervalRow);
     matchForm->addRow(tr("템플릿 색상"), m_templateColorModeCombo);
+    connect(m_templateColorModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int) {
+                if (!m_block || !m_templateColorModeCombo) {
+                    return;
+                }
+                m_block->templateColorMode = static_cast<TemplateColorMode>(
+                    m_templateColorModeCombo->currentData().toInt());
+                refreshTemplateList();
+            });
 
     m_roiCorrectionCheck = new QCheckBox(tr("ROI 보정"), this);
     m_roiCorrectionCheck->setToolTip(
@@ -450,41 +459,34 @@ void ImageFindEditor::setupUi() {
 
     m_templateList = new QListWidget(this);
     m_templateList->setMinimumHeight(96);
-    m_templateList->setMaximumHeight(140);
-    m_templateList->setMinimumWidth(168);
+    m_templateList->setMinimumWidth(148);
     m_templateList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_templateList->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    m_templateList->setToolTip(tr("템플릿 목록입니다. 항목을 선택하면 오른쪽 미리보기가 갱신됩니다."));
+    m_templateList->setToolTip(
+        tr("템플릿 목록 (#번호·색상모드·닉네임). F2로 닉네임을 바꿀 수 있습니다."));
+    m_templateList->installEventFilter(this);
 
     m_templatePreviewLabel = new QLabel(this);
-    m_templatePreviewLabel->setMinimumSize(120, 90);
-    m_templatePreviewLabel->setMaximumSize(140, 105);
+    m_templatePreviewLabel->setMinimumSize(132, 88);
+    m_templatePreviewLabel->setMaximumSize(148, 112);
     m_templatePreviewLabel->setAlignment(Qt::AlignCenter);
     m_templatePreviewLabel->setFrameShape(QFrame::Box);
     m_templatePreviewLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
-    m_templateSizeLabel = new HintLabel(tr("템플릿: —"), this);
+    m_templateSizeLabel = new HintLabel(tr("—"), this);
     m_templateSizeLabel->setAlignment(Qt::AlignCenter);
 
-    m_templateCaptureMetaLabel = new HintLabel(tr("캡처 클라: —"), this);
-    m_templateCaptureMetaLabel->setAlignment(Qt::AlignCenter);
-    m_templateCaptureMetaLabel->setWordWrap(true);
-    m_templateCaptureMetaLabel->setMaximumWidth(160);
-
-    m_templateCurrentClientLabel = new HintLabel(tr("현재 클라: —"), this);
-    m_templateCurrentClientLabel->setAlignment(Qt::AlignCenter);
-
-    m_templateMatchScaleLabel = new HintLabel(tr("탐색 스케일: —"), this);
-    m_templateMatchScaleLabel->setAlignment(Qt::AlignCenter);
+    m_templateResolutionLabel = new HintLabel(tr("—"), this);
+    m_templateResolutionLabel->setAlignment(Qt::AlignCenter);
+    m_templateResolutionLabel->setWordWrap(true);
+    m_templateResolutionLabel->setMaximumWidth(148);
 
     auto* previewColumn = new QVBoxLayout();
-    previewColumn->setSpacing(2);
+    previewColumn->setSpacing(3);
     previewColumn->setContentsMargins(0, 0, 0, 0);
     previewColumn->addWidget(m_templatePreviewLabel, 0, Qt::AlignHCenter);
     previewColumn->addWidget(m_templateSizeLabel, 0, Qt::AlignHCenter);
-    previewColumn->addWidget(m_templateCaptureMetaLabel, 0, Qt::AlignHCenter);
-    previewColumn->addWidget(m_templateCurrentClientLabel, 0, Qt::AlignHCenter);
-    previewColumn->addWidget(m_templateMatchScaleLabel, 0, Qt::AlignHCenter);
+    previewColumn->addWidget(m_templateResolutionLabel, 0, Qt::AlignHCenter);
     previewColumn->addStretch(1);
 
     auto* templateContent = new QHBoxLayout();
@@ -608,6 +610,7 @@ void ImageFindEditor::setupUi() {
         }
         updatePreview();
     });
+    connect(m_templateList, &QListWidget::itemChanged, this, &ImageFindEditor::onTemplateItemChanged);
     connect(m_pickRoiButton, &QPushButton::clicked, this, &ImageFindEditor::onPickRoi);
     connect(m_removeRoiButton, &QPushButton::clicked, this, &ImageFindEditor::onRemoveRoi);
     connect(m_roiList, &QListWidget::currentRowChanged, this, [this](int row) {
@@ -627,7 +630,7 @@ void ImageFindEditor::setupUi() {
     });
 
     m_resolutionRefreshTimer = new QTimer(this);
-    m_resolutionRefreshTimer->setInterval(500);
+    m_resolutionRefreshTimer->setInterval(200);
     connect(m_resolutionRefreshTimer, &QTimer::timeout, this, &ImageFindEditor::updateCaptureResolutionInfo);
     refreshTemplateList();
     refreshRoiList();
@@ -678,6 +681,7 @@ void ImageFindEditor::syncUiToBlockValues() {
         }
     }
     syncBlockTemplatePathsFromList();
+    m_block->pruneTemplateLabels();
     syncBlockCustomRegionsFromList();
 }
 
@@ -718,18 +722,22 @@ void ImageFindEditor::refreshTemplateList() {
     }
 
     const QString selectedPath = selectedTemplateRelativePath();
+    m_templateListRefreshing = true;
     m_templateList->blockSignals(true);
     m_templateList->clear();
+    int index = 0;
     for (const std::string& path : m_block->templatePaths) {
         if (path.empty()) {
             continue;
         }
+        ++index;
         const QString relativePath = QString::fromStdString(path);
         const QString absolutePath = QFileInfo(relativePath).isAbsolute()
                                          ? relativePath
                                          : QDir(m_projectDirectory).filePath(relativePath);
-        const QFileInfo fileInfo(absolutePath);
-        auto* item = new QListWidgetItem(fileInfo.fileName(), m_templateList);
+        const QString label =
+            QString::fromStdString(m_block->templateListEntryLabel(index, path));
+        auto* item = new QListWidgetItem(label, m_templateList);
         item->setData(Qt::UserRole, relativePath);
         item->setToolTip(relativePath);
         QPixmap thumb(absolutePath);
@@ -748,6 +756,7 @@ void ImageFindEditor::refreshTemplateList() {
         m_templateList->setCurrentRow(0);
     }
     m_templateList->blockSignals(false);
+    m_templateListRefreshing = false;
     if (m_removeTemplateButton) {
         m_removeTemplateButton->setEnabled(m_templateList->currentRow() >= 0);
     }
@@ -1054,8 +1063,15 @@ void ImageFindEditor::onCaptureTemplate() {
 }
 
 void ImageFindEditor::onRemoveTemplate() {
-    if (!m_templateList || m_templateList->currentRow() < 0) {
+    if (!m_templateList || m_templateList->currentRow() < 0 || !m_block) {
         return;
+    }
+    const QListWidgetItem* item = m_templateList->currentItem();
+    if (item) {
+        const QString path = item->data(Qt::UserRole).toString();
+        if (!path.isEmpty()) {
+            m_block->templateLabels.erase(path.toStdString());
+        }
     }
     delete m_templateList->takeItem(m_templateList->currentRow());
     syncBlockTemplatePathsFromList();
@@ -1267,65 +1283,121 @@ void ImageFindEditor::updatePreview() {
         pixmap.scaled(kPreviewSlot, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     if (m_templateSizeLabel) {
         m_templateSizeLabel->setText(
-            tr("템플릿: %1 × %2 px").arg(pixmap.width()).arg(pixmap.height()));
+            tr("%1×%2 px").arg(pixmap.width()).arg(pixmap.height()));
     }
     updateCaptureResolutionInfo();
+}
+
+void ImageFindEditor::setResolutionTrackingActive(bool active) {
+    if (!m_resolutionRefreshTimer) {
+        return;
+    }
+    if (active) {
+        if (!m_resolutionRefreshTimer->isActive()) {
+            m_resolutionRefreshTimer->start();
+        }
+        updateCaptureResolutionInfo();
+    } else {
+        m_resolutionRefreshTimer->stop();
+    }
+}
+
+void ImageFindEditor::startTemplateNicknameEdit() {
+    if (!m_templateList || !m_block || m_templateNicknameEditRow >= 0) {
+        return;
+    }
+    QListWidgetItem* item = m_templateList->currentItem();
+    if (!item) {
+        return;
+    }
+    const int row = m_templateList->currentRow();
+    const QString path = item->data(Qt::UserRole).toString();
+    QString nickname;
+    const auto it = m_block->templateLabels.find(path.toStdString());
+    if (it != m_block->templateLabels.end()) {
+        nickname = QString::fromStdString(it->second);
+    }
+
+    m_templateNicknameEditRow = row;
+    m_templateRenameHotkeyGate = std::make_unique<FeatureHotkeyGateScope>();
+    m_templateList->setFocus(Qt::ShortcutFocusReason);
+    item->setFlags(item->flags() | Qt::ItemIsEditable);
+    item->setText(nickname);
+    m_templateList->editItem(item);
+}
+
+void ImageFindEditor::onTemplateItemChanged(QListWidgetItem* item) {
+    if (!m_block || !m_templateList || m_templateListRefreshing || m_templateNicknameEditRow < 0
+        || !item) {
+        return;
+    }
+    const int row = m_templateList->row(item);
+    if (row != m_templateNicknameEditRow) {
+        return;
+    }
+
+    const QString path = item->data(Qt::UserRole).toString();
+    const QString nickname = item->text().trimmed();
+    if (nickname.isEmpty()) {
+        m_block->templateLabels.erase(path.toStdString());
+    } else {
+        m_block->templateLabels[path.toStdString()] = nickname.toStdString();
+    }
+
+    m_templateNicknameEditRow = -1;
+    m_templateRenameHotkeyGate.reset();
+    item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+    refreshTemplateList();
+    apply();
 }
 
 void ImageFindEditor::updateCaptureResolutionInfo() {
     const QString absolute = selectedTemplateAbsolutePath();
 
-    if (m_templateCaptureMetaLabel) {
+    if (m_templateResolutionLabel) {
         if (absolute.isEmpty()) {
-            m_templateCaptureMetaLabel->setText(tr("캡처 클라: —"));
+            m_templateResolutionLabel->setText(tr("—"));
+            m_templateResolutionLabel->setToolTip(QString());
         } else {
             const std::string absolutePath = absolute.toStdString();
-            const QString metaRelative =
-                QDir(m_projectDirectory).relativeFilePath(QString::fromStdString(
-                    TemplateCaptureMetadata::metadataPathForTemplate(absolutePath)));
             const std::optional<TemplateCaptureMetadata::ClientSize> captureSize =
                 TemplateCaptureMetadata::load(absolutePath);
-            if (captureSize) {
-                m_templateCaptureMetaLabel->setText(
-                    tr("캡처 당시 클라: %1 × %2\n저장: %3")
-                        .arg(captureSize->width)
-                        .arg(captureSize->height)
-                        .arg(metaRelative));
-            } else {
-                m_templateCaptureMetaLabel->setText(
-                    tr("캡처 당시 클라: — (메타 없음)\n저장: %1").arg(metaRelative));
-            }
-        }
-    }
+            const QString metaPath =
+                QDir(m_projectDirectory).relativeFilePath(QString::fromStdString(
+                    TemplateCaptureMetadata::metadataPathForTemplate(absolutePath)));
 
-    ScreenCapture::invalidateTargetWindowCache();
-    ScreenCapture::TargetWindowInfo targetInfo;
-    const bool hasTarget = ScreenCapture::queryTargetWindowInfo(targetInfo) && targetInfo.clientWidth > 0
-                           && targetInfo.clientHeight > 0;
+            int currentClientWidth = 0;
+            int currentClientHeight = 0;
+#ifdef _WIN32
+            const bool hasTarget =
+                ScreenCapture::queryLiveTargetClientSize(currentClientWidth, currentClientHeight);
+#else
+            const bool hasTarget = false;
+#endif
 
-    if (m_templateCurrentClientLabel) {
-        m_templateCurrentClientLabel->setText(
-            hasTarget ? tr("현재 클라: %1 × %2").arg(targetInfo.clientWidth).arg(targetInfo.clientHeight)
-                      : tr("현재 클라: — (타겟 창 없음)"));
-    }
-
-    if (m_templateMatchScaleLabel) {
-        if (absolute.isEmpty() || !hasTarget) {
-            m_templateMatchScaleLabel->setText(tr("탐색 스케일: —"));
-        } else {
-            const std::optional<TemplateCaptureMetadata::ClientSize> captureSize =
-                TemplateCaptureMetadata::load(absolute.toStdString());
             if (!captureSize) {
-                m_templateMatchScaleLabel->setText(tr("탐색 스케일: 100% (메타 없음)"));
+                m_templateResolutionLabel->setText(
+                    hasTarget ? tr("현재 %1×%2").arg(currentClientWidth).arg(currentClientHeight)
+                              : tr("메타 없음"));
+            } else if (!hasTarget) {
+                m_templateResolutionLabel->setText(
+                    tr("캡처 %1×%2").arg(captureSize->width).arg(captureSize->height));
             } else {
                 const double factor = TemplateCaptureMetadata::resolutionScaleFactor(
                     captureSize->width,
                     captureSize->height,
-                    targetInfo.clientWidth,
-                    targetInfo.clientHeight);
-                m_templateMatchScaleLabel->setText(
-                    tr("탐색 스케일: %1%").arg(qRound(factor * 100.0)));
+                    currentClientWidth,
+                    currentClientHeight);
+                m_templateResolutionLabel->setText(
+                    tr("캡처 %1×%2 → %3×%4 (%5%)")
+                        .arg(captureSize->width)
+                        .arg(captureSize->height)
+                        .arg(currentClientWidth)
+                        .arg(currentClientHeight)
+                        .arg(qRound(factor * 100.0)));
             }
+            m_templateResolutionLabel->setToolTip(
+                tr("캡처 메타: %1").arg(metaPath));
         }
     }
 }
@@ -1343,16 +1415,11 @@ void ImageFindEditor::showEvent(QShowEvent* event) {
     if (isTemplateCaptureHotkeyHookActive()) {
         showRoiPreviewOverlay(true);
     }
-    if (m_resolutionRefreshTimer) {
-        m_resolutionRefreshTimer->start();
-    }
-    updateCaptureResolutionInfo();
+    setResolutionTrackingActive(isTemplateCaptureHotkeyHookActive());
 }
 
 void ImageFindEditor::hideEvent(QHideEvent* event) {
-    if (m_resolutionRefreshTimer) {
-        m_resolutionRefreshTimer->stop();
-    }
+    setResolutionTrackingActive(false);
     stopTemplateHotkeyCapture();
     syncTemplateCaptureHotkeyHook();
     dismissRoiPreviewOverlay();
@@ -1452,6 +1519,13 @@ void ImageFindEditor::applyTemplateHotkeyCapture(int virtualKey, Qt::KeyboardMod
 }
 
 bool ImageFindEditor::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == m_templateList && event->type() == QEvent::KeyPress) {
+        const auto* keyEvent = static_cast<QKeyEvent*>(event);
+        if (keyEvent->key() == Qt::Key_F2) {
+            startTemplateNicknameEdit();
+            return true;
+        }
+    }
     if (watched == m_templateCaptureHotkeyLabel && event->type() == QEvent::MouseButtonPress) {
         startTemplateHotkeyCapture();
         return true;
@@ -1471,6 +1545,11 @@ void ImageFindEditor::keyPressEvent(QKeyEvent* event) {
 #else
         (void)event;
 #endif
+    }
+    if (event->key() == Qt::Key_F2 && m_templateList && m_templateList->hasFocus()) {
+        startTemplateNicknameEdit();
+        event->accept();
+        return;
     }
     QDialog::keyPressEvent(event);
 }

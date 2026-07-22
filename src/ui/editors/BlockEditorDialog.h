@@ -18,6 +18,7 @@
 class QButtonGroup;
 class QLabel;
 class QCloseEvent;
+class QHideEvent;
 class QShowEvent;
 class QStackedWidget;
 class ClickEditor;
@@ -50,9 +51,11 @@ private:
     void onTypeSelected(BlockType newType);
     void fitToCurrentPage();
     void dismissCaptureOverlays();
+    void syncImageFindResolutionTracking();
 
 protected:
     void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     void reject() override;
 

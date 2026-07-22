@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.254` (from `project(PIPBONG VERSION 0.8.254)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.255` (from `project(PIPBONG VERSION 0.8.255)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.255] - 2026-07-22
+
+### Added
+
+- ImageFind template list shows `#N·자동|흑백|컬러` labels instead of filenames; optional per-template nicknames via F2 inline edit, persisted as JSON `templateLabels` (`ImageFindBlock`, `ImageFindEditor`).
+- Workflow block list **요약** column includes template nicknames/numbered labels via `ImageFindBlock::listDetailSummary`.
+
+### Changed
+
+- ImageFind thumbnail metadata compacted to two lines (`WxH px`, `캡처 → 현재 (scale%)`); `.capture.json` path moved to tooltip (`ImageFindEditor`).
+- Live target client size polling uses `ScreenCapture::queryLiveTargetClientSize` (foreground title match + DWM fallback) at 200 ms while the block editor is open (`BlockEditorDialog`, `ImageFindEditor`).
 
 ## [0.8.254] - 2026-07-22
 

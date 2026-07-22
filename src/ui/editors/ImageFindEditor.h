@@ -2,6 +2,7 @@
 
 
 
+#include "app/FeatureHotkeyGate.h"
 #include "app/PointerFeedbackSettings.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
 
@@ -12,6 +13,8 @@
 
 #include <QDialog>
 
+#include <memory>
+
 
 
 class DragAdjustDoubleSpinBox;
@@ -21,6 +24,8 @@ class DragAdjustSpinBox;
 class QLabel;
 
 class QListWidget;
+
+class QListWidgetItem;
 
 class QPushButton;
 
@@ -74,6 +79,8 @@ public:
 
     void refreshTemplateCaptureHotkeyHook();
 
+    void setResolutionTrackingActive(bool active);
+
 
 
 protected:
@@ -108,6 +115,8 @@ private slots:
 
     void updateCaptureResolutionInfo();
 
+    void onTemplateItemChanged(QListWidgetItem* item);
+
     void triggerTemplateCaptureFromHotkey();
 
 
@@ -125,6 +134,8 @@ private:
     void addTemplatePath(const QString& relativePath);
 
     void refreshTemplateList();
+
+    void startTemplateNicknameEdit();
 
     void syncBlockTemplatePathsFromList();
 
@@ -208,9 +219,16 @@ private:
 
     AnimatedTwoWaySwitch* m_matchModeSwitch = nullptr;
 
-    QListWidget* m_templateList = nullptr;
+    QLabel* m_templateSizeLabel = nullptr;
 
-    QPushButton* m_removeTemplateButton = nullptr;
+    HintLabel* m_templateResolutionLabel = nullptr;
+
+    QTimer* m_resolutionRefreshTimer = nullptr;
+
+    QListWidget* m_templateList = nullptr;
+    bool m_templateListRefreshing = false;
+    int m_templateNicknameEditRow = -1;
+    std::unique_ptr<FeatureHotkeyGateScope> m_templateRenameHotkeyGate;
 
     QPushButton* m_pickRoiButton = nullptr;
 
@@ -218,19 +236,11 @@ private:
 
     QPushButton* m_removeRoiButton = nullptr;
 
+    QPushButton* m_roiPreviewButton = nullptr;
+
     QLabel* m_templatePreviewLabel = nullptr;
 
-    QLabel* m_templateSizeLabel = nullptr;
-
-    HintLabel* m_templateCaptureMetaLabel = nullptr;
-
-    HintLabel* m_templateCurrentClientLabel = nullptr;
-
-    HintLabel* m_templateMatchScaleLabel = nullptr;
-
-    QTimer* m_resolutionRefreshTimer = nullptr;
-
-    QPushButton* m_roiPreviewButton = nullptr;
+    QPushButton* m_removeTemplateButton = nullptr;
 
     QPushButton* m_matchTestButton = nullptr;
 

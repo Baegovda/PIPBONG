@@ -5,8 +5,9 @@
 #include "core/capture/ScreenCapture.h"
 #include "core/vision/ImageMatcher.h"
 
-#include <optional>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,8 @@ int snapRoiCorrectionExpandPercent(int percent);
 class ImageFindBlock : public Block {
 public:
     std::vector<std::string> templatePaths;
+    /// Optional display nicknames keyed by template relative path (JSON `templateLabels`).
+    std::map<std::string, std::string> templateLabels;
     ImageFindTemplateMatchMode templateMatchMode = ImageFindTemplateMatchMode::Any;
     TemplateColorMode templateColorMode = TemplateColorMode::Auto;
     double threshold = 0.85;
@@ -73,6 +76,9 @@ public:
     std::optional<ClickPointerFeedbackSettings> matchPointerFeedback;
 
     bool hasTemplates() const;
+    void pruneTemplateLabels();
+    /// e.g. `#1·자동` or `#2·컬러·상점` (1-based index).
+    std::string templateListEntryLabel(int oneBasedIndex, const std::string& path) const;
     bool hasCustomMatchPointerFeedback() const { return matchPointerFeedback.has_value(); }
     const ClickPointerFeedbackSettings& customMatchPointerFeedback() const {
         return *matchPointerFeedback;

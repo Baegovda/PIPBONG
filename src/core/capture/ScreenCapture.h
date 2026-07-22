@@ -141,6 +141,8 @@ public:
 
     /// Fills info for the currently resolved target window (`findTargetWindow`).
     static bool queryTargetWindowInfo(TargetWindowInfo& out);
+    /// Re-resolves the target HWND and returns live client size (DWM bounds fallback).
+    static bool queryLiveTargetClientSize(int& outWidth, int& outHeight);
     /// Fills info for a specific top-level window handle.
     static bool queryWindowInfo(HWND hwnd, TargetWindowInfo& out);
 

@@ -21,6 +21,7 @@
 #include <QAbstractButton>
 #include <QButtonGroup>
 #include <QCloseEvent>
+#include <QHideEvent>
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -190,7 +191,17 @@ void BlockEditorDialog::setupUi() {
         if (m_clickEditor) {
             m_clickEditor->refreshClickCursorHotkeyHook();
         }
+        syncImageFindResolutionTracking();
     });
+}
+
+void BlockEditorDialog::syncImageFindResolutionTracking() {
+    if (!m_imageFindEditor) {
+        return;
+    }
+    const bool active =
+        isVisible() && m_stack && m_stack->currentWidget() == m_imageFindEditor;
+    m_imageFindEditor->setResolutionTrackingActive(active);
 }
 
 void BlockEditorDialog::setupTypeButtons(QHBoxLayout* row) {
@@ -297,6 +308,14 @@ void BlockEditorDialog::showEvent(QShowEvent* event) {
     if (m_clickEditor) {
         m_clickEditor->refreshClickCursorHotkeyHook();
     }
+    syncImageFindResolutionTracking();
+}
+
+void BlockEditorDialog::hideEvent(QHideEvent* event) {
+    if (m_imageFindEditor) {
+        m_imageFindEditor->setResolutionTrackingActive(false);
+    }
+    QDialog::hideEvent(event);
 }
 
 std::unique_ptr<Block> BlockEditorDialog::takeBlock() {
@@ -316,6 +335,9 @@ void BlockEditorDialog::reject() {
 }
 
 void BlockEditorDialog::closeEvent(QCloseEvent* event) {
+    if (m_imageFindEditor) {
+        m_imageFindEditor->setResolutionTrackingActive(false);
+    }
     dismissCaptureOverlays();
     QDialog::closeEvent(event);
 }

@@ -353,14 +353,21 @@ std::string imageFindSearchRoiListLabel(SearchArea area,
 
 #ifdef _WIN32
 std::pair<int, int> currentTargetClientSize(HWND hwnd) {
-    ScreenCapture::TargetWindowInfo info;
-    if (hwnd != nullptr && IsWindow(hwnd) && ScreenCapture::queryWindowInfo(hwnd, info)
-        && info.clientWidth > 0 && info.clientHeight > 0) {
-        return {info.clientWidth, info.clientHeight};
+    int width = 0;
+    int height = 0;
+    if (hwnd != nullptr && IsWindow(hwnd)) {
+        ScreenCapture::TargetWindowInfo info;
+        if (ScreenCapture::queryWindowInfo(hwnd, info)) {
+            if (info.clientWidth > 0 && info.clientHeight > 0) {
+                return {info.clientWidth, info.clientHeight};
+            }
+            if (info.width > 0 && info.height > 0) {
+                return {info.width, info.height};
+            }
+        }
     }
-    ScreenCapture::invalidateTargetWindowCache();
-    if (ScreenCapture::queryTargetWindowInfo(info) && info.clientWidth > 0 && info.clientHeight > 0) {
-        return {info.clientWidth, info.clientHeight};
+    if (ScreenCapture::queryLiveTargetClientSize(width, height)) {
+        return {width, height};
     }
     return {0, 0};
 }
@@ -1056,6 +1063,18 @@ BlockResult finalizeImageFindWithRememberedLoop(ExecutionContext& ctx,
     return detectedResult;
 }
 
+std::string templateColorModeTag(TemplateColorMode mode) {
+    switch (mode) {
+    case TemplateColorMode::Grayscale:
+        return "흑백";
+    case TemplateColorMode::Color:
+        return "컬러";
+    case TemplateColorMode::Auto:
+    default:
+        return "자동";
+    }
+}
+
 } // namespace
 
 bool ImageFindBlock::hasTemplates() const {
@@ -1065,6 +1084,28 @@ bool ImageFindBlock::hasTemplates() const {
         }
     }
     return false;
+}
+
+void ImageFindBlock::pruneTemplateLabels() {
+    std::map<std::string, std::string> kept;
+    for (const std::string& path : templatePaths) {
+        const auto it = templateLabels.find(path);
+        if (it != templateLabels.end() && !it->second.empty()) {
+            kept.emplace(path, it->second);
+        }
+    }
+    templateLabels = std::move(kept);
+}
+
+std::string ImageFindBlock::templateListEntryLabel(int oneBasedIndex,
+                                                   const std::string& path) const {
+    std::string label = "#" + std::to_string(oneBasedIndex) + "·" + templateColorModeTag(templateColorMode);
+    const auto it = templateLabels.find(path);
+    if (it != templateLabels.end() && !it->second.empty()) {
+        label += "·";
+        label += it->second;
+    }
+    return label;
 }
 
 std::string ImageFindBlock::primaryTemplatePath() const {
@@ -1107,12 +1148,22 @@ std::string ImageFindBlock::listDetailSummary() const {
     parts.push_back(imageFindSearchRoiListLabel(searchArea, customRegionsWindowPercent, percentRegion));
 
     const int templateCount = static_cast<int>(templatePaths.size());
-    if (templateCount > 1) {
-        std::string tpl = "×" + std::to_string(templateCount);
-        if (templateMatchMode == ImageFindTemplateMatchMode::All) {
-            tpl += "·전부";
+    if (templateCount > 0) {
+        std::string tplSummary;
+        for (int i = 0; i < templateCount; ++i) {
+            if (!templatePaths[static_cast<size_t>(i)].empty()) {
+                if (!tplSummary.empty()) {
+                    tplSummary += '/';
+                }
+                tplSummary += templateListEntryLabel(i + 1, templatePaths[static_cast<size_t>(i)]);
+            }
         }
-        parts.push_back(tpl);
+        if (!tplSummary.empty()) {
+            if (templateCount > 1 && templateMatchMode == ImageFindTemplateMatchMode::All) {
+                tplSummary += "·전부";
+            }
+            parts.push_back(tplSummary);
+        }
     }
 
     char thresholdText[16];
@@ -1595,6 +1646,18 @@ nlohmann::json ImageFindBlock::toJson() const {
     if (matchPointerFeedback) {
         json["matchPointerFeedback"] = clickPointerFeedbackToJson(*matchPointerFeedback);
     }
+    if (!templateLabels.empty()) {
+        nlohmann::json labelsJson = nlohmann::json::object();
+        for (const std::string& path : templatePaths) {
+            const auto it = templateLabels.find(path);
+            if (it != templateLabels.end() && !it->second.empty()) {
+                labelsJson[path] = it->second;
+            }
+        }
+        if (!labelsJson.empty()) {
+            json["templateLabels"] = std::move(labelsJson);
+        }
+    }
     return json;
 }
 
@@ -1684,6 +1747,18 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
     if (json.contains("matchPointerFeedback") && json["matchPointerFeedback"].is_object()) {
         block->matchPointerFeedback = clickPointerFeedbackFromJson(json["matchPointerFeedback"]);
     }
+    block->templateLabels.clear();
+    if (json.contains("templateLabels") && json["templateLabels"].is_object()) {
+        for (const auto& [key, value] : json["templateLabels"].items()) {
+            if (value.is_string()) {
+                const std::string label = value.get<std::string>();
+                if (!label.empty()) {
+                    block->templateLabels.emplace(key, label);
+                }
+            }
+        }
+    }
+    block->pruneTemplateLabels();
     return block;
 }
 

@@ -921,6 +921,57 @@ bool ScreenCapture::queryTargetWindowInfo(TargetWindowInfo& out) {
     return queryWindowInfo(findTargetWindow(), out);
 }
 
+bool ScreenCapture::queryLiveTargetClientSize(int& outWidth, int& outHeight) {
+    outWidth = 0;
+    outHeight = 0;
+
+    const auto readClientSize = [&](HWND hwnd) -> bool {
+        if (!hwnd || !IsWindow(hwnd)) {
+            return false;
+        }
+        TargetWindowInfo info;
+        if (!queryWindowInfo(hwnd, info)) {
+            return false;
+        }
+        if (info.clientWidth > 0 && info.clientHeight > 0) {
+            outWidth = info.clientWidth;
+            outHeight = info.clientHeight;
+            return true;
+        }
+        if (info.width > 0 && info.height > 0) {
+            outWidth = info.width;
+            outHeight = info.height;
+            return true;
+        }
+        return false;
+    };
+
+    invalidateTargetWindowCache();
+    if (readClientSize(findTargetWindow())) {
+        return true;
+    }
+
+    HWND foreground = GetForegroundWindow();
+    if (!foreground || !IsWindow(foreground)) {
+        return false;
+    }
+
+    wchar_t titleBuffer[512]{};
+    GetWindowTextW(foreground, titleBuffer, 512);
+    const std::wstring foregroundTitle(titleBuffer);
+    const auto titleMatchesBinding = [&](const std::wstring& binding) -> bool {
+        return !binding.empty() && foregroundTitle.find(binding) != std::wstring::npos;
+    };
+
+    if (titleMatchesBinding(s_targetTitle) || titleMatchesBinding(s_subTargetTitle)) {
+        invalidateTargetWindowCache();
+        setTargetWindow(foreground);
+        return readClientSize(foreground);
+    }
+
+    return false;
+}
+
 cv::Mat ScreenCapture::captureScreenRect(int screenX, int screenY, int width, int height) {
     if (width <= 0 || height <= 0) {
         return {};
