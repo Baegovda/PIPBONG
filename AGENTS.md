@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.258` (from `project(PIPBONG VERSION 0.8.258)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.259` (from `project(PIPBONG VERSION 0.8.259)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.259] - 2026-07-22
+
+### Fixed
+
+- ImageFind with no 탐색 ROI now searches the full target window again: `normalizeImageFindSearchArea` falls back `CustomRegion` → `TargetWindow` when `customRegionsWindowPercent` is empty; `physicalCustomPollRegions` validates resolved regions and defaults to full-target poll; `ImageFindBlock::reconcileSearchArea()` on load/save/editor apply (`ImageFindBlock`, `ImageFindEditor`).
 
 ## [0.8.258] - 2026-07-22
 

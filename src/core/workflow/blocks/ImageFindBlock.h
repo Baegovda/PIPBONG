@@ -113,6 +113,9 @@ public:
                                                        const std::vector<PercentRegion>& customRegionsWindowPercent =
                                                            {});
 
+    /// When no valid custom ROIs exist, fall back to target-window full-area search.
+    void reconcileSearchArea();
+
 private:
     static std::shared_ptr<PreparedTemplate> cachedTemplateFor(const std::string& resolvedPath);
 };

@@ -700,6 +700,7 @@ void ImageFindEditor::syncUiToBlockValues() {
     syncBlockTemplatePathsFromList();
     m_block->pruneTemplateLabels();
     syncBlockCustomRegionsFromList();
+    m_block->reconcileSearchArea();
 }
 
 QString ImageFindEditor::selectedTemplateRelativePath() const {

@@ -317,6 +317,9 @@ void normalizeImageFindSearchArea(SearchArea& searchArea,
             return;
         }
     }
+    if (searchArea == SearchArea::CustomRegion) {
+        searchArea = SearchArea::TargetWindow;
+    }
 }
 
 void pruneInvalidWindowPercentRegions(std::vector<PercentRegion>& regions) {
@@ -471,9 +474,13 @@ std::vector<CaptureRegion> physicalCustomPollRegions(
             if (!isValidWindowPercentRegion(percent)) {
                 continue;
             }
-            pollRegions.push_back(ScreenCapture::resolveWindowPercentRegion(percent));
+            const CaptureRegion resolved = ScreenCapture::resolveWindowPercentRegion(percent);
+            if (isValidCustomRegion(resolved)) {
+                pollRegions.push_back(resolved);
+            }
         }
-    } else {
+    }
+    if (pollRegions.empty()) {
         pollRegions.assign(1, CaptureRegion{});
     }
     return pollRegions;
@@ -1117,6 +1124,10 @@ std::string ImageFindBlock::primaryTemplatePath() const {
     return {};
 }
 
+void ImageFindBlock::reconcileSearchArea() {
+    normalizeImageFindSearchArea(searchArea, customRegionsWindowPercent);
+}
+
 std::string ImageFindBlock::summary() const {
     if (searchArea == SearchArea::CustomRegion) {
         const int roiCount = static_cast<int>(customRegionsWindowPercent.size());
@@ -1590,21 +1601,24 @@ nlohmann::json ImageFindBlock::toJson() const {
         }
     }
 
+    SearchArea searchAreaToSave = searchArea;
+    std::vector<PercentRegion> percentToSave = customRegionsWindowPercent;
+    pruneInvalidWindowPercentRegions(percentToSave);
+    normalizeImageFindSearchArea(searchAreaToSave, percentToSave);
+
     nlohmann::json json{
         {"type", "ImageFind"},
         {"templates", templatesJson},
         {"templateMatchMode", templateMatchModeToString(templateMatchMode)},
         {"threshold", threshold},
         {"pollIntervalMs", pollIntervalMs},
-        {"searchArea", searchAreaToString(searchArea)},
+        {"searchArea", searchAreaToString(searchAreaToSave)},
         {"customRegion", captureRegionToJson(customRegion)},
         {"percentRegion",
          {{"x", percentRegion.x},
           {"y", percentRegion.y},
           {"width", percentRegion.width},
           {"height", percentRegion.height}}}};
-    std::vector<PercentRegion> percentToSave = customRegionsWindowPercent;
-    pruneInvalidWindowPercentRegions(percentToSave);
     if (!percentToSave.empty()) {
         nlohmann::json regionsJson = nlohmann::json::array();
         for (const PercentRegion& region : percentToSave) {
@@ -1729,11 +1743,7 @@ std::unique_ptr<ImageFindBlock> ImageFindBlock::fromJson(const nlohmann::json& j
         block->searchArea = SearchArea::CustomRegion;
     }
     block->customRegionsAnchoredToTargetWindow = true;
-    if (!block->customRegionsWindowPercent.empty()) {
-        block->searchArea = SearchArea::CustomRegion;
-    } else {
-        normalizeImageFindSearchArea(block->searchArea, block->customRegionsWindowPercent);
-    }
+    block->reconcileSearchArea();
     block->roiCorrection = json.value("roiCorrection", false);
     block->roiCorrectionExpandPercent = snapRoiCorrectionExpandPercent(
         json.value("roiCorrectionExpandPercent", kDefaultRoiCorrectionExpandPercent));
