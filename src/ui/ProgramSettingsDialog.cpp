@@ -321,7 +321,7 @@ void ProgramSettingsDialog::setupUi() {
         tr("앱 전체 초정밀 프로파일링"),
         tr("앱 실행부터 종료까지 UI·프로필 전환·자동 저장·핫키·캡처·워크플로 실행을 "
            "마이크로초 단위로 기록합니다. 기능 세션 종료 또는 앱 종료 시 저장소 루트의 "
-           "workflow-profile\\latest.md 와 trace.json 에 저장됩니다 (F5 실행 시 프로젝트 폴더). "
+           "app-profile\\latest.md 와 trace.json 에 저장됩니다 (항상 최신 1개만 갱신). "
            "환경 변수 PIPBONG_APP_PROFILE=1 또는 PIPBONG_WORKFLOW_PROFILE=1 로도 켤 수 있습니다."),
         ProgramSettings::workflowRunProfiling());
 

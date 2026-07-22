@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.275` (from `project(PIPBONG VERSION 0.8.275)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.276` (from `project(PIPBONG VERSION 0.8.276)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -414,7 +414,7 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
 │   ├── run-policy-sim.ps1     # build PIPBONGPolicySim only + run (manual)
 │   ├── run-policy-sim-postbuild.ps1  # POST_BUILD hook: run sim after PIPBONG link
-│   ├── analyze-workflow-profile.ps1  # summarize workflow-profile/latest.md spikes
+│   ├── analyze-app-profile.ps1  # summarize app-profile/latest.md
 │   ├── recover-ide-build.ps1  # IDE recovery (local default; optional -KillGlobalBuildProcesses)
 │   ├── ensure-dev-isolation.ps1  # dual-Cursor setup: settings check, F5 fix, deploy-qt if needed
 │   ├── fix-pipbong-cursor-f5.ps1  # workspace-gated F5 -> Build and Run (config.pipbong.f5BuildAndRun)
@@ -1147,9 +1147,9 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 | ----- | ---- |
 | `WorkflowRunProfiler` | App trace from launch (`app_trace_begin`) until shutdown (`app_trace_end`); feature sessions are `session_begin` / `session_end` markers inside the same buffer; **`profiling_depth`**: `standard` / `detailed` / `ultra` (`program/workflowRunProfilingDepth`) |
 | `WorkflowProfileSnapshot` | At `session_begin`, freezes **Profile settings** (target windows, capture mode, pin-center, …) + **Feature settings** + per-block config into the report |
-| Format | Markdown v5 (`pipbong-app-profile`): YAML `profiling_depth`, **Profile settings**, **Feature settings**, **Workflow blocks**, **Block execution (measured)**, **Auto diagnosis** (Korean), trigger aggregates, foreground sample, spike tables, **Event series**, fenced TSV log; **`workflow-profile/trace.json`** Chrome Trace export |
+| Format | Markdown v5 (`pipbong-app-profile`): YAML `profiling_depth`, **Profile settings**, **Feature settings**, **Workflow blocks**, **Block execution (measured)**, **Auto diagnosis** (Korean), trigger aggregates, foreground sample, spike tables, **Event series**, fenced TSV log; **`app-profile/trace.json`** Chrome Trace export |
 | Enable | `ProgramSettings` `program/workflowRunProfiling` or env `PIPBONG_APP_PROFILE=1` / `PIPBONG_WORKFLOW_PROFILE=1` |
-| Output | **Repo root** `workflow-profile/latest.md` + `trace.json` (+ `sessions/`) on feature session end **and** app shutdown |
+| Output | **Repo root** `app-profile/latest.md` + `trace.json` only (single file, overwritten on feature session end and app shutdown; **not** on preempt); no `sessions/` archive |
 | `WorkflowEngine` | `loop_*` (`loop=` correlation on events), `block_end` with per-block aggregates |
 | `ImageFindBlock` | `imagefind_poll` per attempt (depth-filtered): poll#, confidence, `cap_us`, `match_us` |
 | `MainWindow` | Profile context at `session_begin`; `foreground_change` on foreground title change (Detailed+) |
@@ -1157,13 +1157,13 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 | `InputSimulator` | `synthetic_mouse_click` / `synthetic_key` (PIPBONG-injected input) |
 | `HotkeyManager` | `hotkey_*_dispatch` on UI thread |
 | `ScreenCapture` | `capture_imagefind` per ImageFind haystack capture |
-| `scripts/analyze-workflow-profile.ps1` | Prints **Auto diagnosis** + percentiles; reads `.md` TSV fence |
+| `scripts/analyze-app-profile.ps1` | Prints **Auto diagnosis** + percentiles; reads `app-profile/latest.md` |
 
-**User → AI workflow (zero manual workflow description):** Enable profiling → F5 → reproduce issue → exit → **`workflow-profile/latest.md`** → agent reads **Auto diagnosis** + snapshot tables (do **not** ask the user for Wait ms / block list).
+**User → AI workflow:** Enable profiling → reproduce → exit → **`app-profile/latest.md`** → read **Auto diagnosis** (do **not** ask the user for Wait ms / block list).
 
 **Event log columns:** `rel_us`, `thread` (`ui`/`worker`), `event`, `detail`, optional `dur_us` (inside ` ```tsv ` fence).
 
-Cursor rule: `.cursor/rules/workflow-run-profiling.mdc`.
+Cursor rule: `.cursor/rules/app-profiling.mdc`.
 
 ### 8.13 Program settings dialog (mandatory — grouped + tooltips)
 
@@ -1329,6 +1329,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.276] - 2026-07-22
+
+### Changed
+
+- App profiling output folder **`workflow-profile/`** → **`app-profile/`**; **single** `latest.md` + `trace.json` (no `sessions/` archive); disk flush skipped on `preempted_by_new_session` so short preempts do not overwrite the log (`WorkflowRunProfiler`, `.gitignore`, `analyze-app-profile.ps1`, `.cursor/rules/app-profiling.mdc`).
 
 ## [0.8.275] - 2026-07-22
 
@@ -5217,9 +5223,9 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **프로그램 설정:** grouped `QGroupBox` sections; option detail on **tooltips** only — no inline `HintLabel` per row.
 - Full rules in [§8.13](#813-program-settings-dialog-mandatory--grouped--tooltips).
 
-### `workflow-run-profiling.mdc`
+### `app-profiling.mdc`
 
-- **Stutter diagnosis:** enable profiling → F5 reproduce → **`workflow-profile/latest.md`** in repo root → AI reads in workspace + `analyze-workflow-profile.ps1`.
+- **Stutter / AI diagnosis:** enable profiling → reproduce → exit → **`app-profile/latest.md`** + `analyze-app-profile.ps1`.
 - Full rules in [§8.14](#814-app-wide-microsecond-profiling-mandatory--stutter-diagnosis).
 
 ### Korean update log (§3.7)

@@ -11,7 +11,7 @@ class Feature;
 
 /// High-resolution app + workflow profiler for stutter / latency diagnosis.
 /// Enable via program setting or PIPBONG_APP_PROFILE=1 / PIPBONG_WORKFLOW_PROFILE=1.
-/// Writes `<repo-root>/workflow-profile/latest.md` on feature session end and app shutdown.
+/// Writes `<repo-root>/app-profile/latest.md` (+ `trace.json`) on feature session end and app shutdown.
 class WorkflowRunProfiler {
 public:
     using ProfilingDepth = ProgramSettings::WorkflowRunProfilingDepth;

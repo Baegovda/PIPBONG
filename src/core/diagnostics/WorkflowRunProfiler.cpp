@@ -162,19 +162,6 @@ qint64 queryPerformanceCounterUs() {
 #endif
 }
 
-QString sanitizeFileToken(QString value) {
-    value = value.trimmed();
-    if (value.isEmpty()) {
-        return QStringLiteral("feature");
-    }
-    for (QChar& ch : value) {
-        if (!ch.isLetterOrNumber()) {
-            ch = QLatin1Char('_');
-        }
-    }
-    return value.left(48);
-}
-
 QString findRepositoryRoot() {
     const QByteArray override = qgetenv("PIPBONG_REPO_ROOT");
     if (!override.isEmpty()) {
@@ -589,7 +576,7 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
     lines << QStringLiteral(
         "- **synthetic_mouse_click** / **synthetic_key**: PIPBONG input injection on the worker thread.");
     lines << QStringLiteral(
-        "- Attach this `.md` path in Cursor chat and ask for stutter root-cause analysis.");
+        "- **AI entry point:** repo `app-profile/latest.md` only (single file, overwritten each flush).");
     lines << QString();
     lines << QStringLiteral("## Event log");
     lines << QString();
@@ -660,19 +647,9 @@ bool writeChromeTraceFile(const SessionState& session, const QString& path) {
 
 void writeSessionOutputs(SessionState session, const QString& endReason) {
     const QString directory = WorkflowRunProfiler::outputDirectory();
-    const QString sessionsDir = QDir(directory).filePath(QStringLiteral("sessions"));
-    QDir().mkpath(sessionsDir);
+    QDir().mkpath(directory);
 
-    const QString timestamp =
-        QDateTime::fromMSecsSinceEpoch(session.sessionStartEpochMs).toString(QStringLiteral("yyyyMMdd_HHmmss"));
-    const QString token =
-        sanitizeFileToken(session.featureName.isEmpty() ? QStringLiteral("app") : session.featureName);
-    const QString stampedPath =
-        QDir(sessionsDir).filePath(QStringLiteral("session_%1_%2.md").arg(timestamp, token));
-    const QString latestPath = WorkflowRunProfiler::latestLogPath();
-
-    writeSessionFile(session, stampedPath, endReason);
-    writeSessionFile(session, latestPath, endReason);
+    writeSessionFile(session, WorkflowRunProfiler::latestLogPath(), endReason);
     writeChromeTraceFile(session, QDir(directory).filePath(QStringLiteral("trace.json")));
 }
 
@@ -831,7 +808,7 @@ void WorkflowRunProfiler::endAppTrace(const QString& reason) {
 }
 
 QString WorkflowRunProfiler::outputDirectory() {
-    return QDir(findRepositoryRoot()).filePath(QStringLiteral("workflow-profile"));
+    return QDir(findRepositoryRoot()).filePath(QStringLiteral("app-profile"));
 }
 
 QString WorkflowRunProfiler::latestLogPath() {
@@ -878,7 +855,6 @@ void WorkflowRunProfiler::beginSession(const QString& featureId,
         pushEventLocked(g_trace,
                         "session_end",
                         QStringLiteral("reason=preempted_by_new_session"));
-        writeSessionOutputs(g_trace, QStringLiteral("preempted_by_new_session"));
         resetFeatureSessionMetrics(g_trace);
     }
 

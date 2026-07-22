@@ -1,0 +1,30 @@
+---
+description: App-wide profiling for AI diagnosis — single log file at app-profile/latest.md
+alwaysApply: true
+---
+
+# App Profiling (AI diagnosis)
+
+**Status:** v0.8.276. Off by default. **Not** workflow-only — full app trace.
+
+## Enable
+
+**프로그램 설정 → 진단** or `PIPBONG_APP_PROFILE=1` / `PIPBONG_WORKFLOW_PROFILE=1`.
+
+## Output (single file — AI entry point)
+
+| Path | Role |
+|------|------|
+| **`app-profile/latest.md`** | **Only** log file — overwritten on session end + app shutdown (not on preempt) |
+| **`app-profile/trace.json`** | Chrome Trace (same flush) |
+
+Repo root (`PIPBONG_REPO_ROOT` override). No `sessions/` archive.
+
+## AI rules
+
+1. Read **`app-profile/latest.md`** — **Auto diagnosis** first.
+2. Do **not** ask user for workflow/block settings (in log).
+3. Optional: `.\scripts\analyze-app-profile.ps1`
+4. User says **분석해줘** → use this file only.
+
+Full handover: [AGENTS.md](../../AGENTS.md) §8.14.
