@@ -472,6 +472,7 @@ private:
     std::unordered_map<const WorkflowEngine*, std::string> m_abandonedEngineFeatureIds;
     QElapsedTimer m_pendingDefaultProfileSwitchTimer;
     QString m_lastLinkedForegroundProfileId;
+    QString m_lastProfiledForegroundTitle;
     QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;
     bool m_scopedTargetForegroundResumePending = false;
     bool m_ensureTriggerMonitorPending = false;

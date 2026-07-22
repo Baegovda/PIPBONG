@@ -64,6 +64,20 @@ public:
     static int logMaxLines();
     static void setLogMaxLines(int lines);
 
+    enum class WorkflowRunProfilingDepth {
+        Standard = 0,
+        Detailed = 1,
+        Ultra = 2,
+    };
+
+    /// When enabled, each feature run session writes a high-resolution workflow profile log.
+    static bool workflowRunProfiling();
+    static void setWorkflowRunProfiling(bool enabled);
+
+    /// Profiling detail level (Standard = spike-filtered polls; Ultra = every ImageFind poll).
+    static WorkflowRunProfilingDepth workflowRunProfilingDepth();
+    static void setWorkflowRunProfilingDepth(WorkflowRunProfilingDepth depth);
+
     /// When enabled, switching the active profile activates the linked target window.
     static bool focusTargetWindowOnProfileSelect();
     static void setFocusTargetWindowOnProfileSelect(bool enabled);

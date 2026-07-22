@@ -1,6 +1,7 @@
 #include "app/UserInputInterruptMonitor.h"
 
 #include "app/FeatureHotkeyGate.h"
+#include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/input/HotkeyBinding.h"
 
 #ifdef _WIN32
@@ -224,6 +225,12 @@ void UserInputInterruptMonitor::refreshHooks() {
 void UserInputInterruptMonitor::notifyPhysicalInput(int virtualKey) {
     if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
         return;
+    }
+
+    if (HotkeyBinding::isMouseVirtualKey(virtualKey)) {
+        WorkflowRunProfiler::recordPhysicalInput("user_physical_mouse", virtualKey);
+    } else {
+        WorkflowRunProfiler::recordPhysicalInput("user_physical_key", virtualKey);
     }
 
     std::vector<std::string> targets;

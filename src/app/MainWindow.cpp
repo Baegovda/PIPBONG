@@ -22,6 +22,7 @@
 #include "core/capture/CursorPositionPicker.h"
 #include "core/capture/ClickContinuousInputRecorder.h"
 #include "core/capture/WindowPicker.h"
+#include "core/diagnostics/WorkflowProfileSnapshot.h"
 #include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/input/InputSimulator.h"
 #include "core/input/HotkeyBinding.h"
@@ -4194,12 +4195,23 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
         } else if (silentRestoreStart) {
             startSource = QStringLiteral("restore");
         }
+        QStringList profileContext;
+        if (m_profileManager && m_profileManager->activeProfile()) {
+            const ProfileManager::Profile* activeProfile = m_profileManager->activeProfile();
+            profileContext = captureProfileContextSnapshot(
+                activeProfile->id,
+                activeProfile->name,
+                activeProfile->targetWindowTitle,
+                activeProfile->subTargetWindowTitle,
+                m_profileManager->loadSettings(activeProfile->id));
+        }
         WorkflowRunProfiler::beginSession(QString::fromStdString(feature->id()),
                                           QString::fromStdString(feature->name()),
                                           QString::fromStdString(featureRunModeToString(feature->runMode())),
                                           profileName,
                                           feature,
-                                          startSource);
+                                          startSource,
+                                          profileContext);
     }
     const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
     if (!hotkeyHoldStart) {
@@ -6695,6 +6707,13 @@ void MainWindow::syncProfileToForegroundWindow() {
     if (foregroundTitle.isEmpty()) {
         m_pendingDefaultProfileSwitchTimer.invalidate();
         return;
+    }
+
+    if (WorkflowRunProfiler::isEnabled()
+        && WorkflowRunProfiler::depth() != ProgramSettings::WorkflowRunProfilingDepth::Standard
+        && foregroundTitle != m_lastProfiledForegroundTitle) {
+        m_lastProfiledForegroundTitle = foregroundTitle;
+        WorkflowRunProfiler::recordForegroundChange(foregroundTitle, QStringLiteral("sync"));
     }
 
     const QString targetProfileId = m_profileManager->profileIdForForegroundTitle(foregroundTitle);

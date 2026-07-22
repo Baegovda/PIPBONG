@@ -9,7 +9,9 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
-#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLoggingCategory>
 #include <QMutex>
 #include <QMutexLocker>
@@ -38,6 +40,20 @@ constexpr qint64 kSpikeLoopGapUs = 16000;
 constexpr qint64 kSpikeLoopDurationUs = 32000;
 constexpr qint64 kSpikeUiFlushUs = 8000;
 constexpr qint64 kSpikeClickUs = 12000;
+constexpr qint64 kSpikeImageFindPollUs = 8000;
+constexpr qint64 kStandardImageFindPollUs = 16000;
+
+QString profilingDepthLabel(ProgramSettings::WorkflowRunProfilingDepth depth) {
+    switch (depth) {
+    case ProgramSettings::WorkflowRunProfilingDepth::Detailed:
+        return QStringLiteral("detailed");
+    case ProgramSettings::WorkflowRunProfilingDepth::Ultra:
+        return QStringLiteral("ultra");
+    case ProgramSettings::WorkflowRunProfilingDepth::Standard:
+    default:
+        return QStringLiteral("standard");
+    }
+}
 
 struct ProfileEvent {
     qint64 relUs = 0;
@@ -98,10 +114,17 @@ struct SessionState {
 
     QString startSource;
     int workflowBlockCount = 0;
+    QStringList profileContextLines;
     QStringList featureSettingsLines;
     std::vector<WorkflowBlockSnapshotRow> blockSnapshots;
     std::vector<BlockRunAggregate> blockAggregates;
     qint64 featureSessionBeginRelUs = 0;
+    int currentLoopIteration = 0;
+    int imageFindPollCount = 0;
+    int physicalInputCount = 0;
+    int foregroundChangeCount = 0;
+    ProgramSettings::WorkflowRunProfilingDepth profilingDepth =
+        ProgramSettings::WorkflowRunProfilingDepth::Standard;
 };
 
 std::mutex g_mutex;
@@ -327,7 +350,9 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
     QStringList lines;
     lines << QStringLiteral("---");
     lines << QStringLiteral("format: pipbong-app-profile");
-    lines << QStringLiteral("format_version: 4");
+    lines << QStringLiteral("format_version: 5");
+    lines << QStringLiteral("profiling_depth: %1")
+                 .arg(profilingDepthLabel(session.profilingDepth));
     lines << QStringLiteral("app_version: %1").arg(QStringLiteral(PIPBONG_VERSION));
     lines << QStringLiteral("git_sha: %1").arg(QStringLiteral(PIPBONG_GIT_SHA));
     lines << QStringLiteral("session_start: %1").arg(sessionStart);
@@ -396,7 +421,7 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
                  .arg(session.uiFlushCount)
                  .arg(percentileLabel(session.uiFlushDurationsUs, 95.0))
                  .arg(formatMs(maxValue(session.uiFlushDurationsUs)));
-    lines << QStringLiteral("| mouse_click | %1 | — | %2 | — | %3 |")
+    lines << QStringLiteral("| synthetic_mouse_click | %1 | — | %2 | — | %3 |")
                  .arg(session.clickCount)
                  .arg(percentileLabel(session.clickDurationsUs, 95.0))
                  .arg(formatMs(maxValue(session.clickDurationsUs)));
@@ -412,13 +437,14 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
                  .arg(countAbove(loopDurations, kSpikeLoopDurationUs));
     lines << QStringLiteral("| ui_flush | >8 ms | %1 |")
                  .arg(countAbove(session.uiFlushDurationsUs, kSpikeUiFlushUs));
-    lines << QStringLiteral("| mouse_click | >12 ms | %1 |")
+    lines << QStringLiteral("| synthetic_mouse_click | >12 ms | %1 |")
                  .arg(countAbove(session.clickDurationsUs, kSpikeClickUs));
     lines << QString();
 
     const std::vector<BlockRunMeasuredRow> measuredRows = measuredRowsFromAggregates(session);
-    lines += buildFeatureSettingsMarkdown(session.featureSettingsLines);
+    lines += buildProfileContextMarkdown(session.profileContextLines);
     lines << QString();
+    lines += buildFeatureSettingsMarkdown(session.featureSettingsLines);
     lines += buildWorkflowBlocksMarkdown(session.blockSnapshots);
     lines << QString();
     lines += buildBlockExecutionMarkdown(measuredRows);
@@ -430,6 +456,7 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
     diagnosisInput.endReason = endReason;
     diagnosisInput.startSource = session.startSource;
     diagnosisInput.workflowBlockCount = session.workflowBlockCount;
+    diagnosisInput.profileContext = session.profileContextLines;
     diagnosisInput.featureSettings = session.featureSettingsLines;
     diagnosisInput.blockSnapshots = session.blockSnapshots;
     diagnosisInput.blockMeasured = measuredRows;
@@ -437,6 +464,9 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
     diagnosisInput.loopBeginCount = session.loopBeginCount;
     diagnosisInput.loopEndCount = session.loopEndCount;
     diagnosisInput.clickCount = session.clickCount;
+    diagnosisInput.physicalInputCount = session.physicalInputCount;
+    diagnosisInput.imageFindPollCount = session.imageFindPollCount;
+    diagnosisInput.foregroundChangeCount = session.foregroundChangeCount;
     diagnosisInput.maxLoopGapUs = maxValue(loopGapValuesUs);
     lines += buildAutoDiagnosis(diagnosisInput);
     lines << QString();
@@ -490,12 +520,62 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
     }
     appendEventSeriesTable(lines, session);
     lines << QString();
+    lines << QStringLiteral("## Trigger phase (aggregates)");
+    lines << QString();
+    int triggerMonitorCount = 0;
+    int triggerActionCount = 0;
+    int triggerCooldownCount = 0;
+    for (const ProfileEvent& event : session.events) {
+        if (event.eventName == QLatin1String("trigger_monitor_start")) {
+            ++triggerMonitorCount;
+        } else if (event.eventName == QLatin1String("trigger_action_start")) {
+            ++triggerActionCount;
+        } else if (event.eventName == QLatin1String("trigger_cooldown_start")) {
+            ++triggerCooldownCount;
+        }
+    }
+    lines << QStringLiteral("| Phase | count |");
+    lines << QStringLiteral("| --- | ---: |");
+    lines << QStringLiteral("| monitor_start | %1 |").arg(triggerMonitorCount);
+    lines << QStringLiteral("| action_start | %1 |").arg(triggerActionCount);
+    lines << QStringLiteral("| cooldown_start | %1 |").arg(triggerCooldownCount);
+    lines << QString();
+    lines << QStringLiteral("## Foreground timeline (sample)");
+    lines << QString();
+    lines << QStringLiteral("| rel (ms) | window title |");
+    lines << QStringLiteral("| ---: | --- |");
+    int foregroundRows = 0;
+    for (const ProfileEvent& event : session.events) {
+        if (event.eventName != QLatin1String("foreground_change")) {
+            continue;
+        }
+        lines << QStringLiteral("| %1 | %2 |")
+                     .arg(formatMs(event.relUs))
+                     .arg(escapeMd(event.detail));
+        if (++foregroundRows >= 30) {
+            break;
+        }
+    }
+    if (foregroundRows == 0) {
+        lines << QStringLiteral("| — | — |");
+    }
+    lines << QString();
     lines << QStringLiteral("## Analysis hints");
     lines << QString();
     lines << QStringLiteral(
-        "- **Feature settings** / **Workflow blocks**: frozen at `session_begin` — do not ask the user to describe the workflow.");
+        "- **Profile settings** / **Feature settings** / **Workflow blocks**: frozen at `session_begin` — do not ask the user to describe the workflow.");
     lines << QStringLiteral(
         "- **Auto diagnosis**: Korean summary from snapshot + measured `block_end` / events.");
+    lines << QStringLiteral(
+        "- **profiling_depth**: `standard` (spike-filtered ImageFind polls), `detailed` (match/miss + spikes), `ultra` (every poll).");
+    lines << QStringLiteral(
+        "- **user_physical_***: real keyboard/mouse during runs; **synthetic_***: PIPBONG `SendInput` / injected clicks and keys.");
+    lines << QStringLiteral(
+        "- **imagefind_poll**: per-poll capture/match timing (`cap_us`, `match_us`, confidence); correlate with `loop=` on events.");
+    lines << QStringLiteral(
+        "- **foreground_change**: top-level window title timeline (Detailed+).");
+    lines << QStringLiteral(
+        "- **trace.json**: Chrome Trace JSON beside `latest.md` for timeline viewers.");
     lines << QStringLiteral(
         "- **app_trace_begin** / **app_trace_end**: full app lifetime while profiling is enabled.");
     lines << QStringLiteral(
@@ -507,7 +587,7 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
     lines << QStringLiteral(
         "- **capture_imagefind** / **imagefind_poll**: screen capture and template matching on the worker thread.");
     lines << QStringLiteral(
-        "- **mouse_click**: `InputSimulator` click injection on the worker thread.");
+        "- **synthetic_mouse_click** / **synthetic_key**: PIPBONG input injection on the worker thread.");
     lines << QStringLiteral(
         "- Attach this `.md` path in Cursor chat and ask for stutter root-cause analysis.");
     lines << QString();
@@ -545,6 +625,39 @@ bool writeSessionFile(const SessionState& session, const QString& path, const QS
     return true;
 }
 
+bool writeChromeTraceFile(const SessionState& session, const QString& path) {
+    QJsonArray events;
+    for (const ProfileEvent& event : session.events) {
+        QJsonObject obj;
+        obj.insert(QStringLiteral("name"), event.eventName);
+        obj.insert(QStringLiteral("cat"), QStringLiteral("pipbong"));
+        obj.insert(QStringLiteral("ph"), event.durationUs >= 0 ? QStringLiteral("X") : QStringLiteral("i"));
+        obj.insert(QStringLiteral("ts"), event.relUs);
+        if (event.durationUs >= 0) {
+            obj.insert(QStringLiteral("dur"), event.durationUs);
+        }
+        obj.insert(QStringLiteral("pid"), 1);
+        obj.insert(QStringLiteral("tid"), event.threadTag == QLatin1String("ui") ? 1 : 2);
+        if (!event.detail.isEmpty()) {
+            QJsonObject args;
+            args.insert(QStringLiteral("detail"), event.detail);
+            obj.insert(QStringLiteral("args"), args);
+        }
+        events.append(obj);
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("traceEvents"), events);
+    root.insert(QStringLiteral("displayTimeUnit"), QStringLiteral("ns"));
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return false;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    return true;
+}
+
 void writeSessionOutputs(SessionState session, const QString& endReason) {
     const QString directory = WorkflowRunProfiler::outputDirectory();
     const QString sessionsDir = QDir(directory).filePath(QStringLiteral("sessions"));
@@ -560,11 +673,12 @@ void writeSessionOutputs(SessionState session, const QString& endReason) {
 
     writeSessionFile(session, stampedPath, endReason);
     writeSessionFile(session, latestPath, endReason);
+    writeChromeTraceFile(session, QDir(directory).filePath(QStringLiteral("trace.json")));
 }
 
 void pushEventLocked(SessionState& session,
                      const char* eventName,
-                     const QString& detail,
+                     QString detail,
                      qint64 durationUs = -1) {
     if (!session.appActive) {
         return;
@@ -574,11 +688,18 @@ void pushEventLocked(SessionState& session,
         return;
     }
 
+    if (session.featureSessionActive && session.currentLoopIteration > 0) {
+        if (!detail.isEmpty()) {
+            detail += QLatin1Char(' ');
+        }
+        detail += QStringLiteral("loop=%1").arg(session.currentLoopIteration);
+    }
+
     ProfileEvent event;
     event.relUs = queryPerformanceCounterUs() - session.originUs;
     event.threadTag = QString::fromUtf8(threadTagForCurrentThread());
     event.eventName = QString::fromUtf8(eventName);
-    event.detail = detail;
+    event.detail = std::move(detail);
     event.durationUs = durationUs;
     session.events.push_back(std::move(event));
 }
@@ -597,10 +718,15 @@ void resetFeatureSessionMetrics(SessionState& session) {
     session.uiFlushCount = 0;
     session.startSource.clear();
     session.workflowBlockCount = 0;
+    session.profileContextLines.clear();
     session.featureSettingsLines.clear();
     session.blockSnapshots.clear();
     session.blockAggregates.clear();
     session.featureSessionBeginRelUs = 0;
+    session.currentLoopIteration = 0;
+    session.imageFindPollCount = 0;
+    session.physicalInputCount = 0;
+    session.foregroundChangeCount = 0;
 }
 
 std::vector<ProfileEventLite> featureSessionEvents(const SessionState& session) {
@@ -712,12 +838,29 @@ QString WorkflowRunProfiler::latestLogPath() {
     return QDir(outputDirectory()).filePath(QStringLiteral("latest.md"));
 }
 
+QString WorkflowRunProfiler::latestChromeTracePath() {
+    return QDir(outputDirectory()).filePath(QStringLiteral("trace.json"));
+}
+
+WorkflowRunProfiler::ProfilingDepth WorkflowRunProfiler::depth() {
+    if (!g_enabled) {
+        return ProfilingDepth::Standard;
+    }
+    return ProgramSettings::workflowRunProfilingDepth();
+}
+
+int WorkflowRunProfiler::currentLoopIteration() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return g_trace.currentLoopIteration;
+}
+
 void WorkflowRunProfiler::beginSession(const QString& featureId,
                                        const QString& featureName,
                                        const QString& runMode,
                                        const QString& profileName,
                                        const Feature* feature,
-                                       const QString& startSource) {
+                                       const QString& startSource,
+                                       const QStringList& profileContextLines) {
     reloadEnabledFromSettings();
     if (!g_enabled) {
         return;
@@ -745,6 +888,9 @@ void WorkflowRunProfiler::beginSession(const QString& featureId,
     g_trace.runMode = runMode;
     g_trace.profileName = profileName;
     g_trace.startSource = startSource;
+    g_trace.profilingDepth = ProgramSettings::workflowRunProfilingDepth();
+    g_trace.profileContextLines = profileContextLines;
+    g_trace.currentLoopIteration = 0;
     g_trace.featureSessionBeginRelUs = monotonicUs() - g_trace.originUs;
 
     if (feature != nullptr) {
@@ -793,7 +939,9 @@ void WorkflowRunProfiler::event(const char* eventName, const QString& detail, qi
         return;
     }
     pushEventLocked(g_trace, eventName, detail, durationUs);
-    if (durationUs >= 0 && std::strcmp(eventName, "mouse_click") == 0) {
+    const bool isClickEvent = std::strcmp(eventName, "mouse_click") == 0
+                              || std::strcmp(eventName, "synthetic_mouse_click") == 0;
+    if (durationUs >= 0 && isClickEvent) {
         g_trace.clickDurationsUs.push_back(durationUs);
         ++g_trace.clickCount;
     }
@@ -825,6 +973,7 @@ void WorkflowRunProfiler::recordLoopBegin(int iteration) {
         }
     }
     ++g_trace.loopBeginCount;
+    g_trace.currentLoopIteration = iteration;
     pushEventLocked(g_trace,
                     "loop_begin",
                     QStringLiteral("iter=%1").arg(iteration));
@@ -891,6 +1040,86 @@ void WorkflowRunProfiler::recordBlockEnd(int blockIndex,
                         .arg(QString::fromUtf8(blockType))
                         .arg(success ? QStringLiteral("yes") : QStringLiteral("no")),
                     durationUs);
+}
+
+void WorkflowRunProfiler::recordPhysicalInput(const char* channel, int virtualKey) {
+    if (!g_enabled) {
+        return;
+    }
+    const ProfilingDepth level = depth();
+    if (level == ProfilingDepth::Standard) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_trace.appActive) {
+        return;
+    }
+    ++g_trace.physicalInputCount;
+    pushEventLocked(g_trace,
+                    channel,
+                    QStringLiteral("vk=0x%1").arg(virtualKey, 0, 16));
+}
+
+void WorkflowRunProfiler::recordForegroundChange(const QString& windowTitle,
+                                                  const QString& reason) {
+    if (!g_enabled) {
+        return;
+    }
+    if (depth() == ProfilingDepth::Standard) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_trace.appActive) {
+        return;
+    }
+    ++g_trace.foregroundChangeCount;
+    QString detail = windowTitle;
+    if (!reason.isEmpty()) {
+        detail += QStringLiteral(" reason=%1").arg(reason);
+    }
+    pushEventLocked(g_trace, "foreground_change", detail);
+}
+
+bool WorkflowRunProfiler::shouldRecordImageFindPoll(bool matched, qint64 totalPollUs, int pollNum) {
+    if (!g_enabled) {
+        return false;
+    }
+    const ProfilingDepth level = depth();
+    if (level == ProfilingDepth::Ultra) {
+        return true;
+    }
+    if (level == ProfilingDepth::Detailed) {
+        return matched || pollNum <= 1 || totalPollUs >= kSpikeImageFindPollUs;
+    }
+    return matched || pollNum <= 1 || totalPollUs >= kStandardImageFindPollUs;
+}
+
+void WorkflowRunProfiler::recordImageFindPoll(int blockIndex,
+                                              int pollNum,
+                                              bool matched,
+                                              double confidence,
+                                              qint64 captureUs,
+                                              qint64 matchUs,
+                                              const QString& extra) {
+    if (!shouldRecordImageFindPoll(matched, captureUs + matchUs, pollNum)) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_trace.appActive || !g_trace.featureSessionActive) {
+        return;
+    }
+    ++g_trace.imageFindPollCount;
+    QString detail = QStringLiteral("#%1 poll=%2 matched=%3 conf=%4 cap_us=%5 match_us=%6")
+                         .arg(blockIndex + 1)
+                         .arg(pollNum)
+                         .arg(matched ? QStringLiteral("yes") : QStringLiteral("no"))
+                         .arg(confidence, 0, 'f', 3)
+                         .arg(captureUs)
+                         .arg(matchUs);
+    if (!extra.isEmpty()) {
+        detail += QLatin1Char(' ') + extra;
+    }
+    pushEventLocked(g_trace, "imagefind_poll", detail, captureUs + matchUs);
 }
 
 void WorkflowRunProfiler::recordLoopIntervalSleep(int delayMs, qint64 actualSleepUs) {

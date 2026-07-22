@@ -1,6 +1,9 @@
 #pragma once
 
+#include "app/ProgramSettings.h"
+
 #include <QString>
+#include <QStringList>
 
 #include <cstdint>
 
@@ -11,23 +14,29 @@ class Feature;
 /// Writes `<repo-root>/workflow-profile/latest.md` on feature session end and app shutdown.
 class WorkflowRunProfiler {
 public:
+    using ProfilingDepth = ProgramSettings::WorkflowRunProfilingDepth;
+
     static bool isEnabled();
     static bool isAppTraceActive();
+    static ProfilingDepth depth();
+    static int currentLoopIteration();
     static void reloadEnabledFromSettings();
 
     static QString outputDirectory();
     static QString latestLogPath();
+    static QString latestChromeTracePath();
 
     /// Starts recording from app launch (or when profiling is toggled on).
     static void beginAppTrace();
-  static void endAppTrace(const QString& reason);
+    static void endAppTrace(const QString& reason);
 
     static void beginSession(const QString& featureId,
                              const QString& featureName,
                              const QString& runMode,
                              const QString& profileName,
                              const Feature* feature = nullptr,
-                             const QString& startSource = QString());
+                             const QString& startSource = QString(),
+                             const QStringList& profileContextLines = QStringList());
     static void endSession(const QString& reason);
 
     static void event(const char* eventName,
@@ -42,6 +51,23 @@ public:
                                qint64 durationUs);
     static void recordLoopIntervalSleep(int delayMs, qint64 actualSleepUs);
     static void recordUiFlush(int pendingIterations, qint64 durationUs);
+
+    /// Physical keyboard/mouse detected by UserInputInterruptMonitor (not PIPBONG-injected).
+    static void recordPhysicalInput(const char* channel, int virtualKey);
+
+    /// Foreground top-level window title change (Detailed+).
+    static void recordForegroundChange(const QString& windowTitle, const QString& reason = QString());
+
+    /// Per ImageFind poll attempt (depth-filtered).
+    static void recordImageFindPoll(int blockIndex,
+                                    int pollNum,
+                                    bool matched,
+                                    double confidence,
+                                    qint64 captureUs,
+                                    qint64 matchUs,
+                                    const QString& extra = QString());
+
+    static bool shouldRecordImageFindPoll(bool matched, qint64 totalPollUs, int pollNum);
 
     static void flushPendingSessions(const QString& reason);
 

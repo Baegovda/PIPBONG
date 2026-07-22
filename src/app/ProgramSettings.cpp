@@ -18,6 +18,8 @@ constexpr const char* kPinSubTargetWindowToScreenCenterKey = "program/pinSubTarg
 constexpr const char* kImageFindCaptureModeKey = "program/imageFindCaptureMode";
 constexpr const char* kRunWithoutTargetWindowKey = "program/runWithoutTargetWindow";
 constexpr const char* kLogMaxLinesKey = "program/logMaxLines";
+constexpr const char* kWorkflowRunProfilingKey = "program/workflowRunProfiling";
+constexpr const char* kWorkflowRunProfilingDepthKey = "program/workflowRunProfilingDepth";
 constexpr const char* kFocusTargetWindowOnProfileSelectKey =
     "program/focusTargetWindowOnProfileSelect";
 
@@ -161,6 +163,33 @@ void ProgramSettings::setLogMaxLines(int lines) {
     }
     QSettings settings;
     settings.setValue(kLogMaxLinesKey, lines);
+}
+
+bool ProgramSettings::workflowRunProfiling() {
+    QSettings settings;
+    return settings.value(kWorkflowRunProfilingKey, false).toBool();
+}
+
+void ProgramSettings::setWorkflowRunProfiling(bool enabled) {
+    QSettings settings;
+    settings.setValue(kWorkflowRunProfilingKey, enabled);
+}
+
+ProgramSettings::WorkflowRunProfilingDepth ProgramSettings::workflowRunProfilingDepth() {
+    QSettings settings;
+    const int raw = settings.value(kWorkflowRunProfilingDepthKey, 0).toInt();
+    if (raw <= 0) {
+        return WorkflowRunProfilingDepth::Standard;
+    }
+    if (raw >= 2) {
+        return WorkflowRunProfilingDepth::Ultra;
+    }
+    return WorkflowRunProfilingDepth::Detailed;
+}
+
+void ProgramSettings::setWorkflowRunProfilingDepth(WorkflowRunProfilingDepth depth) {
+    QSettings settings;
+    settings.setValue(kWorkflowRunProfilingDepthKey, static_cast<int>(depth));
 }
 
 bool ProgramSettings::focusTargetWindowOnProfileSelect() {

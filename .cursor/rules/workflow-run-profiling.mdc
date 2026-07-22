@@ -5,45 +5,57 @@ alwaysApply: true
 
 # App-Wide Profiling (Mandatory — Stutter Diagnosis)
 
-**Status:** v0.8.274 **auto-context** (Markdown v4). Use for Hold / **무한 반복** / UI latency — not daily use.
+**Status:** v0.8.275 **ultimate tier** (Markdown v5). Use for Hold / **무한 반복** / UI latency — not daily use.
 
 ## Purpose
 
-Record microsecond timing + **frozen workflow snapshot** + **Korean auto diagnosis** to **`<repo-root>/workflow-profile/`** so the user only **reproduces** the issue — the AI must **not** ask for Wait ms, block list, or trigger settings.
+Record microsecond timing + **frozen profile/feature/workflow snapshot** + **Korean auto diagnosis** to **`<repo-root>/workflow-profile/`** so the user only **reproduces** the issue — the AI must **not** ask for Wait ms, block list, or trigger settings.
 
 ## Enable
 
 | Method | When |
 |--------|------|
 | **프로그램 설정 → 진단 → 앱 전체 초정밀 프로파일링** | `QSettings` `program/workflowRunProfiling` |
+| **프로그램 설정 → 진단 → 프로파일링 상세도** | `program/workflowRunProfilingDepth`: `standard` / `detailed` / `ultra` |
 | `PIPBONG_APP_PROFILE=1` or `PIPBONG_WORKFLOW_PROFILE=1` | Force on for that process |
+
+## Depth levels
+
+| Level | ImageFind polls | Physical input | Foreground |
+|-------|-----------------|----------------|------------|
+| **standard** | First poll, match, spike (>16 ms) only | Off | Off |
+| **detailed** | Match/miss + spikes (>8 ms) | On | On |
+| **ultra** | Every poll | On | On |
 
 ## User workflow
 
-1. Enable profiling → **F5** (or restart if toggled mid-session).
+1. Enable profiling + pick depth → **F5** (or restart if toggled mid-session).
 2. Reproduce the issue (run feature, trigger, profile switch, etc.).
-3. Stop feature runs; **exit PIPBONG** (tray **종료**) to flush final `latest.md`.
+3. Stop feature runs; **exit PIPBONG** (tray **종료**) to flush final `latest.md` + `trace.json`.
 4. Paths (**repo root**, walk-up from exe to `CMakeLists.txt`):
    - **Latest:** `workflow-profile/latest.md`
+   - **Chrome Trace:** `workflow-profile/trace.json`
    - **Archive:** `workflow-profile/sessions/session_*.md` (also on feature session end)
 5. User says **「분석해줘」** → AI reads **Auto diagnosis** + snapshot tables (+ optional `.\scripts\analyze-workflow-profile.ps1`).
 
 Override repo root: `PIPBONG_REPO_ROOT`.
 
-## Log format (Markdown v4)
+## Log format (Markdown v5)
 
-- `format: pipbong-app-profile`, `format_version: 4`
-- **Feature settings** / **Workflow blocks** / **Block execution (measured)** / **Auto diagnosis** (Korean)
+- `format: pipbong-app-profile`, `format_version: 5`, `profiling_depth`
+- **Profile settings** / **Feature settings** / **Workflow blocks** / **Block execution (measured)** / **Auto diagnosis** (Korean)
+- **Trigger phase** aggregates, **Foreground timeline** sample
 - Spike tables + **Event series** + fenced ` ```tsv ` event log
-- YAML: `workflow_block_count`, `session_start_source` (`ui`/`hotkey`/`restore`)
+- Key events: `imagefind_poll`, `user_physical_*`, `synthetic_*`, `foreground_change`, `loop=` on details
 
 ## AI analysis rules (mandatory)
 
-1. Read **`workflow-profile/latest.md`** — **Auto diagnosis** and **Workflow blocks** first.
+1. Read **`workflow-profile/latest.md`** — **Auto diagnosis**, **Profile settings**, **Workflow blocks** first.
 2. **Do not** ask the user to describe the workflow, Wait ms, click counts, or trigger cooldown — they are in the log.
 3. `.\scripts\analyze-workflow-profile.ps1` prints Auto diagnosis + percentiles.
-4. Correlate: configured Wait vs measured `block_end`, Click totals, ImageFind fail duration, **loop_gap** / **ui_flush**, trigger phase events.
-5. Fix root cause in the matching subsystem.
+4. Correlate: configured Wait vs measured `block_end`, `imagefind_poll` cap/match ms, physical vs synthetic input, **loop_gap** / **ui_flush**, trigger phase events, foreground changes.
+5. Optional: open `trace.json` in Chrome `chrome://tracing` for timeline view.
+6. Fix root cause in the matching subsystem.
 
 ## Key files
 

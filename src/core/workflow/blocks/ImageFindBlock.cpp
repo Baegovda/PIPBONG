@@ -1,6 +1,7 @@
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "app/PointerFeedbackSettings.h"
 #include "core/diagnostics/DiagnosticHub.h"
+#include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/input/HotkeyBinding.h"
 #include "core/vision/ImageMatcher.h"
 #include "core/vision/TemplateCache.h"
@@ -1413,6 +1414,8 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         }
 
         ++pollAttemptCount;
+        qint64 pollCaptureUs = 0;
+        qint64 pollMatchUs = 0;
         DiagnosticHub::touchWorkerHeartbeat();
         const std::vector<CaptureRegion> pollRegions =
             physicalCustomPollRegions(runtimeSearchArea, runtimeWindowPercentRegions);
@@ -1492,8 +1495,12 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                 result.imageFindPollAttempts = pollAttemptCount;
                 return result;
             }
+            const auto captureStart = std::chrono::steady_clock::now();
             const cv::Mat haystack = ScreenCapture::captureSearchAreaForImageFind(
                 runtimeSearchArea, activeRegion, runtimePercentRegion);
+            pollCaptureUs += std::chrono::duration_cast<std::chrono::microseconds>(
+                                 std::chrono::steady_clock::now() - captureStart)
+                                 .count();
             if (ctx.shouldStop()) {
                 accumulateMatchWork();
                 BlockResult result;
@@ -1509,6 +1516,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             anyValidHaystack = true;
             missHaystackWidth = haystack.cols;
             missHaystackHeight = haystack.rows;
+            const auto matchStart = std::chrono::steady_clock::now();
             const cv::Mat hayGray = ImageMatcher::toGrayscale(haystack);
 
             if (templateMatchMode == ImageFindTemplateMatchMode::Any) {
@@ -1528,6 +1536,15 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                     const ImageFindSelection selection = trySelectImageFindMatch(
                         haystack, hayGray, *templates[index], templateOptions, ctx, runtimeSearchArea, activeRegion, runtimePercentRegion);
                     if (selection.ok) {
+                        pollMatchUs += std::chrono::duration_cast<std::chrono::microseconds>(
+                                           std::chrono::steady_clock::now() - matchStart)
+                                           .count();
+                        WorkflowRunProfiler::recordImageFindPoll(ctx.activeBlockIndex(),
+                                                                 pollAttemptCount,
+                                                                 true,
+                                                                 selection.match.confidence,
+                                                                 pollCaptureUs,
+                                                                 pollMatchUs);
                         accumulateMatchWork();
                         maybeRememberMultiMatchPositions(ctx,
                                                          rememberMultiMatchPositions,
@@ -1565,6 +1582,9 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                         bestMissPeak = selection.peak;
                     }
                 }
+                pollMatchUs += std::chrono::duration_cast<std::chrono::microseconds>(
+                                   std::chrono::steady_clock::now() - matchStart)
+                                   .count();
                 continue;
             }
 
@@ -1595,6 +1615,15 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             }
 
             if (allMatched && !selections.empty()) {
+                pollMatchUs += std::chrono::duration_cast<std::chrono::microseconds>(
+                                   std::chrono::steady_clock::now() - matchStart)
+                                   .count();
+                WorkflowRunProfiler::recordImageFindPoll(ctx.activeBlockIndex(),
+                                                         pollAttemptCount,
+                                                         true,
+                                                         selections.front().match.confidence,
+                                                         pollCaptureUs,
+                                                         pollMatchUs);
                 consumeAllSelections(ctx,
                                      runtimeSearchArea,
                                      activeRegion,
@@ -1646,6 +1675,19 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                                                            threshold,
                                                            result);
             }
+            pollMatchUs += std::chrono::duration_cast<std::chrono::microseconds>(
+                               std::chrono::steady_clock::now() - matchStart)
+                               .count();
+        }
+
+        {
+            const double missConf = bestMissPeak.found ? bestMissPeak.confidence : 0.0;
+            WorkflowRunProfiler::recordImageFindPoll(ctx.activeBlockIndex(),
+                                                     pollAttemptCount,
+                                                     false,
+                                                     missConf,
+                                                     pollCaptureUs,
+                                                     pollMatchUs);
         }
 
         reportImageFindMiss(ctx,

@@ -1,4 +1,6 @@
 build/
+workflow-profile/*
+!workflow-profile/.gitkeep
 build-static/
 dist/
 out/

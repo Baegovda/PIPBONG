@@ -1,5 +1,6 @@
 #include "core/diagnostics/WorkflowProfileSnapshot.h"
 
+#include "app/ProgramSettings.h"
 #include "core/workflow/Block.h"
 #include "core/workflow/Workflow.h"
 #include "core/workflow/blocks/ClickBlock.h"
@@ -178,7 +179,79 @@ qint64 relUsForLastEvent(const std::vector<ProfileEventLite>& events, const char
     return relUs;
 }
 
+QString captureModeLabel(ProgramSettings::ImageFindCaptureMode mode) {
+    switch (mode) {
+    case ProgramSettings::ImageFindCaptureMode::ClientOnly:
+        return QStringLiteral("ClientOnly");
+    case ProgramSettings::ImageFindCaptureMode::Hybrid:
+    default:
+        return QStringLiteral("Hybrid");
+    }
+}
+
 } // namespace
+
+QStringList captureProfileContextSnapshot(const QString& profileId,
+                                          const QString& profileName,
+                                          const QString& mainTargetTitle,
+                                          const QString& subTargetTitle,
+                                          const ProgramSettings::ProfileSettings& settings) {
+    QStringList lines;
+    if (!profileId.isEmpty()) {
+        lines << QStringLiteral("profile_id=%1").arg(profileId);
+    }
+    if (!profileName.isEmpty()) {
+        lines << QStringLiteral("profile_name=%1").arg(profileName);
+    }
+    if (!mainTargetTitle.isEmpty()) {
+        lines << QStringLiteral("main_target=%1").arg(mainTargetTitle);
+    }
+    if (!subTargetTitle.isEmpty()) {
+        lines << QStringLiteral("sub_target=%1").arg(subTargetTitle);
+    }
+    lines << QStringLiteral("auto_select_running=%1")
+                 .arg(settings.autoSelectRunningFeature ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("pin_main_center=%1")
+                 .arg(settings.pinTargetWindowToScreenCenter ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("pin_sub_center=%1")
+                 .arg(settings.pinSubTargetWindowToScreenCenter ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("imagefind_capture=%1").arg(captureModeLabel(settings.imageFindCaptureMode));
+    lines << QStringLiteral("run_without_target=%1")
+                 .arg(settings.runWithoutTargetWindow ? QStringLiteral("yes") : QStringLiteral("no"));
+    if (!settings.linkedTargetProcessPath.isEmpty()) {
+        lines << QStringLiteral("linked_process=%1").arg(settings.linkedTargetProcessPath);
+    }
+    if (!settings.subLinkedTargetProcessPath.isEmpty()) {
+        lines << QStringLiteral("sub_linked_process=%1").arg(settings.subLinkedTargetProcessPath);
+    }
+    if (!settings.triggerArmedFeatureIds.isEmpty()) {
+        lines << QStringLiteral("trigger_armed_count=%1").arg(settings.triggerArmedFeatureIds.size());
+    }
+    return lines;
+}
+
+QStringList buildProfileContextMarkdown(const QStringList& settings) {
+    QStringList lines;
+    lines << QStringLiteral("## Profile settings (session snapshot)");
+    lines << QString();
+    if (settings.isEmpty()) {
+        lines << QStringLiteral("_No profile context recorded._");
+        return lines;
+    }
+    lines << QStringLiteral("| Setting | Value |");
+    lines << QStringLiteral("| --- | --- |");
+    for (const QString& entry : settings) {
+        const int eq = entry.indexOf(QLatin1Char('='));
+        if (eq <= 0) {
+            lines << QStringLiteral("| %1 | |").arg(escapeMd(entry));
+            continue;
+        }
+        lines << QStringLiteral("| %1 | %2 |")
+                     .arg(escapeMd(entry.left(eq)))
+                     .arg(escapeMd(entry.mid(eq + 1)));
+    }
+    return lines;
+}
 
 WorkflowProfileSnapshotData captureWorkflowProfileSnapshot(const Feature& feature) {
     WorkflowProfileSnapshotData data;
@@ -346,7 +419,9 @@ QStringList buildAutoDiagnosis(const ProfileDiagnosisInput& input) {
     qint64 triggerCooldownUs = relUsForEvent(input.sessionEvents, "trigger_cooldown_start");
 
     for (const ProfileEventLite& event : input.sessionEvents) {
-        if (event.eventName == QLatin1String("mouse_click") && firstClickUs < 0) {
+        if ((event.eventName == QLatin1String("mouse_click")
+             || event.eventName == QLatin1String("synthetic_mouse_click"))
+            && firstClickUs < 0) {
             firstClickUs = event.relUs;
         }
     }
@@ -482,11 +557,31 @@ QStringList buildAutoDiagnosis(const ProfileDiagnosisInput& input) {
         }
     }
 
+    if (input.physicalInputCount > 0) {
+        findings << QStringLiteral(
+            "**사용자 물리 입력**: %1회 (`user_physical_key` / `user_physical_mouse`) — 실행 중 실제 키보드·마우스 입력이 감지됨")
+                        .arg(input.physicalInputCount);
+    }
+
+    if (input.imageFindPollCount > 0) {
+        findings << QStringLiteral(
+            "**ImageFind 폴 상세**: %1회 `imagefind_poll` 기록 — 캡처/매칭 ms·confidence는 이벤트 로그 참고")
+                        .arg(input.imageFindPollCount);
+    }
+
+    if (input.foregroundChangeCount > 0) {
+        findings << QStringLiteral(
+            "**포그라운드 창 전환**: %1회 — 프로필 자동 전환·대상 창 포커스와 상관관계 확인")
+                        .arg(input.foregroundChangeCount);
+    }
+
     if (input.clickCount > 0) {
         qint64 maxClickUs = 0;
         int slowClickCount = 0;
         for (const ProfileEventLite& event : input.sessionEvents) {
-            if (event.eventName != QLatin1String("mouse_click") || event.durationUs < 0) {
+            if ((event.eventName != QLatin1String("mouse_click")
+                 && event.eventName != QLatin1String("synthetic_mouse_click"))
+                || event.durationUs < 0) {
                 continue;
             }
             maxClickUs = std::max(maxClickUs, event.durationUs);

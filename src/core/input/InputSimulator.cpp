@@ -1,6 +1,7 @@
 #include "core/input/InputSimulator.h"
 
 #include "app/MouseCenterLock.h"
+#include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/workflow/ExecutionContext.h"
 
 #ifdef _WIN32
@@ -11,6 +12,8 @@
 #include <chrono>
 #include <cstring>
 #include <thread>
+
+#include <QString>
 
 namespace {
 
@@ -853,6 +856,8 @@ void InputSimulator::clickAt(int screenX,
                              int count,
                              KeyModifiers mods) {
 #ifdef _WIN32
+    PIPBONG_WF_PROFILE("synthetic_mouse_click",
+                       QStringLiteral("synthetic=1 path=screen x=%1 y=%2").arg(screenX).arg(screenY));
     const SyntheticPointerGuard syntheticPointerGuard;
     if (action == ClickAction::MoveOnly) {
         moveAt(screenX, screenY);
@@ -889,6 +894,7 @@ void InputSimulator::clickAtCursor(MouseButton button,
                                    int count,
                                    KeyModifiers mods) {
 #ifdef _WIN32
+    PIPBONG_WF_PROFILE("synthetic_mouse_click", QStringLiteral("synthetic=1 path=cursor"));
     if (action == ClickAction::MoveOnly) {
         return;
     }
@@ -942,6 +948,8 @@ void InputSimulator::clickAtCursorOnTarget(HWND hwnd,
                                            int count,
                                            KeyModifiers mods) {
 #ifdef _WIN32
+    PIPBONG_WF_PROFILE("synthetic_mouse_click",
+                       QStringLiteral("synthetic=1 path=cursor_target"));
     if (!hwnd || !IsWindow(hwnd) || action == ClickAction::MoveOnly) {
         return;
     }
@@ -1262,6 +1270,9 @@ void InputSimulator::sendKey(int virtualKey,
                              const KeyPressModifierActions& mods,
                              bool sendMainKey) {
 #ifdef _WIN32
+    const WfProfileScope keyProfileScope(
+        "synthetic_key",
+        QStringLiteral("synthetic=1 vk=0x%1 main=%2").arg(virtualKey, 0, 16).arg(sendMainKey ? 1 : 0));
     if (sendMainKey && action == KeyAction::Tap && isModifierVirtualKey(virtualKey)
         && isModifierVirtualKeyPhysicallyDown(virtualKey)) {
         return;

@@ -1,4 +1,4 @@
-# Summarize PIPBONG workflow run profile logs (Markdown v4 + embedded TSV) for human/AI spike review.
+# Summarize PIPBONG workflow run profile logs (Markdown v4/v5 + embedded TSV) for human/AI spike review.
 param(
     [string]$Path = "",
     [int]$Top = 20
@@ -112,10 +112,12 @@ function Parse-ProfileEvents {
 $resolvedPath = Resolve-ProfilePath -InputPath $Path
 $lines = Get-Content -LiteralPath $resolvedPath -Encoding UTF8
 $formatVersion = Get-FrontMatterValue -Lines $lines -Key "format_version"
+$profilingDepth = Get-FrontMatterValue -Lines $lines -Key "profiling_depth"
 $featureName = Get-FrontMatterValue -Lines $lines -Key "feature_name"
 $runMode = Get-FrontMatterValue -Lines $lines -Key "run_mode"
 $blockCount = Get-FrontMatterValue -Lines $lines -Key "workflow_block_count"
 $startSource = Get-FrontMatterValue -Lines $lines -Key "session_start_source"
+$tracePath = Join-Path (Split-Path -Parent $resolvedPath) "trace.json"
 $tsvLines = Get-TsvEventLines -Lines $lines
 $events = Parse-ProfileEvents -TsvLines $tsvLines
 $autoDiagnosis = Get-MarkdownSection -Lines $lines -Heading "## Auto diagnosis"
@@ -123,7 +125,9 @@ $autoDiagnosis = Get-MarkdownSection -Lines $lines -Heading "## Auto diagnosis"
 Write-Host "PIPBONG workflow profile analysis"
 Write-Host "file: $resolvedPath"
 if ($formatVersion) { Write-Host "format_version: $formatVersion" }
+if ($profilingDepth) { Write-Host "profiling_depth: $profilingDepth" }
 if ($featureName) { Write-Host "feature: $featureName ($runMode)" }
+if (Test-Path -LiteralPath $tracePath) { Write-Host "chrome_trace: $tracePath" }
 if ($blockCount) { Write-Host "workflow_blocks: $blockCount" }
 if ($startSource) { Write-Host "start_source: $startSource" }
 Write-Host "events: $($events.Count)"
@@ -140,7 +144,12 @@ if ($autoDiagnosis.Count -gt 0) {
 
 $loopEnds = $events | Where-Object { $_.Event -eq "loop_end" -and $_.DurUs -ge 0 }
 $uiFlushes = $events | Where-Object { $_.Event -eq "ui_fast_repeat_flush" -and $_.DurUs -ge 0 }
-$clicks = $events | Where-Object { $_.Event -eq "mouse_click" -and $_.DurUs -ge 0 }
+$clicks = $events | Where-Object {
+    ($_.Event -eq "mouse_click" -or $_.Event -eq "synthetic_mouse_click") -and $_.DurUs -ge 0
+}
+$imageFindPolls = $events | Where-Object { $_.Event -eq "imagefind_poll" }
+$physicalKeys = $events | Where-Object { $_.Event -eq "user_physical_key" }
+$foregroundChanges = $events | Where-Object { $_.Event -eq "foreground_change" }
 
 function Show-Percentiles {
     param([int64[]]$Values, [string]$Label)
@@ -160,7 +169,17 @@ function Show-Percentiles {
 Write-Host "=== Event percentiles ==="
 Show-Percentiles -Values @($loopEnds.DurUs) -Label "loop_duration"
 Show-Percentiles -Values @($uiFlushes.DurUs) -Label "ui_fast_repeat_flush"
-Show-Percentiles -Values @($clicks.DurUs) -Label "mouse_click"
+Show-Percentiles -Values @($clicks.DurUs) -Label "synthetic_mouse_click"
+
+if ($imageFindPolls.Count -gt 0) {
+    Write-Host "imagefind_poll events: $($imageFindPolls.Count)"
+}
+if ($physicalKeys.Count -gt 0) {
+    Write-Host "user_physical_key events: $($physicalKeys.Count)"
+}
+if ($foregroundChanges.Count -gt 0) {
+    Write-Host "foreground_change events: $($foregroundChanges.Count)"
+}
 
 $gapEvents = $events | Where-Object { $_.Event -eq "spike_loop_gap" -and $_.DurUs -ge 0 }
 if ($gapEvents.Count -gt 0) {

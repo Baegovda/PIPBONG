@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.274` (from `project(PIPBONG VERSION 0.8.274)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.275` (from `project(PIPBONG VERSION 0.8.275)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1141,20 +1141,22 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 ### 8.14 App-wide microsecond profiling (mandatory — stutter diagnosis)
 
-**Status:** Added 2026-07 (v0.8.269). Markdown v4 auto-context (v0.8.274). Microsecond log for Hold / **무한 반복** / UI latency — **off by default**.
+**Status:** Added 2026-07 (v0.8.269). Markdown v5 ultimate tier (v0.8.275): profile context, depth levels, per-poll ImageFind, physical vs synthetic input, foreground timeline, Chrome `trace.json`. Microsecond log for Hold / **무한 반복** / UI latency — **off by default**.
 
 | Layer | Role |
 | ----- | ---- |
-| `WorkflowRunProfiler` | App trace from launch (`app_trace_begin`) until shutdown (`app_trace_end`); feature sessions are `session_begin` / `session_end` markers inside the same buffer |
-| `WorkflowProfileSnapshot` | At `session_begin`, freezes **Feature settings** + per-block config (Wait ms, Click count, ImageFind poll/threshold, …) into the report |
-| Format | Markdown v4 (`pipbong-app-profile`): YAML frontmatter, **Feature settings**, **Workflow blocks**, **Block execution (measured)**, **Auto diagnosis** (Korean), spike tables, **Event series**, fenced TSV log |
+| `WorkflowRunProfiler` | App trace from launch (`app_trace_begin`) until shutdown (`app_trace_end`); feature sessions are `session_begin` / `session_end` markers inside the same buffer; **`profiling_depth`**: `standard` / `detailed` / `ultra` (`program/workflowRunProfilingDepth`) |
+| `WorkflowProfileSnapshot` | At `session_begin`, freezes **Profile settings** (target windows, capture mode, pin-center, …) + **Feature settings** + per-block config into the report |
+| Format | Markdown v5 (`pipbong-app-profile`): YAML `profiling_depth`, **Profile settings**, **Feature settings**, **Workflow blocks**, **Block execution (measured)**, **Auto diagnosis** (Korean), trigger aggregates, foreground sample, spike tables, **Event series**, fenced TSV log; **`workflow-profile/trace.json`** Chrome Trace export |
 | Enable | `ProgramSettings` `program/workflowRunProfiling` or env `PIPBONG_APP_PROFILE=1` / `PIPBONG_WORKFLOW_PROFILE=1` |
-| Output | **Repo root** `workflow-profile/latest.md` (+ `sessions/`) on feature session end **and** app shutdown |
-| `WorkflowEngine` | `loop_*`, `block_end` with per-block aggregates (feature session only) |
-| `MainWindow` | `session_start_source` (`ui`/`hotkey`/`restore`); trigger `trigger_monitor_start` / `trigger_action_start` / `trigger_cooldown_start`; `profile_switch`, `auto_save`, `ui_fast_repeat_flush`; `PerfTrace` scopes |
+| Output | **Repo root** `workflow-profile/latest.md` + `trace.json` (+ `sessions/`) on feature session end **and** app shutdown |
+| `WorkflowEngine` | `loop_*` (`loop=` correlation on events), `block_end` with per-block aggregates |
+| `ImageFindBlock` | `imagefind_poll` per attempt (depth-filtered): poll#, confidence, `cap_us`, `match_us` |
+| `MainWindow` | Profile context at `session_begin`; `foreground_change` on foreground title change (Detailed+) |
+| `UserInputInterruptMonitor` | `user_physical_key` / `user_physical_mouse` (Detailed+) |
+| `InputSimulator` | `synthetic_mouse_click` / `synthetic_key` (PIPBONG-injected input) |
 | `HotkeyManager` | `hotkey_*_dispatch` on UI thread |
 | `ScreenCapture` | `capture_imagefind` per ImageFind haystack capture |
-| `InputSimulator` | `mouse_click` scopes |
 | `scripts/analyze-workflow-profile.ps1` | Prints **Auto diagnosis** + percentiles; reads `.md` TSV fence |
 
 **User → AI workflow (zero manual workflow description):** Enable profiling → F5 → reproduce issue → exit → **`workflow-profile/latest.md`** → agent reads **Auto diagnosis** + snapshot tables (do **not** ask the user for Wait ms / block list).
@@ -1170,7 +1172,7 @@ Cursor rule: `.cursor/rules/workflow-run-profiling.mdc`.
 | Group | Contents |
 | ----- | -------- |
 | **기능 실행** | Auto-select running feature, profile-switch focus to target window, run without target window, log max lines |
-| **진단** | Workflow run microsecond profiling (`program/workflowRunProfiling`) |
+| **진단** | Workflow run microsecond profiling (`program/workflowRunProfiling`) + depth (`program/workflowRunProfilingDepth`: standard/detailed/ultra) |
 | **시작·종료** | Windows startup launch, close to tray |
 | **업데이트** | Periodic update check + interval, auto-install |
 | **권한·호환** | Run as administrator (+ one-line elevated status when applicable) |
@@ -1327,6 +1329,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.275] - 2026-07-22
+
+### Added
+
+- **Workflow profiling ultimate tier** (Markdown v5): `program/workflowRunProfilingDepth` **standard** / **detailed** / **ultra** in **프로그램 설정 → 진단**; **Profile settings** snapshot at `session_begin` (main/sub target, capture mode, pin-center, run-without-target, …); `imagefind_poll` per attempt with `cap_us`/`match_us`/confidence (depth-filtered); `user_physical_key`/`user_physical_mouse` vs `synthetic_mouse_click`/`synthetic_key`; `foreground_change` timeline; `loop=` correlation on feature-session events; Chrome Trace **`workflow-profile/trace.json`** (`WorkflowRunProfiler`, `WorkflowProfileSnapshot`, `ImageFindBlock`, `UserInputInterruptMonitor`, `InputSimulator`, `MainWindow`).
+
+### Changed
+
+- Profiling report format `pipbong-app-profile` v4 → v5; trigger phase aggregate table + foreground sample section; auto diagnosis covers physical input, ImageFind poll count, foreground changes.
 
 ## [0.8.274] - 2026-07-22
 

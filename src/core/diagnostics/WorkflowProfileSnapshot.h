@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app/ProgramSettings.h"
+
 #include <QString>
 #include <QStringList>
 
@@ -44,6 +46,7 @@ struct ProfileDiagnosisInput {
     QString endReason;
     QString startSource;
     int workflowBlockCount = 0;
+    QStringList profileContext;
     QStringList featureSettings;
     std::vector<WorkflowBlockSnapshotRow> blockSnapshots;
     std::vector<BlockRunMeasuredRow> blockMeasured;
@@ -51,11 +54,21 @@ struct ProfileDiagnosisInput {
     int loopBeginCount = 0;
     int loopEndCount = 0;
     int clickCount = 0;
+    int physicalInputCount = 0;
+    int imageFindPollCount = 0;
+    int foregroundChangeCount = 0;
     qint64 maxLoopGapUs = 0;
 };
 
 WorkflowProfileSnapshotData captureWorkflowProfileSnapshot(const Feature& feature);
 
+QStringList captureProfileContextSnapshot(const QString& profileId,
+                                          const QString& profileName,
+                                          const QString& mainTargetTitle,
+                                          const QString& subTargetTitle,
+                                          const ProgramSettings::ProfileSettings& settings);
+
+QStringList buildProfileContextMarkdown(const QStringList& settings);
 QStringList buildFeatureSettingsMarkdown(const QStringList& settings);
 QStringList buildWorkflowBlocksMarkdown(const std::vector<WorkflowBlockSnapshotRow>& blocks);
 QStringList buildBlockExecutionMarkdown(const std::vector<BlockRunMeasuredRow>& measured);
