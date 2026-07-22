@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.263` (from `project(PIPBONG VERSION 0.8.263)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.264` (from `project(PIPBONG VERSION 0.8.264)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.264] - 2026-07-22
+
+### Fixed
+
+- Workflow block list **기준/감지** threshold horizontal drag no longer starts row reorder or freezes the UI: score column items omit `ItemIsDragEnabled`; threshold input handled in `viewportEvent` before QAbstractItemView drag; `indexAt`/`visualRect` hit test; stale row-drag visuals cleared on threshold press (`BlockListWidget`).
 
 ## [0.8.263] - 2026-07-22
 

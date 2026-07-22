@@ -65,6 +65,15 @@ constexpr int kColAttempts = 6;
 constexpr int kColReturnPrev = 7;
 constexpr int kColRetryAfterNext = 8;
 constexpr int kColScore = 9;
+
+Qt::ItemFlags blockListRowItemFlags() {
+    return Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled;
+}
+
+Qt::ItemFlags blockListScoreColumnItemFlags() {
+    // Score column uses horizontal threshold drag — never participate in row reorder.
+    return Qt::ItemIsEnabled | Qt::ItemIsSelectable;
+}
 constexpr int kColRoiCorrection = 10;
 constexpr int kColMatch = 11;
 constexpr int kColumnCount = 12;
@@ -2140,17 +2149,30 @@ void BlockListWidget::cancelLoopRegionPick() {
 }
 
 bool BlockListWidget::imageFindScoreColumnAt(const QPoint& viewportPos, int& blockRowOut) const {
+    if (isColumnHidden(kColScore)) {
+        return false;
+    }
+
+    constexpr int kHorizontalSlack = UiResizeHandle::kDividerHalfWidthPx;
+
+    const QModelIndex cellIndex = indexAt(viewportPos);
+    if (cellIndex.isValid() && cellIndex.column() == kColScore) {
+        const int blockRow = blockRowForTableRow(cellIndex.row());
+        if (blockRow >= 0 && blockRow < m_rowIsImageFind.size() && m_rowIsImageFind[blockRow]) {
+            const QRect hitRect = visualRect(cellIndex).adjusted(-kHorizontalSlack, 0, kHorizontalSlack, 0);
+            if (hitRect.contains(viewportPos)) {
+                blockRowOut = blockRow;
+                return true;
+            }
+        }
+    }
+
     const int tableRow = rowAtViewportY(viewportPos.y());
     const int blockRow = blockRowForTableRow(tableRow);
     if (blockRow < 0 || blockRow >= m_rowIsImageFind.size() || !m_rowIsImageFind[blockRow]) {
         return false;
     }
 
-    if (isColumnHidden(kColScore)) {
-        return false;
-    }
-
-    constexpr int kHorizontalSlack = UiResizeHandle::kDividerHalfWidthPx;
     const int scoreLeft = columnViewportPosition(kColScore) - kHorizontalSlack;
     const int scoreRight = scoreLeft + columnWidth(kColScore) + kHorizontalSlack * 2;
     if (viewportPos.x() < scoreLeft || viewportPos.x() > scoreRight) {
@@ -2218,6 +2240,10 @@ void BlockListWidget::beginThresholdDragInteraction(int blockRow, QMouseEvent* m
         return;
     }
 
+    if (m_internalRowDragActive || m_dragSourceRow >= 0) {
+        clearInternalDragVisuals();
+    }
+
     m_thresholdDragBlockRow = blockRow;
     m_thresholdDragStartValue = blockRow < m_rowImageFindThresholds.size()
                                     ? m_rowImageFindThresholds[blockRow]
@@ -2262,6 +2288,59 @@ void BlockListWidget::finishThresholdDrag(QMouseEvent* mouseEvent) {
         && std::abs(finalThreshold - m_thresholdDragStartValue) > 0.0005) {
         emit imageFindThresholdChanged(blockRow, finalThreshold);
     }
+}
+
+bool BlockListWidget::viewportEvent(QEvent* event) {
+    if (!m_loopRegionPickActive) {
+        switch (event->type()) {
+        case QEvent::MouseButtonPress: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            int blockRow = -1;
+            if (imageFindScoreColumnAt(mouseEvent->position().toPoint(), blockRow)) {
+                beginThresholdDragInteraction(blockRow, mouseEvent);
+                if (m_thresholdDragBlockRow >= 0) {
+                    return true;
+                }
+            }
+            break;
+        }
+        case QEvent::MouseMove: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (m_thresholdDragBlockRow >= 0) {
+                if (!dragAdjustContinueMove(m_thresholdDragMouse, mouseEvent, viewport())) {
+                    if (!mouseEvent->buttons().testFlag(Qt::LeftButton)) {
+                        finishThresholdDrag(mouseEvent);
+                    }
+                    return true;
+                }
+                const int deltaPx = dragAdjustDeltaPx(m_thresholdDragMouse, mouseEvent);
+                const double step = imageFindThresholdDragStep(mouseEvent->modifiers());
+                const double nextValue = m_thresholdDragStartValue + static_cast<double>(deltaPx) * step;
+                updateImageFindThresholdDisplay(m_thresholdDragBlockRow, nextValue);
+                return true;
+            }
+            int hoverBlockRow = -1;
+            if (imageFindScoreColumnAt(mouseEvent->position().toPoint(), hoverBlockRow)) {
+                viewport()->setCursor(Qt::SizeHorCursor);
+            } else if (viewport()->cursor().shape() == Qt::SizeHorCursor) {
+                viewport()->unsetCursor();
+            }
+            break;
+        }
+        case QEvent::MouseButtonRelease: {
+            auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (m_thresholdDragBlockRow >= 0) {
+                finishThresholdDrag(mouseEvent);
+                return true;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    return QTableWidget::viewportEvent(event);
 }
 
 bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
@@ -2416,60 +2495,6 @@ bool BlockListWidget::eventFilter(QObject* watched, QEvent* event) {
         }
     }
 
-    if (watched == viewport() && !m_loopRegionPickActive) {
-        switch (event->type()) {
-        case QEvent::MouseButtonPress: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            int blockRow = -1;
-            if (!imageFindScoreColumnAt(mouseEvent->pos(), blockRow)) {
-                break;
-            }
-            beginThresholdDragInteraction(blockRow, mouseEvent);
-            if (m_thresholdDragBlockRow < 0) {
-                break;
-            }
-            mouseEvent->accept();
-            return true;
-        }
-        case QEvent::MouseMove: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            if (m_thresholdDragBlockRow >= 0) {
-                if (!dragAdjustContinueMove(m_thresholdDragMouse, mouseEvent, viewport())) {
-                    if (!mouseEvent->buttons().testFlag(Qt::LeftButton)) {
-                        finishThresholdDrag(mouseEvent);
-                    }
-                    mouseEvent->accept();
-                    return true;
-                }
-                const int deltaPx = dragAdjustDeltaPx(m_thresholdDragMouse, mouseEvent);
-                const double step = imageFindThresholdDragStep(mouseEvent->modifiers());
-                const double nextValue = m_thresholdDragStartValue + static_cast<double>(deltaPx) * step;
-                updateImageFindThresholdDisplay(m_thresholdDragBlockRow, nextValue);
-                mouseEvent->accept();
-                return true;
-            }
-            int hoverBlockRow = -1;
-            if (imageFindScoreColumnAt(mouseEvent->pos(), hoverBlockRow)) {
-                viewport()->setCursor(Qt::SizeHorCursor);
-            } else if (viewport()->cursor().shape() == Qt::SizeHorCursor) {
-                viewport()->unsetCursor();
-            }
-            break;
-        }
-        case QEvent::MouseButtonRelease: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            if (m_thresholdDragBlockRow < 0) {
-                break;
-            }
-            finishThresholdDrag(mouseEvent);
-            mouseEvent->accept();
-            return true;
-        }
-        default:
-            break;
-        }
-    }
-
     return QTableWidget::eventFilter(watched, event);
 }
 
@@ -2568,7 +2593,7 @@ void BlockListWidget::setBlockInfo(int row,
     if (row < 0 || row >= m_blockCount || tableRow < 0) {
         return;
     }
-    const auto itemFlags = Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled;
+    const auto itemFlags = blockListRowItemFlags();
 
     auto* indexItem = new QTableWidgetItem(QString::number(row + 1));
     indexItem->setTextAlignment(Qt::AlignCenter);
@@ -2632,7 +2657,7 @@ void BlockListWidget::setBlockInfo(int row,
 
     auto* scoreItem = new QTableWidgetItem(QStringLiteral("—"));
     scoreItem->setTextAlignment(Qt::AlignCenter);
-    scoreItem->setFlags(itemFlags);
+    scoreItem->setFlags(blockListScoreColumnItemFlags());
     setItem(tableRow, kColScore, scoreItem);
 
     if (row >= m_rowIsImageFind.size()) {
@@ -2671,10 +2696,11 @@ void BlockListWidget::setBlockMatchResult(int row,
     QTableWidgetItem* scoreItem = item(tableRow, kColScore);
     if (!scoreItem) {
         scoreItem = new QTableWidgetItem();
-        scoreItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
+        scoreItem->setFlags(blockListScoreColumnItemFlags());
         scoreItem->setTextAlignment(Qt::AlignCenter);
         setItem(tableRow, kColScore, scoreItem);
     }
+    scoreItem->setFlags(blockListScoreColumnItemFlags());
     scoreItem->setText(QStringLiteral("%1 / %2")
                            .arg(matchThreshold, 0, 'f', 2)
                            .arg(confidence, 0, 'f', 2));
@@ -2726,10 +2752,11 @@ void BlockListWidget::setBlockMatchBaseline(int row, double matchThreshold) {
     QTableWidgetItem* scoreItem = item(tableRow, kColScore);
     if (!scoreItem) {
         scoreItem = new QTableWidgetItem();
-        scoreItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsDragEnabled);
+        scoreItem->setFlags(blockListScoreColumnItemFlags());
         scoreItem->setTextAlignment(Qt::AlignCenter);
         setItem(tableRow, kColScore, scoreItem);
     }
+    scoreItem->setFlags(blockListScoreColumnItemFlags());
     scoreItem->setText(QStringLiteral("%1 / —").arg(matchThreshold, 0, 'f', 2));
     scoreItem->setToolTip(tr("매칭 기준 / 감지 점수 · 드래그하여 기준 조정"));
     if (row < m_rowImageFindThresholds.size()) {
@@ -3518,6 +3545,10 @@ void BlockListWidget::startDrag(Qt::DropActions supportedActions) {
     }
     int scoreBlockRow = -1;
     if (imageFindScoreColumnAt(viewport()->mapFromGlobal(QCursor::pos()), scoreBlockRow)) {
+        return;
+    }
+    const QModelIndex pressedIndex = indexAt(viewport()->mapFromGlobal(QCursor::pos()));
+    if (pressedIndex.isValid() && pressedIndex.column() == kColScore) {
         return;
     }
     if (m_internalRowDragActive) {
