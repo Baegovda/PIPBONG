@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.259` (from `project(PIPBONG VERSION 0.8.259)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.260` (from `project(PIPBONG VERSION 0.8.260)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.260] - 2026-07-22
+
+### Added
+
+- Workflow block list **요약** for **템플릿 매칭** blocks shows live template scan scale (e.g. **스케일 97–103%**) from capture metadata vs current target client size and block multi-scale settings (`ImageFindBlock::listDetailSummaryForProject`, `WorkflowEditorPanel`).
+
+### Changed
+
+- Target window client-size poll refreshes workflow block-list summaries when resolution changes so ImageFind scale labels stay current (`MainWindow::updateTargetWindowDetails`).
 
 ## [0.8.259] - 2026-07-22
 

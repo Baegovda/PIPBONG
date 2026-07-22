@@ -1153,7 +1153,65 @@ std::string ImageFindBlock::summary() const {
     return "템플릿 매칭";
 }
 
-std::string ImageFindBlock::listDetailSummary() const {
+namespace {
+
+std::string formatScanScalePercent(double scale) {
+    char buf[24];
+    std::snprintf(buf, sizeof(buf), "%d%%", static_cast<int>(std::lround(scale * 100.0)));
+    return buf;
+}
+
+std::string formatScanScaleRange(double minScale, double maxScale) {
+    const int minPct = static_cast<int>(std::lround(minScale * 100.0));
+    const int maxPct = static_cast<int>(std::lround(maxScale * 100.0));
+    if (minPct == maxPct) {
+        return formatScanScalePercent(minScale);
+    }
+    return std::to_string(minPct) + "–" + std::to_string(maxPct) + "%";
+}
+
+std::string imageFindWorkflowScanScaleLabel(const ImageFindBlock& block,
+                                           const std::string& projectDirectory) {
+#ifdef _WIN32
+    if (block.templatePaths.empty()) {
+        return {};
+    }
+
+    const auto [clientW, clientH] = currentTargetClientSize(nullptr);
+    const MatchOptions base = block.matchOptions();
+    double rangeMin = 1e9;
+    double rangeMax = -1e9;
+    bool hasTemplate = false;
+
+    for (const std::string& path : block.templatePaths) {
+        if (path.empty()) {
+            continue;
+        }
+        hasTemplate = true;
+        const std::string resolved = resolveTemplatePath(path, projectDirectory);
+        const MatchOptions opts = TemplateCaptureMetadata::matchOptionsForTemplate(
+            base, resolved, clientW, clientH);
+        const double minS = opts.multiScale ? opts.minScale : opts.referenceScale;
+        const double maxS = opts.multiScale ? opts.maxScale : opts.referenceScale;
+        rangeMin = std::min(rangeMin, minS);
+        rangeMax = std::max(rangeMax, maxS);
+    }
+
+    if (!hasTemplate) {
+        return {};
+    }
+
+    return "스케일 " + formatScanScaleRange(rangeMin, rangeMax);
+#else
+    (void)block;
+    (void)projectDirectory;
+    return {};
+#endif
+}
+
+} // namespace
+
+std::string ImageFindBlock::listDetailSummaryForProject(const std::string& projectDirectory) const {
     std::vector<std::string> parts;
 
     parts.push_back(imageFindSearchRoiListLabel(searchArea, customRegionsWindowPercent, percentRegion));
@@ -1177,6 +1235,11 @@ std::string ImageFindBlock::listDetailSummary() const {
         }
     }
 
+    const std::string scaleLabel = imageFindWorkflowScanScaleLabel(*this, projectDirectory);
+    if (!scaleLabel.empty()) {
+        parts.push_back(scaleLabel);
+    }
+
     char thresholdText[16];
     std::snprintf(thresholdText, sizeof(thresholdText), "%.2f", threshold);
     parts.push_back(thresholdText);
@@ -1189,6 +1252,10 @@ std::string ImageFindBlock::listDetailSummary() const {
         result += parts[i];
     }
     return result;
+}
+
+std::string ImageFindBlock::listDetailSummary() const {
+    return listDetailSummaryForProject({});
 }
 
 MatchOptions ImageFindBlock::matchOptions() const {

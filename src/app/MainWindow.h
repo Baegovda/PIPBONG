@@ -432,6 +432,8 @@ private:
     QTimer* m_mouseLockSyncTimer = nullptr;
     QTimer* m_targetWindowCenterPinTimer = nullptr;
     QTimer* m_targetWindowDetailRefreshTimer = nullptr;
+    int m_lastWorkflowScaleClientWidth = 0;
+    int m_lastWorkflowScaleClientHeight = 0;
     QTimer* m_profileAutoSwitchTimer = nullptr;
     void* m_profileForegroundEventHook = nullptr;
     UpdateChecker* m_updateChecker = nullptr;

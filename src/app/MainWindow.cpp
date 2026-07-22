@@ -7845,6 +7845,14 @@ void MainWindow::updateTargetWindowDetails() {
     data.visible = info.visible;
     data.monitorDpi = info.monitorDpi;
     m_targetWindowDetailPanel->showDetails(data);
+
+    if (m_workflowEditor && info.clientWidth > 0 && info.clientHeight > 0
+        && (info.clientWidth != m_lastWorkflowScaleClientWidth
+            || info.clientHeight != m_lastWorkflowScaleClientHeight)) {
+        m_lastWorkflowScaleClientWidth = info.clientWidth;
+        m_lastWorkflowScaleClientHeight = info.clientHeight;
+        refreshWorkflowEditor();
+    }
 #else
     m_targetWindowDetailPanel->showMessage(tr("타겟 정보는 Windows에서만 표시됩니다."));
 #endif

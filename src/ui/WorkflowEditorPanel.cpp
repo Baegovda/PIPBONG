@@ -1311,7 +1311,14 @@ void WorkflowEditorPanel::refresh() {
 
     for (int i = 0; i < static_cast<int>(blocks.size()); ++i) {
         const Block& block = *blocks[static_cast<size_t>(i)];
-        QString summary = QString::fromStdString(block.listDetailSummary());
+        QString summary;
+        if (block.type() == BlockType::ImageFind) {
+            summary = QString::fromStdString(
+                static_cast<const ImageFindBlock&>(block).listDetailSummaryForProject(
+                    m_projectDirectory.toStdString()));
+        } else {
+            summary = QString::fromStdString(block.listDetailSummary());
+        }
         if (lastMatchSources[i] >= 0) {
             summary.replace(QStringLiteral("·직전"),
                             QStringLiteral("·#%1").arg(lastMatchSources[i] + 1));

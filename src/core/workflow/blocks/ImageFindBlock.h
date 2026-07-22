@@ -91,6 +91,8 @@ public:
     std::string displayName() const override { return "ImageFind"; }
     std::string summary() const override;
     std::string listDetailSummary() const override;
+    /// Workflow block-list **요약** with live template scan scale when `projectDirectory` is set.
+    std::string listDetailSummaryForProject(const std::string& projectDirectory) const;
     BlockResult execute(ExecutionContext& ctx) override;
     nlohmann::json toJson() const override;
     std::unique_ptr<Block> clone() const override;
