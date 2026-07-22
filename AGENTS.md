@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.264` (from `project(PIPBONG VERSION 0.8.264)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.265` (from `project(PIPBONG VERSION 0.8.265)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1301,6 +1301,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.265] - 2026-07-22
+
+### Changed
+
+- Template resolution compensation uses a **narrow ±4% band** around the estimated scale (3 steps) instead of ±28% (13 steps); peak search tries the estimated scale first and exits early on hit (`TemplateCaptureMetadata`, `ImageMatcher::scaleFactors`, `findPeakAcrossCachedScales`).
+- Large search ROIs use **pyramid coarse-to-fine** matching: half-resolution pass then full-resolution refine in a local window (`ImageMatcher::findPeakAtScale`).
 
 ## [0.8.264] - 2026-07-22
 

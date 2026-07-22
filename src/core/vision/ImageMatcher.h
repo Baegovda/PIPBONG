@@ -27,6 +27,8 @@ struct MatchOptions {
     double maxScale = 1.1;
     /// Geometric mean of live/capture target frame scale (display + workflow summary).
     double referenceScale = 1.0;
+    /// When true, search starts at referenceScale with a narrow band (capture resolution compensation).
+    bool resolutionCompensate = false;
     TemplateColorMode templateColorMode = TemplateColorMode::Auto;
 };
 

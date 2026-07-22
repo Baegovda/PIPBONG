@@ -12,6 +12,8 @@
 
 #include <cmath>
 
+#include <numeric>
+
 
 
 namespace {
@@ -298,7 +300,7 @@ std::vector<MatchResult> collectMatchesAtScale(const cv::Mat& hayGray,
 
 
 
-MatchResult findPeakAtScale(const cv::Mat& hayGray, const cv::Mat& needleGray, double scale) {
+MatchResult findPeakAtScaleDirect(const cv::Mat& hayGray, const cv::Mat& needleGray, double scale) {
 
     MatchResult result;
 
@@ -330,6 +332,122 @@ MatchResult findPeakAtScale(const cv::Mat& hayGray, const cv::Mat& needleGray, d
 
     return makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), hayGray.size());
 
+}
+
+MatchResult findPeakAtScale(const cv::Mat& hayGray, const cv::Mat& needleGray, double scale) {
+    constexpr int kCoarseHaystackPixels = 921600;
+    constexpr int kCoarseNeedlePixels = 4096;
+    constexpr double kCoarseMinConfidence = 0.35;
+
+    if (hayGray.total() <= kCoarseHaystackPixels || needleGray.total() > kCoarseNeedlePixels
+        || hayGray.cols < 4 || hayGray.rows < 4 || needleGray.cols < 2 || needleGray.rows < 2) {
+        return findPeakAtScaleDirect(hayGray, needleGray, scale);
+    }
+
+    cv::Mat haySmall;
+    cv::Mat needleSmall;
+    cv::resize(hayGray,
+               haySmall,
+               cv::Size(std::max(1, hayGray.cols / 2), std::max(1, hayGray.rows / 2)),
+               0,
+               0,
+               cv::INTER_AREA);
+    cv::resize(needleGray,
+               needleSmall,
+               cv::Size(std::max(1, needleGray.cols / 2), std::max(1, needleGray.rows / 2)),
+               0,
+               0,
+               cv::INTER_AREA);
+    if (!fitsInHaystack(needleSmall.size(), haySmall.size())) {
+        return findPeakAtScaleDirect(hayGray, needleGray, scale);
+    }
+
+    const MatchResult coarse = findPeakAtScaleDirect(haySmall, needleSmall, scale);
+    if (!coarse.found || coarse.confidence < kCoarseMinConfidence) {
+        return findPeakAtScaleDirect(hayGray, needleGray, scale);
+    }
+
+    const int marginX = std::max(8, needleGray.cols);
+    const int marginY = std::max(8, needleGray.rows);
+    int rx = coarse.location.x * 2 - marginX;
+    int ry = coarse.location.y * 2 - marginY;
+    int rw = needleGray.cols + marginX * 2;
+    int rh = needleGray.rows + marginY * 2;
+    rx = std::max(0, rx);
+    ry = std::max(0, ry);
+    rw = std::min(rw, hayGray.cols - rx);
+    rh = std::min(rh, hayGray.rows - ry);
+    if (rw < needleGray.cols || rh < needleGray.rows) {
+        return findPeakAtScaleDirect(hayGray, needleGray, scale);
+    }
+
+    const cv::Rect roi(rx, ry, rw, rh);
+    MatchResult fine = findPeakAtScaleDirect(hayGray(roi), needleGray, scale);
+    if (!fine.found) {
+        return findPeakAtScaleDirect(hayGray, needleGray, scale);
+    }
+
+    fine.location.x += roi.x;
+    fine.location.y += roi.y;
+    fine.center =
+        cv::Point(fine.location.x + fine.matchedSize.width / 2,
+                  fine.location.y + fine.matchedSize.height / 2);
+    return fine;
+}
+
+size_t nearestScaleIndex(const std::vector<double>& factors, double target) {
+    if (factors.empty()) {
+        return 0;
+    }
+    size_t best = 0;
+    double bestDistance = std::abs(factors[0] - target);
+    for (size_t i = 1; i < factors.size(); ++i) {
+        const double distance = std::abs(factors[i] - target);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = i;
+        }
+    }
+    return best;
+}
+
+void accumulatePeakMatch(MatchResult& best, const MatchResult& candidate) {
+    if (candidate.found && candidate.confidence > best.confidence) {
+        best = candidate;
+    }
+}
+
+MatchResult findPeakAcrossCachedScales(const cv::Mat& hayGray,
+                                       const std::vector<double>& factors,
+                                       const std::vector<cv::Mat>& needles,
+                                       const MatchOptions& options) {
+    MatchResult best;
+    if (hayGray.empty() || factors.empty() || factors.size() != needles.size()) {
+        return best;
+    }
+
+    const auto tryIndex = [&](size_t index) {
+        accumulatePeakMatch(best, findPeakAtScale(hayGray, needles[index], factors[index]));
+    };
+
+    if (options.resolutionCompensate && factors.size() > 1) {
+        const size_t centerIndex = nearestScaleIndex(factors, options.referenceScale);
+        tryIndex(centerIndex);
+        if (ImageMatcher::meetsThreshold(best.confidence, options.threshold)) {
+            return best;
+        }
+        for (size_t i = 0; i < factors.size(); ++i) {
+            if (i != centerIndex) {
+                tryIndex(i);
+            }
+        }
+        return best;
+    }
+
+    for (size_t i = 0; i < factors.size(); ++i) {
+        tryIndex(i);
+    }
+    return best;
 }
 
 
@@ -758,15 +876,27 @@ std::vector<double> ImageMatcher::scaleFactors(const MatchOptions& options) {
 
 
 
-    constexpr int kLogScaleSteps = 13;
+    int logScaleSteps = 13;
+    const double ratio = maxScale / minScale;
+    if (ratio <= 1.08) {
+        logScaleSteps = 3;
+    } else if (ratio <= 1.2) {
+        logScaleSteps = 5;
+    } else if (ratio <= 1.5) {
+        logScaleSteps = 7;
+    } else if (ratio <= 2.0) {
+        logScaleSteps = 9;
+    }
 
     const double logMin = std::log(minScale);
 
     const double logMax = std::log(maxScale);
 
-    for (int step = 0; step < kLogScaleSteps; ++step) {
+    for (int step = 0; step < logScaleSteps; ++step) {
 
-        const double t = static_cast<double>(step) / static_cast<double>(kLogScaleSteps - 1);
+        const double t = logScaleSteps > 1
+                             ? static_cast<double>(step) / static_cast<double>(logScaleSteps - 1)
+                             : 0.0;
 
         appendUniqueScale(scales, std::exp(logMin + t * (logMax - logMin)));
 
@@ -786,11 +916,9 @@ MatchResult ImageMatcher::findPeakMatchGray(const cv::Mat& hayGray,
 
                                             const MatchOptions& options) {
 
-    MatchResult best;
-
     if (hayGray.empty() || templ.empty()) {
 
-        return best;
+        return {};
 
     }
 
@@ -798,21 +926,7 @@ MatchResult ImageMatcher::findPeakMatchGray(const cv::Mat& hayGray,
 
     ensureTemplateScaleCache(templ, options);
 
-    for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
-
-        const double scale = templ.scaleCacheFactors[i];
-
-        const MatchResult peak = findPeakAtScale(hayGray, templ.scaleCacheGrays[i], scale);
-
-        if (peak.found && peak.confidence > best.confidence) {
-
-            best = peak;
-
-        }
-
-    }
-
-    return best;
+    return findPeakAcrossCachedScales(hayGray, templ.scaleCacheFactors, templ.scaleCacheGrays, options);
 
 }
 
@@ -824,13 +938,11 @@ MatchResult ImageMatcher::findPeakMatchBgr(const cv::Mat& hayBgr,
 
                                            const MatchOptions& options) {
 
-    MatchResult best;
-
     const cv::Mat hay = toBgr(hayBgr);
 
     if (hay.empty() || templ.empty()) {
 
-        return best;
+        return {};
 
     }
 
@@ -838,21 +950,7 @@ MatchResult ImageMatcher::findPeakMatchBgr(const cv::Mat& hayBgr,
 
     ensureTemplateBgrScaleCache(templ, options);
 
-    for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
-
-        const double scale = templ.scaleCacheFactors[i];
-
-        const MatchResult peak = findPeakAtScale(hay, templ.scaleCacheBgrs[i], scale);
-
-        if (peak.found && peak.confidence > best.confidence) {
-
-            best = peak;
-
-        }
-
-    }
-
-    return best;
+    return findPeakAcrossCachedScales(hay, templ.scaleCacheFactors, templ.scaleCacheBgrs, options);
 
 }
 
@@ -884,11 +982,43 @@ void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
 
     ensureTemplateScaleCache(templ, options);
 
-    for (size_t i = 0; i < templ.scaleCacheFactors.size(); ++i) {
+    std::vector<size_t> scaleOrder(templ.scaleCacheFactors.size());
+    std::iota(scaleOrder.begin(), scaleOrder.end(), 0);
+    if (options.resolutionCompensate && scaleOrder.size() > 1) {
+        const size_t centerIndex = nearestScaleIndex(templ.scaleCacheFactors, options.referenceScale);
+        std::swap(scaleOrder.front(), scaleOrder[centerIndex]);
+    }
+
+    for (size_t orderIndex = 0; orderIndex < scaleOrder.size(); ++orderIndex) {
+
+        const size_t i = scaleOrder[orderIndex];
 
         const double scale = templ.scaleCacheFactors[i];
 
         const cv::Mat& needleGray = templ.scaleCacheGrays[i];
+
+        if (!enumerateAll) {
+
+            const MatchResult scalePeak = findPeakAtScale(hayGray, needleGray, scale);
+
+            accumulatePeakMatch(outPeak, scalePeak);
+
+            if (meetsThreshold(scalePeak.confidence, options.threshold) && scalePeak.found) {
+
+                outMatches.push_back(scalePeak);
+
+            }
+
+            if (options.resolutionCompensate && orderIndex == 0
+                && meetsThreshold(outPeak.confidence, options.threshold)) {
+
+                break;
+
+            }
+
+            continue;
+
+        }
 
         if (!fitsInHaystack(needleGray.size(), hayGray.size())) {
 
@@ -918,33 +1048,7 @@ void ImageMatcher::findPeakAndAllTemplatesGray(const cv::Mat& hayGray,
 
             makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), hayGray.size());
 
-        if (scalePeak.found && scalePeak.confidence > outPeak.confidence) {
-
-            outPeak = scalePeak;
-
-        }
-
-
-
-        if (!enumerateAll) {
-
-            if (meetsThreshold(maxVal, options.threshold)) {
-
-                MatchResult result =
-
-                    makeMatchResult(maxLoc, maxVal, scale, needleGray.size(), hayGray.size());
-
-                if (result.found) {
-
-                    outMatches.push_back(result);
-
-                }
-
-            }
-
-            continue;
-
-        }
+        accumulatePeakMatch(outPeak, scalePeak);
 
 
 

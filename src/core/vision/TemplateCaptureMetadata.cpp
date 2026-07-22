@@ -10,8 +10,8 @@ namespace TemplateCaptureMetadata {
 namespace {
 
 constexpr double kResolutionScaleTolerance = 0.005;
-constexpr double kResolutionAutoBandLow = 0.72;
-constexpr double kResolutionAutoBandHigh = 1.28;
+constexpr double kResolutionAutoBandLow = 0.96;
+constexpr double kResolutionAutoBandHigh = 1.04;
 constexpr double kMinMatchScale = 0.1;
 constexpr double kMaxMatchScale = 4.0;
 
@@ -110,6 +110,7 @@ MatchOptions matchOptionsForTemplate(const MatchOptions& base,
 
     MatchOptions adjusted = base;
     adjusted.referenceScale = centerScale;
+    adjusted.resolutionCompensate = true;
     adjusted.multiScale = true;
     if (base.multiScale) {
         adjusted.minScale = std::max(kMinMatchScale, base.minScale * centerScale);
