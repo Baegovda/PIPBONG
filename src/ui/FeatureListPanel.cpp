@@ -749,9 +749,9 @@ void applyFeatureListPanelStyle(QWidget* panel) {
         "  font-weight: bold;"
         "  font-size: 12px;"
         "  border: none;"
-        "  margin-top: 4px;"
+        "  margin-top: 14px;"
         "  padding: 0;"
-        "  padding-top: 10px;"
+        "  padding-top: 6px;"
         "}"
         "QGroupBox#featureListGroup::title {"
         "  subcontrol-origin: margin;"
@@ -2565,11 +2565,16 @@ void FeatureListPanel::wireListColumnHeader(ListColumnHeaderWidget* header, Feat
         ctx.painter->setFont(headerFont);
         ctx.painter->setPen(ListColumnHeaderWidget::headerTextColor(ctx.palette));
         const Qt::Alignment headerAlign = Qt::AlignHCenter | Qt::AlignVCenter;
-        ctx.painter->drawText(edges.cols.enable, headerAlign, FeatureListPanel::tr("사용"));
-        ctx.painter->drawText(edges.cols.run, headerAlign, QStringLiteral("\u25b6"));
-        ctx.painter->drawText(edges.cols.name, headerAlign, FeatureListPanel::tr("기능"));
-        ctx.painter->drawText(edges.cols.mode, headerAlign, FeatureListPanel::tr("방식"));
-        ctx.painter->drawText(edges.cols.hotkey, headerAlign, FeatureListPanel::tr("키"));
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.enable,
+                                                   FeatureListPanel::tr("사용"), headerAlign);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.run,
+                                                   QStringLiteral("\u25b6"), headerAlign);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.name,
+                                                   FeatureListPanel::tr("기능"), headerAlign);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.mode,
+                                                   FeatureListPanel::tr("방식"), headerAlign);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.hotkey,
+                                                   FeatureListPanel::tr("키"), headerAlign);
     });
 
     header->setDividerXsProvider([panel](const QRect& rect) {

@@ -5,6 +5,7 @@
 #include <QFrame>
 
 class QLabel;
+class QResizeEvent;
 class QToolButton;
 class QWidget;
 
@@ -30,6 +31,7 @@ private:
     void refreshRunButtonChrome();
     void refreshModeChipChrome();
     void refreshBreadcrumb();
+    void refreshBreadcrumbElision();
     QString runModeText(FeatureRunMode mode, int repeatCount) const;
     QString runModeToolTip(FeatureRunMode mode, int repeatCount) const;
 
@@ -51,4 +53,8 @@ private:
     FeatureRunMode m_runMode = FeatureRunMode::RepeatCount;
     int m_repeatCount = 1;
     bool m_hasRunMode = false;
+    QString m_featureNameFull;
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 };

@@ -6,6 +6,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
+#include <QResizeEvent>
 #include <QToolButton>
 
 namespace {
@@ -47,6 +48,7 @@ WorkflowRunStatusBar::WorkflowRunStatusBar(QWidget* parent)
 
     m_profileLabel = new QLabel(tr("—"), this);
     m_profileLabel->setObjectName(QStringLiteral("workflowRunStatusProfile"));
+    m_profileLabel->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
 
     m_breadcrumbSep1 = new QLabel(QStringLiteral("›"), this);
     m_breadcrumbSep1->setObjectName(QStringLiteral("workflowRunStatusBreadcrumbSep"));
@@ -54,6 +56,8 @@ WorkflowRunStatusBar::WorkflowRunStatusBar(QWidget* parent)
     m_featureNameLabel = new QLabel(tr("—"), this);
     m_featureNameLabel->setObjectName(QStringLiteral("workflowRunStatusFeatureName"));
     m_featureNameLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_featureNameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_featureNameLabel->setMinimumWidth(48);
 
     m_breadcrumbSep2 = new QLabel(QStringLiteral("›"), this);
     m_breadcrumbSep2->setObjectName(QStringLiteral("workflowRunStatusBreadcrumbSep"));
@@ -130,22 +134,19 @@ QString WorkflowRunStatusBar::runModeToolTip(FeatureRunMode mode, int repeatCoun
 void WorkflowRunStatusBar::setProfileName(const QString& name) {
     m_profileName = name.trimmed();
     refreshBreadcrumb();
+    refreshBreadcrumbElision();
 }
 
 void WorkflowRunStatusBar::refreshBreadcrumb() {
     const QString emptyDash = tr("—");
-    const QString profileText = m_profileName.isEmpty() ? emptyDash : m_profileName;
-    const QString featureText =
-        m_featureNameLabel ? m_featureNameLabel->text().trimmed() : emptyDash;
-    const bool hasFeature = !featureText.isEmpty() && featureText != emptyDash;
+    const bool hasFeature = !m_featureNameFull.isEmpty();
     const bool hasMode = m_hasRunMode && m_modeChip && !m_modeChip->text().isEmpty();
 
     if (m_profileLabel) {
-        m_profileLabel->setText(profileText);
         m_profileLabel->setToolTip(m_profileName.isEmpty() ? tr("프로필") : tr("프로필: %1").arg(m_profileName));
     }
     if (m_featureNameLabel && hasFeature) {
-        m_featureNameLabel->setToolTip(tr("기능: %1").arg(featureText));
+        m_featureNameLabel->setToolTip(tr("기능: %1").arg(m_featureNameFull));
     } else if (m_featureNameLabel) {
         m_featureNameLabel->setToolTip(tr("기능"));
     }
@@ -158,6 +159,35 @@ void WorkflowRunStatusBar::refreshBreadcrumb() {
     if (m_modeChip) {
         m_modeChip->setVisible(hasMode);
     }
+    refreshBreadcrumbElision();
+}
+
+void WorkflowRunStatusBar::refreshBreadcrumbElision() {
+    const QString emptyDash = tr("—");
+    if (m_profileLabel) {
+        const QString profileText = m_profileName.isEmpty() ? emptyDash : m_profileName;
+        const int avail = qMax(0, m_profileLabel->width());
+        if (avail > 0) {
+            m_profileLabel->setText(fontMetrics().elidedText(profileText, Qt::ElideRight, avail));
+        } else {
+            m_profileLabel->setText(profileText);
+        }
+    }
+    if (m_featureNameLabel) {
+        const QString featureText =
+            m_featureNameFull.isEmpty() ? emptyDash : m_featureNameFull;
+        const int avail = qMax(0, m_featureNameLabel->width());
+        if (avail > 0) {
+            m_featureNameLabel->setText(fontMetrics().elidedText(featureText, Qt::ElideRight, avail));
+        } else {
+            m_featureNameLabel->setText(featureText);
+        }
+    }
+}
+
+void WorkflowRunStatusBar::resizeEvent(QResizeEvent* event) {
+    QFrame::resizeEvent(event);
+    refreshBreadcrumbElision();
 }
 
 void WorkflowRunStatusBar::setRunMode(FeatureRunMode mode, int repeatCount) {
@@ -339,10 +369,13 @@ void WorkflowRunStatusBar::setFeatureName(const QString& name) {
         return;
     }
     const QString trimmed = name.trimmed();
+    m_featureNameFull = trimmed;
     if (trimmed.isEmpty()) {
         m_featureNameLabel->setText(tr("—"));
+        m_featureNameLabel->setToolTip(tr("기능"));
     } else {
-        m_featureNameLabel->setText(trimmed);
+        refreshBreadcrumbElision();
+        m_featureNameLabel->setToolTip(trimmed);
     }
     refreshBreadcrumb();
 }

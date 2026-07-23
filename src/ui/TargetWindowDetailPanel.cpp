@@ -11,8 +11,8 @@
 
 namespace {
 
-constexpr int kComfortableDetailWidthPx = 440;
-constexpr int kCompactDetailWidthPx = 280;
+constexpr int kComfortableDetailWidthPx = 360;
+constexpr int kCompactDetailWidthPx = 220;
 constexpr int kDetailHorizontalMarginPx = 20;
 
 QString htmlEscape(const QString& text) {
@@ -69,6 +69,7 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
     m_titleLabel->setObjectName(QStringLiteral("targetWindowDetailTitle"));
     m_titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_titleLabel->setWordWrap(true);
+    m_titleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     m_statusLabel = new QLabel(m_titleRowWidget);
     m_statusLabel->setObjectName(QStringLiteral("targetWindowDetailStatus"));
@@ -161,6 +162,31 @@ void TargetWindowDetailPanel::updateAdaptiveLayout() {
         rebuildTitleRowLayout();
     }
     refreshVisibleDetailText();
+    applyTitleElision();
+}
+
+void TargetWindowDetailPanel::setTitleDisplay(const QString& title) {
+    m_titleFullText = title;
+    applyTitleElision();
+}
+
+void TargetWindowDetailPanel::applyTitleElision() {
+    if (!m_titleLabel) {
+        return;
+    }
+    QString display = m_titleFullText;
+    if (display.isEmpty()) {
+        display = m_titleLabel->text();
+    }
+    if (m_layoutDensity == DetailLayoutDensity::Comfortable && m_titleRowWidget
+        && m_titleRowWidget->width() > 0 && m_statusLabel) {
+        const int statusW = m_statusLabel->sizeHint().width();
+        const int spacing = m_titleRowLayout ? m_titleRowLayout->spacing() : 6;
+        const int avail = qMax(24, m_titleRowWidget->width() - statusW - spacing - 4);
+        display = QFontMetrics(m_titleLabel->font()).elidedText(m_titleFullText, Qt::ElideRight, avail);
+    }
+    m_titleLabel->setText(display);
+    m_titleLabel->setToolTip(m_titleFullText.isEmpty() ? QString() : m_titleFullText);
 }
 
 void TargetWindowDetailPanel::refreshVisibleDetailText() {
@@ -295,7 +321,7 @@ void TargetWindowDetailPanel::refreshDetailText() {
                                   : stateColorFor(m_lastDetailData);
     const QString title = m_lastDetailData.title.isEmpty() ? tr("이름 없는 창") : m_lastDetailData.title;
 
-    m_titleLabel->setText(title);
+    setTitleDisplay(title);
     m_statusLabel->setText(m_lastDetailData.subTarget ? tr("● 서브 창") : m_lastDetailData.stateText);
 
     const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
@@ -428,7 +454,7 @@ void TargetWindowDetailPanel::refreshGlobalDefaultProfileText() {
     const QColor muted = secondaryHintTextColor(pal);
     const QColor stateColor = text.lightness() < 128 ? QColor(0x64, 0xb5, 0xf6) : QColor(0x1e, 0x88, 0xe5);
 
-    m_titleLabel->setText(tr("전역 기본 프로필"));
+    setTitleDisplay(tr("전역 기본 프로필"));
     m_statusLabel->setText(tr("● 시스템 고정"));
 
     const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
@@ -483,7 +509,7 @@ void TargetWindowDetailPanel::refreshStoredTargetBindingText(const QString& titl
     const QString displayProcess =
         processName.isEmpty() ? tr("알 수 없음") : processName;
 
-    m_titleLabel->setText(displayTitle);
+    setTitleDisplay(displayTitle);
     m_statusLabel->setText(tr("● 미실행"));
 
     const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);

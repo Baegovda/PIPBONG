@@ -152,6 +152,19 @@ QColor ListColumnHeaderWidget::headerTextColor(const QPalette& pal) {
     return QColor(0x2f, 0x5d, 0x8a);
 }
 
+void ListColumnHeaderWidget::drawElidedCellText(QPainter* painter,
+                                                const QRect& rect,
+                                                const QString& text,
+                                                Qt::Alignment align) {
+    if (!painter || rect.width() <= 4 || text.isEmpty()) {
+        return;
+    }
+    const QRect cell = rect.adjusted(2, 0, -2, 0);
+    const QString elided =
+        painter->fontMetrics().elidedText(text, Qt::ElideRight, qMax(0, cell.width()));
+    painter->drawText(cell, align | Qt::AlignVCenter | Qt::TextSingleLine, elided);
+}
+
 QSize ListColumnHeaderWidget::sizeHint() const {
     const int rowHeight = m_rowHeight ? m_rowHeight() : 28;
     return {200, rowHeight + kHeaderExtraHeight};

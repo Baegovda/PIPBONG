@@ -1079,8 +1079,8 @@ void MainWindow::setupUi() {
     profileGroup->setStyleSheet(QStringLiteral(
         "QGroupBox#profileListGroup {"
         "  border: none;"
-        "  margin-top: 4px;"
-        "  padding-top: 2px;"
+        "  margin-top: 14px;"
+        "  padding-top: 6px;"
         "}"
         "QGroupBox#profileListGroup::title {"
         "  subcontrol-origin: margin;"
@@ -1121,9 +1121,9 @@ void MainWindow::setupUi() {
     m_addProfileButton = new QPushButton(tr("추가"), profileGroup);
     m_renameProfileButton = new QPushButton(tr("편집"), profileGroup);
     m_deleteProfileButton = new QPushButton(tr("삭제"), profileGroup);
-    m_addProfileButton->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-    m_renameProfileButton->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-    m_deleteProfileButton->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    m_addProfileButton->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    m_renameProfileButton->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    m_deleteProfileButton->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     profileButtonColumn->addWidget(m_addProfileButton);
     profileButtonColumn->addWidget(m_renameProfileButton);
     profileButtonColumn->addWidget(m_deleteProfileButton);
@@ -1150,7 +1150,7 @@ void MainWindow::setupUi() {
     bottomLayout->setSpacing(4);
 
     auto* targetGroup = new QGroupBox(tr("타겟"), bottomPanel);
-    targetGroup->setMinimumHeight(96);
+    targetGroup->setMinimumHeight(108);
     targetGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto* targetLayout = new QVBoxLayout(targetGroup);
     targetLayout->setContentsMargins(4, 2, 4, 4);
@@ -1171,6 +1171,8 @@ void MainWindow::setupUi() {
 
     auto* mainCaption = new QLabel(tr("메인 창"), mainRow);
     mainCaption->setObjectName(QStringLiteral("targetWindowGroupCaption"));
+    mainCaption->setMinimumWidth(48);
+    mainCaption->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     m_pickWindowButton = new QToolButton(mainRow);
     m_pickWindowButton->setText(tr("지정"));
@@ -1216,6 +1218,8 @@ void MainWindow::setupUi() {
 
     auto* subCaption = new QLabel(tr("서브 창"), subRow);
     subCaption->setObjectName(QStringLiteral("targetWindowGroupCaption"));
+    subCaption->setMinimumWidth(48);
+    subCaption->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     m_pickSubWindowButton = new QToolButton(subRow);
     m_pickSubWindowButton->setText(tr("지정"));
@@ -1266,8 +1270,8 @@ void MainWindow::setupUi() {
     targetGroup->setStyleSheet(QStringLiteral(
         "QGroupBox {"
         "  border: none;"
-        "  margin-top: 4px;"
-        "  padding-top: 2px;"
+        "  margin-top: 14px;"
+        "  padding-top: 6px;"
         "  font-size: 11px;"
         "}"
         "QGroupBox::title {"

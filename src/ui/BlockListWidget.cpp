@@ -1735,20 +1735,32 @@ void BlockListWidget::wireListColumnHeader(ListColumnHeaderWidget* header, Block
         ctx.painter->setFont(headerFont);
         ctx.painter->setPen(ListColumnHeaderWidget::headerTextColor(ctx.palette));
         const Qt::Alignment align = Qt::AlignHCenter | Qt::AlignVCenter;
-        ctx.painter->drawText(edges.cols.index, align, QStringLiteral("#"));
-        ctx.painter->drawText(edges.cols.action, align, BlockListWidget::tr("종류"));
-        ctx.painter->drawText(edges.cols.preview, align, BlockListWidget::tr("아이콘"));
-        ctx.painter->drawText(edges.cols.summary, align, BlockListWidget::tr("동작"));
-        ctx.painter->drawText(edges.cols.duration, align, BlockListWidget::tr("시간"));
-        ctx.painter->drawText(edges.cols.matchDuration, align, BlockListWidget::tr("탐색"));
-        ctx.painter->drawText(edges.cols.attempts, align, BlockListWidget::tr("시도"));
-        ctx.painter->drawText(edges.cols.returnPrev, align, BlockListWidget::tr("복귀"));
-        ctx.painter->drawText(edges.cols.retry, align, BlockListWidget::tr("재시도"));
-        ctx.painter->drawText(edges.cols.score, align, BlockListWidget::tr("기준/감지"));
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.index,
+                                                   QStringLiteral("#"), align);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.action,
+                                                   BlockListWidget::tr("종류"), align);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.preview,
+                                                   BlockListWidget::tr("아이콘"), align);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.summary,
+                                                   BlockListWidget::tr("동작"), align);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.duration,
+                                                   BlockListWidget::tr("시간"), align);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.matchDuration,
+                                                   BlockListWidget::tr("탐색"), align);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.attempts,
+                                                   BlockListWidget::tr("시도"), align);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.returnPrev,
+                                                   BlockListWidget::tr("복귀"), align);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.retry,
+                                                   BlockListWidget::tr("재시도"), align);
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.score,
+                                                   BlockListWidget::tr("기준/감지"), align);
         if (!table->isColumnHidden(kColRoiCorrection)) {
-            ctx.painter->drawText(edges.cols.roiCorrection, align, BlockListWidget::tr("ROI"));
+            ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.roiCorrection,
+                                                       BlockListWidget::tr("ROI"), align);
         }
-        ctx.painter->drawText(edges.cols.match, align, BlockListWidget::tr("매칭"));
+        ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.match,
+                                                   BlockListWidget::tr("매칭"), align);
     });
 
     header->setDividerXsProvider([table](const QRect& rect) {

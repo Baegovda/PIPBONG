@@ -42,6 +42,10 @@ public:
                                    int height,
                                    const QPalette& pal);
     static QColor headerTextColor(const QPalette& pal);
+    static void drawElidedCellText(QPainter* painter,
+                                   const QRect& rect,
+                                   const QString& text,
+                                   Qt::Alignment align);
 
 signals:
     void dividerDragFinished();

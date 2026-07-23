@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.284` (from `project(PIPBONG VERSION 0.8.284)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.285` (from `project(PIPBONG VERSION 0.8.285)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.285] - 2026-07-23
+
+### Fixed
+
+- Main window group-box titles (프로필, 기능 목록, 대상 창) no longer overlap list/content below: increased `margin-top` / `padding-top` on flat `QGroupBox` styles (`MainWindow`, `FeatureListPanel`).
+- Target window detail panel: title and status badges elide on narrow widths; density layout thresholds tuned so HWND/process/metadata lines do not collide (`TargetWindowDetailPanel`).
+- Workflow status breadcrumb (프로필 › 기능 › 동작 방식): profile and feature labels elide on resize with full-name tooltips (`WorkflowRunStatusBar`).
+- Feature list and workflow block list column headers use shared `drawElidedCellText` so long labels (e.g. **기준/감지**) truncate instead of overlapping neighbors (`ListColumnHeaderWidget`, `FeatureListPanel`, `BlockListWidget`).
 
 ## [0.8.284] - 2026-07-23
 

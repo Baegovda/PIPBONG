@@ -59,6 +59,8 @@ private:
     void refreshVisibleDetailText();
     void updateAdaptiveLayout();
     void rebuildTitleRowLayout();
+    void setTitleDisplay(const QString& title);
+    void applyTitleElision();
     DetailLayoutDensity densityForWidth(int contentWidthPx) const;
     QString formatFieldsHtml(const QVector<QPair<QString, QString>>& fields,
                              DetailLayoutDensity density,
@@ -86,4 +88,5 @@ private:
     DetailLayoutDensity m_layoutDensity = DetailLayoutDensity::Comfortable;
     bool m_globalDefaultProfileMode = false;
     bool m_storedTargetBindingMode = false;
+    QString m_titleFullText;
 };
