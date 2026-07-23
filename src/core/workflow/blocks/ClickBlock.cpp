@@ -253,7 +253,7 @@ std::string ClickBlock::listDetailSummary() const {
     } else {
         actionText = clickActionDisplayName(action);
     }
-    return actionText + clickListCoordinateSuffix(*this);
+    return modifierPrefix(modifiers) + actionText + clickListCoordinateSuffix(*this);
 }
 
 BlockResult ClickBlock::execute(ExecutionContext& ctx) {

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.285` (from `project(PIPBONG VERSION 0.8.285)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.286` (from `project(PIPBONG VERSION 0.8.286)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.286] - 2026-07-23
+
+### Changed
+
+- Workflow block list **요약** for **마우스** blocks with Ctrl/Alt/Shift modifiers shows the modifier prefix (e.g. `Ctrl+Shift+클릭·직전`) via `ClickBlock::listDetailSummary` (`ClickBlock`).
 
 ## [0.8.285] - 2026-07-23
 
