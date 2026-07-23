@@ -333,6 +333,8 @@ private:
     void scheduleScopedTargetForegroundResumePoll();
     void resumeWaitingScopedTargetForegroundSessions();
     void reconcileRunSessionsWithForegroundGate();
+    /// After foreground HWND/profile/capture binding is updated, resume gated sessions and hotkey context.
+    void finishForegroundSessionGate();
     void refreshSessionCaptureTarget(FeatureRunSession& session);
     std::wstring sessionCaptureTargetTitleW(FeatureRunSession& session);
     void applySessionCaptureTarget(const std::wstring& title) const;

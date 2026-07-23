@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.288` (from `project(PIPBONG VERSION 0.8.288)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.289` (from `project(PIPBONG VERSION 0.8.289)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.289] - 2026-07-24
+
+### Fixed
+
+- Alt+Tab away from the linked target and back no longer leaves features/hotkeys dead until PIPBONG is focused: foreground sync now resumes gated sessions **after** HWND/profile/capture binding is refreshed (`MainWindow::finishForegroundSessionGate`, `syncProfileToForegroundWindow`); deferred linked-profile switch flushes when Alt is released; Alt+Tab with the active profile still refreshes capture binding; foreground HWND hint TTL extended to 3 s (`ScreenCapture`).
 
 ## [0.8.288] - 2026-07-23
 

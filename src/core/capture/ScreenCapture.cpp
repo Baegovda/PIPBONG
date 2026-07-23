@@ -295,7 +295,7 @@ HWND ScreenCapture::findTargetWindow() {
 
     const auto foregroundHintFor = [](const std::wstring& binding) -> HWND {
         if (binding.empty() || !s_foregroundHintHwnd || !IsWindow(s_foregroundHintHwnd)
-            || GetTickCount64() - s_foregroundHintMs >= 500) {
+            || GetTickCount64() - s_foregroundHintMs >= 3000) {
             return nullptr;
         }
         wchar_t buffer[512]{};

@@ -2472,8 +2472,8 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
         if (msg->message == kForegroundProfileSyncMessage) {
             switchToForegroundLinkedProfileIfNeeded(true);
             syncProfileToForegroundWindow();
-            resumeWaitingScopedTargetForegroundSessions();
             syncEffectiveTargetWindowTitleToCapture();
+            finishForegroundSessionGate();
             *result = 0;
             return true;
         }
@@ -6785,7 +6785,6 @@ void MainWindow::syncProfileToForegroundWindow() {
     }
     pruneAbandonedEngines();
     reconcileRunSessionsWithForegroundGate();
-    resumeWaitingScopedTargetForegroundSessions();
 #ifdef _WIN32
     HWND hwnd = GetForegroundWindow();
     if (!hwnd || !IsWindow(hwnd)) {
@@ -6802,6 +6801,7 @@ void MainWindow::syncProfileToForegroundWindow() {
             && m_recentAutomaticDefaultProfileSwitchTimer.elapsed() < kRestoreLinkedProfileWindowMs) {
             switchToProfile(m_lastLinkedForegroundProfileId, true);
         }
+        finishForegroundSessionGate();
         return;
     }
 
@@ -6842,11 +6842,18 @@ void MainWindow::syncProfileToForegroundWindow() {
         healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
         ScreenCapture::invalidateTargetWindowCache();
         syncEffectiveTargetWindowTitleToCapture();
+        finishForegroundSessionGate();
         return;
     }
 
     if (isAltTabModifierHeld()) {
-        if (!m_profileManager->isDefaultProfile(targetProfileId)) {
+        if (targetProfileId == m_profileManager->activeProfileId()) {
+            ScreenCapture::setForegroundHintWindow(hwnd);
+            healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
+            ScreenCapture::invalidateTargetWindowCache();
+            syncEffectiveTargetWindowTitleToCapture();
+            finishForegroundSessionGate();
+        } else if (!m_profileManager->isDefaultProfile(targetProfileId)) {
             m_deferredProfileSwitchId = targetProfileId;
         }
         m_pendingDefaultProfileSwitchTimer.invalidate();
@@ -6903,9 +6910,21 @@ void MainWindow::syncProfileToForegroundWindow() {
 
     switchToProfile(targetProfileId, true);
     m_lastAutomaticProfileSwitchTimer.start();
+    finishForegroundSessionGate();
 #else
     Q_UNUSED(this);
 #endif
+}
+
+void MainWindow::finishForegroundSessionGate() {
+#ifdef _WIN32
+    if (!isAltTabModifierHeld()) {
+        flushDeferredProfileSwitchIfIdle();
+    }
+#endif
+    reconcileRunSessionsWithForegroundGate();
+    resumeWaitingScopedTargetForegroundSessions();
+    scheduleEnsureTriggerMonitorEnginesRunning();
 }
 
 void MainWindow::reconcileRunSessionsWithForegroundGate() {
