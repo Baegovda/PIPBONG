@@ -3,6 +3,7 @@
 #include "core/input/HotkeyBinding.h"
 #include "model/UserInputInterruptMode.h"
 
+#include <array>
 #include <chrono>
 #include <functional>
 #include <functional>
@@ -30,6 +31,8 @@ public:
 
     void notifyPhysicalInput(int virtualKey);
 
+    void pollMouseButtonEdges();
+
 private:
     UserInputInterruptMonitor() = default;
 
@@ -46,4 +49,5 @@ private:
     InterruptHandler m_handler;
     std::function<bool(int virtualKey)> m_hotkeyExemptionCheck;
     std::unordered_map<std::string, SessionEntry> m_sessions;
+    std::array<bool, 5> m_mouseButtonWasDown{};
 };

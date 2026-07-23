@@ -33,9 +33,6 @@ public:
 
 protected:
     void run() override {
-#ifdef _WIN32
-        timeBeginPeriod(1);
-#endif
         DiagnosticHub::setWorkerLabel(QStringLiteral("WorkflowEngine"));
         DiagnosticHub::touchWorkerHeartbeat();
         while (true) {
@@ -215,6 +212,28 @@ protected:
             };
 
             const bool workerFastRepeat = context->hasWorkerFastRepeat();
+#ifdef _WIN32
+            bool timerPeriodRaised = false;
+            const auto setHighResolutionTimer = [&](bool enabled) {
+                if (enabled) {
+                    if (!timerPeriodRaised) {
+                        timeBeginPeriod(1);
+                        timerPeriodRaised = true;
+                    }
+                } else if (timerPeriodRaised) {
+                    timeEndPeriod(1);
+                    timerPeriodRaised = false;
+                }
+            };
+#else
+            const auto setHighResolutionTimer = [](bool) {};
+#endif
+            if (workerFastRepeat) {
+                setHighResolutionTimer(context->workerFastRepeatDelayMs() <= 0);
+            } else {
+                setHighResolutionTimer(true);
+            }
+
             int workerFastRepeatPass = 0;
             for (;;) {
                 DiagnosticHub::touchWorkerHeartbeat();
@@ -252,7 +271,13 @@ protected:
                 }
 
                 const int delayMs = context->workerFastRepeatDelayMs();
+                if (workerFastRepeat) {
+                    setHighResolutionTimer(delayMs <= 0);
+                }
                 if (delayMs > 0) {
+                    if (workerFastRepeat) {
+                        setHighResolutionTimer(false);
+                    }
                     const auto sleepStart = std::chrono::steady_clock::now();
                     if (!context->interruptibleSleepMs(delayMs)) {
                         break;
@@ -272,6 +297,7 @@ protected:
 
             context->clearWorkerFastRepeatCallbacks();
             InputSimulator::setActiveExecutionContext(nullptr);
+            setHighResolutionTimer(false);
 
             bool emitFinished = false;
             const bool pendingSuccess = overallSuccess;
@@ -295,9 +321,6 @@ protected:
                     Qt::QueuedConnection);
             }
         }
-#ifdef _WIN32
-        timeEndPeriod(1);
-#endif
         DiagnosticHub::clearWorkerLabel();
     }
 

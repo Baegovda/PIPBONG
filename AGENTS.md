@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.279` (from `project(PIPBONG VERSION 0.8.279)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.280` (from `project(PIPBONG VERSION 0.8.280)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.280] - 2026-07-23
+
+### Fixed
+
+- Hold/repeat runs no longer install a global low-level mouse hook for **사용자 입력 시 정지/일시정지** — mouse-button interrupt uses 32 ms `GetAsyncKeyState` polling instead, so physical mouse movement is not processed on every `WM_MOUSEMOVE` through an extra `WH_MOUSE_LL` chain (`UserInputInterruptMonitor`).
+- Workflow worker threads only raise `timeBeginPeriod(1)` during zero-delay fast-repeat loops; sessions with a loop interval (e.g. Hold 50–80 ms) no longer force 1 ms system timer resolution for the whole run (`WorkflowEngine`).
 
 ## [0.8.279] - 2026-07-23
 

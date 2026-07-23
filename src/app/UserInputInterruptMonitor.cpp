@@ -10,6 +10,7 @@
 
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QTimer>
 
 #include <vector>
 
@@ -18,19 +19,19 @@ namespace {
 #ifdef _WIN32
 UserInputInterruptMonitor* g_userInputInterruptMonitor = nullptr;
 HHOOK g_keyboardHook = nullptr;
-HHOOK g_mouseHook = nullptr;
 
-bool isMouseOverOwnProcessWindow(const MSLLHOOKSTRUCT* info) {
-    if (!info) {
-        return false;
+QTimer* mouseButtonPollTimer() {
+    static QTimer* timer = nullptr;
+    if (!timer && QCoreApplication::instance()) {
+        timer = new QTimer(QCoreApplication::instance());
+        timer->setInterval(32);
+        QObject::connect(timer, &QTimer::timeout, timer, []() {
+            if (g_userInputInterruptMonitor) {
+                g_userInputInterruptMonitor->pollMouseButtonEdges();
+            }
+        });
     }
-    HWND hwnd = WindowFromPoint(info->pt);
-    if (!hwnd) {
-        return false;
-    }
-    DWORD windowPid = 0;
-    GetWindowThreadProcessId(hwnd, &windowPid);
-    return windowPid == GetCurrentProcessId();
+    return timer;
 }
 
 bool isModifierOnlyVirtualKey(int vk) {
@@ -50,23 +51,6 @@ bool isModifierOnlyVirtualKey(int vk) {
     default:
         return false;
     }
-}
-
-bool keyboardModifiersMatch(const HotkeyBinding& hotkey) {
-    const bool ctrlDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-    const bool altDown = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
-    const bool shiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-    return hotkey.ctrl == ctrlDown && hotkey.alt == altDown && hotkey.shift == shiftDown;
-}
-
-bool matchesFeatureHotkey(const HotkeyBinding& hotkey, int vk) {
-    if (hotkey.isEmpty() || hotkey.virtualKey != vk) {
-        return false;
-    }
-    if (HotkeyBinding::isMouseVirtualKey(vk)) {
-        return true;
-    }
-    return keyboardModifiersMatch(hotkey);
 }
 
 LRESULT CALLBACK interruptKeyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
@@ -94,46 +78,6 @@ LRESULT CALLBACK interruptKeyboardHookProc(int code, WPARAM wParam, LPARAM lPara
 
     g_userInputInterruptMonitor->notifyPhysicalInput(vk);
     return CallNextHookEx(g_keyboardHook, code, wParam, lParam);
-}
-
-int virtualKeyFromMouseMessage(WPARAM wParam, const MSLLHOOKSTRUCT* info) {
-    switch (wParam) {
-    case WM_LBUTTONDOWN:
-        return VK_LBUTTON;
-    case WM_RBUTTONDOWN:
-        return VK_RBUTTON;
-    case WM_MBUTTONDOWN:
-        return VK_MBUTTON;
-    case WM_XBUTTONDOWN:
-        if (!info) {
-            return 0;
-        }
-        return HIWORD(info->mouseData) == XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2;
-    default:
-        return 0;
-    }
-}
-
-LRESULT CALLBACK interruptMouseHookProc(int code, WPARAM wParam, LPARAM lParam) {
-    if (code != HC_ACTION || !g_userInputInterruptMonitor) {
-        return CallNextHookEx(g_mouseHook, code, wParam, lParam);
-    }
-
-    const auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
-    if (info->flags & LLMHF_INJECTED) {
-        return CallNextHookEx(g_mouseHook, code, wParam, lParam);
-    }
-    if (isMouseOverOwnProcessWindow(info)) {
-        return CallNextHookEx(g_mouseHook, code, wParam, lParam);
-    }
-
-    const int vk = virtualKeyFromMouseMessage(wParam, info);
-    if (vk == 0) {
-        return CallNextHookEx(g_mouseHook, code, wParam, lParam);
-    }
-
-    g_userInputInterruptMonitor->notifyPhysicalInput(vk);
-    return CallNextHookEx(g_mouseHook, code, wParam, lParam);
 }
 #endif
 
@@ -191,6 +135,7 @@ void UserInputInterruptMonitor::unregisterAll() {
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_sessions.clear();
+        m_mouseButtonWasDown.fill(false);
     }
     refreshHooks();
 }
@@ -205,20 +150,56 @@ void UserInputInterruptMonitor::refreshHooks() {
     if (needHooks && !g_keyboardHook) {
         g_userInputInterruptMonitor = this;
         g_keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, interruptKeyboardHookProc, nullptr, 0);
-        g_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, interruptMouseHookProc, nullptr, 0);
+        if (QTimer* timer = mouseButtonPollTimer()) {
+            timer->start();
+        }
     } else if (!needHooks) {
         if (g_keyboardHook) {
             UnhookWindowsHookEx(g_keyboardHook);
             g_keyboardHook = nullptr;
         }
-        if (g_mouseHook) {
-            UnhookWindowsHookEx(g_mouseHook);
-            g_mouseHook = nullptr;
+        if (QTimer* timer = mouseButtonPollTimer()) {
+            timer->stop();
         }
         if (g_userInputInterruptMonitor == this) {
             g_userInputInterruptMonitor = nullptr;
         }
     }
+#endif
+}
+
+void UserInputInterruptMonitor::pollMouseButtonEdges() {
+#ifdef _WIN32
+    if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
+        return;
+    }
+
+    struct MouseButton {
+        int vk;
+        size_t index;
+    };
+    static constexpr MouseButton kButtons[] = {
+        {VK_LBUTTON, 0},
+        {VK_RBUTTON, 1},
+        {VK_MBUTTON, 2},
+        {VK_XBUTTON1, 3},
+        {VK_XBUTTON2, 4},
+    };
+
+    for (const MouseButton& button : kButtons) {
+        const bool down = (GetAsyncKeyState(button.vk) & 0x8000) != 0;
+        bool wasDown = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            wasDown = m_mouseButtonWasDown[button.index];
+            m_mouseButtonWasDown[button.index] = down;
+        }
+        if (down && !wasDown) {
+            notifyPhysicalInput(button.vk);
+        }
+    }
+#else
+    (void)0;
 #endif
 }
 
