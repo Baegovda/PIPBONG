@@ -39,6 +39,8 @@ public:
     bool isHoldBindingDown(const std::string& featureId) const;
     /** Clears stale hook state when the binding is no longer physically down; may emit hold ended. */
     bool reconcileHoldBindingDown(const std::string& featureId);
+    /** Reset toggle armed / hold / mouse latch after Alt+Tab drops key-up events. */
+    void resetHookLatchState();
     bool matchesAnyRegisteredFeatureHotkey(int vkCode) const;
 #ifdef _WIN32
     bool isKeyboardHookActive() const { return m_keyboardHookInstalled; }

@@ -336,6 +336,10 @@ private:
     void reconcileRunSessionsWithForegroundGate();
     /// After foreground HWND/profile/capture binding is updated, resume gated sessions and hotkey context.
     void finishForegroundSessionGate();
+#ifdef _WIN32
+    void ensureForegroundReadyForFeatureHotkey();
+    void maybeResetHotkeyLatchForForeground(HWND foregroundHwnd);
+#endif
     void refreshSessionCaptureTarget(FeatureRunSession& session);
     std::wstring sessionCaptureTargetTitleW(FeatureRunSession& session);
     void applySessionCaptureTarget(const std::wstring& title) const;
@@ -491,6 +495,8 @@ private:
 #ifdef _WIN32
     HWND m_lastProfileLinkedForegroundHwnd = nullptr;
     bool m_lastProfileLinkedForegroundIsSub = false;
+    HWND m_lastHotkeyLatchResetForegroundHwnd = nullptr;
+    bool m_altTabModifierWasHeld = false;
 #endif
     QString m_lastProfiledForegroundTitle;
     QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;

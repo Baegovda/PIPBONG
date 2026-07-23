@@ -364,6 +364,20 @@ bool HotkeyManager::isHoldBindingDown(const std::string& featureId) const {
     return false;
 }
 
+void HotkeyManager::resetHookLatchState() {
+#ifdef _WIN32
+    for (HoldBindingEntry& entry : m_holdBindings) {
+        entry.keyDown = false;
+    }
+    for (ToggleBindingEntry& entry : m_toggleBindings) {
+        entry.armed = true;
+    }
+    for (MouseBindingEntry& entry : m_mouseBindings) {
+        entry.buttonDown = false;
+    }
+#endif
+}
+
 bool HotkeyManager::reconcileHoldBindingDown(const std::string& featureId) {
     for (HoldBindingEntry& entry : m_holdBindings) {
         if (entry.featureId != featureId) {

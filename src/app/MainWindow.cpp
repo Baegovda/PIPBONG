@@ -5632,10 +5632,7 @@ void MainWindow::onHotkeyTriggered(const QString& featureId) {
         return;
     }
 #ifdef _WIN32
-    switchToForegroundLinkedProfileIfNeeded(true);
-    syncProfileToForegroundWindow();
-    syncEffectiveTargetWindowTitleToCapture();
-    reconcileRunSessionsWithForegroundGate();
+    ensureForegroundReadyForFeatureHotkey();
 #endif
     Feature* feature = m_project->featureById(featureId.toStdString());
     if (!feature || !feature->enabled()) {
@@ -5663,10 +5660,7 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
         return;
     }
 #ifdef _WIN32
-    switchToForegroundLinkedProfileIfNeeded(true);
-    syncProfileToForegroundWindow();
-    syncEffectiveTargetWindowTitleToCapture();
-    reconcileRunSessionsWithForegroundGate();
+    ensureForegroundReadyForFeatureHotkey();
 #endif
     Feature* feature = m_project->featureById(featureId.toStdString());
     if (!feature || !feature->enabled()) {
@@ -6787,6 +6781,15 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
 
 void MainWindow::onForegroundWindowChanged() {
 #ifdef _WIN32
+    const bool altHeld = isAltTabModifierHeld();
+    if (m_altTabModifierWasHeld && !altHeld) {
+        flushDeferredProfileSwitchIfIdle();
+        if (m_hotkeyManager) {
+            m_hotkeyManager->resetHookLatchState();
+        }
+    }
+    m_altTabModifierWasHeld = altHeld;
+
     switchToForegroundLinkedProfileIfNeeded(true);
 #endif
     syncProfileToForegroundWindow();
@@ -6795,6 +6798,9 @@ void MainWindow::onForegroundWindowChanged() {
         if (!adoptForegroundLinkedCaptureIfMatched()) {
             syncEffectiveTargetWindowTitleToCapture();
         }
+        maybeResetHotkeyLatchForForeground(foregroundRootHwnd());
+    } else {
+        m_lastHotkeyLatchResetForegroundHwnd = nullptr;
     }
     finishForegroundSessionGate();
 #else
@@ -6894,6 +6900,12 @@ void MainWindow::syncProfileToForegroundWindow() {
             finishForegroundSessionGate();
         } else if (!m_profileManager->isDefaultProfile(targetProfileId)) {
             m_deferredProfileSwitchId = targetProfileId;
+            ScreenCapture::setForegroundHintWindow(hwnd);
+            healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
+            ScreenCapture::invalidateTargetWindowCache();
+            if (adoptForegroundLinkedCaptureIfMatched()) {
+                rememberProfileLinkedForeground(hwnd, foregroundTitle);
+            }
         }
         m_pendingDefaultProfileSwitchTimer.invalidate();
         return;
@@ -6970,6 +6982,54 @@ void MainWindow::finishForegroundSessionGate() {
     resumeWaitingScopedTargetForegroundSessions();
     scheduleEnsureTriggerMonitorEnginesRunning();
     updateTargetWindowDetails();
+}
+
+void MainWindow::maybeResetHotkeyLatchForForeground(HWND foregroundHwnd) {
+#ifdef _WIN32
+    if (!m_hotkeyManager || !foregroundHwnd || !IsWindow(foregroundHwnd)
+        || isPipbongProcessForeground(foregroundHwnd)
+        || isShellTransientForegroundWindow(foregroundHwnd)) {
+        if (!foregroundHwnd || isPipbongProcessForeground(foregroundHwnd)) {
+            m_lastHotkeyLatchResetForegroundHwnd = nullptr;
+        }
+        return;
+    }
+    if (!profileMainOrSubForegroundActive() && !foregroundProfileMatchesActive()) {
+        return;
+    }
+    if (foregroundHwnd == m_lastHotkeyLatchResetForegroundHwnd) {
+        return;
+    }
+    m_lastHotkeyLatchResetForegroundHwnd = foregroundHwnd;
+    m_hotkeyManager->resetHookLatchState();
+#else
+    Q_UNUSED(foregroundHwnd);
+#endif
+}
+
+void MainWindow::ensureForegroundReadyForFeatureHotkey() {
+#ifdef _WIN32
+    if (!m_profileManager || ProgramSettings::runWithoutTargetWindow()) {
+        return;
+    }
+    switchToForegroundLinkedProfileIfNeeded(true);
+    flushDeferredProfileSwitchIfIdle();
+    syncProfileToForegroundWindow();
+    if (!foregroundProfileMatchesActive()) {
+        const QString fgProfileId = foregroundProfileIdForActiveWindow();
+        if (!fgProfileId.isEmpty() && !m_profileManager->isDefaultProfile(fgProfileId)
+            && fgProfileId != m_profileManager->activeProfileId()) {
+            switchToProfile(fgProfileId, true);
+        }
+    }
+    if (!adoptForegroundLinkedCaptureIfMatched()) {
+        syncEffectiveTargetWindowTitleToCapture();
+    }
+    maybeResetHotkeyLatchForForeground(foregroundRootHwnd());
+    reconcileRunSessionsWithForegroundGate();
+#else
+    Q_UNUSED(this);
+#endif
 }
 
 void MainWindow::reconcileRunSessionsWithForegroundGate() {

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.293` (from `project(PIPBONG VERSION 0.8.293)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.294` (from `project(PIPBONG VERSION 0.8.294)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.294] - 2026-07-24
+
+### Fixed
+
+- Alt+Tab away and back to the linked main target no longer leaves feature hotkeys dead until PIPBONG is focused once: low-level hook toggle/mouse latch state resets on Alt release and on foreground return to a linked target HWND; deferred profile switch flushes on Alt release; hotkey handlers force profile/capture resync via `ensureForegroundReadyForFeatureHotkey` (`HotkeyManager::resetHookLatchState`, `MainWindow`).
 
 ## [0.8.293] - 2026-07-24
 
