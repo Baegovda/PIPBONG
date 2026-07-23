@@ -349,6 +349,8 @@ private:
                                                            const QString& mainProcessPath,
                                                            const QString& subProcessPath) const;
     void rememberProfileLinkedForeground(HWND hwnd, const QString& foregroundTitle);
+    /// Bind ScreenCapture to the desktop foreground HWND when its process path matches the active profile's linked main/sub exe (authoritative over title heuristics).
+    bool adoptForegroundLinkedCaptureIfMatched();
     HWND findMainTargetHwndForCenterPin() const;
     HWND findSubTargetHwndForCenterPin() const;
     HWND findLinkedTargetHwndForDisplay(const QString& mainBinding,

@@ -6751,8 +6751,14 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         loadActiveProfile(true);
     }
 #ifdef _WIN32
-    m_lastProfileLinkedForegroundHwnd = nullptr;
-    m_lastProfileLinkedForegroundIsSub = false;
+    if (automatic) {
+        if (!adoptForegroundLinkedCaptureIfMatched()) {
+            syncEffectiveTargetWindowTitleToCapture();
+        }
+    } else {
+        m_lastProfileLinkedForegroundHwnd = nullptr;
+        m_lastProfileLinkedForegroundIsSub = false;
+    }
 #endif
     syncMemoDialogProfile();
     syncProfileListSelection();
@@ -6789,7 +6795,6 @@ void MainWindow::syncProfileToForegroundWindow() {
         return;
     }
     pruneAbandonedEngines();
-    reconcileRunSessionsWithForegroundGate();
 #ifdef _WIN32
     HWND hwnd = GetForegroundWindow();
     if (!hwnd || !IsWindow(hwnd)) {
@@ -6906,8 +6911,6 @@ void MainWindow::syncProfileToForegroundWindow() {
 
     ScreenCapture::setForegroundHintWindow(hwnd);
     healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
-    ScreenCapture::invalidateTargetWindowCache();
-    syncEffectiveTargetWindowTitleToCapture();
 
     if (fallingBackToDefault) {
         m_recentAutomaticDefaultProfileSwitchTimer.start();
@@ -6917,6 +6920,10 @@ void MainWindow::syncProfileToForegroundWindow() {
 
     switchToProfile(targetProfileId, true);
     if (m_profileManager->activeProfileId() == targetProfileId) {
+        ScreenCapture::invalidateTargetWindowCache();
+        if (!adoptForegroundLinkedCaptureIfMatched()) {
+            syncEffectiveTargetWindowTitleToCapture();
+        }
         rememberProfileLinkedForeground(hwnd, foregroundTitle);
     }
     m_lastAutomaticProfileSwitchTimer.start();
@@ -7127,6 +7134,9 @@ std::wstring MainWindow::resolveAutoRunCaptureTargetTitleW() const {
         if (ProgramSettings::runWithoutTargetWindow() || isActiveDefaultProfile()) {
             return false;
         }
+        if (profileMainOrSubForegroundActive()) {
+            return false;
+        }
         return !foregroundProfileMatchesActive();
     };
 #endif
@@ -7245,6 +7255,83 @@ void MainWindow::rememberProfileLinkedForeground(HWND hwnd, const QString& foreg
                                          subBinding,
                                          mainProcessPath,
                                          subProcessPath);
+}
+
+bool MainWindow::adoptForegroundLinkedCaptureIfMatched() {
+    if (!m_profileManager || isActiveDefaultProfile()) {
+        return false;
+    }
+
+    HWND hwnd = foregroundRootHwnd();
+    if (!hwnd || !IsWindow(hwnd) || isPipbongProcessForeground(hwnd)
+        || isShellTransientForegroundWindow(hwnd)) {
+        return false;
+    }
+
+    const QString profileId = m_profileManager->activeProfileId();
+    const QString mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
+    const QString subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
+    const QString mainProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
+    const QString subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
+
+    wchar_t titleBuffer[512]{};
+    GetWindowTextW(hwnd, titleBuffer, 512);
+    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+
+    ScreenCapture::TargetWindowInfo info;
+    if (!ScreenCapture::queryWindowInfo(hwnd, info)) {
+        return false;
+    }
+    const QString foregroundProcess = QString::fromStdWString(info.processPath);
+
+    const auto applyBinding = [&](const QString& binding, bool isSub) {
+        if (binding.isEmpty()) {
+            return false;
+        }
+        ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
+        ScreenCapture::setLinkedTargetProcessPaths(mainProcessPath.toStdWString(),
+                                                   subProcessPath.toStdWString());
+        ScreenCapture::invalidateTargetWindowCache();
+        ScreenCapture::setTargetWindowTitle(binding.toStdWString());
+        ScreenCapture::setTargetWindow(hwnd);
+        ScreenCapture::setForegroundHintWindow(hwnd);
+        rememberProfileLinkedForeground(hwnd, foregroundTitle);
+        m_lastProfileLinkedForegroundIsSub = isSub;
+        return true;
+    };
+
+    if (!subProcessPath.isEmpty() && !subBinding.isEmpty()
+        && foregroundProcess.compare(subProcessPath, Qt::CaseInsensitive) == 0) {
+        if (applyBinding(subBinding, true)) {
+            return true;
+        }
+    }
+    if (!mainProcessPath.isEmpty() && !mainBinding.isEmpty()
+        && foregroundProcess.compare(mainProcessPath, Qt::CaseInsensitive) == 0) {
+        if (applyBinding(mainBinding, false)) {
+            return true;
+        }
+    }
+
+    if (!subBinding.isEmpty()
+        && foregroundMatchesScopedSubTarget(foregroundTitle,
+                                            hwnd,
+                                            mainBinding,
+                                            subBinding,
+                                            mainProcessPath,
+                                            subProcessPath)) {
+        return applyBinding(subBinding, true);
+    }
+    if (!mainBinding.isEmpty()
+        && foregroundMatchesScopedMainTarget(foregroundTitle,
+                                             hwnd,
+                                             mainBinding,
+                                             subBinding,
+                                             mainProcessPath,
+                                             subProcessPath)) {
+        return applyBinding(mainBinding, false);
+    }
+    return false;
 }
 
 MainWindow::TargetDetailHwndResolve MainWindow::resolveTargetDetailDisplayHwnd(
@@ -7626,15 +7713,6 @@ bool MainWindow::runForegroundGateActive(const Feature* feature) const {
         return true;
     }
 
-#ifdef _WIN32
-    if (m_profileManager) {
-        const QString foregroundProfileId = foregroundProfileIdForActiveWindow();
-        if (foregroundProfileId == m_profileManager->defaultProfileId()) {
-            return false;
-        }
-    }
-#endif
-
     const QString mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
     QString subBinding;
     if (m_profileManager) {
@@ -7932,6 +8010,28 @@ void MainWindow::syncEffectiveTargetWindowTitleToCapture() {
     ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
     ScreenCapture::setLinkedTargetProcessPaths(mainProcessPath.toStdWString(),
                                                subProcessPath.toStdWString());
+
+#ifdef _WIN32
+    if (adoptForegroundLinkedCaptureIfMatched()) {
+        for (auto& entry : m_runSessions) {
+            FeatureRunSession& session = entry.second;
+            if (session.runningMode != FeatureRunMode::Trigger
+                || session.triggerPhase != TriggerSessionPhase::Monitoring) {
+                continue;
+            }
+            const std::wstring before = session.lockedCaptureTargetTitle;
+            refreshSessionCaptureTarget(session);
+            if (session.sessionContext && session.lockedCaptureTargetTitle != before
+                && !session.lockedCaptureTargetTitle.empty()) {
+                session.sessionContext->setTargetWindowTitleForWorker(session.lockedCaptureTargetTitle);
+            }
+            if (session.lockedCaptureTargetTitle != before) {
+                scheduleEnsureTriggerMonitorEnginesRunning();
+            }
+        }
+        return;
+    }
+#endif
 
     std::wstring title = resolveAutoRunCaptureTargetTitleW();
     if (title.empty()) {

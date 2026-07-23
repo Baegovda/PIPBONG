@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.291` (from `project(PIPBONG VERSION 0.8.290)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.292` (from `project(PIPBONG VERSION 0.8.292)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.292] - 2026-07-24
+
+### Fixed
+
+- Foreground-linked capture no longer requires a PIPBONG focus detour: profile auto-switch binds capture **after** `switchToProfile` (not before on the stale profile); new `adoptForegroundLinkedCaptureIfMatched` uses foreground HWND **process path** (then scoped title/HWND) to set main vs sub capture; removed `runForegroundGateActive` title→profileId default rejection after `foregroundProfileMatchesActive` already passed; `linkedCaptureBlockedByForeground` skips when `profileMainOrSubForegroundActive`; dropped premature `reconcileRunSessionsWithForegroundGate` at the start of `syncProfileToForegroundWindow` (`MainWindow`).
 
 ## [0.8.291] - 2026-07-24
 
