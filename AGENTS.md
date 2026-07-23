@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.278` (from `project(PIPBONG VERSION 0.8.278)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.279` (from `project(PIPBONG VERSION 0.8.279)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.279] - 2026-07-23
+
+### Fixed
+
+- LoL-style launcher→game transition: feature hotkeys no longer require focusing PIPBONG once first — same-profile foreground changes re-sync capture HWND/title via `syncEffectiveTargetWindowTitleToCapture`; foreground profile/hotkey gates and scoped-target polls use process-path-aware HWND disambiguation (`MainWindow::activeProfileForegroundBindingMatches`, `profileMainOrSubForegroundActive`, `scopedTargetForegroundActive`, `foregroundMatchesScoped*`, `resolveAutoRunCaptureTargetTitleW`, `findVisibleTopLevelWindowHwnd`).
 
 ## [0.8.278] - 2026-07-23
 
