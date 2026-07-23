@@ -378,68 +378,6 @@ bool foregroundMatchesScopedMainTarget(const QString& foregroundTitle,
     return subHwnd == nullptr || foregroundHwnd != subHwnd;
 }
 
-struct TargetDetailHwndResolve {
-    HWND hwnd = nullptr;
-    bool isSubTarget = false;
-};
-
-TargetDetailHwndResolve resolveTargetDetailDisplayHwnd(const QString& mainBinding,
-                                                       const QString& subBinding,
-                                                       const QString& mainProcessPath,
-                                                       const QString& subProcessPath) {
-    TargetDetailHwndResolve result;
-    const HWND fgHwnd = foregroundRootHwnd();
-    QString fgTitle;
-    if (fgHwnd) {
-        wchar_t titleBuffer[512]{};
-        GetWindowTextW(fgHwnd, titleBuffer, 512);
-        fgTitle = QString::fromWCharArray(titleBuffer).trimmed();
-    }
-
-    if (fgHwnd) {
-        if (!subBinding.isEmpty()
-            && foregroundMatchesScopedSubTarget(fgTitle,
-                                                fgHwnd,
-                                                mainBinding,
-                                                subBinding,
-                                                mainProcessPath,
-                                                subProcessPath)) {
-            result.hwnd = fgHwnd;
-            result.isSubTarget = true;
-            return result;
-        }
-        if (!mainBinding.isEmpty()
-            && foregroundMatchesScopedMainTarget(fgTitle,
-                                                 fgHwnd,
-                                                 mainBinding,
-                                                 subBinding,
-                                                 mainProcessPath,
-                                                 subProcessPath)) {
-            result.hwnd = fgHwnd;
-            return result;
-        }
-    }
-
-    const HWND mainHwnd =
-        mainBinding.isEmpty() ? nullptr : findVisibleTopLevelWindowHwnd(mainBinding, mainProcessPath);
-    const HWND subHwnd =
-        subBinding.isEmpty() ? nullptr : findVisibleTopLevelWindowHwnd(subBinding, subProcessPath);
-
-    if (subHwnd && !mainHwnd) {
-        result.hwnd = subHwnd;
-        result.isSubTarget = true;
-        return result;
-    }
-    if (mainHwnd) {
-        result.hwnd = mainHwnd;
-        return result;
-    }
-    if (subHwnd) {
-        result.hwnd = subHwnd;
-        result.isSubTarget = true;
-    }
-    return result;
-}
 #endif
 
 constexpr int kMinMainWorkspacePanePx = 252;
@@ -6812,6 +6750,10 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         PIPBONG_PERF_SCOPE("switchToProfile.loadActiveProfile");
         loadActiveProfile(true);
     }
+#ifdef _WIN32
+    m_lastProfileLinkedForegroundHwnd = nullptr;
+    m_lastProfileLinkedForegroundIsSub = false;
+#endif
     syncMemoDialogProfile();
     syncProfileListSelection();
     scheduleRunWarmup();
@@ -6905,6 +6847,7 @@ void MainWindow::syncProfileToForegroundWindow() {
         healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
         ScreenCapture::invalidateTargetWindowCache();
         syncEffectiveTargetWindowTitleToCapture();
+        rememberProfileLinkedForeground(hwnd, foregroundTitle);
         finishForegroundSessionGate();
         return;
     }
@@ -6915,6 +6858,7 @@ void MainWindow::syncProfileToForegroundWindow() {
             healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
             ScreenCapture::invalidateTargetWindowCache();
             syncEffectiveTargetWindowTitleToCapture();
+            rememberProfileLinkedForeground(hwnd, foregroundTitle);
             finishForegroundSessionGate();
         } else if (!m_profileManager->isDefaultProfile(targetProfileId)) {
             m_deferredProfileSwitchId = targetProfileId;
@@ -6972,6 +6916,9 @@ void MainWindow::syncProfileToForegroundWindow() {
     }
 
     switchToProfile(targetProfileId, true);
+    if (m_profileManager->activeProfileId() == targetProfileId) {
+        rememberProfileLinkedForeground(hwnd, foregroundTitle);
+    }
     m_lastAutomaticProfileSwitchTimer.start();
     finishForegroundSessionGate();
 #else
@@ -6988,6 +6935,7 @@ void MainWindow::finishForegroundSessionGate() {
     reconcileRunSessionsWithForegroundGate();
     resumeWaitingScopedTargetForegroundSessions();
     scheduleEnsureTriggerMonitorEnginesRunning();
+    updateTargetWindowDetails();
 }
 
 void MainWindow::reconcileRunSessionsWithForegroundGate() {
@@ -7280,6 +7228,134 @@ std::wstring MainWindow::linkedTargetLookupTitleW() const {
 }
 
 #ifdef _WIN32
+void MainWindow::rememberProfileLinkedForeground(HWND hwnd, const QString& foregroundTitle) {
+    if (!hwnd || !IsWindow(hwnd) || !m_profileManager || isActiveDefaultProfile()) {
+        return;
+    }
+    const QString profileId = m_profileManager->activeProfileId();
+    const QString mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
+    const QString subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
+    const QString mainProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
+    const QString subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
+    m_lastProfileLinkedForegroundHwnd = hwnd;
+    m_lastProfileLinkedForegroundIsSub =
+        foregroundMatchesScopedSubTarget(foregroundTitle,
+                                         hwnd,
+                                         mainBinding,
+                                         subBinding,
+                                         mainProcessPath,
+                                         subProcessPath);
+}
+
+MainWindow::TargetDetailHwndResolve MainWindow::resolveTargetDetailDisplayHwnd(
+    const QString& mainBinding,
+    const QString& subBinding,
+    const QString& mainProcessPath,
+    const QString& subProcessPath) const {
+    TargetDetailHwndResolve result;
+
+    const auto classifyHwnd = [&](HWND hwnd) -> std::optional<bool> {
+        if (!hwnd || !IsWindow(hwnd)) {
+            return std::nullopt;
+        }
+        wchar_t titleBuffer[512]{};
+        GetWindowTextW(hwnd, titleBuffer, 512);
+        const QString title = QString::fromWCharArray(titleBuffer).trimmed();
+        if (!subBinding.isEmpty()
+            && foregroundMatchesScopedSubTarget(title,
+                                                hwnd,
+                                                mainBinding,
+                                                subBinding,
+                                                mainProcessPath,
+                                                subProcessPath)) {
+            return true;
+        }
+        if (!mainBinding.isEmpty()
+            && foregroundMatchesScopedMainTarget(title,
+                                                 hwnd,
+                                                 mainBinding,
+                                                 subBinding,
+                                                 mainProcessPath,
+                                                 subProcessPath)) {
+            return false;
+        }
+        if (!subBinding.isEmpty()
+            && foregroundHwndMatchesLinkedProcess(hwnd, {}, subProcessPath)) {
+            return true;
+        }
+        if (!mainBinding.isEmpty()
+            && foregroundHwndMatchesLinkedProcess(hwnd, mainProcessPath, {})) {
+            return false;
+        }
+        return std::nullopt;
+    };
+
+    const auto applyHwnd = [&](HWND hwnd, bool isSub) {
+        result.hwnd = hwnd;
+        result.isSubTarget = isSub;
+    };
+
+    HWND fgHwnd = foregroundRootHwnd();
+    if (fgHwnd && !isPipbongProcessForeground(fgHwnd)) {
+        if (const std::optional<bool> role = classifyHwnd(fgHwnd)) {
+            applyHwnd(fgHwnd, *role);
+            return result;
+        }
+    }
+
+    if (fgHwnd && isPipbongProcessForeground(fgHwnd) && m_lastProfileLinkedForegroundHwnd
+        && IsWindow(m_lastProfileLinkedForegroundHwnd)) {
+        applyHwnd(m_lastProfileLinkedForegroundHwnd, m_lastProfileLinkedForegroundIsSub);
+        return result;
+    }
+
+    if (HWND hintHwnd = ScreenCapture::foregroundHintWindow()) {
+        if (const std::optional<bool> role = classifyHwnd(hintHwnd)) {
+            applyHwnd(hintHwnd, *role);
+            return result;
+        }
+    }
+
+    const HWND mainHwnd =
+        mainBinding.isEmpty() ? nullptr : findVisibleTopLevelWindowHwnd(mainBinding, mainProcessPath);
+    const HWND subHwnd =
+        subBinding.isEmpty() ? nullptr : findVisibleTopLevelWindowHwnd(subBinding, subProcessPath);
+
+    if (subHwnd && !mainHwnd) {
+        applyHwnd(subHwnd, true);
+        return result;
+    }
+    if (mainHwnd && !subHwnd) {
+        applyHwnd(mainHwnd, false);
+        return result;
+    }
+    if (mainHwnd && subHwnd) {
+        if (mainHwnd == subHwnd) {
+            if (const std::optional<bool> role = classifyHwnd(mainHwnd)) {
+                applyHwnd(mainHwnd, *role);
+            } else {
+                applyHwnd(mainHwnd, false);
+            }
+            return result;
+        }
+        const bool mainMin = IsIconic(mainHwnd) != FALSE;
+        const bool subMin = IsIconic(subHwnd) != FALSE;
+        if (mainMin && !subMin) {
+            applyHwnd(subHwnd, true);
+        } else if (subMin && !mainMin) {
+            applyHwnd(mainHwnd, false);
+        } else if (m_lastProfileLinkedForegroundHwnd == subHwnd) {
+            applyHwnd(subHwnd, true);
+        } else if (m_lastProfileLinkedForegroundHwnd == mainHwnd) {
+            applyHwnd(mainHwnd, false);
+        } else {
+            applyHwnd(subHwnd, true);
+        }
+        return result;
+    }
+    return result;
+}
+
 HWND MainWindow::findLinkedTargetHwndForDisplay(const QString& mainBinding,
                                               const QString& subBinding,
                                               const QString& processPath) const {
@@ -8103,20 +8179,46 @@ void MainWindow::updateTargetWindowDetails() {
     }
 
     if (!hwnd || !IsWindow(hwnd)) {
+        if (m_lastProfileLinkedForegroundHwnd && IsWindow(m_lastProfileLinkedForegroundHwnd)) {
+            hwnd = m_lastProfileLinkedForegroundHwnd;
+            detailIsSubTarget = m_lastProfileLinkedForegroundIsSub;
+        }
+    }
+
+    if (!hwnd || !IsWindow(hwnd)) {
         if (savedTitle.isEmpty() && subBinding.isEmpty()) {
             m_targetWindowDetailPanel->showMessage(tr("'타겟 지정'으로 타겟을 선택하세요."));
         } else {
-            const bool storedSubTarget = savedTitle.isEmpty() && !subBinding.isEmpty();
-            const QString displayTitle = storedSubTarget ? subBinding : savedTitle;
-            const QString& processPathForDisplay = storedSubTarget ? subProcessPath : linkedProcessPath;
-            const QString processName = processPathForDisplay.isEmpty()
-                                            ? QString()
-                                            : QFileInfo(processPathForDisplay).fileName();
-            m_targetWindowDetailPanel->showStoredTargetBinding(displayTitle,
-                                                               processName,
-                                                               processPathForDisplay,
-                                                               storedSubTarget);
+            const HWND subHwnd = subBinding.isEmpty()
+                                       ? nullptr
+                                       : findVisibleTopLevelWindowHwnd(subBinding, subProcessPath);
+            const HWND mainHwnd =
+                savedTitle.isEmpty() ? nullptr
+                                     : findVisibleTopLevelWindowHwnd(savedTitle, linkedProcessPath);
+            if (subHwnd && !mainHwnd) {
+                hwnd = subHwnd;
+                detailIsSubTarget = true;
+            } else if (mainHwnd && !subHwnd) {
+                hwnd = mainHwnd;
+                detailIsSubTarget = false;
+            } else {
+                const bool storedSubTarget = savedTitle.isEmpty() && !subBinding.isEmpty();
+                const QString displayTitle = storedSubTarget ? subBinding : savedTitle;
+                const QString& processPathForDisplay =
+                    storedSubTarget ? subProcessPath : linkedProcessPath;
+                const QString processName = processPathForDisplay.isEmpty()
+                                                ? QString()
+                                                : QFileInfo(processPathForDisplay).fileName();
+                m_targetWindowDetailPanel->showStoredTargetBinding(displayTitle,
+                                                                   processName,
+                                                                   processPathForDisplay,
+                                                                   storedSubTarget);
+                return;
+            }
         }
+    }
+
+    if (!hwnd || !IsWindow(hwnd)) {
         return;
     }
 

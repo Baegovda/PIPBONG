@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.290` (from `project(PIPBONG VERSION 0.8.290)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.291` (from `project(PIPBONG VERSION 0.8.290)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.291] - 2026-07-24
+
+### Fixed
+
+- Target detail panel tracks linked main/sub foreground continuously: `rememberProfileLinkedForeground` stores the last profile-linked HWND on every foreground sync; `resolveTargetDetailDisplayHwnd` uses foreground HWND/process classification, foreground hint, and last-linked HWND when PIPBONG is focused; `finishForegroundSessionGate` refreshes the panel immediately on focus change (`MainWindow`, `ScreenCapture::foregroundHintWindow`).
 
 ## [0.8.290] - 2026-07-24
 

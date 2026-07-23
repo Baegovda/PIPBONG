@@ -340,6 +340,15 @@ private:
     void applySessionCaptureTarget(const std::wstring& title) const;
     void syncTargetWindowTitleToCapture();
 #ifdef _WIN32
+    struct TargetDetailHwndResolve {
+        HWND hwnd = nullptr;
+        bool isSubTarget = false;
+    };
+    TargetDetailHwndResolve resolveTargetDetailDisplayHwnd(const QString& mainBinding,
+                                                           const QString& subBinding,
+                                                           const QString& mainProcessPath,
+                                                           const QString& subProcessPath) const;
+    void rememberProfileLinkedForeground(HWND hwnd, const QString& foregroundTitle);
     HWND findMainTargetHwndForCenterPin() const;
     HWND findSubTargetHwndForCenterPin() const;
     HWND findLinkedTargetHwndForDisplay(const QString& mainBinding,
@@ -475,6 +484,10 @@ private:
     std::unordered_map<const WorkflowEngine*, std::string> m_abandonedEngineFeatureIds;
     QElapsedTimer m_pendingDefaultProfileSwitchTimer;
     QString m_lastLinkedForegroundProfileId;
+#ifdef _WIN32
+    HWND m_lastProfileLinkedForegroundHwnd = nullptr;
+    bool m_lastProfileLinkedForegroundIsSub = false;
+#endif
     QString m_lastProfiledForegroundTitle;
     QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;
     bool m_scopedTargetForegroundResumePending = false;

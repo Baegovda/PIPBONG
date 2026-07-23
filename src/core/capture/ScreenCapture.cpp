@@ -344,6 +344,14 @@ void ScreenCapture::setForegroundHintWindow(HWND hwnd) {
     s_foregroundHintMs = GetTickCount64();
 }
 
+HWND ScreenCapture::foregroundHintWindow() {
+    if (!s_foregroundHintHwnd || !IsWindow(s_foregroundHintHwnd)
+        || GetTickCount64() - s_foregroundHintMs >= 3000) {
+        return nullptr;
+    }
+    return s_foregroundHintHwnd;
+}
+
 HWND ScreenCapture::targetWindow() {
     return s_targetWindow;
 }
