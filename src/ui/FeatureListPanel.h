@@ -93,6 +93,9 @@ public:
 
     void setRunningFeatureIds(const QSet<QString>& featureIds);
 
+    /// When true, pause prism row animation during fast Hold/repeat loops to reduce UI CPU load.
+    void setRunAnimationLowCpu(bool lowCpu);
+
     void setActiveWorkflowFeatureIds(const QSet<QString>& featureIds);
 
     void setFeatureRunVisualKinds(const QHash<QString, FeatureRunVisualKind>& kinds);
@@ -276,6 +279,7 @@ private:
     FeatureListColumnLayout m_headerDragStartLayout;
 
     int m_animPhase = 0;
+    bool m_runAnimationLowCpu = false;
 
     int m_inlineRenameRow = -1;
 

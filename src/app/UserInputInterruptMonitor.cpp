@@ -3,6 +3,7 @@
 #include "app/FeatureHotkeyGate.h"
 #include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/input/HotkeyBinding.h"
+#include "core/workflow/ExecutionContext.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -18,16 +19,15 @@ namespace {
 
 #ifdef _WIN32
 UserInputInterruptMonitor* g_userInputInterruptMonitor = nullptr;
-HHOOK g_keyboardHook = nullptr;
 
-QTimer* mouseButtonPollTimer() {
+QTimer* inputPollTimer() {
     static QTimer* timer = nullptr;
     if (!timer && QCoreApplication::instance()) {
         timer = new QTimer(QCoreApplication::instance());
         timer->setInterval(32);
         QObject::connect(timer, &QTimer::timeout, timer, []() {
             if (g_userInputInterruptMonitor) {
-                g_userInputInterruptMonitor->pollMouseButtonEdges();
+                g_userInputInterruptMonitor->pollInputEdges();
             }
         });
     }
@@ -51,33 +51,6 @@ bool isModifierOnlyVirtualKey(int vk) {
     default:
         return false;
     }
-}
-
-LRESULT CALLBACK interruptKeyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
-    if (code != HC_ACTION || !g_userInputInterruptMonitor) {
-        return CallNextHookEx(g_keyboardHook, code, wParam, lParam);
-    }
-
-    const bool keyDown = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
-    if (!keyDown) {
-        return CallNextHookEx(g_keyboardHook, code, wParam, lParam);
-    }
-
-    const auto* info = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
-    if (info->flags & LLKHF_INJECTED) {
-        return CallNextHookEx(g_keyboardHook, code, wParam, lParam);
-    }
-    if (info->flags & 0x40000000) { // LLKHF_REPEAT — key held, not initial press
-        return CallNextHookEx(g_keyboardHook, code, wParam, lParam);
-    }
-
-    const int vk = static_cast<int>(info->vkCode);
-    if (isModifierOnlyVirtualKey(vk)) {
-        return CallNextHookEx(g_keyboardHook, code, wParam, lParam);
-    }
-
-    g_userInputInterruptMonitor->notifyPhysicalInput(vk);
-    return CallNextHookEx(g_keyboardHook, code, wParam, lParam);
 }
 #endif
 
@@ -103,7 +76,8 @@ void UserInputInterruptMonitor::setHotkeyExemptionCheck(std::function<bool(int v
 void UserInputInterruptMonitor::registerSession(const std::string& featureId,
                                                 UserInputInterruptMode mode,
                                                 const HotkeyBinding& featureHotkey,
-                                                ExecutionContext* context) {
+                                                ExecutionContext* context,
+                                                bool keyboardInterrupt) {
     if (featureId.empty() || !context) {
         return;
     }
@@ -114,13 +88,14 @@ void UserInputInterruptMonitor::registerSession(const std::string& featureId,
         entry.mode = mode;
         entry.featureHotkey = featureHotkey;
         entry.context = context;
+        entry.keyboardInterrupt = keyboardInterrupt;
         const auto existing = m_sessions.find(featureId);
         if (existing != m_sessions.end()) {
             entry.lastInterruptAt = existing->second.lastInterruptAt;
         }
         m_sessions[featureId] = entry;
     }
-    refreshHooks();
+    refreshPollTimer();
 }
 
 void UserInputInterruptMonitor::unregisterSession(const std::string& featureId) {
@@ -128,7 +103,7 @@ void UserInputInterruptMonitor::unregisterSession(const std::string& featureId) 
         std::lock_guard<std::mutex> lock(m_mutex);
         m_sessions.erase(featureId);
     }
-    refreshHooks();
+    refreshPollTimer();
 }
 
 void UserInputInterruptMonitor::unregisterAll() {
@@ -136,35 +111,53 @@ void UserInputInterruptMonitor::unregisterAll() {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_sessions.clear();
         m_mouseButtonWasDown.fill(false);
+        m_keyboardWasDown.fill(false);
+        m_keyboardPollEnabled = false;
     }
-    refreshHooks();
+    refreshPollTimer();
 }
 
-void UserInputInterruptMonitor::refreshHooks() {
+void UserInputInterruptMonitor::refreshPollTimer() {
 #ifdef _WIN32
-    bool needHooks = false;
+    bool needPoll = false;
+    bool keyboardPoll = false;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        needHooks = !m_sessions.empty();
+        needPoll = !m_sessions.empty();
+        for (const auto& [featureId, entry] : m_sessions) {
+            (void)featureId;
+            if (entry.keyboardInterrupt) {
+                keyboardPoll = true;
+                break;
+            }
+        }
+        m_keyboardPollEnabled = keyboardPoll;
     }
-    if (needHooks && !g_keyboardHook) {
+
+    if (needPoll) {
         g_userInputInterruptMonitor = this;
-        g_keyboardHook = SetWindowsHookExW(WH_KEYBOARD_LL, interruptKeyboardHookProc, nullptr, 0);
-        if (QTimer* timer = mouseButtonPollTimer()) {
+        if (QTimer* timer = inputPollTimer()) {
             timer->start();
         }
-    } else if (!needHooks) {
-        if (g_keyboardHook) {
-            UnhookWindowsHookEx(g_keyboardHook);
-            g_keyboardHook = nullptr;
-        }
-        if (QTimer* timer = mouseButtonPollTimer()) {
+    } else {
+        if (QTimer* timer = inputPollTimer()) {
             timer->stop();
         }
         if (g_userInputInterruptMonitor == this) {
             g_userInputInterruptMonitor = nullptr;
         }
     }
+#endif
+}
+
+void UserInputInterruptMonitor::pollInputEdges() {
+#ifdef _WIN32
+    pollMouseButtonEdges();
+    if (m_keyboardPollEnabled) {
+        pollKeyboardEdges();
+    }
+#else
+    (void)0;
 #endif
 }
 
@@ -197,6 +190,62 @@ void UserInputInterruptMonitor::pollMouseButtonEdges() {
         if (down && !wasDown) {
             notifyPhysicalInput(button.vk);
         }
+    }
+#else
+    (void)0;
+#endif
+}
+
+bool UserInputInterruptMonitor::isPipbongSyntheticKeyDownOnAnySession(int virtualKey) const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    for (const auto& [featureId, entry] : m_sessions) {
+        (void)featureId;
+        if (entry.context && entry.context->hasPipbongSyntheticKeyDown(virtualKey)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void UserInputInterruptMonitor::pollKeyboardEdges() {
+#ifdef _WIN32
+    if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
+        return;
+    }
+
+    BYTE keyboardState[256] = {};
+    if (!GetKeyboardState(keyboardState)) {
+        return;
+    }
+
+    std::function<bool(int)> hotkeyExemptionCheck;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        hotkeyExemptionCheck = m_hotkeyExemptionCheck;
+    }
+
+    for (int vk = 0x08; vk < 256; ++vk) {
+        if (isModifierOnlyVirtualKey(vk)) {
+            continue;
+        }
+
+        const bool down = (keyboardState[vk] & 0x80) != 0;
+        bool wasDown = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            wasDown = m_keyboardWasDown[static_cast<size_t>(vk)];
+            m_keyboardWasDown[static_cast<size_t>(vk)] = down;
+        }
+        if (!down || wasDown) {
+            continue;
+        }
+        if (hotkeyExemptionCheck && hotkeyExemptionCheck(vk)) {
+            continue;
+        }
+        if (isPipbongSyntheticKeyDownOnAnySession(vk)) {
+            continue;
+        }
+        notifyPhysicalInput(vk);
     }
 #else
     (void)0;

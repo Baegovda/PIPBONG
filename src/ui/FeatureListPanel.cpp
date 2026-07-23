@@ -1701,6 +1701,21 @@ void FeatureListPanel::restoreColumnLayout(const QSettings& settings, const QStr
     setColumnLayout(layout, false);
     m_restoringColumnLayout = false;
 }
+void FeatureListPanel::setRunAnimationLowCpu(bool lowCpu) {
+    if (m_runAnimationLowCpu == lowCpu) {
+        return;
+    }
+    m_runAnimationLowCpu = lowCpu;
+    if (m_runningFeatureIds.isEmpty() || !m_animTimer) {
+        return;
+    }
+    if (lowCpu) {
+        m_animTimer->stop();
+    } else if (!m_animTimer->isActive()) {
+        m_animTimer->start();
+    }
+}
+
 void FeatureListPanel::setRunningFeatureIds(const QSet<QString>& featureIds) {
     m_runningFeatureIds = featureIds;
     if (m_runningFeatureIds.isEmpty()) {
@@ -1709,7 +1724,7 @@ void FeatureListPanel::setRunningFeatureIds(const QSet<QString>& featureIds) {
         if (m_animTimer) {
             m_animTimer->stop();
         }
-    } else if (m_animTimer && !m_animTimer->isActive()) {
+    } else if (m_animTimer && !m_animTimer->isActive() && !m_runAnimationLowCpu) {
         m_animTimer->start();
     }
     updateReorderEnabled();

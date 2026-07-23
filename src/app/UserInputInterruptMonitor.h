@@ -6,7 +6,6 @@
 #include <array>
 #include <chrono>
 #include <functional>
-#include <functional>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -25,13 +24,14 @@ public:
     void registerSession(const std::string& featureId,
                          UserInputInterruptMode mode,
                          const HotkeyBinding& featureHotkey,
-                         ExecutionContext* context);
+                         ExecutionContext* context,
+                         bool keyboardInterrupt = true);
     void unregisterSession(const std::string& featureId);
     void unregisterAll();
 
     void notifyPhysicalInput(int virtualKey);
 
-    void pollMouseButtonEdges();
+    void pollInputEdges();
 
 private:
     UserInputInterruptMonitor() = default;
@@ -40,14 +40,20 @@ private:
         UserInputInterruptMode mode = UserInputInterruptMode::Stop;
         HotkeyBinding featureHotkey;
         ExecutionContext* context = nullptr;
+        bool keyboardInterrupt = true;
         std::chrono::steady_clock::time_point lastInterruptAt{};
     };
 
-    void refreshHooks();
+    void refreshPollTimer();
+    void pollMouseButtonEdges();
+    void pollKeyboardEdges();
+    bool isPipbongSyntheticKeyDownOnAnySession(int virtualKey) const;
 
     mutable std::mutex m_mutex;
     InterruptHandler m_handler;
     std::function<bool(int virtualKey)> m_hotkeyExemptionCheck;
     std::unordered_map<std::string, SessionEntry> m_sessions;
     std::array<bool, 5> m_mouseButtonWasDown{};
+    std::array<bool, 256> m_keyboardWasDown{};
+    bool m_keyboardPollEnabled = false;
 };

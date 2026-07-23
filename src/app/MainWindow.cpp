@@ -3032,6 +3032,14 @@ void MainWindow::connectSessionEngine(FeatureRunSession& session) {
 
 void MainWindow::updateRunUiState() {
     if (m_featureList) {
+        bool suppressRunAnimation = false;
+        for (const auto& entry : m_runSessions) {
+            if (entry.second.sessionContext && entry.second.sessionContext->suppressRepeatUi()) {
+                suppressRunAnimation = true;
+                break;
+            }
+        }
+        m_featureList->setRunAnimationLowCpu(suppressRunAnimation);
         m_featureList->setRunningFeatureIds(runningFeatureIds());
         QHash<QString, FeatureRunVisualKind> visualKinds;
         for (const auto& entry : m_runSessions) {
@@ -4588,6 +4596,10 @@ void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
         session->sessionContext->setRunLoopNumber(session->sessionIteration + 1);
     }
 
+    if (m_featureList && session->sessionContext && session->sessionContext->suppressRepeatUi()) {
+        m_featureList->setRunAnimationLowCpu(true);
+    }
+
     publishLoopCompletionUi(*session, lastSuccess, lastMessage);
 
     if (WorkflowRunProfiler::isEnabled() && flushTimer.isValid()) {
@@ -4595,7 +4607,8 @@ void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
     }
 
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
-    if (feature) {
+    if (feature
+        && (session->lockMouseDuringFirstLoopCount > 0 || hasFeatureMouseLock(*session))) {
         syncEarlyLoopMouseLock(*session);
     }
 
@@ -8108,10 +8121,14 @@ void MainWindow::syncUserInputInterruptForSession(FeatureRunSession& session, Fe
         monitor.unregisterSession(session.featureId);
         return;
     }
+    // Hold mode ends when the hotkey is released; polling other keys is unnecessary and
+    // used to require a second WH_KEYBOARD_LL hook alongside HotkeyManager during runs.
+    const bool keyboardInterrupt = feature->runMode() != FeatureRunMode::Hold;
     monitor.registerSession(session.featureId,
                             feature->userInputInterruptMode(),
                             feature->hotkey(),
-                            session.sessionContext.get());
+                            session.sessionContext.get(),
+                            keyboardInterrupt);
 }
 
 void MainWindow::onUserInputInterrupt(const std::string& featureId) {

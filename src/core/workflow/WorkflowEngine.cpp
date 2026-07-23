@@ -230,8 +230,6 @@ protected:
 #endif
             if (workerFastRepeat) {
                 setHighResolutionTimer(context->workerFastRepeatDelayMs() <= 0);
-            } else {
-                setHighResolutionTimer(true);
             }
 
             int workerFastRepeatPass = 0;

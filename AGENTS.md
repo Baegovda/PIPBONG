@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.280` (from `project(PIPBONG VERSION 0.8.280)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.281` (from `project(PIPBONG VERSION 0.8.281)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.281] - 2026-07-23
+
+### Fixed
+
+- Hold-mode runs no longer install a second `WH_KEYBOARD_LL` hook for **사용자 입력 시 정지/일시정지** — keyboard interrupt uses `GetKeyboardState` polling (with PIPBONG synthetic-key filtering) only for non-Hold modes; Hold sessions poll mouse buttons only (`UserInputInterruptMonitor`, `MainWindow::syncUserInputInterruptForSession`).
+- Fast Hold/repeat loops pause feature-list prism row animation to reduce UI-thread repaint load during `suppressRepeatUi` (`FeatureListPanel::setRunAnimationLowCpu`, `MainWindow`).
+- `flushWorkerFastRepeatUi` skips early-loop mouse-lock sync when the feature has no mouse-lock options configured (`MainWindow`).
+
+### Changed
+
+- Non-fast-repeat workflow worker threads no longer raise `timeBeginPeriod(1)` by default (`WorkflowEngine`).
 
 ## [0.8.280] - 2026-07-23
 
