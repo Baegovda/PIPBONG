@@ -1,7 +1,7 @@
 #include "app/UserInputInterruptMonitor.h"
 
 #include "app/FeatureHotkeyGate.h"
-#include "core/diagnostics/WorkflowRunProfiler.h"
+#include "core/diagnostics/CursorStutterProfiler.h"
 #include "core/input/HotkeyBinding.h"
 #include "core/workflow/ExecutionContext.h"
 
@@ -260,9 +260,9 @@ void UserInputInterruptMonitor::notifyPhysicalInput(int virtualKey) {
     }
 
     if (HotkeyBinding::isMouseVirtualKey(virtualKey)) {
-        WorkflowRunProfiler::recordPhysicalInput("user_physical_mouse", virtualKey);
+        Q_UNUSED(virtualKey);
     } else {
-        WorkflowRunProfiler::recordPhysicalInput("user_physical_key", virtualKey);
+        CursorStutterProfiler::recordPhysicalKey(virtualKey);
     }
 
     std::vector<std::string> targets;
@@ -295,7 +295,6 @@ void UserInputInterruptMonitor::notifyPhysicalInput(int virtualKey) {
     }
 
     for (const std::string& featureId : targets) {
-        WorkflowRunProfiler::recordUserInputInterrupt(QString::fromStdString(featureId), virtualKey);
         const std::string capturedId = featureId;
         QMetaObject::invokeMethod(
             QCoreApplication::instance(),

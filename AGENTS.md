@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.294` (from `project(PIPBONG VERSION 0.8.294)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.295` (from `project(PIPBONG VERSION 0.8.295)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -24,6 +24,7 @@ This is the **only development document** — AI handover, user quick start, dev
 8. [Critical Implementation Patterns](#8-critical-implementation-patterns)
 9. [Development Governance](#9-development-governance)
    - [9.5 User preference profile (cumulative)](#95-user-preference-profile-cumulative--agents-only)
+   - [9.6 Regression mistake log (오답노트)](#96-regression-mistake-log-오답노트--agents-only)
 10. [Versioning Policy](#10-versioning-policy)
 11. [Changelog and Version History](#11-changelog-and-version-history)
 12. [Risk and Legal Notices](#12-risk-and-legal-notices)
@@ -414,7 +415,7 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
 │   ├── run-policy-sim.ps1     # build PIPBONGPolicySim only + run (manual)
 │   ├── run-policy-sim-postbuild.ps1  # POST_BUILD hook: run sim after PIPBONG link
-│   ├── analyze-app-profile.ps1  # summarize app-profile/latest.md
+│   ├── analyze-cursor-stutter.ps1  # summarize cursor-stutter/latest.md
 │   ├── recover-ide-build.ps1  # IDE recovery (local default; optional -KillGlobalBuildProcesses)
 │   ├── ensure-dev-isolation.ps1  # dual-Cursor setup: settings check, F5 fix, deploy-qt if needed
 │   ├── fix-pipbong-cursor-f5.ps1  # workspace-gated F5 -> Build and Run (config.pipbong.f5BuildAndRun)
@@ -1139,31 +1140,25 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 **Stage 2 (not yet):** workflow `WorkflowRunner` dry-run with mocks — blocked by OpenCV/UI block dependencies; track as future `PIPBONGWorkflowDryRunSim`.
 
-### 8.14 App-wide microsecond profiling (mandatory — stutter diagnosis)
+### 8.14 Cursor stutter profiling (mandatory — mouse jump / QWER diagnosis)
 
-**Status:** Added 2026-07 (v0.8.269). Markdown v5 ultimate tier (v0.8.275): profile context, depth levels, per-poll ImageFind, physical vs synthetic input, foreground timeline, Chrome `trace.json`. Microsecond log for Hold / **무한 반복** / UI latency — **off by default**.
+**Status:** Added 2026-07 (v0.8.295). Replaces app-wide `WorkflowRunProfiler` / `app-profile/` (removed v0.8.295).
 
 | Layer | Role |
 | ----- | ---- |
-| `WorkflowRunProfiler` | App trace from launch (`app_trace_begin`) until shutdown (`app_trace_end`); feature sessions are `session_begin` / `session_end` markers inside the same buffer; **`profiling_depth`**: `standard` / `detailed` / `ultra` (`program/workflowRunProfilingDepth`) |
-| `WorkflowProfileSnapshot` | At `session_begin`, freezes **Profile settings** (target windows, capture mode, pin-center, …) + **Feature settings** + per-block config into the report |
-| Format | Markdown v5 (`pipbong-app-profile`): YAML `profiling_depth`, **Profile settings**, **Feature settings**, **Workflow blocks**, **Block execution (measured)**, **Auto diagnosis** (Korean), trigger aggregates, foreground sample, spike tables, **Event series**, fenced TSV log; **`app-profile/trace.json`** Chrome Trace export |
-| Enable | `ProgramSettings` `program/workflowRunProfiling` or env `PIPBONG_APP_PROFILE=1` / `PIPBONG_WORKFLOW_PROFILE=1` |
-| Output | **Repo root** `app-profile/latest.md` + `trace.json` only (single file, overwritten on feature session end and app shutdown; **not** on preempt); no `sessions/` archive |
-| `WorkflowEngine` | `loop_*` (`loop=` correlation on events), `block_end` with per-block aggregates |
-| `ImageFindBlock` | `imagefind_poll` per attempt (depth-filtered): poll#, confidence, `cap_us`, `match_us` |
-| `MainWindow` | Profile context at `session_begin`; `foreground_change` on foreground title change (Detailed+) |
-| `UserInputInterruptMonitor` | `user_physical_key` / `user_physical_mouse` (Detailed+) |
-| `InputSimulator` | `synthetic_mouse_click` / `synthetic_key` (PIPBONG-injected input) |
-| `HotkeyManager` | `hotkey_*_dispatch` on UI thread |
-| `ScreenCapture` | `capture_imagefind` per ImageFind haystack capture |
-| `scripts/analyze-app-profile.ps1` | Prints **Auto diagnosis** + percentiles; reads `app-profile/latest.md` |
+| `CursorStutterProfiler` | Background 4 ms `GetCursorPos` sampler; records jumps ≥8 px, `SetCursorPos` callers, `ClipCursor`, mouse-lock hook snaps, keyboard-hook duration, physical/synthetic QWER |
+| Enable | `ProgramSettings` `program/cursorStutterProfiling` or env `PIPBONG_CURSOR_STUTTER_PROFILE=1` |
+| Output | **Repo root** `cursor-stutter/latest.md` only (written on app shutdown) |
+| `MouseCenterLock` | `mouse_hook_snap` when WH_MOUSE_LL swallows `WM_MOUSEMOVE` and snaps cursor |
+| `InputSimulator` | `set_cursor` on every `SetCursorPos` path (click, settle, move) |
+| `HotkeyManager` | `keyboard_hook` with handler duration; flags slow hooks >1 ms |
+| `UserInputInterruptMonitor` | `physical_key` for non-hotkey-gated keyboard input |
 
-**User → AI workflow:** Enable profiling → reproduce → exit → **`app-profile/latest.md`** → read **Auto diagnosis** (do **not** ask the user for Wait ms / block list).
+**User → AI workflow:** Enable **커서 스터터 진단** → reproduce QWER spam / cursor jump → exit → **`cursor-stutter/latest.md`** → read **Auto diagnosis** (do **not** ask user for workflow blocks).
 
-**Event log columns:** `rel_us`, `thread` (`ui`/`worker`), `event`, `detail`, optional `dur_us` (inside ` ```tsv ` fence).
+**Likely stutter sources (ranked):** `MouseCenterLock` hook snap during physical mouse move; `InputSimulator` `SetCursorPos` during clicks; early-loop mouse lock refresh in `MainWindow`.
 
-Cursor rule: `.cursor/rules/app-profiling.mdc`.
+Cursor rule: `.cursor/rules/cursor-stutter-profiling.mdc`.
 
 ### 8.13 Program settings dialog (mandatory — grouped + tooltips)
 
@@ -1172,7 +1167,7 @@ Cursor rule: `.cursor/rules/app-profiling.mdc`.
 | Group | Contents |
 | ----- | -------- |
 | **기능 실행** | Auto-select running feature, profile-switch focus to target window, run without target window, log max lines |
-| **진단** | Workflow run microsecond profiling (`program/workflowRunProfiling`) + depth (`program/workflowRunProfilingDepth`: standard/detailed/ultra) |
+| **진단** | Cursor stutter profiling (`program/cursorStutterProfiling`) — `cursor-stutter/latest.md` |
 | **시작·종료** | Windows startup launch, close to tray |
 | **업데이트** | Periodic update check + interval, auto-install |
 | **권한·호환** | Run as administrator (+ one-line elevated status when applicable) |
@@ -1182,6 +1177,109 @@ Cursor rule: `.cursor/rules/app-profiling.mdc`.
 **Adding options:** pick the matching group (or add a new group only when none fits); short Korean label; `setToolTip` on the control; optional group-box tooltip; persist via `ProgramSettings` / `QSettings`.
 
 Cursor rule: `.cursor/rules/program-settings-dialog.mdc`.
+
+### 8.15 Alt+Tab foreground sync and feature hotkey latch (mandatory — do not regress)
+
+**Status:** Verified working on Windows (2026-07-24, **v0.8.293–v0.8.294**). User-confirmed fix for: main target focused → hotkeys work → Alt+Tab away → Alt+Tab back → hotkeys **dead** until PIPBONG focused once.
+
+#### Symptom (exact repro)
+
+1. Start PIPBONG; run and focus the profile **주 대상** window — feature hotkeys work.
+2. Alt+Tab to another app (browser, etc.), then Alt+Tab back to the main target.
+3. Feature hotkeys do **nothing** (keyboard toggle and mouse side-button bindings).
+4. Focus PIPBONG once, return to target — hotkeys work again.
+
+This is **not** the same bug as user-held Shift release on workflow end ([§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress)). It is also **not** fixed by capture/profile sync alone — hook **latch** state must be reset.
+
+#### Root cause (two layers — both required)
+
+| Layer | Mechanism | Wrong diagnosis (오답) |
+| ----- | --------- | ------------------------ |
+| **Foreground delivery / binding** (v0.8.293) | `PostMessageW` alone did not reliably run UI-thread foreground sync; empty-caption games (LOL) need **process path** not title; `FeatureHotkeyGate` must **not** block `syncProfileToForegroundWindow` | “Only fix `ScreenCapture` HWND” or “user must focus PIPBONG once to heal” |
+| **Hook latch stuck** (v0.8.294 — primary for Alt+Tab) | `WH_KEYBOARD_LL` / `WH_MOUSE_LL` may **miss KEYUP / button UP** during Alt+Tab shell transit → internal latch diverges from physical state | “Toggle `armed` / mouse `buttonDown` will self-heal” |
+
+**Toggle latch failure mode** (`HotkeyManager::handleKeyboardHookEvent`):
+
+- After a successful fire: `entry.armed = false` (line ~632).
+- Next KEYDOWN while `!entry.armed`: event is **swallowed**, feature does **not** run (lines ~620–624).
+- KEYUP sets `entry.armed = true` again (lines ~636–639) — **only if the hook receives KEYUP**.
+
+**Mouse latch failure mode:** `MouseBindingEntry::buttonDown` stays `true` → subsequent clicks ignored until UP is seen.
+
+**Why PIPBONG focus “healed” it:** incidental Alt release, focus change, or key/button events reset latch or forced a full foreground resync path.
+
+#### Required architecture
+
+| Layer | Responsibility |
+| ----- | -------------- |
+| **WinEvent → UI thread** | `foregroundWindowEventProc` calls `QMetaObject::invokeMethod(..., "onForegroundWindowChanged", Qt::QueuedConnection)` — **not** `PostMessageW` alone (`MainWindow.cpp`) |
+| **`onForegroundWindowChanged`** | Central coordinator: Alt-release edge → flush deferred profile + `resetHookLatchState`; then profile sync, capture adopt, `maybeResetHotkeyLatchForForeground`, `finishForegroundSessionGate` |
+| **`HotkeyManager::resetHookLatchState`** | `hold keyDown=false`, `toggle armed=true`, `mouse buttonDown=false`; **does not** emit `hotkeyHoldEnded` (safe recovery from missed UP) |
+| **`maybeResetHotkeyLatchForForeground(HWND)`** | Reset latch **once per new** linked-target foreground root HWND (`m_lastHotkeyLatchResetForegroundHwnd`); skip PIPBONG/shell transient; skip when foreground is not profile main/sub |
+| **`ensureForegroundReadyForFeatureHotkey`** | Called from `onHotkeyTriggered` / `onHotkeyHoldStarted` **before** run: linked profile switch, deferred flush, `syncProfileToForegroundWindow`, force `switchToProfile` if mismatch, capture adopt/sync, latch reset, session gate reconcile |
+| **`finishForegroundSessionGate`** | After HWND/profile/capture refresh: flush deferred switch (when Alt not held), `reconcileRunSessionsWithForegroundGate`, resume scoped-target waits, trigger monitor engines |
+| **Empty title games** | `profileIdForForegroundHwnd`, `healLinkedTargetProcessPathFromForeground`, `adoptForegroundLinkedCaptureIfMatched` — match by **exe path** when `GetWindowTextW` is empty |
+| **50 ms poll** | `syncProfileToForegroundWindow` remains fallback; WinEvent is primary |
+
+#### Code reference (canonical — v0.8.294)
+
+**Latch reset API** (`HotkeyManager.cpp`):
+
+```cpp
+void HotkeyManager::resetHookLatchState() {
+    for (HoldBindingEntry& entry : m_holdBindings) {
+        entry.keyDown = false;
+    }
+    for (ToggleBindingEntry& entry : m_toggleBindings) {
+        entry.armed = true;
+    }
+    for (MouseBindingEntry& entry : m_mouseBindings) {
+        entry.buttonDown = false;
+    }
+}
+```
+
+**Foreground coordinator** (`MainWindow::onForegroundWindowChanged`):
+
+1. Alt was held, now released → `flushDeferredProfileSwitchIfIdle()` + `m_hotkeyManager->resetHookLatchState()`.
+2. `switchToForegroundLinkedProfileIfNeeded(true)`.
+3. `syncProfileToForegroundWindow()`.
+4. If not PIPBONG foreground → `adoptForegroundLinkedCaptureIfMatched()` or `syncEffectiveTargetWindowTitleToCapture()` → `maybeResetHotkeyLatchForForeground(foregroundRootHwnd())`.
+5. `finishForegroundSessionGate()`.
+
+**Per-HWND latch reset** (`maybeResetHotkeyLatchForForeground`): only when `profileMainOrSubForegroundActive()` or `foregroundProfileMatchesActive()`; dedupe with `m_lastHotkeyLatchResetForegroundHwnd`.
+
+**Hotkey entry resync** (`ensureForegroundReadyForFeatureHotkey`): full profile + capture pipeline then `maybeResetHotkeyLatchForForeground(foregroundRootHwnd())`.
+
+#### Anti-patterns (known failures — do not reintroduce)
+
+| Do not | Why |
+| ------ | --- |
+| Rely on capture HWND sync only (v0.8.289–0.8.292) | Alt+Tab back can leave toggle `armed=false` or mouse `buttonDown=true` — hooks still swallow hotkeys |
+| `PostMessageW` as sole foreground sync delivery (pre-0.8.293) | UI handler may not run; profile/capture stay stale until PIPBONG focused |
+| Gate `syncProfileToForegroundWindow` on `FeatureHotkeyGate` | Edit dialogs block hotkeys correctly, but foreground auto-switch must still run |
+| Call `resetHookLatchState` on every 50 ms poll tick | Resets hold `keyDown` mid-physical-hold; use Alt-release edge + once-per-HWND on linked target return |
+| Emit `hotkeyHoldEnded` from latch reset | Would stop hold sessions when recovering from missed UP during Alt+Tab |
+| Require user to focus PIPBONG after Alt+Tab | Documented user-facing failure mode — not acceptable UX |
+
+#### Manual verification (required before closing hotkey / foreground / profile-switch tasks)
+
+1. Bind a feature hotkey (keyboard **toggle** and mouse **side button**).
+2. Focus main target → hotkey runs.
+3. Alt+Tab away and back **without ever focusing PIPBONG** → hotkey runs immediately.
+4. Repeat 5×; test with empty window title game if available (LOL).
+5. Hold-mode hotkey: physical hold still works; Alt+Tab during hold does not leave a phantom hold session ([§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress)).
+6. Open block editor → hotkeys blocked (`FeatureHotkeyGate`); close editor → Alt+Tab scenario still passes.
+
+#### Key files
+
+- `src/app/HotkeyManager.h` / `.cpp` — `resetHookLatchState`, toggle `armed` / mouse `buttonDown` in `handleKeyboardHookEvent` / `handleMouseButtonEvent`
+- `src/app/MainWindow.h` / `.cpp` — `onForegroundWindowChanged`, `maybeResetHotkeyLatchForForeground`, `ensureForegroundReadyForFeatureHotkey`, `finishForegroundSessionGate`, `syncProfileToForegroundWindow`, `foregroundWindowEventProc`
+- `src/app/FeatureHotkeyGate.cpp` — blocks hotkey **execution** in edit dialogs only; must not block foreground sync
+- `src/core/capture/ScreenCapture.cpp` — foreground HWND hint TTL, `healLinkedTargetProcessPathFromForeground`
+- `src/app/ProfileManager.cpp` — `profileIdForForegroundHwnd`, `profileIdForForegroundTitle`
+
+Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§9.6](#96-regression-mistake-log-오답노트--agents-only).
 
 ---
 
@@ -1263,6 +1361,35 @@ Cursor rule: `.cursor/rules/program-settings-dialog.mdc`.
 - **2026-07-21:** Do **not** tell the user to manually copy policy fragments the agent could write to the repo.
 - **2026-07-21:** Do **not** “fix” slow IDE by re-enabling CMake Tools configure-on-open or CodeLLDB as daily F5.
 - **2026-07-21:** Do **not** replace verified Win32 overlay / input / keyboard patterns with Qt shortcuts without explicit request and regression plan.
+- **2026-07-24:** After a hard bug is fixed, wants **지침 + 정책 + 오답노트** written in-repo in the **same task** — how it was solved, which code, and which wrong paths were tried — so the next agent does not repeat failed fixes ([§8.15](#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress), [§9.6](#96-regression-mistake-log-오답노트--agents-only)).
+
+### 9.6 Regression mistake log (오답노트 — agents only)
+
+**Status:** Added 2026-07-24. **Not** user-facing (`UpdateLog/update_log.md` gets outcome bullets only at version bump).
+
+**Purpose:** Record **symptom → wrong fix → correct fix** for regressions that took multiple agent iterations, so future work does not repeat discredited approaches. Full mandatory patterns live in **§8.x**; this section is the **historical wrong-answer notebook**.
+
+#### Recording policy
+
+| Rule | Detail |
+| ---- | ------ |
+| **Where** | **This section only** — no separate `MISTAKES.md` |
+| **When** | Same task as the verified fix, when user confirms resolution or agent closes a multi-attempt bug |
+| **How** | One dated entry: symptom, misdiagnosis, failed patches (version refs), root cause, shipped fix (version + symbols), link to §8.x |
+| **Cursor rules** | Always-applied `.cursor/rules/*.mdc` for patterns agents must not regress; §9.6 holds **why earlier attempts failed** |
+
+#### Alt+Tab back → feature hotkeys dead until PIPBONG focused once
+
+**Date:** 2026-07-24 · **Verified:** v0.8.294 (user confirmed) · **Pattern:** [§8.15](#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress)
+
+| | |
+| - | - |
+| **Symptom** | Main target focused → hotkeys OK → Alt+Tab away/back → hotkeys dead → focus PIPBONG once → OK again |
+| **Misdiagnosis** | Stale `ScreenCapture` HWND / wrong profile after foreground change; “foreground gate” ordering only; “user must click PIPBONG to resync” |
+| **Failed approaches (do not retry as sole fix)** | **v0.8.289–0.8.291:** profile/capture bind order, `adoptForegroundLinkedCaptureIfMatched`, gate ordering — improved runs but **did not** fix Alt+Tab hotkey death. **v0.8.292:** `runForegroundGateActive` / `linkedCaptureBlockedByForeground` tweaks — same. **v0.8.293:** WinEvent `QMetaObject::invokeMethod`, process-path profile match, remove `FeatureHotkeyGate` from foreground sync — **necessary** but user still saw dead hotkeys until **v0.8.294**. |
+| **Root cause** | (1) Foreground sync not reliably on UI thread / empty title. (2) **`HotkeyManager` hook latch** stuck: toggle `armed=false` or mouse `buttonDown=true` when KEYUP/button-UP lost during Alt+Tab shell transit — hook swallows next KEYDOWN without firing feature. |
+| **Shipped fix** | **v0.8.293:** `onForegroundWindowChanged`, `profileIdForForegroundHwnd`, `healLinkedTargetProcessPathFromForeground`, `finishForegroundSessionGate`. **v0.8.294:** `HotkeyManager::resetHookLatchState()`; Alt-release edge + `maybeResetHotkeyLatchForForeground` (once per linked HWND); `ensureForegroundReadyForFeatureHotkey()` in `onHotkeyTriggered` / `onHotkeyHoldStarted`. |
+| **Key symbols** | `resetHookLatchState`, `onForegroundWindowChanged`, `maybeResetHotkeyLatchForForeground`, `m_lastHotkeyLatchResetForegroundHwnd`, `m_altTabModifierWasHeld`, `ensureForegroundReadyForFeatureHotkey`, `finishForegroundSessionGate` |
 
 ---
 
@@ -1329,6 +1456,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.295] - 2026-07-24
+
+### Added
+
+- **`CursorStutterProfiler`**: cursor jump / stutter diagnostics — 4 ms `GetCursorPos` sampler, `SetCursorPos`/`ClipCursor`/mouse-lock hook snap/keyboard-hook timing, QWER physical vs synthetic correlation; output **`cursor-stutter/latest.md`** on shutdown; enable via **프로그램 설정 → 진단 → 커서 스터터 진단** or `PIPBONG_CURSOR_STUTTER_PROFILE=1` (`CursorStutterProfiler`, `MouseCenterLock`, `InputSimulator`, `HotkeyManager`, `UserInputInterruptMonitor`, `scripts/analyze-cursor-stutter.ps1`, AGENTS.md §8.14, `.cursor/rules/cursor-stutter-profiling.mdc`).
+
+### Changed
+
+- Documented Alt+Tab foreground sync + feature hotkey latch fix (verified v0.8.294): AGENTS.md §8.15, §9.6 오답노트, `.cursor/rules/alt-tab-hotkey-foreground.mdc`, §13 pointer.
+
+### Removed
+
+- App-wide **`WorkflowRunProfiler`** / **`WorkflowProfileSnapshot`** / **`PerfTrace`**, `app-profile/` output, `program/workflowRunProfiling` + depth settings, `scripts/analyze-app-profile.ps1`, `.cursor/rules/app-profiling.mdc`.
 
 ## [0.8.294] - 2026-07-24
 
@@ -5287,6 +5428,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - User replies: Korean. Code/docs/changelog: English. UI: Korean. JSON types: English.
 - After every task: append `[Unreleased]` bullets, then **bump version before closing** ([§10](#10-versioning-policy)); minimal diffs.
 - **User preference profile:** read and append [§9.5](#95-user-preference-profile-cumulative--agents-only) (cumulative; no separate style files).
+- **Regression mistake log (오답노트):** after user-confirmed multi-attempt bug fixes, append [§9.6](#96-regression-mistake-log-오답노트--agents-only) + §8.x pattern in the same task.
 - Primary documentation: **this file (`AGENTS.md`) only**.
 
 ### `immediate-handover.mdc`
@@ -5318,6 +5460,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 - User-held modifiers before a feature session must not be released on loop end; PIPBONG-applied keys are restored via tracked `m_pipbongHeldVirtualKeys`.
 - Full rules in [§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress): no `AttachThreadInput`, guarded modifier `SendInput`, session key tracking + `restoreRunKeyboard`, hotkey swallow in hooks, no blind keyboard sync.
+
+### `alt-tab-hotkey-foreground.mdc`
+
+- Alt+Tab away/back must not leave feature hotkeys dead; reset hook latch on Alt release + linked-target foreground return; foreground sync via `onForegroundWindowChanged` (WinEvent → queued slot).
+- Full rules in [§8.15](#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress). Wrong-answer history: [§9.6](#96-regression-mistake-log-오답노트--agents-only).
 
 ### `drag-adjust-numeric-input.mdc`
 
@@ -5361,10 +5508,10 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **프로그램 설정:** grouped `QGroupBox` sections; option detail on **tooltips** only — no inline `HintLabel` per row.
 - Full rules in [§8.13](#813-program-settings-dialog-mandatory--grouped--tooltips).
 
-### `app-profiling.mdc`
+### `cursor-stutter-profiling.mdc`
 
-- **Stutter / AI diagnosis:** enable profiling → reproduce → exit → **`app-profile/latest.md`** + `analyze-app-profile.ps1`.
-- Full rules in [§8.14](#814-app-wide-microsecond-profiling-mandatory--stutter-diagnosis).
+- **Mandatory** for cursor jump / QWER stutter diagnosis — **`cursor-stutter/latest.md`** only.
+- Full rules in [§8.14](#814-cursor-stutter-profiling-mandatory--mouse-jump--qwer-diagnosis).
 
 ### Korean update log (§3.7)
 

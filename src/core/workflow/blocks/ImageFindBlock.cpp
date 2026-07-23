@@ -1,7 +1,6 @@
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "app/PointerFeedbackSettings.h"
 #include "core/diagnostics/DiagnosticHub.h"
-#include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/input/HotkeyBinding.h"
 #include "core/vision/ImageMatcher.h"
 #include "core/vision/TemplateCache.h"
@@ -1551,12 +1550,6 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                         pollMatchUs += std::chrono::duration_cast<std::chrono::microseconds>(
                                            std::chrono::steady_clock::now() - matchStart)
                                            .count();
-                        WorkflowRunProfiler::recordImageFindPoll(ctx.activeBlockIndex(),
-                                                                 pollAttemptCount,
-                                                                 true,
-                                                                 selection.match.confidence,
-                                                                 pollCaptureUs,
-                                                                 pollMatchUs);
                         accumulateMatchWork();
                         maybeRememberMultiMatchPositions(ctx,
                                                          rememberMultiMatchPositions,
@@ -1630,12 +1623,6 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                 pollMatchUs += std::chrono::duration_cast<std::chrono::microseconds>(
                                    std::chrono::steady_clock::now() - matchStart)
                                    .count();
-                WorkflowRunProfiler::recordImageFindPoll(ctx.activeBlockIndex(),
-                                                         pollAttemptCount,
-                                                         true,
-                                                         selections.front().match.confidence,
-                                                         pollCaptureUs,
-                                                         pollMatchUs);
                 consumeAllSelections(ctx,
                                      runtimeSearchArea,
                                      activeRegion,
@@ -1693,13 +1680,9 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         }
 
         {
-            const double missConf = bestMissPeak.found ? bestMissPeak.confidence : 0.0;
-            WorkflowRunProfiler::recordImageFindPoll(ctx.activeBlockIndex(),
-                                                     pollAttemptCount,
-                                                     false,
-                                                     missConf,
-                                                     pollCaptureUs,
-                                                     pollMatchUs);
+            Q_UNUSED(bestMissPeak);
+            Q_UNUSED(pollCaptureUs);
+            Q_UNUSED(pollMatchUs);
         }
 
         reportImageFindMiss(ctx,

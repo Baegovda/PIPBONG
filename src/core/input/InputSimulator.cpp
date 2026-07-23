@@ -1,7 +1,7 @@
 #include "core/input/InputSimulator.h"
 
 #include "app/MouseCenterLock.h"
-#include "core/diagnostics/WorkflowRunProfiler.h"
+#include "core/diagnostics/CursorStutterProfiler.h"
 #include "core/workflow/ExecutionContext.h"
 
 #ifdef _WIN32
@@ -217,7 +217,8 @@ void sendKeyboardTap(int virtualKey) {
     sendKeyboardVk(virtualKey, false);
 }
 
-void setCursorScreenPos(int screenX, int screenY) {
+void setCursorScreenPos(const char* caller, int screenX, int screenY) {
+    CursorStutterProfiler::recordSetCursorPos(caller, screenX, screenY);
     SetCursorPos(screenX, screenY);
 }
 
@@ -238,7 +239,7 @@ void settleCursorAtScreenPos(int screenX, int screenY) {
     }
     constexpr auto kRetryDelay = std::chrono::milliseconds(4);
     for (int attempt = 0; attempt < kCursorPositionMaxAttempts; ++attempt) {
-        SetCursorPos(screenX, screenY);
+        setCursorScreenPos("InputSimulator::settleCursorAtScreenPos", screenX, screenY);
         POINT pt{};
         if (GetCursorPos(&pt)) {
             const int dx = pt.x - screenX;
@@ -253,7 +254,7 @@ void settleCursorAtScreenPos(int screenX, int screenY) {
             std::this_thread::sleep_for(kRetryDelay);
         }
     }
-    SetCursorPos(screenX, screenY);
+    setCursorScreenPos("InputSimulator::settleCursorAtScreenPos(fallback)", screenX, screenY);
     std::this_thread::sleep_for(kCursorSettleDelay);
 }
 
@@ -262,7 +263,7 @@ void moveCursorToScreenIfNeeded(int screenX, int screenY, ClickAction action) {
         return;
     }
     if (!isCursorNearScreenPos(screenX, screenY)) {
-        SetCursorPos(screenX, screenY);
+        setCursorScreenPos("InputSimulator::moveCursorToScreenIfNeeded", screenX, screenY);
     }
 }
 
@@ -792,7 +793,7 @@ void releaseAppliedModifiers(const AppliedKeyModifiers& applied,
 void InputSimulator::moveMouse(int screenX, int screenY) {
 #ifdef _WIN32
     const SyntheticPointerGuard syntheticPointerGuard;
-    setCursorScreenPos(screenX, screenY);
+    setCursorScreenPos("InputSimulator::clickAt", screenX, screenY);
 #endif
 }
 
@@ -862,8 +863,6 @@ void InputSimulator::clickAt(int screenX,
                              int count,
                              KeyModifiers mods) {
 #ifdef _WIN32
-    PIPBONG_WF_PROFILE("synthetic_mouse_click",
-                       QStringLiteral("synthetic=1 path=screen x=%1 y=%2").arg(screenX).arg(screenY));
     const SyntheticPointerGuard syntheticPointerGuard;
     if (action == ClickAction::MoveOnly) {
         moveAt(screenX, screenY);
@@ -900,7 +899,6 @@ void InputSimulator::clickAtCursor(MouseButton button,
                                    int count,
                                    KeyModifiers mods) {
 #ifdef _WIN32
-    PIPBONG_WF_PROFILE("synthetic_mouse_click", QStringLiteral("synthetic=1 path=cursor"));
     if (action == ClickAction::MoveOnly) {
         return;
     }
@@ -954,8 +952,6 @@ void InputSimulator::clickAtCursorOnTarget(HWND hwnd,
                                            int count,
                                            KeyModifiers mods) {
 #ifdef _WIN32
-    PIPBONG_WF_PROFILE("synthetic_mouse_click",
-                       QStringLiteral("synthetic=1 path=cursor_target"));
     if (!hwnd || !IsWindow(hwnd) || action == ClickAction::MoveOnly) {
         return;
     }
@@ -1276,8 +1272,6 @@ void InputSimulator::sendKey(int virtualKey,
                              const KeyPressModifierActions& mods,
                              bool sendMainKey) {
 #ifdef _WIN32
-    const bool profileInput = WorkflowRunProfiler::isEnabled();
-    const qint64 profileStartUs = profileInput ? WorkflowRunProfiler::monotonicUs() : 0;
     if (sendMainKey && action == KeyAction::Tap && isModifierVirtualKey(virtualKey)
         && isModifierVirtualKeyPhysicallyDown(virtualKey)) {
         return;
@@ -1324,12 +1318,14 @@ void InputSimulator::sendKey(int virtualKey,
     if (sendMainKey) {
         switch (action) {
         case KeyAction::Down:
+            CursorStutterProfiler::recordSyntheticKey(virtualKey);
             sendKeyboardVk(virtualKey, true);
             break;
         case KeyAction::Up:
             sendKeyboardVk(virtualKey, false);
             break;
         case KeyAction::Tap:
+            CursorStutterProfiler::recordSyntheticKey(virtualKey);
             sendKeyboardTap(virtualKey);
             break;
         }
@@ -1341,11 +1337,6 @@ void InputSimulator::sendKey(int virtualKey,
 
     if (sendMainKey && action == KeyAction::Tap) {
         releaseAppliedModifiers(applied, beforeBlock);
-    }
-
-    if (profileStartUs > 0) {
-        WorkflowRunProfiler::recordSyntheticKeyDuration(WorkflowRunProfiler::monotonicUs()
-                                                          - profileStartUs);
     }
 #endif
 }

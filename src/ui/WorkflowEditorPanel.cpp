@@ -4,7 +4,6 @@
 #include "ui/widgets/WorkflowRunStatusBar.h"
 
 #include "app/MainWindow.h"
-#include "app/PerfTrace.h"
 #include "core/workflow/BlockFactory.h"
 #include "core/workflow/blocks/ClickBlock.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
@@ -1289,7 +1288,6 @@ void WorkflowEditorPanel::setProjectDirectory(const QString& directory, bool ref
 }
 
 void WorkflowEditorPanel::refresh() {
-    PIPBONG_PERF_SCOPE("WorkflowEditorPanel.refresh");
     m_blockList->setBlockCount(0);
     m_blockList->clearLoopRegionVisuals();
     if (!m_feature) {

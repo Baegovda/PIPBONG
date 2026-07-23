@@ -1,0 +1,44 @@
+---
+description: Alt+Tab foreground sync + feature hotkey hook latch reset (mandatory — do not regress)
+alwaysApply: true
+---
+
+# Alt+Tab Foreground Sync and Feature Hotkey Latch (Mandatory — Do Not Regress)
+
+**Status:** Verified working on Windows (2026-07-24, v0.8.293–v0.8.294). User-confirmed: Alt+Tab away and back to linked main target must **not** leave feature hotkeys dead until PIPBONG is focused once.
+
+## Symptom
+
+Main target focused → hotkeys work → Alt+Tab away → Alt+Tab back → hotkeys dead → focus PIPBONG once → hotkeys work again.
+
+**Not** the same as user-held Shift release ([physical-keyboard-preservation.mdc](./physical-keyboard-preservation.mdc)).
+
+## Root cause (two layers)
+
+| Layer | Detail |
+| ----- | ------ |
+| Foreground sync (v0.8.293) | WinEvent must queue `onForegroundWindowChanged` on UI thread; empty-caption games need process-path profile/capture match; `FeatureHotkeyGate` must **not** block `syncProfileToForegroundWindow` |
+| Hook latch (v0.8.294) | Missed KEYUP / mouse UP during Alt+Tab → toggle `armed=false` or mouse `buttonDown=true` → hook swallows next hotkey without firing |
+
+## Required architecture
+
+| API | Role |
+| --- | ---- |
+| `foregroundWindowEventProc` | `QMetaObject::invokeMethod` → `onForegroundWindowChanged` (not `PostMessageW` alone) |
+| `onForegroundWindowChanged` | Alt-release → `flushDeferredProfileSwitchIfIdle` + `resetHookLatchState`; profile sync; capture adopt; `maybeResetHotkeyLatchForForeground`; `finishForegroundSessionGate` |
+| `HotkeyManager::resetHookLatchState` | `hold keyDown=false`, `toggle armed=true`, `mouse buttonDown=false`; **no** `hotkeyHoldEnded` emit |
+| `maybeResetHotkeyLatchForForeground` | Once per linked-target foreground HWND (`m_lastHotkeyLatchResetForegroundHwnd`) |
+| `ensureForegroundReadyForFeatureHotkey` | From `onHotkeyTriggered` / `onHotkeyHoldStarted`: profile + capture resync + latch reset |
+
+## Anti-patterns
+
+- Capture/profile sync only (v0.8.289–0.8.292) — insufficient for latch stuck state
+- `resetHookLatchState` every 50 ms poll — breaks hold mode
+- Emit hold-ended from latch reset
+- Require PIPBONG focus to heal hotkeys after Alt+Tab
+
+## Manual verify
+
+Alt+Tab away/back **without** focusing PIPBONG; keyboard toggle + mouse side-button bindings; repeat 5×.
+
+Full handover: [AGENTS.md](../../AGENTS.md) §8.15. Mistake log: §9.6.

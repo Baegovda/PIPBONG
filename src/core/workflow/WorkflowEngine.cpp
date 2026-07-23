@@ -3,7 +3,6 @@
 #include "core/input/InputSimulator.h"
 #include "core/diagnostics/CrashReporter.h"
 #include "core/diagnostics/DiagnosticHub.h"
-#include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/workflow/Block.h"
 #include "core/workflow/Block.h"
 #include "core/workflow/ExecutionContext.h"
@@ -155,15 +154,6 @@ protected:
                 Q_UNUSED(message);
                 Q_UNUSED(imageFindMatchDurationMs);
                 Q_UNUSED(imageFindPollAttempts);
-                if (WorkflowRunProfiler::isEnabled() && workflow) {
-                    const auto& blocks = workflow->blocks();
-                    std::string blockTypeStr = "unknown";
-                    if (i >= 0 && i < static_cast<int>(blocks.size()) && blocks[static_cast<size_t>(i)]) {
-                        blockTypeStr = blockTypeToString(blocks[static_cast<size_t>(i)]->type());
-                    }
-                    WorkflowRunProfiler::recordBlockEnd(
-                        i, blockTypeStr.c_str(), success, durationMs * 1000);
-                }
                 CrashReporter::noteBreadcrumb(
                     QStringLiteral("workflow"),
                     QStringLiteral("block finish #%1 success=%2 attempts=%3")
@@ -261,17 +251,11 @@ protected:
                     context->setSuppressRepeatUi(true);
                 }
 
-                WorkflowRunProfiler::recordLoopBegin(workerFastRepeatPass);
-
                 const auto loopStart = std::chrono::steady_clock::now();
                 const WorkflowRunResult runResult = WorkflowRunner::run(*workflow, *context, &hooks);
                 const auto loopEnd = std::chrono::steady_clock::now();
                 const auto loopElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                     loopEnd - loopStart);
-                const auto loopElapsedUs =
-                    std::chrono::duration_cast<std::chrono::microseconds>(loopEnd - loopStart).count();
-
-                WorkflowRunProfiler::recordLoopEnd(workerFastRepeatPass, loopElapsedUs);
 
                 overallSuccess = runResult.success;
                 finalMessage = QString::fromStdString(runResult.message);
@@ -298,14 +282,9 @@ protected:
                     if (workerFastRepeat) {
                         setHighResolutionTimer(false);
                     }
-                    const auto sleepStart = std::chrono::steady_clock::now();
                     if (!context->interruptibleSleepMs(delayMs)) {
                         break;
                     }
-                    const auto sleepUs = std::chrono::duration_cast<std::chrono::microseconds>(
-                        std::chrono::steady_clock::now() - sleepStart)
-                                             .count();
-                    WorkflowRunProfiler::recordLoopIntervalSleep(delayMs, sleepUs);
                 }
                 if (context->shouldStop()) {
                     break;

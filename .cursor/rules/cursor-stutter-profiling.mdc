@@ -1,0 +1,54 @@
+---
+description: Cursor jump / stutter diagnostics — cursor-stutter/latest.md
+alwaysApply: true
+---
+
+# Cursor Stutter Profiling (Mandatory — QWER / Mouse Jump Diagnosis)
+
+**Status:** Added 2026-07 (v0.8.295). Replaces app-wide `WorkflowRunProfiler` / `app-profile/`.
+
+## Purpose
+
+Find **mouse cursor jump / stutter** (especially when spamming Q/W/E/R) by correlating:
+
+- Background `GetCursorPos` sampler (4 ms, jumps ≥8 px)
+- `SetCursorPos` call sites (`InputSimulator`, `MouseCenterLock`)
+- `MouseCenterLock` WH_MOUSE_LL snap (`mouse_hook_snap`)
+- `HotkeyManager` WH_KEYBOARD_LL timing
+- Physical vs synthetic QWER key events
+
+## Enable
+
+| Method | Value |
+|--------|--------|
+| **프로그램 설정 → 진단 → 커서 스터터 진단** | `program/cursorStutterProfiling` |
+| Env | `PIPBONG_CURSOR_STUTTER_PROFILE=1` |
+
+## Output
+
+| Path | Role |
+|------|------|
+| **`cursor-stutter/latest.md`** | **Only** report — written on app shutdown |
+| Format | `pipbong-cursor-stutter` v1 — **Auto diagnosis** (Korean) + event TSV |
+
+**Do not** use `app-profile/` or `workflow-profile/` — removed.
+
+## User → AI workflow
+
+1. Enable **커서 스터터 진단** (or env var).
+2. Reproduce: spam QWER / run Hold features / move mouse during locks.
+3. Exit PIPBONG.
+4. Read **`cursor-stutter/latest.md`** — **Auto diagnosis** first.
+5. Optional: `.\scripts\analyze-cursor-stutter.ps1`
+
+**Do not** ask the user for workflow block lists — the report correlates jumps with hooks and callers.
+
+## Key files
+
+- `src/core/diagnostics/CursorStutterProfiler.*`
+- `src/app/MouseCenterLock.cpp` — hook snap + clip
+- `src/core/input/InputSimulator.cpp` — `SetCursorPos`
+- `src/app/HotkeyManager.cpp` — keyboard hook
+- `src/app/UserInputInterruptMonitor.cpp` — physical keys
+
+Full handover: [AGENTS.md](../../AGENTS.md) — **§8.14**.

@@ -1,6 +1,9 @@
 #include "app/MouseCenterLock.h"
 
 #include "core/capture/ScreenCapture.h"
+#include "core/diagnostics/CursorStutterProfiler.h"
+
+#include <chrono>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -65,7 +68,9 @@ void applyPointClip(const POINT& point, bool moveCursor) {
     RECT clipRect{g_lockPoint.x, g_lockPoint.y, g_lockPoint.x + 1, g_lockPoint.y + 1};
     ClipCursor(&clipRect);
     g_appliedOurClip = true;
+    CursorStutterProfiler::recordClipCursor("MouseCenterLock::applyPointClip");
     if (moveCursor) {
+        CursorStutterProfiler::recordSetCursorPos("MouseCenterLock::applyPointClip", g_lockPoint.x, g_lockPoint.y);
         SetCursorPos(g_lockPoint.x, g_lockPoint.y);
     }
 }
@@ -124,8 +129,16 @@ LRESULT CALLBACK mouseHookProc(int code, WPARAM wParam, LPARAM lParam) {
     if (wParam == WM_MOUSEMOVE) {
         const auto* info = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
         if (info && !(info->flags & LLMHF_INJECTED)) {
+            const auto hookStart = std::chrono::steady_clock::now();
+            const int fromX = info->pt.x;
+            const int fromY = info->pt.y;
             refreshAnchoredLockPoint(g_anchor == LockAnchor::FixedScreenPoint);
+            CursorStutterProfiler::recordSetCursorPos("MouseCenterLock::mouseHookProc", g_lockPoint.x, g_lockPoint.y);
             SetCursorPos(g_lockPoint.x, g_lockPoint.y);
+            const qint64 handlerUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                                         std::chrono::steady_clock::now() - hookStart)
+                                         .count();
+            CursorStutterProfiler::recordMouseHookSnap(fromX, fromY, g_lockPoint.x, g_lockPoint.y, handlerUs);
             return 1;
         }
     }

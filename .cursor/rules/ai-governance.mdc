@@ -22,6 +22,11 @@ alwaysApply: true
 - **Append** dated bullets in §9.5 **same task** when the user states or clearly implies work style, aesthetics, collaboration habits, or anti-preferences — **never** a separate `USER_*.md` file; **never delete** prior §9.5 bullets.
 - If a preference must constrain every future agent, add a **one-line pointer** here or in `immediate-handover.mdc`; full wording stays in §9.5.
 
+## Regression mistake log (오답노트 — mandatory for multi-attempt bugs)
+
+- After a **user-confirmed** fix for a bug that took multiple wrong attempts, append an entry to [AGENTS.md §9.6](../../AGENTS.md#96-regression-mistake-log-오답노트--agents-only) in the **same task**: symptom, failed approaches (with version refs), root cause, shipped symbols.
+- Add or extend **§8.x** mandatory pattern + `.cursor/rules/*.mdc` when agents must not regress the fix; §9.6 records **why earlier patches failed**.
+
 ## After Every Completed Task
 
 1. Append entries under `[Unreleased]` in **AGENTS.md** section **11. Changelog and Version History** as you implement.

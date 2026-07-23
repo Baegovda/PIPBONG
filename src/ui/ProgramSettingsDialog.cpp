@@ -2,7 +2,7 @@
 
 #include "app/PointerFeedbackSettings.h"
 #include "app/ProgramSettings.h"
-#include "core/diagnostics/WorkflowRunProfiler.h"
+#include "core/diagnostics/CursorStutterProfiler.h"
 #include "app/WindowsRunAsAdmin.h"
 #include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/WindowSelectionFeedbackSettingsDialog.h"
@@ -315,37 +315,15 @@ void ProgramSettingsDialog::setupUi() {
     auto* diagnosticsLayout = new QVBoxLayout(diagnosticsGroup);
     diagnosticsLayout->setSpacing(6);
 
-    m_workflowRunProfilingCheck = addGroupCheck(
+    m_cursorStutterProfilingCheck = addGroupCheck(
         diagnosticsLayout,
         diagnosticsGroup,
-        tr("앱 전체 초정밀 프로파일링"),
-        tr("앱 실행부터 종료까지 UI·프로필 전환·자동 저장·핫키·캡처·워크플로 실행을 "
-           "마이크로초 단위로 기록합니다. 기능 세션 종료 또는 앱 종료 시 저장소 루트의 "
-           "app-profile\\latest.md 와 trace.json 에 저장됩니다 (항상 최신 1개만 갱신). "
-           "환경 변수 PIPBONG_APP_PROFILE=1 또는 PIPBONG_WORKFLOW_PROFILE=1 로도 켤 수 있습니다."),
-        ProgramSettings::workflowRunProfiling());
-
-    auto* depthRow = new QHBoxLayout();
-    depthRow->setContentsMargins(0, 0, 0, 0);
-    depthRow->setSpacing(8);
-    auto* depthLabel = new QLabel(tr("프로파일링 상세도"), diagnosticsGroup);
-    depthLabel->setToolTip(
-        tr("표준: 스파이크·매칭만 ImageFind 폴 기록.\n"
-           "상세: 매칭/미스 폴 + 물리 입력 + 포그라운드 창.\n"
-           "초정밀: 모든 ImageFind 폴 + 전체 타임라인."));
-    m_workflowRunProfilingDepthCombo = new QComboBox(diagnosticsGroup);
-    m_workflowRunProfilingDepthCombo->addItem(tr("표준 (스파이크 필터)"),
-                                              static_cast<int>(ProgramSettings::WorkflowRunProfilingDepth::Standard));
-    m_workflowRunProfilingDepthCombo->addItem(tr("상세"),
-                                              static_cast<int>(ProgramSettings::WorkflowRunProfilingDepth::Detailed));
-    m_workflowRunProfilingDepthCombo->addItem(tr("초정밀 (모든 폴)"),
-                                              static_cast<int>(ProgramSettings::WorkflowRunProfilingDepth::Ultra));
-    const int depthIndex = m_workflowRunProfilingDepthCombo->findData(
-        static_cast<int>(ProgramSettings::workflowRunProfilingDepth()));
-    m_workflowRunProfilingDepthCombo->setCurrentIndex(depthIndex >= 0 ? depthIndex : 0);
-    depthRow->addWidget(depthLabel);
-    depthRow->addWidget(m_workflowRunProfilingDepthCombo, 1);
-    diagnosticsLayout->addLayout(depthRow);
+        tr("커서 스터터 진단"),
+        tr("마우스 커서 점프·튐 현상(QWER 연타 등) 원인 분석용입니다. "
+           "4 ms 간격 커서 샘플 + SetCursorPos·마우스 잠금 훅·키보드 훅을 기록합니다. "
+           "앱 종료 시 저장소 루트의 cursor-stutter\\latest.md 에 저장됩니다. "
+           "환경 변수 PIPBONG_CURSOR_STUTTER_PROFILE=1 로도 켤 수 있습니다."),
+        ProgramSettings::cursorStutterProfiling());
 
     layout->addStretch();
 
@@ -363,11 +341,8 @@ void ProgramSettingsDialog::setupUi() {
         ProgramSettings::setRunAsAdministrator(m_runAsAdministratorCheck->isChecked());
         ProgramSettings::setRunWithoutTargetWindow(m_runWithoutTargetWindowCheck->isChecked());
         ProgramSettings::setLogMaxLines(m_logMaxLinesSpin->value());
-        ProgramSettings::setWorkflowRunProfiling(m_workflowRunProfilingCheck->isChecked());
-        ProgramSettings::setWorkflowRunProfilingDepth(
-            static_cast<ProgramSettings::WorkflowRunProfilingDepth>(
-                m_workflowRunProfilingDepthCombo->currentData().toInt()));
-        WorkflowRunProfiler::reloadEnabledFromSettings();
+        ProgramSettings::setCursorStutterProfiling(m_cursorStutterProfilingCheck->isChecked());
+        CursorStutterProfiler::reloadFromSettings();
         ProgramSettings::setImageFindCaptureMode(
             static_cast<ProgramSettings::ImageFindCaptureMode>(
                 m_imageFindCaptureModeCombo->currentData().toInt()));

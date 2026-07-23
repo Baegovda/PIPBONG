@@ -4,7 +4,6 @@
 
 #include "app/Application.h"
 #include "app/FeatureHotkeyGate.h"
-#include "app/PerfTrace.h"
 #include "app/ProgramSettings.h"
 #include "app/SessionRunPolicy.h"
 #include "app/WindowsRunAsAdmin.h"
@@ -22,8 +21,7 @@
 #include "core/capture/CursorPositionPicker.h"
 #include "core/capture/ClickContinuousInputRecorder.h"
 #include "core/capture/WindowPicker.h"
-#include "core/diagnostics/WorkflowProfileSnapshot.h"
-#include "core/diagnostics/WorkflowRunProfiler.h"
+#include "core/diagnostics/CursorStutterProfiler.h"
 #include "core/input/InputSimulator.h"
 #include "core/input/HotkeyBinding.h"
 #include "ui/WindowPickerHoverOverlay.h"
@@ -2601,7 +2599,7 @@ void MainWindow::prepareForShutdown() {
     saveActiveProfileSettings();
     sealActiveProfilePackage(true);
     pruneAbandonedEngines();
-    WorkflowRunProfiler::flushPendingSessions(QStringLiteral("app_shutdown"));
+    CursorStutterProfiler::stopAndWriteReport(QStringLiteral("app_shutdown"));
     if (m_uiState) {
         m_uiState->saveNow();
     }
@@ -2749,7 +2747,6 @@ bool MainWindow::ensureProjectFilePath() {
 }
 
 void MainWindow::autoSaveProject(bool quiet) {
-    PIPBONG_PROFILE("auto_save", quiet ? QStringLiteral("quiet=yes") : QStringLiteral("quiet=no"));
     if (!ensureProjectFilePath()) {
         return;
     }
@@ -2775,8 +2772,6 @@ void MainWindow::scheduleProfilePackageSeal() {
 }
 
 void MainWindow::sealActiveProfilePackage(bool synchronous) {
-    PIPBONG_PROFILE_CAT("profile_package_seal",
-                        synchronous ? QStringLiteral("sync=yes") : QStringLiteral("sync=no"));
     if (!m_profileManager) {
         return;
     }
@@ -2880,7 +2875,6 @@ void MainWindow::onExportProfilePackage() {
 }
 
 void MainWindow::refreshWorkflowEditor() {
-    PIPBONG_PERF_SCOPE("refreshWorkflowEditor");
     QString workflowProfileName;
     if (m_libraryPreviewFeature && !m_libraryPreviewEntryId.isEmpty()) {
         workflowProfileName = tr("라이브러리");
@@ -3279,7 +3273,6 @@ void MainWindow::stopAllSessions() {
 }
 
 void MainWindow::stopAllSessionsForProfileSwitch() {
-    PIPBONG_PERF_SCOPE("stopAllSessionsForProfileSwitch");
     pruneAbandonedEngines();
     UserInputInterruptMonitor::instance().unregisterAll();
     MouseCenterLock::releaseAll();
@@ -4261,35 +4254,6 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
     activeSession.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW(feature);
     applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
-    {
-        const QString profileName =
-            m_profileManager && m_profileManager->activeProfile()
-                ? m_profileManager->activeProfile()->name
-                : QString();
-        QString startSource = QStringLiteral("ui");
-        if (fromHotkey) {
-            startSource = QStringLiteral("hotkey");
-        } else if (silentRestoreStart) {
-            startSource = QStringLiteral("restore");
-        }
-        QStringList profileContext;
-        if (m_profileManager && m_profileManager->activeProfile()) {
-            const ProfileManager::Profile* activeProfile = m_profileManager->activeProfile();
-            profileContext = captureProfileContextSnapshot(
-                activeProfile->id,
-                activeProfile->name,
-                activeProfile->targetWindowTitle,
-                activeProfile->subTargetWindowTitle,
-                m_profileManager->loadSettings(activeProfile->id));
-        }
-        WorkflowRunProfiler::beginSession(QString::fromStdString(feature->id()),
-                                          QString::fromStdString(feature->name()),
-                                          QString::fromStdString(featureRunModeToString(feature->runMode())),
-                                          profileName,
-                                          feature,
-                                          startSource,
-                                          profileContext);
-    }
     const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
     if (!hotkeyHoldStart) {
         selectRunningFeatureForDisplay(feature);
@@ -4584,11 +4548,6 @@ void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
         return;
     }
 
-    QElapsedTimer flushTimer;
-    if (WorkflowRunProfiler::isEnabled()) {
-        flushTimer.start();
-    }
-
     auto coalesceIt = m_fastRepeatUiCoalesce.find(featureId);
     if (coalesceIt == m_fastRepeatUiCoalesce.end() || !coalesceIt->second) {
         return;
@@ -4637,10 +4596,6 @@ void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
     }
 
     publishLoopCompletionUi(*session, lastSuccess, lastMessage);
-
-    if (WorkflowRunProfiler::isEnabled() && flushTimer.isValid()) {
-        WorkflowRunProfiler::recordUiFlush(iterations, flushTimer.nsecsElapsed() / 1000);
-    }
 
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
     if (feature
@@ -5189,10 +5144,6 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
     const bool triggerBackgroundRun =
         featurePtr->runMode() == FeatureRunMode::Trigger
         && featurePtr->triggerRunWithoutTargetForeground();
-    if (WorkflowRunProfiler::isEnabled()) {
-        WorkflowRunProfiler::event("trigger_monitor_start",
-                                   QStringLiteral("block=#%1").arg(session.triggerBlockIndex + 1));
-    }
     engine->runPrepared([this, featurePtr, &session, targetTitle, projectDir, skipTargetActivation, triggerBackgroundRun]() {
         PreparedWorkflowRun run;
         run.workflow = session.sessionWorkflow;
@@ -5238,12 +5189,6 @@ void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* fea
         session.sessionContext->setImageFindPrimedBlockIndex(session.triggerBlockIndex);
     }
     appendSessionLog(session, tr("화면에서 찾음 — 워크플로 실행"), LogLineKind::Success);
-    if (WorkflowRunProfiler::isEnabled()) {
-        WorkflowRunProfiler::event("trigger_action_start",
-                                   QStringLiteral("feature=%1 block=#%2")
-                                       .arg(QString::fromStdString(feature->name()))
-                                       .arg(session.triggerBlockIndex + 1));
-    }
     launchWorkflowRun(session, feature, false);
 }
 
@@ -5363,9 +5308,6 @@ void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* fe
 
     session.triggerCooldownTotalMs = cooldownMs;
     session.triggerCooldownEndsAtEpochMs = QDateTime::currentMSecsSinceEpoch() + cooldownMs;
-    if (WorkflowRunProfiler::isEnabled()) {
-        WorkflowRunProfiler::event("trigger_cooldown_start", QStringLiteral("ms=%1").arg(cooldownMs));
-    }
     updateRunUiState();
     if (session.triggerBlockIndex >= 0) {
         applyRunningBlockVisuals(session, session.triggerBlockIndex,
@@ -5472,9 +5414,6 @@ void MainWindow::finalizeDeferredStopSessions() {
 }
 
 void MainWindow::finishRunSession(const std::string& featureId, bool success, const QString& message) {
-    WorkflowRunProfiler::endSession(
-        QStringLiteral("finish success=%1").arg(success ? QStringLiteral("yes") : QStringLiteral("no")));
-
     FeatureRunSession* session = sessionFor(featureId);
     if (session && isDisplayedRunningFeature(session)) {
         m_workflowEditor->clearExecutionHighlight();
@@ -5776,7 +5715,6 @@ void MainWindow::notifyFeatureHotkeySuppressed() {
 }
 
 void MainWindow::syncHotkeys() {
-    PIPBONG_PERF_SCOPE("syncHotkeys");
     if (!m_hotkeyManager || !m_project) {
         return;
     }
@@ -6486,7 +6424,6 @@ bool MainWindow::profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
 }
 
 void MainWindow::loadActiveProfile(bool quiet) {
-    PIPBONG_PERF_SCOPE("loadActiveProfile");
     if (!m_profileManager) {
         return;
     }
@@ -6695,11 +6632,6 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         }
     } guard{this};
 
-    PIPBONG_PROFILE_CAT("profile_switch",
-                        QStringLiteral("id=%1 auto=%2").arg(profileId).arg(automatic ? QStringLiteral("yes")
-                                                                                     : QStringLiteral("no")));
-    PIPBONG_PERF_SCOPE("switchToProfile");
-
     if (m_profileList) {
         for (int row = 0; row < m_profileList->count(); ++row) {
             QListWidgetItem* item = m_profileList->item(row);
@@ -6712,18 +6644,15 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
     }
 
     {
-        PIPBONG_PERF_SCOPE("switchToProfile.maybeSave");
         if (!maybeSave(true)) {
             syncProfileListSelection();
             return false;
         }
     }
     {
-        PIPBONG_PERF_SCOPE("switchToProfile.saveSettings");
         saveActiveProfileSettings();
     }
     {
-        PIPBONG_PERF_SCOPE("switchToProfile.stopSessions");
         stopAllSessionsForProfileSwitch();
     }
     if (!m_profileManager->setActiveProfile(profileId)) {
@@ -6739,7 +6668,6 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         }
     }
     {
-        PIPBONG_PERF_SCOPE("switchToProfile.loadActiveProfile");
         loadActiveProfile(true);
     }
 #ifdef _WIN32
@@ -6861,13 +6789,6 @@ void MainWindow::syncProfileToForegroundWindow() {
             }
             return;
         }
-    }
-
-    if (WorkflowRunProfiler::isEnabled()
-        && WorkflowRunProfiler::depth() != ProgramSettings::WorkflowRunProfilingDepth::Standard
-        && foregroundTitle != m_lastProfiledForegroundTitle) {
-        m_lastProfiledForegroundTitle = foregroundTitle;
-        WorkflowRunProfiler::recordForegroundChange(foregroundTitle, QStringLiteral("sync"));
     }
 
     if (targetProfileId.isEmpty()) {
@@ -7076,7 +6997,6 @@ void MainWindow::reconcileRunSessionsWithForegroundGate() {
 }
 
 void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
-    PIPBONG_PERF_SCOPE("loadProjectFromFile");
     QString projectDirectory;
     std::unique_ptr<Project> loaded;
     if (m_profileManager) {

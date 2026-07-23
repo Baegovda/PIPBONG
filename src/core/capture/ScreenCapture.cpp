@@ -1,7 +1,6 @@
 #include "core/capture/ScreenCapture.h"
 
 #include "core/capture/DxgiScreenCapture.h"
-#include "core/diagnostics/WorkflowRunProfiler.h"
 #include "core/input/InputSimulator.h"
 #include "core/workflow/ExecutionContext.h"
 
@@ -662,12 +661,6 @@ cv::Mat ScreenCapture::captureSearchArea(SearchArea area,
 cv::Mat ScreenCapture::captureSearchAreaForImageFind(SearchArea area,
                                                      const CaptureRegion& custom,
                                                      const PercentRegion& percent) {
-    std::optional<WfProfileScope> captureProfileScope;
-    if (WorkflowRunProfiler::shouldRecordCaptureImageFind()) {
-        captureProfileScope.emplace(
-            "capture_imagefind",
-            QStringLiteral("area=%1").arg(static_cast<int>(area)));
-    }
 #ifdef _WIN32
     std::lock_guard<std::mutex> captureLock(g_imageFindCaptureMutex);
 #endif

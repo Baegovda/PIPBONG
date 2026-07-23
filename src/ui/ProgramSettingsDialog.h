@@ -33,8 +33,7 @@ private:
     QComboBox* m_imageFindCaptureModeCombo = nullptr;
     QCheckBox* m_runWithoutTargetWindowCheck = nullptr;
     DragAdjustSpinBox* m_logMaxLinesSpin = nullptr;
-    QCheckBox* m_workflowRunProfilingCheck = nullptr;
-    QComboBox* m_workflowRunProfilingDepthCombo = nullptr;
+    QCheckBox* m_cursorStutterProfilingCheck = nullptr;
     QLabel* m_clickFeedbackSummary = nullptr;
     QPushButton* m_clickFeedbackButton = nullptr;
     QLabel* m_windowSelectionFeedbackSummary = nullptr;

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.294 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.295 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -42,7 +42,6 @@ set(PIPBONG_SOURCES
     src/app/TargetWindowCenterPin.cpp
     src/app/ProgramSettings.cpp
     src/app/ProfileManager.cpp
-    src/app/PerfTrace.cpp
     src/app/WindowsLaunchAtStartup.cpp
     src/app/WindowsRunAsAdmin.cpp
     src/app/PointerFeedbackSettings.cpp
@@ -91,8 +90,7 @@ set(PIPBONG_SOURCES
     src/core/diagnostics/CrashManifestBuilder.cpp
     src/core/diagnostics/CrashReportSystemInfo.cpp
     src/core/diagnostics/DiagnosticHub.cpp
-    src/core/diagnostics/WorkflowRunProfiler.cpp
-    src/core/diagnostics/WorkflowProfileSnapshot.cpp
+    src/core/diagnostics/CursorStutterProfiler.cpp
     src/core/diagnostics/Win32StackWalker.cpp
     src/ui/calculator/FormulaEvaluator.cpp
     src/ui/calculator/SpreadsheetModel.cpp
