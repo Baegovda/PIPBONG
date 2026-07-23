@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <optional>
 #include <thread>
 
 namespace {
@@ -597,6 +598,46 @@ std::string ExecutionContext::projectDirectory() const {
 }
 
 #ifdef _WIN32
+namespace {
+
+constexpr auto kSyntheticInputSuppressGrace = std::chrono::milliseconds(300);
+
+int virtualKeyFromMouseButton(MouseButton button) {
+    switch (button) {
+    case MouseButton::Left:
+        return VK_LBUTTON;
+    case MouseButton::Right:
+        return VK_RBUTTON;
+    case MouseButton::Middle:
+        return VK_MBUTTON;
+    case MouseButton::Back:
+        return VK_XBUTTON1;
+    case MouseButton::Forward:
+        return VK_XBUTTON2;
+    default:
+        return 0;
+    }
+}
+
+std::optional<MouseButton> mouseButtonFromVirtualKey(int virtualKey) {
+    switch (virtualKey) {
+    case VK_LBUTTON:
+        return MouseButton::Left;
+    case VK_RBUTTON:
+        return MouseButton::Right;
+    case VK_MBUTTON:
+        return MouseButton::Middle;
+    case VK_XBUTTON1:
+        return MouseButton::Back;
+    case VK_XBUTTON2:
+        return MouseButton::Forward;
+    default:
+        return std::nullopt;
+    }
+}
+
+} // namespace
+
 void ExecutionContext::beginRunKeyboardSessionIfNeeded() {
     if (m_runKeyboardSessionActive) {
         return;
@@ -608,14 +649,45 @@ void ExecutionContext::beginRunKeyboardSessionIfNeeded() {
 void ExecutionContext::noteSyntheticKeyDown(int virtualKey) {
     m_pipbongHeldVirtualKeys.insert(virtualKey);
     m_pipbongEverInjectedVirtualKeys.insert(virtualKey);
+    extendSyntheticInputSuppress(virtualKey);
 }
 
 void ExecutionContext::noteSyntheticKeyUp(int virtualKey) {
     m_pipbongHeldVirtualKeys.erase(virtualKey);
+    extendSyntheticInputSuppress(virtualKey);
 }
 
 bool ExecutionContext::hasPipbongSyntheticKeyDown(int virtualKey) const {
     return m_pipbongHeldVirtualKeys.find(virtualKey) != m_pipbongHeldVirtualKeys.end();
+}
+
+void ExecutionContext::extendSyntheticInputSuppress(int virtualKey) {
+    if (virtualKey <= 0) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
+    const auto until = std::chrono::steady_clock::now() + kSyntheticInputSuppressGrace;
+    auto it = m_syntheticInputSuppressUntil.find(virtualKey);
+    if (it == m_syntheticInputSuppressUntil.end() || until > it->second) {
+        m_syntheticInputSuppressUntil[virtualKey] = until;
+    }
+}
+
+bool ExecutionContext::shouldSuppressUserInputInterrupt(int virtualKey) const {
+    if (hasPipbongSyntheticKeyDown(virtualKey)) {
+        return true;
+    }
+    if (const std::optional<MouseButton> button = mouseButtonFromVirtualKey(virtualKey)) {
+        if (m_pipbongHeldMouseButtons.find(static_cast<int>(*button)) != m_pipbongHeldMouseButtons.end()) {
+            return true;
+        }
+    }
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
+    const auto it = m_syntheticInputSuppressUntil.find(virtualKey);
+    if (it == m_syntheticInputSuppressUntil.end()) {
+        return false;
+    }
+    return std::chrono::steady_clock::now() < it->second;
 }
 
 bool ExecutionContext::pipbongEverInjectedVirtualKey(int virtualKey) const {
@@ -626,10 +698,12 @@ void ExecutionContext::noteSyntheticMouseDown(MouseButton button) {
     const int raw = static_cast<int>(button);
     m_pipbongHeldMouseButtons.insert(raw);
     m_pipbongEverInjectedMouseButtons.insert(raw);
+    extendSyntheticInputSuppress(virtualKeyFromMouseButton(button));
 }
 
 void ExecutionContext::noteSyntheticMouseUp(MouseButton button) {
     m_pipbongHeldMouseButtons.erase(static_cast<int>(button));
+    extendSyntheticInputSuppress(virtualKeyFromMouseButton(button));
 }
 
 bool ExecutionContext::pipbongEverInjectedMouseButton(MouseButton button) const {
@@ -656,6 +730,10 @@ void ExecutionContext::endRunInputSession() {
     m_pipbongHeldMouseButtons.clear();
     m_pipbongEverInjectedVirtualKeys.clear();
     m_pipbongEverInjectedMouseButtons.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
+        m_syntheticInputSuppressUntil.clear();
+    }
 }
 
 void ExecutionContext::endRunKeyboardSession() {

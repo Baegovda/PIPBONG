@@ -55,6 +55,9 @@ public:
     /// Physical keyboard/mouse detected by UserInputInterruptMonitor (not PIPBONG-injected).
     static void recordPhysicalInput(const char* channel, int virtualKey);
 
+    /// User-input interrupt actually fired (logged at all profiling depths).
+    static void recordUserInputInterrupt(const QString& featureId, int virtualKey);
+
     /// Foreground top-level window title change (Detailed+).
     static void recordForegroundChange(const QString& windowTitle, const QString& reason = QString());
 

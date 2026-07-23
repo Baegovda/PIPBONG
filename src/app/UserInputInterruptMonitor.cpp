@@ -188,7 +188,9 @@ void UserInputInterruptMonitor::pollMouseButtonEdges() {
             m_mouseButtonWasDown[button.index] = down;
         }
         if (down && !wasDown) {
-            notifyPhysicalInput(button.vk);
+            if (!shouldSuppressUserInputInterruptOnAnySession(button.vk)) {
+                notifyPhysicalInput(button.vk);
+            }
         }
     }
 #else
@@ -196,11 +198,11 @@ void UserInputInterruptMonitor::pollMouseButtonEdges() {
 #endif
 }
 
-bool UserInputInterruptMonitor::isPipbongSyntheticKeyDownOnAnySession(int virtualKey) const {
+bool UserInputInterruptMonitor::shouldSuppressUserInputInterruptOnAnySession(int virtualKey) const {
     std::lock_guard<std::mutex> lock(m_mutex);
     for (const auto& [featureId, entry] : m_sessions) {
         (void)featureId;
-        if (entry.context && entry.context->hasPipbongSyntheticKeyDown(virtualKey)) {
+        if (entry.context && entry.context->shouldSuppressUserInputInterrupt(virtualKey)) {
             return true;
         }
     }
@@ -242,7 +244,7 @@ void UserInputInterruptMonitor::pollKeyboardEdges() {
         if (hotkeyExemptionCheck && hotkeyExemptionCheck(vk)) {
             continue;
         }
-        if (isPipbongSyntheticKeyDownOnAnySession(vk)) {
+        if (shouldSuppressUserInputInterruptOnAnySession(vk)) {
             continue;
         }
         notifyPhysicalInput(vk);
@@ -293,6 +295,7 @@ void UserInputInterruptMonitor::notifyPhysicalInput(int virtualKey) {
     }
 
     for (const std::string& featureId : targets) {
+        WorkflowRunProfiler::recordUserInputInterrupt(QString::fromStdString(featureId), virtualKey);
         const std::string capturedId = featureId;
         QMetaObject::invokeMethod(
             QCoreApplication::instance(),

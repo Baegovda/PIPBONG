@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.286` (from `project(PIPBONG VERSION 0.8.286)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.287` (from `project(PIPBONG VERSION 0.8.287)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.287] - 2026-07-23
+
+### Fixed
+
+- **사용자 입력 시 완전 정지** no longer treats workflow **키보드**/**마우스** block injections as physical input: `ExecutionContext` keeps a 300 ms post-injection suppress window after synthetic key/mouse DOWN/UP (fixes KeyPress Tap race where `GetKeyboardState` still showed the key after `noteSyntheticKeyUp`); `UserInputInterruptMonitor` uses `shouldSuppressUserInputInterrupt` for keyboard and mouse polls (`ExecutionContext`, `UserInputInterruptMonitor`).
+
+### Changed
+
+- Workflow profiler logs `user_input_interrupt` at **standard** depth when interrupt actually fires (`WorkflowRunProfiler`, `UserInputInterruptMonitor`).
 
 ## [0.8.286] - 2026-07-23
 

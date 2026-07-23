@@ -47,7 +47,7 @@ private:
     void refreshPollTimer();
     void pollMouseButtonEdges();
     void pollKeyboardEdges();
-    bool isPipbongSyntheticKeyDownOnAnySession(int virtualKey) const;
+    bool shouldSuppressUserInputInterruptOnAnySession(int virtualKey) const;
 
     mutable std::mutex m_mutex;
     InterruptHandler m_handler;

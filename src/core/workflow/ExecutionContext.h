@@ -6,12 +6,13 @@
 #include "core/input/InputSimulator.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <opencv2/core.hpp>
+#include <mutex>
 #include <string>
-#include <unordered_map>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -193,6 +194,8 @@ public:
     void noteSyntheticKeyDown(int virtualKey);
     void noteSyntheticKeyUp(int virtualKey);
     bool hasPipbongSyntheticKeyDown(int virtualKey) const;
+    /// True while PIPBONG holds the key/button or within a post-injection grace window.
+    bool shouldSuppressUserInputInterrupt(int virtualKey) const;
     void noteSyntheticMouseDown(MouseButton button);
     void noteSyntheticMouseUp(MouseButton button);
     bool pipbongEverInjectedVirtualKey(int virtualKey) const;
@@ -261,5 +264,8 @@ private:
     std::unordered_set<int> m_pipbongHeldMouseButtons;
     std::unordered_set<int> m_pipbongEverInjectedVirtualKeys;
     std::unordered_set<int> m_pipbongEverInjectedMouseButtons;
+    mutable std::mutex m_syntheticInputMutex;
+    std::unordered_map<int, std::chrono::steady_clock::time_point> m_syntheticInputSuppressUntil;
+    void extendSyntheticInputSuppress(int virtualKey);
 #endif
 };

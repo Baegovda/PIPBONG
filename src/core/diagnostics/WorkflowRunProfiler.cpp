@@ -1039,6 +1039,21 @@ void WorkflowRunProfiler::recordPhysicalInput(const char* channel, int virtualKe
                     QStringLiteral("vk=0x%1").arg(virtualKey, 0, 16));
 }
 
+void WorkflowRunProfiler::recordUserInputInterrupt(const QString& featureId, int virtualKey) {
+    if (!g_enabled) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_trace.featureSessionActive) {
+        return;
+    }
+    pushEventLocked(g_trace,
+                    "user_input_interrupt",
+                    QStringLiteral("feature=%1 vk=0x%2")
+                        .arg(featureId)
+                        .arg(virtualKey, 0, 16));
+}
+
 void WorkflowRunProfiler::recordForegroundChange(const QString& windowTitle,
                                                   const QString& reason) {
     if (!g_enabled) {
