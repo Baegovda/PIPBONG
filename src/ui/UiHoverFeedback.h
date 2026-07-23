@@ -95,7 +95,7 @@ inline QString programWideStyleSheet() {
         // Splitter handles — base width/height required when a global stylesheet is set;
         // :hover-only rules collapse handles and break drag resize (setHandleWidth ignored).
         "QSplitter::handle {"
-        "  background-color: palette(mid);"
+        "  background-color: transparent;"
         "  margin: 0;"
         "  padding: 0;"
         "}"

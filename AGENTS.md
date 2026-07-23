@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.282` (from `project(PIPBONG VERSION 0.8.282)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.283` (from `project(PIPBONG VERSION 0.8.283)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.283] - 2026-07-23
+
+### Changed
+
+- Main window UI simplified: removed nested panel borders and excess padding on profile/feature list, workflow status bar, target-window detail, log panel, and bottom toolbar; flatter group boxes and tool buttons (`MainWindow`, `FeatureListPanel`, `WorkflowEditorPanel`, `WorkflowRunStatusBar`, `TargetWindowDetailPanel`, `LogPanelWidget`).
+- Profile list rows and run-mode chips use fill/hover only (no per-row card stroke); feature-list row separators softened (`ProfileListWidget`, `FeatureRunModeTheme`, `FeatureListPanel`).
+- Title bar height reduced (42→36 px) with tighter menu/button padding (`CustomTitleBar`).
+- Splitter handles are transparent until hover (12 px hit zone unchanged) (`UiHoverFeedback`).
 
 ## [0.8.282] - 2026-07-23
 

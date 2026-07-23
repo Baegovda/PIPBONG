@@ -1079,8 +1079,8 @@ void MainWindow::setupUi() {
     profileGroup->setStyleSheet(QStringLiteral(
         "QGroupBox#profileListGroup {"
         "  border: none;"
-        "  margin-top: 10px;"
-        "  padding-top: 8px;"
+        "  margin-top: 4px;"
+        "  padding-top: 2px;"
         "}"
         "QGroupBox#profileListGroup::title {"
         "  subcontrol-origin: margin;"
@@ -1089,8 +1089,8 @@ void MainWindow::setupUi() {
         "  padding: 0 4px;"
         "}"));
     auto* profileLayout = new QVBoxLayout(profileGroup);
-    profileLayout->setContentsMargins(6, 4, 6, 6);
-    profileLayout->setSpacing(6);
+    profileLayout->setContentsMargins(4, 2, 4, 4);
+    profileLayout->setSpacing(4);
     m_profilePanel = profileGroup;
     m_profilePanel->setMinimumWidth(92);
     m_profileList = new ProfileListWidget(profileGroup);
@@ -1146,15 +1146,15 @@ void MainWindow::setupUi() {
     auto* bottomPanel = new QWidget(contentHost);
     bottomPanel->setMinimumHeight(kMinBottomPanelPx);
     auto* bottomLayout = new QVBoxLayout(bottomPanel);
-    bottomLayout->setContentsMargins(8, 6, 8, 8);
-    bottomLayout->setSpacing(6);
+    bottomLayout->setContentsMargins(4, 2, 4, 4);
+    bottomLayout->setSpacing(4);
 
     auto* targetGroup = new QGroupBox(tr("타겟"), bottomPanel);
     targetGroup->setMinimumHeight(96);
     targetGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto* targetLayout = new QVBoxLayout(targetGroup);
-    targetLayout->setContentsMargins(8, 4, 8, 6);
-    targetLayout->setSpacing(4);
+    targetLayout->setContentsMargins(4, 2, 4, 4);
+    targetLayout->setSpacing(2);
 
     m_targetWindowDetailPanel = new TargetWindowDetailPanel(targetGroup);
 
@@ -1265,16 +1265,15 @@ void MainWindow::setupUi() {
 
     targetGroup->setStyleSheet(QStringLiteral(
         "QGroupBox {"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 8px;"
-        "  margin-top: 8px;"
-        "  padding-top: 8px;"
+        "  border: none;"
+        "  margin-top: 4px;"
+        "  padding-top: 2px;"
         "  font-size: 11px;"
         "}"
         "QGroupBox::title {"
         "  subcontrol-origin: margin;"
-        "  left: 8px;"
-        "  padding: 0 3px;"
+        "  left: 2px;"
+        "  padding: 0 2px;"
         "}"
         "QLabel#targetWindowGroupCaption {"
         "  color: palette(mid);"
@@ -1283,16 +1282,15 @@ void MainWindow::setupUi() {
         "  padding-right: 2px;"
         "}"
         "QToolButton.targetWindowActionButton {"
-        "  padding: 1px 8px;"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 4px;"
-        "  background-color: palette(button);"
+        "  padding: 1px 6px;"
+        "  border: none;"
+        "  border-radius: 3px;"
+        "  background-color: transparent;"
         "  color: palette(button-text);"
         "  font-size: 11px;"
         "}"
         "QToolButton.targetWindowActionButton:hover:!checked {"
         "  background-color: palette(light);"
-        "  border-color: palette(dark);"
         "}"
         "QToolButton.targetWindowActionButton:pressed:!checked {"
         "  background-color: palette(midlight);"
@@ -1300,12 +1298,10 @@ void MainWindow::setupUi() {
         "QToolButton.targetWindowActionButton:checked {"
         "  background-color: palette(highlight);"
         "  color: palette(highlighted-text);"
-        "  border-color: palette(highlight);"
         "}"
         "QToolButton.targetWindowActionButton:disabled {"
         "  color: palette(mid);"
-        "  background-color: palette(button);"
-        "  border-color: palette(mid);"
+        "  background-color: transparent;"
         "}"));
 
     targetLayout->addWidget(actionBar);
@@ -1352,15 +1348,14 @@ void MainWindow::setupUi() {
     bottomLayout->addLayout(exitRow);
     bottomPanel->setStyleSheet(QStringLiteral(
         "QPushButton.bottomAuxiliaryToggleButton {"
-        "  padding: 2px 10px;"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 4px;"
-        "  background-color: palette(button);"
+        "  padding: 2px 8px;"
+        "  border: none;"
+        "  border-radius: 3px;"
+        "  background-color: transparent;"
         "  color: palette(button-text);"
         "}"
         "QPushButton.bottomAuxiliaryToggleButton:hover:!checked {"
         "  background-color: palette(light);"
-        "  border-color: palette(dark);"
         "}"
         "QPushButton.bottomAuxiliaryToggleButton:pressed:!checked {"
         "  background-color: palette(midlight);"
@@ -1368,7 +1363,6 @@ void MainWindow::setupUi() {
         "QPushButton.bottomAuxiliaryToggleButton:checked {"
         "  background-color: palette(highlight);"
         "  color: palette(highlighted-text);"
-        "  border-color: palette(highlight);"
         "}"));
 
     m_mainVerticalSplitter = new QSplitter(Qt::Vertical, contentHost);

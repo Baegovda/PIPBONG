@@ -738,6 +738,8 @@ WorkflowEditorPanel::WorkflowEditorPanel(QWidget* parent)
 
 void WorkflowEditorPanel::setupUi() {
     auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(4);
 
     m_runStatusBar = new WorkflowRunStatusBar(this);
     connect(m_runStatusBar, &WorkflowRunStatusBar::runToggleRequested, this, [this]() {
@@ -812,11 +814,24 @@ void WorkflowEditorPanel::setupUi() {
     auto* toolsPane = new QWidget(this);
     auto* toolsLayout = new QVBoxLayout(toolsPane);
     toolsLayout->setContentsMargins(0, 0, 0, 0);
-    toolsLayout->setSpacing(6);
+    toolsLayout->setSpacing(4);
 
     auto* addGroup = new QGroupBox(tr("블록 추가"), toolsPane);
+    addGroup->setStyleSheet(QStringLiteral(
+        "QGroupBox {"
+        "  border: none;"
+        "  margin-top: 4px;"
+        "  padding-top: 2px;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "}"
+        "QGroupBox::title {"
+        "  subcontrol-origin: margin;"
+        "  left: 0;"
+        "  padding: 0 2px;"
+        "}"));
     auto* addRow = new QHBoxLayout(addGroup);
-    addRow->setSpacing(6);
+    addRow->setSpacing(4);
 
     const BlockType addTypes[] = {BlockType::ImageFind,
                                   BlockType::Click,

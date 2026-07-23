@@ -117,19 +117,18 @@ QString featureRunModeChipStyleSheet(FeatureRunMode mode,
                                      bool darkTheme,
                                      const QString& selector) {
     const FeatureRunModeTheme theme = featureRunModeTheme(mode, darkTheme);
-    const QString fill = darkTheme ? QStringLiteral("#21262d") : theme.chipFill.name();
+    const QString fill = QStringLiteral("transparent");
     return QStringLiteral(
                "%1 {"
                "  color: %2;"
                "  background-color: %3;"
-               "  border: 1px solid %4;"
-               "  border-radius: 6px;"
-               "  padding: 3px 8px;"
+               "  border: none;"
+               "  border-radius: 4px;"
+               "  padding: 0 4px;"
                "  font-size: 11px;"
                "  font-weight: 600;"
-               "  letter-spacing: 0.2px;"
                "}")
-        .arg(selector, theme.chipText.name(), fill, theme.chipBorder.name());
+        .arg(selector, theme.chipText.name(), fill);
 }
 
 QColor featureRunModeTriggerWatchWash(bool darkTheme) {
@@ -205,10 +204,8 @@ void paintFeatureRunModeChip(QPainter* painter,
     const FeatureRunModeTheme theme = featureRunModeTheme(mode, dark);
 
     QColor fill = theme.chipFill;
-    QColor border = theme.chipBorder;
     QColor textColor = theme.chipText;
     if (accentOverride != nullptr && accentOverride->isValid()) {
-        border = *accentOverride;
         textColor = *accentOverride;
         fill = accentOverride->darker(dark ? 150 : 112);
         fill.setAlpha(dark ? 88 : 210);
@@ -217,8 +214,6 @@ void paintFeatureRunModeChip(QPainter* painter,
         const QColor muted = secondaryHintTextColor(palette);
         fill = muted;
         fill.setAlpha(dark ? 36 : 52);
-        border = muted;
-        border.setAlpha(dark ? 90 : 120);
         textColor = muted;
     }
 
@@ -235,9 +230,11 @@ void paintFeatureRunModeChip(QPainter* painter,
 
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing, true);
-    painter->setPen(QPen(border, 1.0));
-    painter->setBrush(fill);
-    painter->drawRoundedRect(chip, 4, 4);
+    painter->setPen(Qt::NoPen);
+    if (fill.alpha() > 0) {
+        painter->setBrush(fill);
+        painter->drawRoundedRect(chip, 4, 4);
+    }
     painter->setFont(font);
     painter->setPen(textColor);
     painter->drawText(chip, Qt::AlignCenter, text);

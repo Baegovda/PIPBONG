@@ -55,13 +55,12 @@ public:
             fill = UiHoverFeedback::cardRowHoverFill(pal);
         }
         const QColor border = selected || dropHover || hovered ? accent : fill.darker(108);
+        Q_UNUSED(border);
 
         const QRect rowRect = opt.rect.adjusted(2, 1, -2, -1);
         QPainterPath path;
         path.addRoundedRect(rowRect, 6, 6);
         painter->fillPath(path, fill);
-        painter->setPen(QPen(border, 1));
-        painter->drawPath(path);
 
         if (isDefault) {
             paintDefaultBadge(painter, opt, rowRect, accent);

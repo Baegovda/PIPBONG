@@ -480,12 +480,6 @@ void paintPrismActiveRunRowChrome(QPainter* painter,
     topGlass.setColorAt(1.0, QColor(255, 255, 255, 0));
     painter->fillPath(cardPath, topGlass);
 
-    QColor borderColor = prism.core;
-    borderColor.setAlpha(static_cast<int>(88 + 72 * prism.shimmer));
-    painter->setPen(QPen(borderColor, 1.0));
-    painter->setBrush(Qt::NoBrush);
-    painter->drawPath(cardPath);
-
     const QRect accentBar(card.left(), card.top(), kSelectionBarWidth, card.height());
     QLinearGradient accentGrad(accentBar.topLeft(), accentBar.bottomLeft());
     QColor accentTop = prism.coolGlow;
@@ -552,7 +546,7 @@ void paintFeatureListRowChrome(QPainter* painter,
         if (darkThemeFromPalette(palette) && separator.lightness() < 90) {
             separator = separator.lighter(130);
         }
-        separator.setAlpha(80);
+        separator.setAlpha(40);
         painter->fillRect(QRect(rect.left(), rect.bottom(), rect.width(), kRowSeparatorHeight), separator);
         return;
     }
@@ -658,7 +652,7 @@ void paintFeatureListRowChrome(QPainter* painter,
     if (darkThemeFromPalette(palette) && separator.lightness() < 90) {
         separator = separator.lighter(130);
     }
-    separator.setAlpha(80);
+    separator.setAlpha(40);
     painter->fillRect(QRect(rect.left(), rect.bottom(), rect.width(), kRowSeparatorHeight), separator);
 }
 
@@ -753,23 +747,22 @@ void applyFeatureListPanelStyle(QWidget* panel) {
         "}"
         "QGroupBox#featureListGroup {"
         "  font-weight: bold;"
-        "  font-size: 13px;"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 8px;"
-        "  margin-top: 10px;"
-        "  padding: 8px;"
-        "  padding-top: 18px;"
+        "  font-size: 12px;"
+        "  border: none;"
+        "  margin-top: 4px;"
+        "  padding: 0;"
+        "  padding-top: 10px;"
         "}"
         "QGroupBox#featureListGroup::title {"
         "  subcontrol-origin: margin;"
         "  subcontrol-position: top left;"
-        "  left: 10px;"
-        "  padding: 0 6px;"
+        "  left: 4px;"
+        "  padding: 0 4px;"
         "}"
         "QFrame#featureListTableFrame {"
         "  background-color: palette(base);"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 6px;"
+        "  border: none;"
+        "  border-radius: 4px;"
         "}"
         "QListWidget#featureListView {"
         "  background: transparent;"
@@ -785,9 +778,9 @@ void applyFeatureListPanelStyle(QWidget* panel) {
         "  background: transparent;"
         "}"
         "QPushButton.featureListToolButton {"
-        "  padding: 5px 12px;"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 5px;"
+        "  padding: 3px 10px;"
+        "  border: none;"
+        "  border-radius: 3px;"
         "  background-color: palette(button);"
         "}"
         "QPushButton.featureListToolButton:hover {"
@@ -797,13 +790,13 @@ void applyFeatureListPanelStyle(QWidget* panel) {
         "  background-color: palette(midlight);"
         "}"
         "QToolButton#featureLibraryToggle {"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 6px;"
-        "  padding: 5px 8px;"
+        "  border: none;"
+        "  border-radius: 3px;"
+        "  padding: 3px 6px;"
         "  text-align: left;"
         "  font-weight: 600;"
         "  font-size: 11px;"
-        "  background-color: palette(button);"
+        "  background-color: transparent;"
         "  color: palette(window-text);"
         "}"
         "QToolButton#featureLibraryToggle:hover {"
@@ -814,8 +807,9 @@ void applyFeatureListPanelStyle(QWidget* panel) {
         "}"
         "QWidget#featureLibraryDrawerHost {"
         "  background-color: palette(base);"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 6px;"
+        "  border: none;"
+        "  border-top: 1px solid palette(mid);"
+        "  border-radius: 0;"
         "}"
         "QListWidget#featureLibraryList {"
         "  border: none;"
@@ -1133,11 +1127,11 @@ void FeatureListPanel::setupUi() {
     auto* group = new QGroupBox(tr("기능 목록"), this);
     group->setObjectName(QStringLiteral("featureListGroup"));
     auto* groupLayout = new QVBoxLayout(group);
-    groupLayout->setContentsMargins(6, 4, 6, 6);
-    groupLayout->setSpacing(6);
+    groupLayout->setContentsMargins(4, 2, 4, 4);
+    groupLayout->setSpacing(4);
 
     auto* buttonRow = new QHBoxLayout();
-    buttonRow->setSpacing(6);
+    buttonRow->setSpacing(4);
     m_addButton = new QPushButton(tr("추가"), group);
     m_editButton = new QPushButton(tr("편집"), group);
     m_removeButton = new QPushButton(tr("삭제"), group);
@@ -1223,7 +1217,7 @@ void FeatureListPanel::setupUi() {
     m_libraryDrawerHost->setAttribute(Qt::WA_StyledBackground, true);
     m_libraryDrawerHost->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto* drawerLayout = new QVBoxLayout(m_libraryDrawerHost);
-    drawerLayout->setContentsMargins(4, 4, 4, 4);
+    drawerLayout->setContentsMargins(2, 2, 2, 2);
     drawerLayout->setSpacing(0);
 
     m_libraryList = new FeatureLibraryListWidget(m_libraryDrawerHost);

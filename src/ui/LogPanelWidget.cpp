@@ -53,7 +53,7 @@ LogPanelWidget::LogPanelWidget(QWidget* parent)
 
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
-    outer->setSpacing(6);
+    outer->setSpacing(4);
 
     auto* header = new QWidget(this);
     header->setObjectName(QStringLiteral("logPanelHeader"));
@@ -113,9 +113,9 @@ LogPanelWidget::LogPanelWidget(QWidget* parent)
         "QTextEdit#logPanelView {"
         "  background-color: #0d1117;"
         "  color: #3fb950;"
-        "  border: 1px solid #30363d;"
-        "  border-radius: 8px;"
-        "  padding: 8px 10px;"
+        "  border: none;"
+        "  border-radius: 4px;"
+        "  padding: 4px 6px;"
         "  font-family: 'Cascadia Mono', 'Consolas', 'D2Coding', monospace;"
         "  font-size: 12px;"
         "  selection-background-color: #264f78;"

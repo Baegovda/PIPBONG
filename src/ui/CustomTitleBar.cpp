@@ -26,7 +26,7 @@ QPushButton* makeTitleBarButton(const QString& text, const char* objectName, QWi
     button->setObjectName(QString::fromLatin1(objectName));
     button->setFlat(true);
     button->setFocusPolicy(Qt::NoFocus);
-    button->setFixedSize(40, 32);
+    button->setFixedSize(36, 28);
     return button;
 }
 
@@ -35,7 +35,7 @@ QPushButton* makeTitleBarButton(const QString& text, const char* objectName, QWi
 CustomTitleBar::CustomTitleBar(QMainWindow* window)
     : m_window(window) {
     setObjectName(QStringLiteral("customTitleBar"));
-    setFixedHeight(42);
+    setFixedHeight(36);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setAttribute(Qt::WA_StyledBackground, true);
 
@@ -49,8 +49,8 @@ CustomTitleBar::CustomTitleBar(QMainWindow* window)
 
 void CustomTitleBar::setupUi() {
     auto* layout = new QHBoxLayout(this);
-    layout->setContentsMargins(8, 5, 0, 5);
-    layout->setSpacing(6);
+    layout->setContentsMargins(6, 3, 0, 3);
+    layout->setSpacing(4);
 
     m_appBadge = new QLabel(this);
     m_appBadge->setObjectName(QStringLiteral("titleBarAppBadge"));
@@ -136,8 +136,8 @@ void CustomTitleBar::setupUi() {
         "}"
         "QMenuBar#titleBarMenuBar::item {"
         "  background: transparent;"
-        "  padding: 5px 10px 3px 10px;"
-        "  border-radius: 6px;"
+        "  padding: 3px 8px 2px 8px;"
+        "  border-radius: 4px;"
         "}"
         "QMenuBar#titleBarMenuBar::item:selected {"
         "  background-color: palette(button);"

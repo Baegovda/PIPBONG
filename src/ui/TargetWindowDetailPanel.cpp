@@ -52,7 +52,7 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
 
     m_messagePage = new QWidget(stackHost);
     auto* messageLayout = new QVBoxLayout(m_messagePage);
-    messageLayout->setContentsMargins(10, 8, 10, 8);
+    messageLayout->setContentsMargins(6, 4, 6, 4);
     m_messageLabel = new QLabel(m_messagePage);
     m_messageLabel->setObjectName(QStringLiteral("targetWindowDetailMessage"));
     m_messageLabel->setWordWrap(true);
@@ -61,8 +61,8 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
 
     m_detailsPage = new QWidget(stackHost);
     auto* detailsLayout = new QVBoxLayout(m_detailsPage);
-    detailsLayout->setContentsMargins(10, 8, 10, 8);
-    detailsLayout->setSpacing(3);
+    detailsLayout->setContentsMargins(6, 4, 6, 4);
+    detailsLayout->setSpacing(2);
 
     m_titleRowWidget = new QWidget(m_detailsPage);
     m_titleLabel = new QLabel(m_titleRowWidget);
@@ -100,8 +100,8 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
     setStyleSheet(QStringLiteral(
         "QFrame#targetWindowDetailPanel {"
         "  background-color: palette(base);"
-        "  border: 1px solid palette(mid);"
-        "  border-radius: 10px;"
+        "  border: none;"
+        "  border-radius: 4px;"
         "}"
         "QLabel#targetWindowDetailStatus {"
         "  padding: 2px 8px;"
