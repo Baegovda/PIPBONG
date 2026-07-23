@@ -126,6 +126,7 @@ private slots:
     void onShowSubTargetWindow();
     void onPinTargetWindowCenterToggled(bool checked);
     void onPinSubTargetWindowCenterToggled(bool checked);
+    void onForegroundWindowChanged();
     void onProfileSelectionChanged();
     void onAddProfile();
     void onRenameProfile();
@@ -351,6 +352,7 @@ private:
     void rememberProfileLinkedForeground(HWND hwnd, const QString& foregroundTitle);
     /// Bind ScreenCapture to the desktop foreground HWND when its process path matches the active profile's linked main/sub exe (authoritative over title heuristics).
     bool adoptForegroundLinkedCaptureIfMatched();
+    QString profileIdForForegroundHwnd(HWND hwnd) const;
     HWND findMainTargetHwndForCenterPin() const;
     HWND findSubTargetHwndForCenterPin() const;
     HWND findLinkedTargetHwndForDisplay(const QString& mainBinding,

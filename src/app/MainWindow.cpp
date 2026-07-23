@@ -162,6 +162,7 @@ SessionRunPolicyInput sessionPolicyInputFrom(const FeatureRunSession& session) {
 
 constexpr UINT kForegroundProfileSyncMessage = WM_APP + 0x4A1;
 HWND g_foregroundProfileSyncReceiver = nullptr;
+MainWindow* g_foregroundSyncMainWindow = nullptr;
 
 void CALLBACK foregroundWindowEventProc(HWINEVENTHOOK,
                                         DWORD event,
@@ -170,10 +171,12 @@ void CALLBACK foregroundWindowEventProc(HWINEVENTHOOK,
                                         LONG,
                                         DWORD,
                                         DWORD) {
-    if (event == EVENT_SYSTEM_FOREGROUND && g_foregroundProfileSyncReceiver
-        && IsWindow(g_foregroundProfileSyncReceiver)) {
-        PostMessageW(g_foregroundProfileSyncReceiver, kForegroundProfileSyncMessage, 0, 0);
+    if (event != EVENT_SYSTEM_FOREGROUND || !g_foregroundSyncMainWindow) {
+        return;
     }
+    QMetaObject::invokeMethod(g_foregroundSyncMainWindow,
+                              "onForegroundWindowChanged",
+                              Qt::QueuedConnection);
 }
 
 bool isShellTransientForegroundWindow(HWND hwnd) {
@@ -742,7 +745,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_profileAutoSwitchTimer = new QTimer(this);
     m_profileAutoSwitchTimer->setTimerType(Qt::PreciseTimer);
     m_profileAutoSwitchTimer->setInterval(50);
-    connect(m_profileAutoSwitchTimer, &QTimer::timeout, this, &MainWindow::syncProfileToForegroundWindow);
+    connect(m_profileAutoSwitchTimer, &QTimer::timeout, this, &MainWindow::onForegroundWindowChanged);
     m_profileAutoSwitchTimer->start();
     if (ProgramSettings::pinTargetWindowToScreenCenter()
         || ProgramSettings::pinSubTargetWindowToScreenCenter()) {
@@ -766,6 +769,7 @@ MainWindow::MainWindow(QWidget* parent)
 
 #ifdef _WIN32
     g_foregroundProfileSyncReceiver = reinterpret_cast<HWND>(winId());
+    g_foregroundSyncMainWindow = this;
     m_profileForegroundEventHook =
         SetWinEventHook(EVENT_SYSTEM_FOREGROUND,
                         EVENT_SYSTEM_FOREGROUND,
@@ -797,6 +801,9 @@ MainWindow::~MainWindow() {
     }
     if (g_foregroundProfileSyncReceiver == reinterpret_cast<HWND>(winId())) {
         g_foregroundProfileSyncReceiver = nullptr;
+    }
+    if (g_foregroundSyncMainWindow == this) {
+        g_foregroundSyncMainWindow = nullptr;
     }
 #endif
     stopAllSessions();
@@ -2438,13 +2445,7 @@ void MainWindow::showEvent(QShowEvent* event) {
     QMainWindow::showEvent(event);
     if (!m_initialForegroundSyncDone) {
         m_initialForegroundSyncDone = true;
-        QTimer::singleShot(0, this, [this]() {
-            switchToForegroundLinkedProfileIfNeeded(true);
-            syncProfileToForegroundWindow();
-            syncTargetWindowTitleToCapture();
-            reconcileRunSessionsWithForegroundGate();
-            resumeWaitingScopedTargetForegroundSessions();
-        });
+        QTimer::singleShot(0, this, &MainWindow::onForegroundWindowChanged);
     }
     if (!m_initialUpdateCheckDone) {
         m_initialUpdateCheckDone = true;
@@ -2471,10 +2472,7 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
     if (isWindowsNativeMessage(eventType)) {
         auto* msg = static_cast<MSG*>(message);
         if (msg->message == kForegroundProfileSyncMessage) {
-            switchToForegroundLinkedProfileIfNeeded(true);
-            syncProfileToForegroundWindow();
-            syncEffectiveTargetWindowTitleToCapture();
-            finishForegroundSessionGate();
+            onForegroundWindowChanged();
             *result = 0;
             return true;
         }
@@ -6787,11 +6785,25 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
     return true;
 }
 
+void MainWindow::onForegroundWindowChanged() {
+#ifdef _WIN32
+    switchToForegroundLinkedProfileIfNeeded(true);
+#endif
+    syncProfileToForegroundWindow();
+#ifdef _WIN32
+    if (!isPipbongProcessForeground()) {
+        if (!adoptForegroundLinkedCaptureIfMatched()) {
+            syncEffectiveTargetWindowTitleToCapture();
+        }
+    }
+    finishForegroundSessionGate();
+#else
+    syncEffectiveTargetWindowTitleToCapture();
+#endif
+}
+
 void MainWindow::syncProfileToForegroundWindow() {
     if (!m_profileManager || m_switchingProfile) {
-        return;
-    }
-    if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
         return;
     }
     pruneAbandonedEngines();
@@ -6827,9 +6839,22 @@ void MainWindow::syncProfileToForegroundWindow() {
     wchar_t titleBuffer[512]{};
     GetWindowTextW(hwnd, titleBuffer, 512);
     const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
-    if (foregroundTitle.isEmpty()) {
-        m_pendingDefaultProfileSwitchTimer.invalidate();
-        return;
+
+    QString targetProfileId;
+    if (!foregroundTitle.isEmpty()) {
+        targetProfileId = m_profileManager->profileIdForForegroundTitle(foregroundTitle);
+    } else {
+        targetProfileId = profileIdForForegroundHwnd(hwnd);
+        if (targetProfileId.isEmpty()) {
+            m_pendingDefaultProfileSwitchTimer.invalidate();
+            ScreenCapture::setForegroundHintWindow(hwnd);
+            healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
+            if (adoptForegroundLinkedCaptureIfMatched()) {
+                rememberProfileLinkedForeground(hwnd, foregroundTitle);
+                finishForegroundSessionGate();
+            }
+            return;
+        }
     }
 
     if (WorkflowRunProfiler::isEnabled()
@@ -6839,7 +6864,9 @@ void MainWindow::syncProfileToForegroundWindow() {
         WorkflowRunProfiler::recordForegroundChange(foregroundTitle, QStringLiteral("sync"));
     }
 
-    const QString targetProfileId = m_profileManager->profileIdForForegroundTitle(foregroundTitle);
+    if (targetProfileId.isEmpty()) {
+        targetProfileId = m_profileManager->defaultProfileId();
+    }
     if (targetProfileId != m_profileManager->defaultProfileId()) {
         m_lastLinkedForegroundProfileId = targetProfileId;
     }
@@ -7464,11 +7491,49 @@ QString MainWindow::foregroundProfileIdForActiveWindow() const {
     wchar_t titleBuffer[512]{};
     GetWindowTextW(foregroundHwnd, titleBuffer, 512);
     const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
-    if (foregroundTitle.isEmpty()) {
+    if (!foregroundTitle.isEmpty()) {
+        return m_profileManager->profileIdForForegroundTitle(foregroundTitle);
+    }
+    return profileIdForForegroundHwnd(foregroundHwnd);
+#else
+    return {};
+#endif
+}
+
+QString MainWindow::profileIdForForegroundHwnd(HWND hwnd) const {
+#ifdef _WIN32
+    if (!hwnd || !IsWindow(hwnd) || !m_profileManager) {
         return {};
     }
-    return m_profileManager->profileIdForForegroundTitle(foregroundTitle);
+    ScreenCapture::TargetWindowInfo info;
+    if (!ScreenCapture::queryWindowInfo(hwnd, info) || info.processPath.empty()) {
+        return {};
+    }
+    const QString processPath = QString::fromStdWString(info.processPath);
+    QString bestId;
+    int bestScore = 0;
+    for (const ProfileManager::Profile& profile : m_profileManager->profiles()) {
+        if (m_profileManager->isDefaultProfile(profile.id)) {
+            continue;
+        }
+        const QString mainProc = m_profileManager->linkedTargetProcessPath(profile.id);
+        const QString subProc = m_profileManager->subLinkedTargetProcessPath(profile.id);
+        const auto scoreFor = [&](const QString& proc, const QString& binding) -> int {
+            if (proc.isEmpty() || processPath.compare(proc, Qt::CaseInsensitive) != 0) {
+                return 0;
+            }
+            return binding.isEmpty() ? 1 : static_cast<int>(binding.length());
+        };
+        const int score = qMax(scoreFor(mainProc, profile.targetWindowTitle),
+                               scoreFor(subProc, profile.subTargetWindowTitle));
+        if (score > bestScore) {
+            bestScore = score;
+            bestId = profile.id;
+        }
+    }
+    return bestId;
 #else
+    Q_UNUSED(hwnd);
     return {};
 #endif
 }
@@ -7583,11 +7648,11 @@ bool MainWindow::switchToForegroundLinkedProfileIfNeeded(bool forceImmediate) {
     wchar_t titleBuffer[512]{};
     GetWindowTextW(hwnd, titleBuffer, 512);
     const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
-    if (foregroundTitle.isEmpty()) {
-        return false;
-    }
 
-    const QString targetProfileId = m_profileManager->profileIdForForegroundTitle(foregroundTitle);
+    const QString targetProfileId = !foregroundTitle.isEmpty()
+                                        ? m_profileManager->profileIdForForegroundTitle(
+                                              foregroundTitle)
+                                        : profileIdForForegroundHwnd(hwnd);
     if (targetProfileId.isEmpty() || m_profileManager->isDefaultProfile(targetProfileId)) {
         return false;
     }
@@ -8109,6 +8174,27 @@ void MainWindow::healLinkedTargetProcessPathFromForeground(HWND hwnd, const QStr
         return;
     }
     if (!subBinding.isEmpty() && foregroundTitle.contains(subBinding, Qt::CaseInsensitive)) {
+        const QString storedPath = m_profileManager->subLinkedTargetProcessPath(profileId);
+        if (storedPath.compare(processPath, Qt::CaseInsensitive) != 0) {
+            m_profileManager->updateProfileSubTargetBinding(profileId, subBinding, processPath);
+            scheduleAutoSave();
+        }
+        return;
+    }
+
+    const QString mainProc = m_profileManager->linkedTargetProcessPath(profileId);
+    const QString subProc = m_profileManager->subLinkedTargetProcessPath(profileId);
+    if (!mainBinding.isEmpty() && !mainProc.isEmpty()
+        && processPath.compare(mainProc, Qt::CaseInsensitive) == 0) {
+        const QString storedPath = m_profileManager->linkedTargetProcessPath(profileId);
+        if (storedPath.compare(processPath, Qt::CaseInsensitive) != 0) {
+            m_profileManager->updateProfileTargetBinding(profileId, mainBinding, processPath);
+            scheduleAutoSave();
+        }
+        return;
+    }
+    if (!subBinding.isEmpty() && !subProc.isEmpty()
+        && processPath.compare(subProc, Qt::CaseInsensitive) == 0) {
         const QString storedPath = m_profileManager->subLinkedTargetProcessPath(profileId);
         if (storedPath.compare(processPath, Qt::CaseInsensitive) != 0) {
             m_profileManager->updateProfileSubTargetBinding(profileId, subBinding, processPath);
