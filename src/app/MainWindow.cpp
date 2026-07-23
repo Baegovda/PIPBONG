@@ -428,6 +428,86 @@ void clampMainVerticalSplitterSizesImpl(QSplitter* splitter) {
     splitter->setSizes({topSize, bottomSize});
 }
 
+#if defined(Q_OS_WIN)
+namespace {
+
+bool isWindowsNativeMessage(const QByteArray& eventType) {
+    return eventType == "windows_generic_MSG" || eventType == "windows_dispatch_MSG";
+}
+
+bool framelessResizeHitTest(const MSG* msg, const QWidget* window, qintptr* result) {
+    if (!msg || !window || window->isMaximized()) {
+        return false;
+    }
+
+    const int border = UiResizeHandle::kWindowResizeBorderPx;
+    const POINT pt = {GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam)};
+    RECT rect{};
+    GetWindowRect(msg->hwnd, &rect);
+
+    const bool canResizeWidth = window->minimumWidth() < window->maximumWidth();
+    const bool canResizeHeight = window->minimumHeight() < window->maximumHeight();
+    const bool atLeft = pt.x >= rect.left && pt.x < rect.left + border;
+    const bool atRight = pt.x < rect.right && pt.x >= rect.right - border;
+    const bool atTop = pt.y >= rect.top && pt.y < rect.top + border;
+    const bool atBottom = pt.y < rect.bottom && pt.y >= rect.bottom - border;
+
+    if (canResizeWidth && canResizeHeight && atTop && atLeft) {
+        *result = HTTOPLEFT;
+        return true;
+    }
+    if (canResizeWidth && canResizeHeight && atTop && atRight) {
+        *result = HTTOPRIGHT;
+        return true;
+    }
+    if (canResizeWidth && canResizeHeight && atBottom && atLeft) {
+        *result = HTBOTTOMLEFT;
+        return true;
+    }
+    if (canResizeWidth && canResizeHeight && atBottom && atRight) {
+        *result = HTBOTTOMRIGHT;
+        return true;
+    }
+    if (canResizeWidth && atLeft) {
+        *result = HTLEFT;
+        return true;
+    }
+    if (canResizeWidth && atRight) {
+        *result = HTRIGHT;
+        return true;
+    }
+    if (canResizeHeight && atTop) {
+        *result = HTTOP;
+        return true;
+    }
+    if (canResizeHeight && atBottom) {
+        *result = HTBOTTOM;
+        return true;
+    }
+    return false;
+}
+
+void ensureFramelessResizeFrame(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    LONG style = GetWindowLongW(hwnd, GWL_STYLE);
+    if ((style & WS_THICKFRAME) != 0) {
+        return;
+    }
+    SetWindowLongW(hwnd, GWL_STYLE, style | WS_THICKFRAME);
+    SetWindowPos(hwnd,
+                 nullptr,
+                 0,
+                 0,
+                 0,
+                 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+}
+
+} // namespace
+#endif
+
 QIcon iconForProcessPath(const std::wstring& processPath) {
     if (processPath.empty()) {
         return {};
@@ -2374,6 +2454,7 @@ void MainWindow::showEvent(QShowEvent* event) {
 #ifdef _WIN32
     const HWND hwnd = reinterpret_cast<HWND>(winId());
     if (hwnd && IsWindow(hwnd)) {
+        ensureFramelessResizeFrame(hwnd);
         const DWM_WINDOW_CORNER_PREFERENCE cornerPreference = DWMWCP_ROUND;
         DwmSetWindowAttribute(hwnd,
                               DWMWA_WINDOW_CORNER_PREFERENCE,
@@ -2388,7 +2469,7 @@ void MainWindow::showEvent(QShowEvent* event) {
 
 #if defined(Q_OS_WIN)
 bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result) {
-    if (eventType == "windows_generic_MSG") {
+    if (isWindowsNativeMessage(eventType)) {
         auto* msg = static_cast<MSG*>(message);
         if (msg->message == kForegroundProfileSyncMessage) {
             switchToForegroundLinkedProfileIfNeeded(true);
@@ -2398,51 +2479,9 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr
             *result = 0;
             return true;
         }
-        if (msg->message == WM_NCHITTEST && !isMaximized()) {
-            const int border = UiResizeHandle::kWindowResizeBorderPx;
-            const POINT pt = {GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam)};
-            RECT rect{};
-            GetWindowRect(msg->hwnd, &rect);
-
-            const bool canResizeWidth = minimumWidth() < maximumWidth();
-            const bool canResizeHeight = minimumHeight() < maximumHeight();
-            const bool atLeft = pt.x >= rect.left && pt.x < rect.left + border;
-            const bool atRight = pt.x < rect.right && pt.x >= rect.right - border;
-            const bool atTop = pt.y >= rect.top && pt.y < rect.top + border;
-            const bool atBottom = pt.y < rect.bottom && pt.y >= rect.bottom - border;
-
-            if (canResizeWidth && canResizeHeight && atTop && atLeft) {
-                *result = HTTOPLEFT;
-                return true;
-            }
-            if (canResizeWidth && canResizeHeight && atTop && atRight) {
-                *result = HTTOPRIGHT;
-                return true;
-            }
-            if (canResizeWidth && canResizeHeight && atBottom && atLeft) {
-                *result = HTBOTTOMLEFT;
-                return true;
-            }
-            if (canResizeWidth && canResizeHeight && atBottom && atRight) {
-                *result = HTBOTTOMRIGHT;
-                return true;
-            }
-            if (canResizeWidth && atLeft) {
-                *result = HTLEFT;
-                return true;
-            }
-            if (canResizeWidth && atRight) {
-                *result = HTRIGHT;
-                return true;
-            }
-            if (canResizeHeight && atTop) {
-                *result = HTTOP;
-                return true;
-            }
-            if (canResizeHeight && atBottom) {
-                *result = HTBOTTOM;
-                return true;
-            }
+        if (msg->message == WM_NCHITTEST
+            && framelessResizeHitTest(msg, this, result)) {
+            return true;
         }
     }
     return QMainWindow::nativeEvent(eventType, message, result);

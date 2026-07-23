@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.281` (from `project(PIPBONG VERSION 0.8.281)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.282` (from `project(PIPBONG VERSION 0.8.282)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.282] - 2026-07-23
+
+### Fixed
+
+- Frameless main window edge resize: `WM_NCHITTEST` now handles both `windows_generic_MSG` and `windows_dispatch_MSG`; restore `WS_THICKFRAME` on first show so border drag resize works on Windows (`MainWindow`).
+- Splitter pane drag resize (profile / feature list / workflow / log / target / library / block-list splits): global stylesheet now sets explicit `QSplitter::handle` width/height (hover-only rule had collapsed handles and ignored `setHandleWidth`) (`UiHoverFeedback`, `UiResizeHandle`).
 
 ## [0.8.281] - 2026-07-23
 

@@ -36,6 +36,7 @@ inline void configureSplitter(QSplitter* splitter) {
     }
     splitter->setHandleWidth(kSplitterHandleWidthPx);
     splitter->setChildrenCollapsible(false);
+    splitter->setOpaqueResize(true);
 }
 
 inline bool isWithinHorizontalGrab(int pos, int dividerPos) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/UiResizeHandle.h"
+
 #include <QColor>
 #include <QPalette>
 #include <QString>
@@ -90,7 +92,19 @@ inline QString programWideStyleSheet() {
         "QHeaderView::section:hover {"
         "  background-color: palette(light);"
         "}"
-        // Splitter handles
+        // Splitter handles — base width/height required when a global stylesheet is set;
+        // :hover-only rules collapse handles and break drag resize (setHandleWidth ignored).
+        "QSplitter::handle {"
+        "  background-color: palette(mid);"
+        "  margin: 0;"
+        "  padding: 0;"
+        "}"
+        "QSplitter::handle:horizontal {"
+        "  width: %1px;"
+        "}"
+        "QSplitter::handle:vertical {"
+        "  height: %1px;"
+        "}"
         "QSplitter::handle:hover {"
         "  background-color: palette(highlight);"
         "}"
@@ -111,7 +125,8 @@ inline QString programWideStyleSheet() {
         "  background-color: palette(button);"
         "}"
         // Dialog button box inherits QPushButton rules
-        );
+        )
+        .arg(UiResizeHandle::kSplitterHandleWidthPx);
 }
 
 } // namespace UiHoverFeedback
