@@ -38,7 +38,8 @@ public:
     void showGlobalDefaultProfile();
     void showStoredTargetBinding(const QString& title,
                                  const QString& processName,
-                                 const QString& processPath);
+                                 const QString& processPath,
+                                 bool subTarget = false);
 
 protected:
     void changeEvent(QEvent* event) override;
@@ -55,7 +56,8 @@ private:
     void refreshGlobalDefaultProfileText();
     void refreshStoredTargetBindingText(const QString& title,
                                         const QString& processName,
-                                        const QString& processPath);
+                                        const QString& processPath,
+                                        bool subTarget = false);
     void refreshVisibleDetailText();
     void updateAdaptiveLayout();
     void rebuildTitleRowLayout();
@@ -88,5 +90,6 @@ private:
     DetailLayoutDensity m_layoutDensity = DetailLayoutDensity::Comfortable;
     bool m_globalDefaultProfileMode = false;
     bool m_storedTargetBindingMode = false;
+    bool m_storedBindingSubTarget = false;
     QString m_titleFullText;
 };

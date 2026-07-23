@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.289` (from `project(PIPBONG VERSION 0.8.289)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.290` (from `project(PIPBONG VERSION 0.8.290)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.290] - 2026-07-24
+
+### Fixed
+
+- Target detail panel no longer shows the main binding as **미실행** when the sub-target window is focused or the only visible linked window: `updateTargetWindowDetails` resolves display HWND via foreground HWND/process disambiguation and visible sub-window fallback even while trigger sessions own capture (`MainWindow::resolveTargetDetailDisplayHwnd`, `TargetWindowDetailPanel` stored-binding sub badge).
 
 ## [0.8.289] - 2026-07-24
 

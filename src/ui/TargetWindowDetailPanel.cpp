@@ -364,7 +364,8 @@ void TargetWindowDetailPanel::updateThemeColors() {
     } else if (m_detailsPage->isVisible() && m_storedTargetBindingMode) {
         refreshStoredTargetBindingText(m_storedBindingTitle,
                                        m_storedBindingProcessName,
-                                       m_storedBindingProcessPath);
+                                       m_storedBindingProcessPath,
+                                       m_storedBindingSubTarget);
     } else if (m_detailsPage->isVisible() && !m_lastDetailData.hwnd.isEmpty()) {
         refreshDetailText();
     }
@@ -473,9 +474,11 @@ void TargetWindowDetailPanel::refreshGlobalDefaultProfileText() {
 
 void TargetWindowDetailPanel::showStoredTargetBinding(const QString& title,
                                                       const QString& processName,
-                                                      const QString& processPath) {
+                                                      const QString& processPath,
+                                                      bool subTarget) {
     m_globalDefaultProfileMode = false;
     m_storedTargetBindingMode = true;
+    m_storedBindingSubTarget = subTarget;
     m_lastDetailData = {};
     m_storedBindingTitle = title;
     m_storedBindingProcessName = processName;
@@ -487,7 +490,7 @@ void TargetWindowDetailPanel::showStoredTargetBinding(const QString& title,
         }
     }
 
-    refreshStoredTargetBindingText(title, processName, processPath);
+    refreshStoredTargetBindingText(title, processName, processPath, subTarget);
     updateThemeColors();
 
     QString panelTooltip = tr("저장된 연결 프로그램입니다. 현재 실행 중인 창이 감지되지 않습니다.");
@@ -499,18 +502,23 @@ void TargetWindowDetailPanel::showStoredTargetBinding(const QString& title,
 
 void TargetWindowDetailPanel::refreshStoredTargetBindingText(const QString& title,
                                                              const QString& processName,
-                                                             const QString& processPath) {
+                                                             const QString& processPath,
+                                                             bool subTarget) {
     const QPalette pal = palette();
     const QColor text = pal.color(QPalette::WindowText);
     const QColor muted = secondaryHintTextColor(pal);
-    const QColor stateColor = text.lightness() < 128 ? QColor(0xff, 0xc1, 0x07) : QColor(0xb8, 0x86, 0x0b);
+    const QColor stateColor = subTarget
+                                  ? (text.lightness() < 128 ? QColor(0x64, 0xb5, 0xf6)
+                                                            : QColor(0x1e, 0x88, 0xe5))
+                                  : (text.lightness() < 128 ? QColor(0xff, 0xc1, 0x07)
+                                                            : QColor(0xb8, 0x86, 0x0b));
 
     const QString displayTitle = title.isEmpty() ? tr("(제목 없음)") : title;
     const QString displayProcess =
         processName.isEmpty() ? tr("알 수 없음") : processName;
 
     setTitleDisplay(displayTitle);
-    m_statusLabel->setText(tr("● 미실행"));
+    m_statusLabel->setText(subTarget ? tr("● 서브 · 미실행") : tr("● 미실행"));
 
     const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
     m_statusLabel->setStyleSheet(QStringLiteral(
