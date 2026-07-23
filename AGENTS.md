@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.283` (from `project(PIPBONG VERSION 0.8.283)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.284` (from `project(PIPBONG VERSION 0.8.284)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1034,7 +1034,7 @@ Cursor rule: `.cursor/rules/drag-adjust-numeric-input.mdc`.
 | Column divider cursor + drag                                          | `UiResizeHandle::kDividerHalfWidthPx` (±10 px) — `ListColumnHeaderWidget` on feature list and workflow block list (`FeatureListPanel`, `BlockListWidget`) |
 | In-cell horizontal drag slack                                         | Same `kDividerHalfWidthPx` — e.g. ImageFind **기준/감지** threshold drag (`BlockListWidget::imageFindScoreColumnAt`) |
 | Row-height divider (list header bottom)                               | `kDividerHalfHeightPx` (bottom 10 px); drag delta via `scaleListRowHeightDragDelta` (`kListRowHeightDragPixelsPerStep` = 8); clamp via `clampListRowHeight` — feature list + workflow block list (`ListColumnHeaderWidget`) |
-| `QSplitter` handles                                                   | Always call `UiResizeHandle::configureSplitter` (12 px handle + non-collapsible panes) — also via `UiStateManager::registerSplitter` |
+| `QSplitter` handles                                                   | Always call `UiResizeHandle::configureSplitter` (18 px handle + non-collapsible panes) — also via `UiStateManager::registerSplitter` |
 | Frameless main window edges                                           | `kWindowResizeBorderPx` (10 px) — `MainWindow::nativeEvent`                                                          |
 
 **When adding a multi-pane layout:** use `QSplitter` + `configureSplitter`; persist `saveState`/`restoreState` for dialog-owned splitters (main window uses `UiStateManager`). Do not ship side-by-side or stacked resizable panes with only stretch factors and no splitter.
@@ -1329,6 +1329,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.284] - 2026-07-23
+
+### Changed
+
+- Splitter pane drag hit zone widened from 12 px to 18 px (`UiResizeHandle::kSplitterHandleWidthPx`, `configureSplitter`, global `QSplitter::handle` stylesheet in `UiHoverFeedback`).
 
 ## [0.8.283] - 2026-07-23
 
