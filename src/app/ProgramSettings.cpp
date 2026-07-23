@@ -166,7 +166,7 @@ void ProgramSettings::setLogMaxLines(int lines) {
 
 bool ProgramSettings::cursorStutterProfiling() {
     QSettings settings;
-    return settings.value(kCursorStutterProfilingKey, false).toBool();
+    return settings.value(kCursorStutterProfilingKey, true).toBool();
 }
 
 void ProgramSettings::setCursorStutterProfiling(bool enabled) {

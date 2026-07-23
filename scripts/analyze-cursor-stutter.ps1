@@ -1,20 +1,55 @@
 # Summarize cursor-stutter/latest.md for AI / human review.
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
-$logPath = Join-Path $root "cursor-stutter\latest.md"
-if (-not (Test-Path $logPath)) {
-    foreach ($rel in @("cursor-stutter\latest.md")) {
-        $alt = Join-Path (Get-Location) $rel
-        if (Test-Path $alt) { $logPath = $alt; break }
+
+function Find-CursorStutterReport {
+    param([string]$Base)
+    $candidates = @(
+        (Join-Path $Base "cursor-stutter\latest.md"),
+        (Join-Path $env:LOCALAPPDATA "PIPBONG\PIPBONG\cursor-stutter\latest.md")
+    )
+    foreach ($path in $candidates) {
+        if (Test-Path $path) { return (Resolve-Path $path).Path }
     }
+    $dir = $Base
+    for ($i = 0; $i -lt 8; $i++) {
+        $cmake = Join-Path $dir "CMakeLists.txt"
+        if (Test-Path $cmake) {
+            $p = Join-Path $dir "cursor-stutter\latest.md"
+            if (Test-Path $p) { return (Resolve-Path $p).Path }
+        }
+        $parent = Split-Path $dir -Parent
+        if (-not $parent -or $parent -eq $dir) { break }
+        $dir = $parent
+    }
+    return $null
 }
-if (-not (Test-Path $logPath)) {
-    throw "Report not found at cursor-stutter\latest.md. Enable 커서 스터터 진단, reproduce, then exit PIPBONG."
+
+$logPath = Find-CursorStutterReport -Base $root
+if (-not $logPath) {
+    $logPath = Find-CursorStutterReport -Base (Get-Location).Path
+}
+if (-not $logPath) {
+    throw @"
+Report not found. Expected:
+  <repo>\cursor-stutter\latest.md
+  or %LOCALAPPDATA%\PIPBONG\PIPBONG\cursor-stutter\latest.md
+
+Run PIPBONG (F5), reproduce cursor jump with Hold Q/W/E/R, exit app — sampler runs by default.
+"@
 }
 
 $content = Get-Content -Raw -Encoding UTF8 $logPath
 Write-Host "=== cursor-stutter report ===" -ForegroundColor Cyan
 Write-Host $logPath
+Write-Host ""
+
+if ($content -match '(?ms)^sampler_ticks:\s*(\d+)') {
+    Write-Host "sampler_ticks: $($Matches[1])" -ForegroundColor Gray
+}
+if ($content -match '(?ms)^verbose_logging:\s*(\w+)') {
+    Write-Host "verbose_logging: $($Matches[1])" -ForegroundColor Gray
+}
 Write-Host ""
 
 if ($content -match '(?ms)## Auto diagnosis\s*\r?\n(.*?)(?:\r?\n## |\z)') {
@@ -23,11 +58,11 @@ if ($content -match '(?ms)## Auto diagnosis\s*\r?\n(.*?)(?:\r?\n## |\z)') {
     Write-Host ""
 }
 
-$jumpLines = Select-String -InputObject $content -Pattern '^\| cursor_jump ' -AllMatches
-if ($jumpLines) {
-    Write-Host "Recent cursor_jump rows (last 15):" -ForegroundColor Yellow
-    $jumpLines.Matches | Select-Object -Last 15 | ForEach-Object { Write-Host $_.Line }
+$summary = Select-String -InputObject $content -Pattern '^\| (cursor_jump|micro_jump|snap_back|sampler_overrun|sampler_ticks) ' -AllMatches
+if ($summary) {
+    Write-Host "Summary counters:" -ForegroundColor Yellow
+    $summary.Matches | ForEach-Object { Write-Host $_.Line }
+    Write-Host ""
 }
 
-Write-Host ""
-Write-Host "AI: read cursor-stutter/latest.md — Auto diagnosis + set_cursor / mouse_hook_snap tables."
+Write-Host "AI: read full report at path above — Auto diagnosis + jump tables + event TSV."

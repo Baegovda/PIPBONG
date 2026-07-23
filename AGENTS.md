@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.295` (from `project(PIPBONG VERSION 0.8.295)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.296` (from `project(PIPBONG VERSION 0.8.296)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1142,21 +1142,20 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 ### 8.14 Cursor stutter profiling (mandatory — mouse jump / QWER diagnosis)
 
-**Status:** Added 2026-07 (v0.8.295). Replaces app-wide `WorkflowRunProfiler` / `app-profile/` (removed v0.8.295).
+**Status:** Strengthened 2026-07 (v0.8.296). Replaces app-wide `WorkflowRunProfiler` / `app-profile/` (removed v0.8.295).
 
 | Layer | Role |
 | ----- | ---- |
-| `CursorStutterProfiler` | Background 4 ms `GetCursorPos` sampler; records jumps ≥8 px, `SetCursorPos` callers, `ClipCursor`, mouse-lock hook snaps, keyboard-hook duration, physical/synthetic QWER |
-| Enable | `ProgramSettings` `program/cursorStutterProfiling` or env `PIPBONG_CURSOR_STUTTER_PROFILE=1` |
-| Output | **Repo root** `cursor-stutter/latest.md` only (written on app shutdown) |
-| `MouseCenterLock` | `mouse_hook_snap` when WH_MOUSE_LL swallows `WM_MOUSEMOVE` and snaps cursor |
-| `InputSimulator` | `set_cursor` on every `SetCursorPos` path (click, settle, move) |
-| `HotkeyManager` | `keyboard_hook` with handler duration; flags slow hooks >1 ms |
-| `UserInputInterruptMonitor` | `physical_key` for non-hotkey-gated keyboard input |
+| `CursorStutterProfiler` | **Always-on** 4 ms `GetCursorPos` sampler; jumps ≥8 px, micro-jumps 3–7 px, snap-back, sampler overrun; verbose: `SetCursorPos`, `ClipCursor`, hook snaps, keyboard-hook timing, QWER keys |
+| Verbose enable | `program/cursorStutterProfiling` (**default ON**) or env `PIPBONG_CURSOR_STUTTER_PROFILE=1` |
+| `hold_feature` | Hold-mode feature name (`Q`/`W`/`E`/`R` LOL profile) on hold_start/hold_end (`MainWindow`) |
+| Output | **Repo** `cursor-stutter/latest.md` + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/cursor-stutter/latest.md`** fallback |
+| Flush | App shutdown; periodic 30 s when verbose; Hold Q/W/E/R `hold_end` |
+| Repo root | Walk up from exe for `CMakeLists.txt` (`PIPBONG`); env `PIPBONG_REPO_ROOT` |
 
-**User → AI workflow:** Enable **커서 스터터 진단** → reproduce QWER spam / cursor jump → exit → **`cursor-stutter/latest.md`** → read **Auto diagnosis** (do **not** ask user for workflow blocks).
+**User → AI workflow:** Run PIPBONG → reproduce Hold Q/W/E/R or cursor jump → exit (or release Hold) → read **`cursor-stutter/latest.md`** — confirm `sampler_ticks` > 0, then **Auto diagnosis** (do **not** ask user for workflow blocks).
 
-**Likely stutter sources (ranked):** `MouseCenterLock` hook snap during physical mouse move; `InputSimulator` `SetCursorPos` during clicks; early-loop mouse lock refresh in `MainWindow`.
+**Likely stutter sources (ranked):** `MouseCenterLock` hook snap; `InputSimulator` `SetCursorPos`; sampler thread overrun during slow hooks.
 
 Cursor rule: `.cursor/rules/cursor-stutter-profiling.mdc`.
 
@@ -1456,6 +1455,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.296] - 2026-07-24
+
+### Changed
+
+- **`CursorStutterProfiler`**: sampler **always runs** (jump detection no longer gated on setting); default **커서 스터터 진단** ON; detects micro-jumps (3–7 px), snap-back, sampler overrun; `hold_feature` events for Hold mode feature names; reports written to repo **`cursor-stutter/latest.md`** and **`%LOCALAPPDATA%/PIPBONG/PIPBONG/cursor-stutter/latest.md`**; periodic 30 s flush + Hold Q/W/E/R end flush; repo root walk-up + `qWarning` on write failure (`CursorStutterProfiler`, `MainWindow`, `ProgramSettings`, `scripts/analyze-cursor-stutter.ps1`, AGENTS.md §8.14).
 
 ## [0.8.295] - 2026-07-24
 

@@ -5633,6 +5633,7 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
         m_runSessions.erase(id);
     }
 
+    CursorStutterProfiler::recordHoldFeature(QString::fromStdString(feature->name()), "hold_start");
     startFeatureRun(feature, true);
 }
 
@@ -5653,6 +5654,14 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     session->repeatSession = false;
 
     Feature* feature = m_project ? m_project->featureById(id) : nullptr;
+    if (feature) {
+        const QString featureName = QString::fromStdString(feature->name());
+        CursorStutterProfiler::recordHoldFeature(featureName, "hold_end");
+        if (featureName == QLatin1String("Q") || featureName == QLatin1String("W")
+            || featureName == QLatin1String("E") || featureName == QLatin1String("R")) {
+            CursorStutterProfiler::flushReport(QStringLiteral("hold_end"));
+        }
+    }
     releaseHoldHotkeyInputToTarget(*session, feature);
 
     if (session->engine && session->engine->isRunning()) {

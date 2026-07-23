@@ -7,6 +7,10 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QLoggingCategory>
+#include <QStandardPaths>
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -23,20 +27,29 @@
 #include <windows.h>
 #endif
 
+Q_LOGGING_CATEGORY(lcCursorStutter, "pipbong.cursor_stutter")
+
 namespace {
 
 constexpr int kSamplerIntervalMs = 4;
 constexpr int kJumpThresholdPx = 8;
+constexpr int kMicroJumpThresholdPx = 3;
+constexpr int kSnapBackWindowUs = 50000;
+constexpr int kSnapBackMinPx = 4;
+constexpr qint64 kSamplerOverrunUs = 12000;
+constexpr qint64 kPeriodicFlushUs = 30'000'000;
 constexpr int kMaxEvents = 120000;
-constexpr int kMaxJumpRows = 80;
+constexpr int kMaxJumpRows = 120;
 
-bool g_enabled = false;
+bool g_verbose = false;
 std::mutex g_mutex;
 bool g_sampling = false;
 bool g_hasLastSample = false;
 int g_lastSampleX = 0;
 int g_lastSampleY = 0;
 qint64 g_sessionStartUs = 0;
+qint64 g_lastPeriodicFlushUs = 0;
+qint64 g_samplerTickCount = 0;
 
 std::thread g_samplerThread;
 std::atomic<bool> g_stopSampler{false};
@@ -60,10 +73,31 @@ std::vector<CounterRow> g_setCursorByCaller;
 std::vector<CounterRow> g_clipByCaller;
 qint64 g_mouseHookSnapCount = 0;
 qint64 g_jumpCount = 0;
+qint64 g_microJumpCount = 0;
+qint64 g_snapBackCount = 0;
+qint64 g_samplerOverrunCount = 0;
 qint64 g_qwerPhysicalDown = 0;
 qint64 g_qwerSynthetic = 0;
 qint64 g_jumpsNearQwerMs = 0;
+qint64 g_jumpsNearHoldFeature = 0;
 qint64 g_slowKeyboardHookCount = 0;
+qint64 g_holdFeatureStartCount = 0;
+
+struct RecentMove {
+    qint64 relUs = 0;
+    int fromX = 0;
+    int fromY = 0;
+    int toX = 0;
+    int toY = 0;
+};
+
+RecentMove g_lastMove{};
+
+bool isAlwaysRecordedKind(const char* kind) {
+    return std::strcmp(kind, "cursor_jump") == 0 || std::strcmp(kind, "micro_jump") == 0
+           || std::strcmp(kind, "snap_back") == 0 || std::strcmp(kind, "sampler_overrun") == 0
+           || std::strcmp(kind, "hold_feature") == 0;
+}
 
 bool isQwerVirtualKey(int vk) {
     switch (vk) {
@@ -92,6 +126,11 @@ const char* qwerLabel(int vk) {
     }
 }
 
+bool isLolHoldFeatureName(const QString& name) {
+    return name == QLatin1String("Q") || name == QLatin1String("W") || name == QLatin1String("E")
+           || name == QLatin1String("R");
+}
+
 qint64 steadyUs() {
     return std::chrono::duration_cast<std::chrono::microseconds>(
                std::chrono::steady_clock::now().time_since_epoch())
@@ -115,8 +154,11 @@ void bumpCounter(std::vector<CounterRow>& table, const QString& key) {
     table.push_back({key, 1});
 }
 
-void pushEventLocked(const char* kind, const QString& detail, qint64 durationUs = -1, const char* threadTag = "main") {
-    if (!g_enabled) {
+void pushEventLocked(const char* kind,
+                     const QString& detail,
+                     qint64 durationUs = -1,
+                     const char* threadTag = "main") {
+    if (!g_verbose && !isAlwaysRecordedKind(kind)) {
         return;
     }
     if (static_cast<int>(g_events.size()) >= kMaxEvents) {
@@ -125,7 +167,7 @@ void pushEventLocked(const char* kind, const QString& detail, qint64 durationUs 
     g_events.push_back({relUsLocked(), threadTag, kind, detail, durationUs});
 }
 
-bool envEnabled() {
+bool envVerboseEnabled() {
 #ifdef _WIN32
     wchar_t buffer[16]{};
     if (GetEnvironmentVariableW(L"PIPBONG_CURSOR_STUTTER_PROFILE", buffer, 16) > 0) {
@@ -135,14 +177,38 @@ bool envEnabled() {
     return false;
 }
 
-QString repoRootDirectory() {
+QString findRepoRootDirectory() {
 #ifdef _WIN32
     wchar_t buffer[MAX_PATH]{};
     if (GetEnvironmentVariableW(L"PIPBONG_REPO_ROOT", buffer, MAX_PATH) > 0) {
         return QDir(QString::fromWCharArray(buffer)).absolutePath();
     }
 #endif
-    return QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../.."));
+    QDir dir(QCoreApplication::applicationDirPath());
+    for (int depth = 0; depth < 8; ++depth) {
+        const QString cmakePath = dir.absoluteFilePath(QStringLiteral("CMakeLists.txt"));
+        if (QFile::exists(cmakePath)) {
+            QFile cmakeFile(cmakePath);
+            if (cmakeFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QByteArray head = cmakeFile.read(256);
+                if (head.contains("PIPBONG")) {
+                    return dir.absolutePath();
+                }
+            }
+        }
+        if (!dir.cdUp()) {
+            break;
+        }
+    }
+    return QString();
+}
+
+QString appDataReportDirectory() {
+    QString base = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (base.isEmpty()) {
+        base = QDir::homePath() + QStringLiteral("/AppData/Local/PIPBONG/PIPBONG");
+    }
+    return QDir(base).absoluteFilePath(QStringLiteral("cursor-stutter"));
 }
 
 QString lockStateDetail() {
@@ -159,8 +225,86 @@ QString lockStateDetail() {
 #endif
 }
 
-void noteJumpLocked(int fromX, int fromY, int toX, int toY, int distancePx, const char* source) {
-    ++g_jumpCount;
+void correlateJumpWithRecentEventsLocked() {
+    const qint64 windowStart = relUsLocked() - 100000;
+    bool nearQwer = false;
+    bool nearHold = false;
+    for (auto it = g_events.rbegin(); it != g_events.rend(); ++it) {
+        if (it->relUs < windowStart) {
+            break;
+        }
+        if (std::strcmp(it->kind, "physical_key") == 0 || std::strcmp(it->kind, "synthetic_key") == 0) {
+            if (it->detail == QLatin1String("Q") || it->detail == QLatin1String("W")
+                || it->detail == QLatin1String("E") || it->detail == QLatin1String("R")
+                || it->detail.contains(QLatin1String("qwer="))) {
+                nearQwer = true;
+            }
+        }
+        if (std::strcmp(it->kind, "hold_feature") == 0) {
+            const QStringList parts = it->detail.split(QLatin1Char(' '));
+            if (!parts.isEmpty() && isLolHoldFeatureName(parts.front())) {
+                nearHold = true;
+            }
+        }
+        if (std::strcmp(it->kind, "set_cursor") == 0 || std::strcmp(it->kind, "mouse_hook_snap") == 0) {
+            nearHold = true;
+        }
+    }
+    if (nearQwer) {
+        ++g_jumpsNearQwerMs;
+    }
+    if (nearHold) {
+        ++g_jumpsNearHoldFeature;
+    }
+}
+
+void maybeDetectSnapBackLocked(int fromX, int fromY, int toX, int toY, int distancePx) {
+    if (!g_lastMove.relUs) {
+        return;
+    }
+    const qint64 now = relUsLocked();
+    if (now - g_lastMove.relUs > kSnapBackWindowUs) {
+        return;
+    }
+    const int backDx = toX - g_lastMove.fromX;
+    const int backDy = toY - g_lastMove.fromY;
+    const int backDist =
+        static_cast<int>(std::lround(std::sqrt(static_cast<double>(backDx * backDx + backDy * backDy))));
+    if (backDist < kSnapBackMinPx) {
+        return;
+    }
+    const int priorDx = g_lastMove.toX - g_lastMove.fromX;
+    const int priorDy = g_lastMove.toY - g_lastMove.fromY;
+    if (priorDx * backDx < 0 || priorDy * backDy < 0) {
+        ++g_snapBackCount;
+        pushEventLocked("snap_back",
+                        QStringLiteral("A=(%1,%2) B=(%3,%4) C=(%5,%6) dist=%7px %8")
+                            .arg(g_lastMove.fromX)
+                            .arg(g_lastMove.fromY)
+                            .arg(g_lastMove.toX)
+                            .arg(g_lastMove.toY)
+                            .arg(toX)
+                            .arg(toY)
+                            .arg(distancePx)
+                            .arg(lockStateDetail()),
+                        -1,
+                        "sampler");
+    }
+}
+
+void noteJumpLocked(int fromX,
+                    int fromY,
+                    int toX,
+                    int toY,
+                    int distancePx,
+                    const char* source,
+                    bool micro) {
+    if (micro) {
+        ++g_microJumpCount;
+    } else {
+        ++g_jumpCount;
+    }
+    const char* kind = micro ? "micro_jump" : "cursor_jump";
     const QString detail = QStringLiteral("%1 from=(%2,%3) to=(%4,%5) dist=%6px %7")
                                .arg(QString::fromUtf8(source))
                                .arg(fromX)
@@ -169,23 +313,20 @@ void noteJumpLocked(int fromX, int fromY, int toX, int toY, int distancePx, cons
                                .arg(toY)
                                .arg(distancePx)
                                .arg(lockStateDetail());
-    pushEventLocked("cursor_jump", detail, -1, "sampler");
-
-    const qint64 windowStart = relUsLocked() - 100000;
-    for (auto it = g_events.rbegin(); it != g_events.rend(); ++it) {
-        if (it->relUs < windowStart) {
-            break;
-        }
-        if (std::strcmp(it->kind, "physical_key") == 0 || std::strcmp(it->kind, "synthetic_key") == 0) {
-            if (it->detail.contains(QLatin1String("vk=Q"))
-                || it->detail.contains(QLatin1String("vk=W"))
-                || it->detail.contains(QLatin1String("vk=E"))
-                || it->detail.contains(QLatin1String("vk=R"))) {
-                ++g_jumpsNearQwerMs;
-                break;
-            }
-        }
+    pushEventLocked(kind, detail, -1, "sampler");
+    if (!micro) {
+        correlateJumpWithRecentEventsLocked();
+        maybeDetectSnapBackLocked(fromX, fromY, toX, toY, distancePx);
     }
+    g_lastMove = {relUsLocked(), fromX, fromY, toX, toY};
+}
+
+void noteSamplerOverrunLocked(qint64 gapUs) {
+    ++g_samplerOverrunCount;
+    pushEventLocked("sampler_overrun",
+                    QStringLiteral("gap_us=%1 expected_ms=%2").arg(gapUs).arg(kSamplerIntervalMs),
+                    gapUs,
+                    "sampler");
 }
 
 void sampleCursorPosition() {
@@ -195,15 +336,15 @@ void sampleCursorPosition() {
         return;
     }
     std::lock_guard<std::mutex> lock(g_mutex);
-    if (!g_enabled) {
-        return;
-    }
+    ++g_samplerTickCount;
     if (g_hasLastSample) {
         const int dx = pt.x - g_lastSampleX;
         const int dy = pt.y - g_lastSampleY;
         const int dist = static_cast<int>(std::lround(std::sqrt(static_cast<double>(dx * dx + dy * dy))));
         if (dist >= kJumpThresholdPx) {
-            noteJumpLocked(g_lastSampleX, g_lastSampleY, pt.x, pt.y, dist, "sampler");
+            noteJumpLocked(g_lastSampleX, g_lastSampleY, pt.x, pt.y, dist, "sampler", false);
+        } else if (dist >= kMicroJumpThresholdPx) {
+            noteJumpLocked(g_lastSampleX, g_lastSampleY, pt.x, pt.y, dist, "sampler", true);
         }
     }
     g_lastSampleX = pt.x;
@@ -214,30 +355,25 @@ void sampleCursorPosition() {
 #endif
 }
 
-void samplerLoop() {
-    while (!g_stopSampler.load(std::memory_order_relaxed)) {
-        sampleCursorPosition();
-        std::this_thread::sleep_for(std::chrono::milliseconds(kSamplerIntervalMs));
-    }
-}
-
-QString formatMs(qint64 us) {
-    return QString::number(static_cast<double>(us) / 1000.0, 'f', 3);
-}
-
 QString buildMarkdownReport(const QString& endReason) {
     std::lock_guard<std::mutex> lock(g_mutex);
 
     QStringList lines;
     lines << QStringLiteral("---");
     lines << QStringLiteral("format: pipbong-cursor-stutter");
-    lines << QStringLiteral("format_version: 1");
+    lines << QStringLiteral("format_version: 2");
     lines << QStringLiteral("end_reason: %1").arg(endReason);
     lines << QStringLiteral("session_end: %1")
                  .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs));
+    lines << QStringLiteral("sampler_running: %1").arg(g_sampling ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("verbose_logging: %1").arg(g_verbose ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("sampler_ticks: %1").arg(g_samplerTickCount);
     lines << QStringLiteral("jump_threshold_px: %1").arg(kJumpThresholdPx);
+    lines << QStringLiteral("micro_jump_threshold_px: %1").arg(kMicroJumpThresholdPx);
     lines << QStringLiteral("sampler_interval_ms: %1").arg(kSamplerIntervalMs);
     lines << QStringLiteral("events_recorded: %1").arg(g_events.size());
+    const QStringList paths = CursorStutterProfiler::allReportPaths();
+    lines << QStringLiteral("report_paths: %1").arg(paths.join(QLatin1String("; ")));
     lines << QStringLiteral("---");
     lines << QString();
     lines << QStringLiteral("# Cursor stutter report");
@@ -245,42 +381,70 @@ QString buildMarkdownReport(const QString& endReason) {
 
     lines << QStringLiteral("## Auto diagnosis");
     lines << QString();
-    if (g_jumpCount == 0) {
-        lines << QStringLiteral("- **커서 점프**: 샘플러 기준 %1 px 이상 이동 이벤트 없음 — 재현 중 프로파일링이 켜져 있었는지 확인.")
-                    .arg(kJumpThresholdPx);
+    if (g_samplerTickCount == 0) {
+        lines << QStringLiteral(
+            "- **샘플러 미동작**: 백그라운드 커서 샘플러가 한 번도 돌지 않았습니다 — 빌드/실행 경로를 확인하세요.");
+    } else if (g_jumpCount == 0 && g_microJumpCount == 0 && g_snapBackCount == 0) {
+        lines << QStringLiteral(
+            "- **커서 점프**: 샘플러 %1회 틱 기준 ≥%2 px 점프·≥%3 px 미세 점프·snap-back 없음 — 재현 구간에 앱이 실행 중이었는지 확인.")
+                    .arg(g_samplerTickCount)
+                    .arg(kJumpThresholdPx)
+                    .arg(kMicroJumpThresholdPx);
     } else {
-        lines << QStringLiteral("- **커서 점프**: %1회 (4 ms 샘플, ≥%2 px)")
-                    .arg(g_jumpCount)
-                    .arg(kJumpThresholdPx);
+        if (g_jumpCount > 0) {
+            lines << QStringLiteral("- **커서 점프 (≥%1 px)**: %2회").arg(kJumpThresholdPx).arg(g_jumpCount);
+        }
+        if (g_microJumpCount > 0) {
+            lines << QStringLiteral("- **미세 점프 (%1–%2 px)**: %3회")
+                        .arg(kMicroJumpThresholdPx)
+                        .arg(kJumpThresholdPx - 1)
+                        .arg(g_microJumpCount);
+        }
+        if (g_snapBackCount > 0) {
+            lines << QStringLiteral(
+                "- **스냅백 (왕복 튐)**: %1회 — SetCursorPos·마우스 잠금 훅·게임 클램프 충돌 의심")
+                        .arg(g_snapBackCount);
+        }
+        if (g_jumpsNearHoldFeature > 0) {
+            lines << QStringLiteral(
+                "- **Hold 기능 상관**: 점프 %1회가 직전 100 ms 내 Q/W/E/R Hold 기능·SetCursorPos·훅 스냅과 겹침")
+                        .arg(g_jumpsNearHoldFeature);
+        }
         if (g_jumpsNearQwerMs > 0) {
             lines << QStringLiteral(
-                "- **QWER 상관**: 점프 %1회가 직전 100 ms 내 Q/W/E/R 물리·합성 키 이벤트와 겹침 — 키 입력 경로·훅·마우스 잠금 의심")
+                "- **QWER 키 상관**: 점프 %1회가 직전 100 ms 내 Q/W/E/R 물리·합성 키와 겹침")
                         .arg(g_jumpsNearQwerMs);
         }
     }
+    if (g_samplerOverrunCount > 0) {
+        lines << QStringLiteral(
+            "- **샘플러 지연**: %1회 >%2 ms 간격 — UI/훅 스레드 정지로 커서 튐이 샘플링에 누락됐을 수 있음")
+                    .arg(g_samplerOverrunCount)
+                    .arg(kSamplerOverrunUs / 1000);
+    }
     if (g_mouseHookSnapCount > 0) {
         lines << QStringLiteral(
-            "- **마우스 잠금 훅**: `mouse_hook_snap` %1회 — `MouseCenterLock` WH_MOUSE_LL 이 물리 이동을 삼키고 SetCursorPos 로 되돌림")
+            "- **마우스 잠금 훅**: `mouse_hook_snap` %1회 — MouseCenterLock 이 물리 이동을 되돌림")
                     .arg(g_mouseHookSnapCount);
     }
     if (!g_setCursorByCaller.empty()) {
         std::sort(g_setCursorByCaller.begin(),
                   g_setCursorByCaller.end(),
                   [](const CounterRow& a, const CounterRow& b) { return a.count > b.count; });
-        lines << QStringLiteral("- **SetCursorPos 호출**: 최다 `%1` (%2회) — 클릭/이동 주입 또는 잠금 갱신")
+        lines << QStringLiteral("- **SetCursorPos**: 최다 `%1` (%2회)")
                     .arg(g_setCursorByCaller.front().key)
                     .arg(g_setCursorByCaller.front().count);
     }
     if (g_slowKeyboardHookCount > 0) {
-        lines << QStringLiteral(
-            "- **느린 키보드 훅**: %1회 >1 ms — HotkeyManager LL 훅이 입력 지연을 유발할 수 있음")
-                    .arg(g_slowKeyboardHookCount);
+        lines << QStringLiteral("- **느린 키보드 훅**: %1회 >1 ms").arg(g_slowKeyboardHookCount);
     }
-    lines << QStringLiteral("- **물리 QWER**: %1회 · **합성 QWER**: %2회")
+    lines << QStringLiteral("- **Hold 기능 시작**: %1회 · **물리 QWER**: %2 · **합성 QWER**: %3")
+                .arg(g_holdFeatureStartCount)
                 .arg(g_qwerPhysicalDown)
                 .arg(g_qwerSynthetic);
     lines << QString();
-    lines << QStringLiteral("**AI**: `cursor_jump` / `set_cursor` / `mouse_hook_snap` / `keyboard_hook` 이벤트만으로 원인 분석. 사용자에게 워크플로 구성을 다시 묻지 마세요.");
+    lines << QStringLiteral(
+        "**AI**: `cursor_jump` / `micro_jump` / `snap_back` / `sampler_overrun` / `hold_feature` / `set_cursor` / `mouse_hook_snap` 로 원인 분석. 워크플로 구성을 사용자에게 다시 묻지 마세요.");
     lines << QString();
 
     auto emitCounterTable = [&](const char* title, const std::vector<CounterRow>& rows) {
@@ -297,7 +461,9 @@ QString buildMarkdownReport(const QString& endReason) {
         lines << QStringLiteral("| --- | ---: |");
         const int limit = std::min<int>(20, static_cast<int>(sorted.size()));
         for (int i = 0; i < limit; ++i) {
-            lines << QStringLiteral("| %1 | %2 |").arg(sorted[static_cast<size_t>(i)].key).arg(sorted[static_cast<size_t>(i)].count);
+            lines << QStringLiteral("| %1 | %2 |")
+                         .arg(sorted[static_cast<size_t>(i)].key)
+                         .arg(sorted[static_cast<size_t>(i)].count);
         }
         lines << QString();
     };
@@ -309,32 +475,44 @@ QString buildMarkdownReport(const QString& endReason) {
     lines << QString();
     lines << QStringLiteral("| Metric | value |");
     lines << QStringLiteral("| --- | ---: |");
+    lines << QStringLiteral("| sampler_ticks | %1 |").arg(g_samplerTickCount);
     lines << QStringLiteral("| cursor_jump | %1 |").arg(g_jumpCount);
+    lines << QStringLiteral("| micro_jump | %1 |").arg(g_microJumpCount);
+    lines << QStringLiteral("| snap_back | %1 |").arg(g_snapBackCount);
+    lines << QStringLiteral("| sampler_overrun | %1 |").arg(g_samplerOverrunCount);
     lines << QStringLiteral("| mouse_hook_snap | %1 |").arg(g_mouseHookSnapCount);
+    lines << QStringLiteral("| hold_feature_start | %1 |").arg(g_holdFeatureStartCount);
     lines << QStringLiteral("| physical_qwer | %1 |").arg(g_qwerPhysicalDown);
     lines << QStringLiteral("| synthetic_qwer | %1 |").arg(g_qwerSynthetic);
+    lines << QStringLiteral("| jumps_near_hold_100ms | %1 |").arg(g_jumpsNearHoldFeature);
     lines << QStringLiteral("| jumps_near_qwer_100ms | %1 |").arg(g_jumpsNearQwerMs);
     lines << QStringLiteral("| slow_keyboard_hook_gt_1ms | %1 |").arg(g_slowKeyboardHookCount);
     lines << QString();
 
-    lines << QStringLiteral("## Recent cursor jumps (newest last)");
-    lines << QString();
-    lines << QStringLiteral("| rel_ms | detail |");
-    lines << QStringLiteral("| ---: | --- |");
-    int jumpRows = 0;
-    for (auto it = g_events.rbegin(); it != g_events.rend() && jumpRows < kMaxJumpRows; ++it) {
-        if (std::strcmp(it->kind, "cursor_jump") != 0) {
-            continue;
+    auto emitJumpTable = [&](const char* title, const char* kind) {
+        lines << QStringLiteral("## %1").arg(QString::fromUtf8(title));
+        lines << QString();
+        lines << QStringLiteral("| rel_ms | detail |");
+        lines << QStringLiteral("| ---: | --- |");
+        int jumpRows = 0;
+        for (auto it = g_events.rbegin(); it != g_events.rend() && jumpRows < kMaxJumpRows; ++it) {
+            if (std::strcmp(it->kind, kind) != 0) {
+                continue;
+            }
+            lines << QStringLiteral("| %1 | %2 |")
+                         .arg(QString::number(static_cast<double>(it->relUs) / 1000.0, 'f', 3))
+                         .arg(it->detail);
+            ++jumpRows;
         }
-        lines << QStringLiteral("| %1 | %2 |")
-                     .arg(formatMs(it->relUs))
-                     .arg(it->detail);
-        ++jumpRows;
-    }
-    if (jumpRows == 0) {
-        lines << QStringLiteral("| — | (none) |");
-    }
-    lines << QString();
+        if (jumpRows == 0) {
+            lines << QStringLiteral("| — | (none) |");
+        }
+        lines << QString();
+    };
+
+    emitJumpTable("Recent cursor jumps (newest last)", "cursor_jump");
+    emitJumpTable("Recent micro jumps", "micro_jump");
+    emitJumpTable("Recent snap-back", "snap_back");
 
     lines << QStringLiteral("## Event log (tsv)");
     lines << QString();
@@ -359,29 +537,102 @@ QString buildMarkdownReport(const QString& endReason) {
     return lines.join(QLatin1Char('\n'));
 }
 
+bool writeReportToPaths(const QString& content, const QString& reason) {
+    bool anyWritten = false;
+    for (const QString& path : CursorStutterProfiler::allReportPaths()) {
+        const QFileInfo info(path);
+        QDir().mkpath(info.absolutePath());
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            qCWarning(lcCursorStutter) << "Failed to write cursor stutter report:" << path
+                                       << file.errorString();
+            continue;
+        }
+        file.write(content.toUtf8());
+        anyWritten = true;
+        qCInfo(lcCursorStutter) << "Wrote cursor stutter report (" << reason << "):" << path;
+    }
+    if (!anyWritten) {
+        qCWarning(lcCursorStutter) << "No cursor stutter report path writable for reason:" << reason;
+    }
+    return anyWritten;
+}
+
+void samplerLoop() {
+    qint64 lastTickUs = steadyUs();
+    while (!g_stopSampler.load(std::memory_order_relaxed)) {
+        const qint64 tickStart = steadyUs();
+        const qint64 gapUs = tickStart - lastTickUs;
+        if (lastTickUs > 0 && gapUs > kSamplerOverrunUs) {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            noteSamplerOverrunLocked(gapUs);
+        }
+        lastTickUs = tickStart;
+
+        sampleCursorPosition();
+
+        bool shouldFlush = false;
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            if (g_verbose && g_lastPeriodicFlushUs > 0
+                && (tickStart - g_lastPeriodicFlushUs) >= kPeriodicFlushUs) {
+                g_lastPeriodicFlushUs = tickStart;
+                shouldFlush = true;
+            } else if (g_verbose && g_lastPeriodicFlushUs <= 0) {
+                g_lastPeriodicFlushUs = tickStart;
+            }
+        }
+        if (shouldFlush) {
+            writeReportToPaths(buildMarkdownReport(QStringLiteral("periodic")), QStringLiteral("periodic"));
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(kSamplerIntervalMs));
+    }
+}
+
 } // namespace
 
-bool CursorStutterProfiler::isEnabled() {
-    return g_enabled;
+bool CursorStutterProfiler::isVerboseLogging() {
+    return g_verbose;
 }
 
 void CursorStutterProfiler::reloadFromSettings() {
-    g_enabled = ProgramSettings::cursorStutterProfiling() || envEnabled();
-    if (g_enabled && g_sessionStartUs <= 0) {
+    const bool wasVerbose = g_verbose;
+    g_verbose = ProgramSettings::cursorStutterProfiling() || envVerboseEnabled();
+    if (g_sessionStartUs <= 0) {
         g_sessionStartUs = steadyUs();
+    }
+    startSampling();
+    if (!g_verbose && wasVerbose) {
+        flushReport(QStringLiteral("verbose_disabled"));
     }
 }
 
 QString CursorStutterProfiler::outputDirectory() {
-    return QDir(repoRootDirectory()).absoluteFilePath(QStringLiteral("cursor-stutter"));
+    const QString repo = findRepoRootDirectory();
+    if (!repo.isEmpty()) {
+        return QDir(repo).absoluteFilePath(QStringLiteral("cursor-stutter"));
+    }
+    return appDataReportDirectory();
 }
 
 QString CursorStutterProfiler::latestReportPath() {
     return QDir(outputDirectory()).absoluteFilePath(QStringLiteral("latest.md"));
 }
 
+QStringList CursorStutterProfiler::allReportPaths() {
+    QStringList paths;
+    const QString repo = findRepoRootDirectory();
+    if (!repo.isEmpty()) {
+        paths << QDir(repo).absoluteFilePath(QStringLiteral("cursor-stutter/latest.md"));
+    }
+    paths << QDir(appDataReportDirectory()).absoluteFilePath(QStringLiteral("latest.md"));
+    paths.removeDuplicates();
+    return paths;
+}
+
 void CursorStutterProfiler::startSampling() {
-    if (!g_enabled || g_sampling) {
+    if (g_sampling) {
         return;
     }
     g_sampling = true;
@@ -389,13 +640,16 @@ void CursorStutterProfiler::startSampling() {
     if (g_sessionStartUs <= 0) {
         g_sessionStartUs = steadyUs();
     }
+    g_lastPeriodicFlushUs = steadyUs();
     g_samplerThread = std::thread(samplerLoop);
+    qCInfo(lcCursorStutter) << "Cursor stutter sampler started; verbose=" << g_verbose;
+}
+
+void CursorStutterProfiler::flushReport(const QString& reason) {
+    writeReportToPaths(buildMarkdownReport(reason), reason);
 }
 
 void CursorStutterProfiler::stopAndWriteReport(const QString& reason) {
-    if (!g_enabled) {
-        return;
-    }
     if (g_sampling) {
         g_stopSampler.store(true, std::memory_order_relaxed);
         if (g_samplerThread.joinable()) {
@@ -403,14 +657,7 @@ void CursorStutterProfiler::stopAndWriteReport(const QString& reason) {
         }
         g_sampling = false;
     }
-
-    const QString dirPath = outputDirectory();
-    QDir().mkpath(dirPath);
-    const QString path = latestReportPath();
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-        file.write(buildMarkdownReport(reason).toUtf8());
-    }
+    flushReport(reason);
 }
 
 qint64 CursorStutterProfiler::monotonicUs() {
@@ -418,7 +665,7 @@ qint64 CursorStutterProfiler::monotonicUs() {
 }
 
 void CursorStutterProfiler::recordSetCursorPos(const char* caller, int x, int y) {
-    if (!g_enabled || !caller) {
+    if (!g_verbose || !caller) {
         return;
     }
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -432,7 +679,7 @@ void CursorStutterProfiler::recordSetCursorPos(const char* caller, int x, int y)
 }
 
 void CursorStutterProfiler::recordClipCursor(const char* caller) {
-    if (!g_enabled || !caller) {
+    if (!g_verbose || !caller) {
         return;
     }
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -442,7 +689,7 @@ void CursorStutterProfiler::recordClipCursor(const char* caller) {
 }
 
 void CursorStutterProfiler::recordMouseHookSnap(int fromX, int fromY, int toX, int toY, qint64 handlerUs) {
-    if (!g_enabled) {
+    if (!g_verbose) {
         return;
     }
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -461,12 +708,14 @@ void CursorStutterProfiler::recordMouseHookSnap(int fromX, int fromY, int toX, i
                     handlerUs,
                     "hook");
     if (dist >= kJumpThresholdPx) {
-        noteJumpLocked(fromX, fromY, toX, toY, dist, "mouse_hook_snap");
+        noteJumpLocked(fromX, fromY, toX, toY, dist, "mouse_hook_snap", false);
+    } else if (dist >= kMicroJumpThresholdPx) {
+        noteJumpLocked(fromX, fromY, toX, toY, dist, "mouse_hook_snap", true);
     }
 }
 
 void CursorStutterProfiler::recordKeyboardHook(int virtualKey, bool keyDown, qint64 handlerUs, bool swallowed) {
-    if (!g_enabled) {
+    if (!g_verbose) {
         return;
     }
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -484,7 +733,7 @@ void CursorStutterProfiler::recordKeyboardHook(int virtualKey, bool keyDown, qin
 }
 
 void CursorStutterProfiler::recordPhysicalKey(int virtualKey) {
-    if (!g_enabled) {
+    if (!g_verbose) {
         return;
     }
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -492,13 +741,13 @@ void CursorStutterProfiler::recordPhysicalKey(int virtualKey) {
         ++g_qwerPhysicalDown;
     }
     pushEventLocked("physical_key",
-                    QStringLiteral("vk=%1").arg(isQwerVirtualKey(virtualKey)
-                                                    ? QString::fromUtf8(qwerLabel(virtualKey))
-                                                    : QStringLiteral("0x%1").arg(virtualKey, 0, 16)));
+                    isQwerVirtualKey(virtualKey)
+                        ? QString::fromUtf8(qwerLabel(virtualKey))
+                        : QStringLiteral("0x%1").arg(virtualKey, 0, 16));
 }
 
 void CursorStutterProfiler::recordSyntheticKey(int virtualKey) {
-    if (!g_enabled) {
+    if (!g_verbose) {
         return;
     }
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -506,7 +755,20 @@ void CursorStutterProfiler::recordSyntheticKey(int virtualKey) {
         ++g_qwerSynthetic;
     }
     pushEventLocked("synthetic_key",
-                    QStringLiteral("vk=%1").arg(isQwerVirtualKey(virtualKey)
-                                                    ? QString::fromUtf8(qwerLabel(virtualKey))
-                                                    : QStringLiteral("0x%1").arg(virtualKey, 0, 16)));
+                    isQwerVirtualKey(virtualKey)
+                        ? QString::fromUtf8(qwerLabel(virtualKey))
+                        : QStringLiteral("0x%1").arg(virtualKey, 0, 16));
+}
+
+void CursorStutterProfiler::recordHoldFeature(const QString& featureName, const char* phase, qint64 durationUs) {
+    if (!phase) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (std::strcmp(phase, "hold_start") == 0) {
+        ++g_holdFeatureStartCount;
+    }
+    pushEventLocked("hold_feature",
+                    QStringLiteral("%1 phase=%2").arg(featureName, QString::fromUtf8(phase)),
+                    durationUs);
 }
