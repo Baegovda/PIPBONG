@@ -20,7 +20,29 @@
 #include <algorithm>
 #ifdef _WIN32
 #include <mmsystem.h>
+#include <atomic>
 #endif
+
+namespace {
+
+#ifdef _WIN32
+std::atomic<int> g_highResolutionTimerRefCount{0};
+
+void acquireHighResolutionTimer() {
+    if (g_highResolutionTimerRefCount.fetch_add(1, std::memory_order_acq_rel) == 0) {
+        timeBeginPeriod(1);
+    }
+}
+
+void releaseHighResolutionTimer() {
+    const int previous = g_highResolutionTimerRefCount.fetch_sub(1, std::memory_order_acq_rel);
+    if (previous == 1) {
+        timeEndPeriod(1);
+    }
+}
+#endif
+
+} // namespace
 
 Q_DECLARE_METATYPE(BlockProgressKind)
 Q_DECLARE_METATYPE(std::shared_ptr<Workflow>)
@@ -217,11 +239,11 @@ protected:
             const auto setHighResolutionTimer = [&](bool enabled) {
                 if (enabled) {
                     if (!timerPeriodRaised) {
-                        timeBeginPeriod(1);
+                        acquireHighResolutionTimer();
                         timerPeriodRaised = true;
                     }
                 } else if (timerPeriodRaised) {
-                    timeEndPeriod(1);
+                    releaseHighResolutionTimer();
                     timerPeriodRaised = false;
                 }
             };

@@ -104,6 +104,7 @@ struct SessionState {
     std::vector<LoopGapSample> loopGapSamples;
     std::vector<qint64> uiFlushDurationsUs;
     std::vector<qint64> clickDurationsUs;
+    std::vector<qint64> syntheticKeyDurationsUs;
 
     qint64 lastLoopEndRelUs = -1;
     int lastLoopIteration = 0;
@@ -112,6 +113,7 @@ struct SessionState {
     int loopEndCount = 0;
     int blockEndCount = 0;
     int clickCount = 0;
+    int syntheticKeyCount = 0;
     int uiFlushCount = 0;
     int droppedEvents = 0;
 
@@ -256,6 +258,12 @@ QString formatMs(qint64 micros, int decimals = 3) {
     return QString::number(micros / 1000.0, 'f', decimals);
 }
 
+constexpr qint64 kSpikeSyntheticKeyUs = 80000;
+
+bool omitHotPathEventLog(const SessionState& session) {
+    return session.profilingDepth == ProgramSettings::WorkflowRunProfilingDepth::Standard;
+}
+
 void appendEventSeriesTable(QStringList& lines, const SessionState& session) {
     std::unordered_map<QString, std::vector<qint64>> durationsByEvent;
     std::unordered_map<QString, int> countsByEvent;
@@ -284,6 +292,21 @@ void appendEventSeriesTable(QStringList& lines, const SessionState& session) {
             row.p50 = percentileLabel(durIt->second, 50.0);
             row.p95 = percentileLabel(durIt->second, 95.0);
             row.maxMs = formatMs(maxValue(durIt->second));
+        } else {
+            row.p50 = QStringLiteral("—");
+            row.p95 = QStringLiteral("—");
+            row.maxMs = QStringLiteral("—");
+        }
+        rows.push_back(std::move(row));
+    }
+    if (session.syntheticKeyCount > 0) {
+        EventSeriesRow row;
+        row.name = QStringLiteral("synthetic_key");
+        row.count = session.syntheticKeyCount;
+        if (!session.syntheticKeyDurationsUs.empty()) {
+            row.p50 = percentileLabel(session.syntheticKeyDurationsUs, 50.0);
+            row.p95 = percentileLabel(session.syntheticKeyDurationsUs, 95.0);
+            row.maxMs = formatMs(maxValue(session.syntheticKeyDurationsUs));
         } else {
             row.p50 = QStringLiteral("—");
             row.p95 = QStringLiteral("—");
@@ -415,6 +438,12 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
                  .arg(session.clickCount)
                  .arg(percentileLabel(session.clickDurationsUs, 95.0))
                  .arg(formatMs(maxValue(session.clickDurationsUs)));
+    lines << QStringLiteral("| synthetic_key | %1 | %2 | %3 | %4 | %5 |")
+                 .arg(session.syntheticKeyCount)
+                 .arg(percentileLabel(session.syntheticKeyDurationsUs, 50.0))
+                 .arg(percentileLabel(session.syntheticKeyDurationsUs, 95.0))
+                 .arg(percentileLabel(session.syntheticKeyDurationsUs, 99.0))
+                 .arg(formatMs(maxValue(session.syntheticKeyDurationsUs)));
     lines << QString();
     lines << QStringLiteral("## Spike counts");
     lines << QString();
@@ -429,6 +458,8 @@ QString buildMarkdownReport(const SessionState& session, const QString& endReaso
                  .arg(countAbove(session.uiFlushDurationsUs, kSpikeUiFlushUs));
     lines << QStringLiteral("| synthetic_mouse_click | >12 ms | %1 |")
                  .arg(countAbove(session.clickDurationsUs, kSpikeClickUs));
+    lines << QStringLiteral("| synthetic_key | >80 ms | %1 |")
+                 .arg(countAbove(session.syntheticKeyDurationsUs, kSpikeSyntheticKeyUs));
     lines << QString();
 
     const std::vector<BlockRunMeasuredRow> measuredRows = measuredRowsFromAggregates(session);
@@ -689,12 +720,14 @@ void resetFeatureSessionMetrics(SessionState& session) {
     session.loopGapSamples.clear();
     session.uiFlushDurationsUs.clear();
     session.clickDurationsUs.clear();
+    session.syntheticKeyDurationsUs.clear();
     session.lastLoopEndRelUs = -1;
     session.lastLoopIteration = 0;
     session.loopBeginCount = 0;
     session.loopEndCount = 0;
     session.blockEndCount = 0;
     session.clickCount = 0;
+    session.syntheticKeyCount = 0;
     session.uiFlushCount = 0;
     session.startSource.clear();
     session.workflowBlockCount = 0;
@@ -953,9 +986,11 @@ void WorkflowRunProfiler::recordLoopBegin(int iteration) {
     }
     ++g_trace.loopBeginCount;
     g_trace.currentLoopIteration = iteration;
-    pushEventLocked(g_trace,
-                    "loop_begin",
-                    QStringLiteral("iter=%1").arg(iteration));
+    if (!omitHotPathEventLog(g_trace)) {
+        pushEventLocked(g_trace,
+                        "loop_begin",
+                        QStringLiteral("iter=%1").arg(iteration));
+    }
 }
 
 void WorkflowRunProfiler::recordLoopEnd(int iteration, qint64 durationUs) {
@@ -977,10 +1012,12 @@ void WorkflowRunProfiler::recordLoopEnd(int iteration, qint64 durationUs) {
     loop.relEndUs = relUs;
     g_trace.loops.push_back(loop);
 
-    pushEventLocked(g_trace,
-                    "loop_end",
-                    QStringLiteral("iter=%1").arg(iteration),
-                    durationUs);
+    if (!omitHotPathEventLog(g_trace)) {
+        pushEventLocked(g_trace,
+                        "loop_end",
+                        QStringLiteral("iter=%1").arg(iteration),
+                        durationUs);
+    }
     if (durationUs >= kSpikeLoopDurationUs) {
         pushEventLocked(g_trace,
                         "spike_loop_duration",
@@ -1012,13 +1049,36 @@ void WorkflowRunProfiler::recordBlockEnd(int blockIndex,
         aggregate.totalDurationUs += durationUs;
         aggregate.maxDurationUs = std::max(aggregate.maxDurationUs, durationUs);
     }
-    pushEventLocked(g_trace,
-                    "block_end",
-                    QStringLiteral("#%1 type=%2 success=%3")
-                        .arg(blockIndex + 1)
-                        .arg(QString::fromUtf8(blockType))
-                        .arg(success ? QStringLiteral("yes") : QStringLiteral("no")),
-                    durationUs);
+    if (!omitHotPathEventLog(g_trace)) {
+        pushEventLocked(g_trace,
+                        "block_end",
+                        QStringLiteral("#%1 type=%2 success=%3")
+                            .arg(blockIndex + 1)
+                            .arg(QString::fromUtf8(blockType))
+                            .arg(success ? QStringLiteral("yes") : QStringLiteral("no")),
+                        durationUs);
+    }
+}
+
+void WorkflowRunProfiler::recordSyntheticKeyDuration(qint64 durationUs) {
+    if (!g_enabled || durationUs < 0) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_trace.appActive) {
+        return;
+    }
+    g_trace.syntheticKeyDurationsUs.push_back(durationUs);
+    ++g_trace.syntheticKeyCount;
+    if (durationUs >= kSpikeSyntheticKeyUs) {
+        pushEventLocked(g_trace,
+                        "spike_synthetic_key",
+                        QStringLiteral("dur_us=%1").arg(durationUs),
+                        durationUs);
+    }
+    if (!omitHotPathEventLog(g_trace)) {
+        pushEventLocked(g_trace, "synthetic_key", QStringLiteral("dur_us=%1").arg(durationUs), durationUs);
+    }
 }
 
 void WorkflowRunProfiler::recordPhysicalInput(const char* channel, int virtualKey) {

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.287` (from `project(PIPBONG VERSION 0.8.287)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.288` (from `project(PIPBONG VERSION 0.8.288)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1329,6 +1329,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.288] - 2026-07-23
+
+### Changed
+
+- Concurrent Hold key taps: `SendInput` serialized across workflow worker threads via global mutex so multiple features (e.g. Q/W/E/R) do not stall the shared Windows input queue (`InputSimulator::sendInputs`).
+- Workflow run profiler standard depth: omit per-iteration `loop_begin`/`loop_end`/`block_end` event logs and aggregate `synthetic_key` timing instead of per-tap events; spike events still recorded (`WorkflowRunProfiler`, `InputSimulator::sendKey`).
+- `timeBeginPeriod(1)` uses a process-wide refcount so multiple concurrent `WorkflowEngine` workers do not stack high-resolution timer periods (`WorkflowEngine`).
 
 ## [0.8.287] - 2026-07-23
 

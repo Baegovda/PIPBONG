@@ -58,6 +58,9 @@ public:
     /// User-input interrupt actually fired (logged at all profiling depths).
     static void recordUserInputInterrupt(const QString& featureId, int virtualKey);
 
+    /// Aggregated synthetic keyboard injection timing (avoids per-tap event log in standard depth).
+    static void recordSyntheticKeyDuration(qint64 durationUs);
+
     /// Foreground top-level window title change (Detailed+).
     static void recordForegroundChange(const QString& windowTitle, const QString& reason = QString());
 

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <mutex>
 #include <thread>
 
 #include <QString>
@@ -32,6 +33,10 @@ constexpr int kCursorPositionTolerancePx = 2;
 constexpr int kCursorPositionMaxAttempts = 5;
 
 thread_local ExecutionContext* g_activeExecutionContext = nullptr;
+
+/// Serialize SendInput across workflow worker threads so concurrent Hold key taps do not
+/// stall the global input queue (mouse movement shares the same path on Windows).
+std::mutex g_sendInputMutex;
 
 struct SyntheticPointerGuard {
     SyntheticPointerGuard() { MouseCenterLock::beginSyntheticPointerOperation(); }
@@ -101,6 +106,7 @@ DWORD xButtonData(MouseButton button) {
 }
 
 void sendInputs(const INPUT* inputs, UINT count) {
+    std::lock_guard<std::mutex> lock(g_sendInputMutex);
     SendInput(count, const_cast<INPUT*>(inputs), sizeof(INPUT));
 }
 
@@ -1270,9 +1276,8 @@ void InputSimulator::sendKey(int virtualKey,
                              const KeyPressModifierActions& mods,
                              bool sendMainKey) {
 #ifdef _WIN32
-    const WfProfileScope keyProfileScope(
-        "synthetic_key",
-        QStringLiteral("synthetic=1 vk=0x%1 main=%2").arg(virtualKey, 0, 16).arg(sendMainKey ? 1 : 0));
+    const bool profileInput = WorkflowRunProfiler::isEnabled();
+    const qint64 profileStartUs = profileInput ? WorkflowRunProfiler::monotonicUs() : 0;
     if (sendMainKey && action == KeyAction::Tap && isModifierVirtualKey(virtualKey)
         && isModifierVirtualKeyPhysicallyDown(virtualKey)) {
         return;
@@ -1336,6 +1341,11 @@ void InputSimulator::sendKey(int virtualKey,
 
     if (sendMainKey && action == KeyAction::Tap) {
         releaseAppliedModifiers(applied, beforeBlock);
+    }
+
+    if (profileStartUs > 0) {
+        WorkflowRunProfiler::recordSyntheticKeyDuration(WorkflowRunProfiler::monotonicUs()
+                                                          - profileStartUs);
     }
 #endif
 }
