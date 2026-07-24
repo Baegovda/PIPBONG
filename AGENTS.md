@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.318` (from `project(PIPBONG VERSION 0.8.318)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.319` (from `project(PIPBONG VERSION 0.8.319)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1550,6 +1550,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.319] - 2026-07-24
+
+### Fixed
+
+- Foreground profile auto-switch now reliably falls back to the **default** profile when the focused window matches no linked profile: `resolveProfileIdForForeground` no longer returns empty for titleless/unmatched HWNDs; `syncProfileToForegroundWindow` treats empty resolve as default and commits default fallback via `executeProfileSwitch` after the stable delay (not blocked by multi-hold `requestAutoProfileSwitch` gate); default fallback no longer aborts on empty window title (`MainWindow`).
 
 ## [0.8.318] - 2026-07-24
 

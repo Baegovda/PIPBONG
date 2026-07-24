@@ -7541,7 +7541,8 @@ void MainWindow::requestAutoProfileSwitch(const QString& targetProfileId,
     if (!m_profileManager || targetProfileId.isEmpty()) {
         return;
     }
-    if (concurrentActiveRepeatSessionCount() >= 2) {
+    if (concurrentActiveRepeatSessionCount() >= 2
+        && !(m_profileManager && m_profileManager->isDefaultProfile(targetProfileId))) {
         return;
     }
     if (targetProfileId == m_profileManager->activeProfileId()) {
@@ -7738,7 +7739,10 @@ void MainWindow::syncProfileToForegroundWindow() {
     GetWindowTextW(hwnd, titleBuffer, 512);
     const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
 
-    const QString targetProfileId = resolveProfileIdForForeground(hwnd, foregroundTitle);
+    QString targetProfileId = resolveProfileIdForForeground(hwnd, foregroundTitle);
+    if (targetProfileId.isEmpty()) {
+        targetProfileId = m_profileManager->defaultProfileId();
+    }
     if (targetProfileId.isEmpty()) {
         m_pendingDefaultProfileSwitchTimer.invalidate();
         ScreenCapture::setForegroundHintWindow(hwnd);
@@ -7814,12 +7818,6 @@ void MainWindow::syncProfileToForegroundWindow() {
             m_pendingDefaultProfileSwitchTimer.invalidate();
             return;
         }
-        wchar_t currentTitleBuffer[512]{};
-        GetWindowTextW(currentForeground, currentTitleBuffer, 512);
-        if (QString::fromWCharArray(currentTitleBuffer).trimmed().isEmpty()) {
-            m_pendingDefaultProfileSwitchTimer.invalidate();
-            return;
-        }
     } else {
         m_pendingDefaultProfileSwitchTimer.invalidate();
     }
@@ -7829,12 +7827,13 @@ void MainWindow::syncProfileToForegroundWindow() {
 
     if (fallingBackToDefault) {
         m_recentAutomaticDefaultProfileSwitchTimer.start();
+        m_pendingDefaultProfileSwitchTimer.invalidate();
+        executeProfileSwitch(targetProfileId, true);
     } else {
         m_recentAutomaticDefaultProfileSwitchTimer.invalidate();
+        switchToProfile(targetProfileId, true);
+        m_pendingDefaultProfileSwitchTimer.invalidate();
     }
-
-    switchToProfile(targetProfileId, true);
-    m_pendingDefaultProfileSwitchTimer.invalidate();
 #else
     Q_UNUSED(this);
 #endif
@@ -8464,21 +8463,13 @@ QString MainWindow::resolveProfileIdForForeground(HWND hwnd,
 #ifdef _WIN32
     if (hwnd && IsWindow(hwnd)) {
         const QString byHwnd = profileIdForForegroundHwnd(hwnd);
-        if (!byHwnd.isEmpty()) {
-            if (target.isEmpty() || m_profileManager->isDefaultProfile(target)) {
-                target = byHwnd;
-            }
-        } else if (foregroundTitle.isEmpty()) {
-            return {};
+        if (!byHwnd.isEmpty()
+            && (target.isEmpty() || m_profileManager->isDefaultProfile(target))) {
+            target = byHwnd;
         }
-    } else if (foregroundTitle.isEmpty()) {
-        return {};
     }
 #else
     Q_UNUSED(hwnd);
-    if (foregroundTitle.isEmpty()) {
-        return {};
-    }
 #endif
 
     if (target.isEmpty()) {
