@@ -82,6 +82,8 @@ qint64 g_jumpsNearQwerMs = 0;
 qint64 g_jumpsNearHoldFeature = 0;
 qint64 g_slowKeyboardHookCount = 0;
 qint64 g_holdFeatureStartCount = 0;
+qint64 g_foregroundChangeCount = 0;
+quintptr g_lastForegroundHwnd = static_cast<quintptr>(-1);
 
 struct RecentMove {
     qint64 relUs = 0;
@@ -96,7 +98,7 @@ RecentMove g_lastMove{};
 bool isAlwaysRecordedKind(const char* kind) {
     return std::strcmp(kind, "cursor_jump") == 0 || std::strcmp(kind, "micro_jump") == 0
            || std::strcmp(kind, "snap_back") == 0 || std::strcmp(kind, "sampler_overrun") == 0
-           || std::strcmp(kind, "hold_feature") == 0;
+           || std::strcmp(kind, "hold_feature") == 0 || std::strcmp(kind, "foreground_focus") == 0;
 }
 
 bool isQwerVirtualKey(int vk) {
@@ -225,6 +227,71 @@ QString lockStateDetail() {
 #endif
 }
 
+QString foregroundWindowDetail(HWND hwnd = nullptr) {
+#ifdef _WIN32
+    if (!hwnd) {
+        hwnd = GetForegroundWindow();
+    }
+    if (!hwnd || !IsWindow(hwnd)) {
+        return QStringLiteral("fg=(none)");
+    }
+
+    wchar_t titleBuffer[512]{};
+    GetWindowTextW(hwnd, titleBuffer, 512);
+    QString title = QString::fromWCharArray(titleBuffer).trimmed();
+    if (title.isEmpty()) {
+        title = QStringLiteral("(empty title)");
+    }
+    title.replace(QLatin1Char('"'), QLatin1String("'"));
+
+    QString exeName = QStringLiteral("?");
+    DWORD processId = 0;
+    GetWindowThreadProcessId(hwnd, &processId);
+    if (processId != 0) {
+        HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
+        if (process) {
+            wchar_t pathBuffer[MAX_PATH]{};
+            DWORD pathLength = MAX_PATH;
+            if (QueryFullProcessImageNameW(process, 0, pathBuffer, &pathLength)) {
+                exeName = QFileInfo(QString::fromWCharArray(pathBuffer)).fileName();
+            }
+            CloseHandle(process);
+        }
+    }
+
+    return QStringLiteral("fg=\"%1\" hwnd=0x%2 exe=%3")
+        .arg(title)
+        .arg(reinterpret_cast<quintptr>(hwnd), 0, 16)
+        .arg(exeName);
+#else
+    (void)hwnd;
+    return QStringLiteral("fg=unknown");
+#endif
+}
+
+QString appendForegroundContext(const QString& base) {
+    return base + QLatin1Char(' ') + foregroundWindowDetail();
+}
+
+void pollForegroundWindowChange() {
+#ifdef _WIN32
+    HWND fg = GetForegroundWindow();
+    if (!fg || !IsWindow(fg)) {
+        fg = nullptr;
+    }
+    const quintptr hwndVal = reinterpret_cast<quintptr>(fg);
+    const QString detail = foregroundWindowDetail(fg);
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (hwndVal == g_lastForegroundHwnd) {
+        return;
+    }
+    g_lastForegroundHwnd = hwndVal;
+    ++g_foregroundChangeCount;
+    pushEventLocked("foreground_focus", detail, -1, "sampler");
+#endif
+}
+
 void correlateJumpWithRecentEventsLocked() {
     const qint64 windowStart = relUsLocked() - 100000;
     bool nearQwer = false;
@@ -278,15 +345,15 @@ void maybeDetectSnapBackLocked(int fromX, int fromY, int toX, int toY, int dista
     if (priorDx * backDx < 0 || priorDy * backDy < 0) {
         ++g_snapBackCount;
         pushEventLocked("snap_back",
-                        QStringLiteral("A=(%1,%2) B=(%3,%4) C=(%5,%6) dist=%7px %8")
-                            .arg(g_lastMove.fromX)
-                            .arg(g_lastMove.fromY)
-                            .arg(g_lastMove.toX)
-                            .arg(g_lastMove.toY)
-                            .arg(toX)
-                            .arg(toY)
-                            .arg(distancePx)
-                            .arg(lockStateDetail()),
+                        appendForegroundContext(QStringLiteral("A=(%1,%2) B=(%3,%4) C=(%5,%6) dist=%7px %8")
+                                                .arg(g_lastMove.fromX)
+                                                .arg(g_lastMove.fromY)
+                                                .arg(g_lastMove.toX)
+                                                .arg(g_lastMove.toY)
+                                                .arg(toX)
+                                                .arg(toY)
+                                                .arg(distancePx)
+                                                .arg(lockStateDetail())),
                         -1,
                         "sampler");
     }
@@ -305,14 +372,14 @@ void noteJumpLocked(int fromX,
         ++g_jumpCount;
     }
     const char* kind = micro ? "micro_jump" : "cursor_jump";
-    const QString detail = QStringLiteral("%1 from=(%2,%3) to=(%4,%5) dist=%6px %7")
+    const QString detail = appendForegroundContext(QStringLiteral("%1 from=(%2,%3) to=(%4,%5) dist=%6px %7")
                                .arg(QString::fromUtf8(source))
                                .arg(fromX)
                                .arg(fromY)
                                .arg(toX)
                                .arg(toY)
                                .arg(distancePx)
-                               .arg(lockStateDetail());
+                               .arg(lockStateDetail()));
     pushEventLocked(kind, detail, -1, "sampler");
     if (!micro) {
         correlateJumpWithRecentEventsLocked();
@@ -324,7 +391,8 @@ void noteJumpLocked(int fromX,
 void noteSamplerOverrunLocked(qint64 gapUs) {
     ++g_samplerOverrunCount;
     pushEventLocked("sampler_overrun",
-                    QStringLiteral("gap_us=%1 expected_ms=%2").arg(gapUs).arg(kSamplerIntervalMs),
+                    appendForegroundContext(
+                        QStringLiteral("gap_us=%1 expected_ms=%2").arg(gapUs).arg(kSamplerIntervalMs)),
                     gapUs,
                     "sampler");
 }
@@ -356,12 +424,13 @@ void sampleCursorPosition() {
 }
 
 QString buildMarkdownReport(const QString& endReason) {
+    const QString foregroundAtEnd = foregroundWindowDetail();
     std::lock_guard<std::mutex> lock(g_mutex);
 
     QStringList lines;
     lines << QStringLiteral("---");
     lines << QStringLiteral("format: pipbong-cursor-stutter");
-    lines << QStringLiteral("format_version: 2");
+    lines << QStringLiteral("format_version: 3");
     lines << QStringLiteral("end_reason: %1").arg(endReason);
     lines << QStringLiteral("session_end: %1")
                  .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs));
@@ -372,6 +441,8 @@ QString buildMarkdownReport(const QString& endReason) {
     lines << QStringLiteral("micro_jump_threshold_px: %1").arg(kMicroJumpThresholdPx);
     lines << QStringLiteral("sampler_interval_ms: %1").arg(kSamplerIntervalMs);
     lines << QStringLiteral("events_recorded: %1").arg(g_events.size());
+    lines << QStringLiteral("foreground_at_end: %1").arg(foregroundAtEnd);
+    lines << QStringLiteral("foreground_changes: %1").arg(g_foregroundChangeCount);
     const QStringList paths = CursorStutterProfiler::allReportPaths();
     lines << QStringLiteral("report_paths: %1").arg(paths.join(QLatin1String("; ")));
     lines << QStringLiteral("---");
@@ -380,6 +451,8 @@ QString buildMarkdownReport(const QString& endReason) {
     lines << QString();
 
     lines << QStringLiteral("## Auto diagnosis");
+    lines << QString();
+    lines << QStringLiteral("- **종료 시 포커스 창**: %1").arg(foregroundAtEnd);
     lines << QString();
     if (g_samplerTickCount == 0) {
         lines << QStringLiteral(
@@ -487,6 +560,7 @@ QString buildMarkdownReport(const QString& endReason) {
     lines << QStringLiteral("| jumps_near_hold_100ms | %1 |").arg(g_jumpsNearHoldFeature);
     lines << QStringLiteral("| jumps_near_qwer_100ms | %1 |").arg(g_jumpsNearQwerMs);
     lines << QStringLiteral("| slow_keyboard_hook_gt_1ms | %1 |").arg(g_slowKeyboardHookCount);
+    lines << QStringLiteral("| foreground_focus_changes | %1 |").arg(g_foregroundChangeCount);
     lines << QString();
 
     auto emitJumpTable = [&](const char* title, const char* kind) {
@@ -513,6 +587,25 @@ QString buildMarkdownReport(const QString& endReason) {
     emitJumpTable("Recent cursor jumps (newest last)", "cursor_jump");
     emitJumpTable("Recent micro jumps", "micro_jump");
     emitJumpTable("Recent snap-back", "snap_back");
+
+    lines << QStringLiteral("## Recent foreground focus (newest last)");
+    lines << QString();
+    lines << QStringLiteral("| rel_ms | detail |");
+    lines << QStringLiteral("| ---: | --- |");
+    int fgRows = 0;
+    for (auto it = g_events.rbegin(); it != g_events.rend() && fgRows < 40; ++it) {
+        if (std::strcmp(it->kind, "foreground_focus") != 0) {
+            continue;
+        }
+        lines << QStringLiteral("| %1 | %2 |")
+                     .arg(QString::number(static_cast<double>(it->relUs) / 1000.0, 'f', 3))
+                     .arg(it->detail);
+        ++fgRows;
+    }
+    if (fgRows == 0) {
+        lines << QStringLiteral("| — | (none) |");
+    }
+    lines << QString();
 
     lines << QStringLiteral("## Event log (tsv)");
     lines << QString();
@@ -569,6 +662,7 @@ void samplerLoop() {
         }
         lastTickUs = tickStart;
 
+        pollForegroundWindowChange();
         sampleCursorPosition();
 
         bool shouldFlush = false;
@@ -671,11 +765,11 @@ void CursorStutterProfiler::recordSetCursorPos(const char* caller, int x, int y)
     std::lock_guard<std::mutex> lock(g_mutex);
     bumpCounter(g_setCursorByCaller, QString::fromUtf8(caller));
     pushEventLocked("set_cursor",
-                    QStringLiteral("caller=%1 pos=(%2,%3) %4")
-                        .arg(QString::fromUtf8(caller))
-                        .arg(x)
-                        .arg(y)
-                        .arg(lockStateDetail()));
+                    appendForegroundContext(QStringLiteral("caller=%1 pos=(%2,%3) %4")
+                                              .arg(QString::fromUtf8(caller))
+                                              .arg(x)
+                                              .arg(y)
+                                              .arg(lockStateDetail())));
 }
 
 void CursorStutterProfiler::recordClipCursor(const char* caller) {
@@ -685,7 +779,8 @@ void CursorStutterProfiler::recordClipCursor(const char* caller) {
     std::lock_guard<std::mutex> lock(g_mutex);
     bumpCounter(g_clipByCaller, QString::fromUtf8(caller));
     pushEventLocked("clip_cursor",
-                    QStringLiteral("caller=%1 %2").arg(QString::fromUtf8(caller)).arg(lockStateDetail()));
+                    appendForegroundContext(
+                        QStringLiteral("caller=%1 %2").arg(QString::fromUtf8(caller)).arg(lockStateDetail())));
 }
 
 void CursorStutterProfiler::recordMouseHookSnap(int fromX, int fromY, int toX, int toY, qint64 handlerUs) {
@@ -698,13 +793,13 @@ void CursorStutterProfiler::recordMouseHookSnap(int fromX, int fromY, int toX, i
     const int dy = toY - fromY;
     const int dist = static_cast<int>(std::lround(std::sqrt(static_cast<double>(dx * dx + dy * dy))));
     pushEventLocked("mouse_hook_snap",
-                    QStringLiteral("from=(%1,%2) to=(%3,%4) dist=%5px %6")
-                        .arg(fromX)
-                        .arg(fromY)
-                        .arg(toX)
-                        .arg(toY)
-                        .arg(dist)
-                        .arg(lockStateDetail()),
+                    appendForegroundContext(QStringLiteral("from=(%1,%2) to=(%3,%4) dist=%5px %6")
+                                                .arg(fromX)
+                                                .arg(fromY)
+                                                .arg(toX)
+                                                .arg(toY)
+                                                .arg(dist)
+                                                .arg(lockStateDetail())),
                     handlerUs,
                     "hook");
     if (dist >= kJumpThresholdPx) {
@@ -729,7 +824,7 @@ void CursorStutterProfiler::recordKeyboardHook(int virtualKey, bool keyDown, qin
     if (isQwerVirtualKey(virtualKey)) {
         detail += QStringLiteral(" qwer=%1").arg(QString::fromUtf8(qwerLabel(virtualKey)));
     }
-    pushEventLocked("keyboard_hook", detail, handlerUs, "hook");
+    pushEventLocked("keyboard_hook", appendForegroundContext(detail), handlerUs, "hook");
 }
 
 void CursorStutterProfiler::recordPhysicalKey(int virtualKey) {
@@ -741,9 +836,9 @@ void CursorStutterProfiler::recordPhysicalKey(int virtualKey) {
         ++g_qwerPhysicalDown;
     }
     pushEventLocked("physical_key",
-                    isQwerVirtualKey(virtualKey)
-                        ? QString::fromUtf8(qwerLabel(virtualKey))
-                        : QStringLiteral("0x%1").arg(virtualKey, 0, 16));
+                    appendForegroundContext(isQwerVirtualKey(virtualKey)
+                                                ? QString::fromUtf8(qwerLabel(virtualKey))
+                                                : QStringLiteral("0x%1").arg(virtualKey, 0, 16)));
 }
 
 void CursorStutterProfiler::recordSyntheticKey(int virtualKey) {
@@ -755,9 +850,9 @@ void CursorStutterProfiler::recordSyntheticKey(int virtualKey) {
         ++g_qwerSynthetic;
     }
     pushEventLocked("synthetic_key",
-                    isQwerVirtualKey(virtualKey)
-                        ? QString::fromUtf8(qwerLabel(virtualKey))
-                        : QStringLiteral("0x%1").arg(virtualKey, 0, 16));
+                    appendForegroundContext(isQwerVirtualKey(virtualKey)
+                                                ? QString::fromUtf8(qwerLabel(virtualKey))
+                                                : QStringLiteral("0x%1").arg(virtualKey, 0, 16)));
 }
 
 void CursorStutterProfiler::recordHoldFeature(const QString& featureName, const char* phase, qint64 durationUs) {
@@ -769,6 +864,7 @@ void CursorStutterProfiler::recordHoldFeature(const QString& featureName, const 
         ++g_holdFeatureStartCount;
     }
     pushEventLocked("hold_feature",
-                    QStringLiteral("%1 phase=%2").arg(featureName, QString::fromUtf8(phase)),
+                    appendForegroundContext(
+                        QStringLiteral("%1 phase=%2").arg(featureName, QString::fromUtf8(phase))),
                     durationUs);
 }

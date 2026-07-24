@@ -47,8 +47,8 @@ Write-Host ""
 if ($content -match '(?ms)^sampler_ticks:\s*(\d+)') {
     Write-Host "sampler_ticks: $($Matches[1])" -ForegroundColor Gray
 }
-if ($content -match '(?ms)^verbose_logging:\s*(\w+)') {
-    Write-Host "verbose_logging: $($Matches[1])" -ForegroundColor Gray
+if ($content -match '(?ms)^foreground_at_end:\s*(.+)$') {
+    Write-Host "foreground_at_end: $($Matches[1])" -ForegroundColor Gray
 }
 Write-Host ""
 

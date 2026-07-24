@@ -14,6 +14,7 @@ Find **mouse cursor jump / stutter** (especially LOL profile Hold features **Q/W
 - **Always-on** background `GetCursorPos` sampler (4 ms)
 - Jumps ≥8 px, micro-jumps 3–7 px, **snap-back** (A→B→A), **sampler_overrun** (thread stalls)
 - `hold_feature` events (feature display name + hold_start/hold_end)
+- **`foreground_focus`**: foreground HWND change with title + exe; **`fg=...`** on jumps/holds/hooks; `foreground_at_end` in report header
 - When verbose: `SetCursorPos`, `ClipCursor`, `mouse_hook_snap`, `keyboard_hook`, physical/synthetic QWER
 
 ## Enable (verbose hook detail)
@@ -31,7 +32,7 @@ Find **mouse cursor jump / stutter** (especially LOL profile Hold features **Q/W
 |------|------|
 | **`<repo>/cursor-stutter/latest.md`** | Primary (walk up to `CMakeLists.txt` or `PIPBONG_REPO_ROOT`) |
 | **`%LOCALAPPDATA%/PIPBONG/PIPBONG/cursor-stutter/latest.md`** | Fallback copy (always attempted) |
-| Format | `pipbong-cursor-stutter` v2 — **Auto diagnosis** (Korean) + counters + event TSV |
+| Format | `pipbong-cursor-stutter` v3 — **Auto diagnosis** (Korean) + `foreground_at_end` + counters + event TSV |
 
 Written on: **app shutdown**, **periodic 30 s** (verbose), **Hold Q/W/E/R end** (`hold_end` flush).
 

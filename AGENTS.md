@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.296` (from `project(PIPBONG VERSION 0.8.296)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.297` (from `project(PIPBONG VERSION 0.8.297)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1149,6 +1149,7 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 | `CursorStutterProfiler` | **Always-on** 4 ms `GetCursorPos` sampler; jumps ≥8 px, micro-jumps 3–7 px, snap-back, sampler overrun; verbose: `SetCursorPos`, `ClipCursor`, hook snaps, keyboard-hook timing, QWER keys |
 | Verbose enable | `program/cursorStutterProfiling` (**default ON**) or env `PIPBONG_CURSOR_STUTTER_PROFILE=1` |
 | `hold_feature` | Hold-mode feature name (`Q`/`W`/`E`/`R` LOL profile) on hold_start/hold_end (`MainWindow`) |
+| `foreground_focus` | Win32 `GetForegroundWindow` on HWND change (title, hwnd, exe); appended to jump/hold/hook events |
 | Output | **Repo** `cursor-stutter/latest.md` + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/cursor-stutter/latest.md`** fallback |
 | Flush | App shutdown; periodic 30 s when verbose; Hold Q/W/E/R `hold_end` |
 | Repo root | Walk up from exe for `CMakeLists.txt` (`PIPBONG`); env `PIPBONG_REPO_ROOT` |
@@ -1455,6 +1456,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.297] - 2026-07-24
+
+### Added
+
+- **`CursorStutterProfiler`**: records Win32 foreground focus window (title, HWND, exe) on focus change (`foreground_focus`), appends `fg=...` to cursor jumps / Hold / hook events, and writes `foreground_at_end` in report header (`CursorStutterProfiler`).
 
 ## [0.8.296] - 2026-07-24
 
