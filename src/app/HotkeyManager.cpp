@@ -533,20 +533,20 @@ void HotkeyManager::recheckDeferredKeyboardHoldEnd(const std::string& featureId,
     if (!entry || entry->pendingHoldEndGeneration != generation || !entry->keyDown) {
         return;
     }
-    if (entry->binding.isPhysicallyDown(entry->allowExtraModifiers)) {
+    constexpr int kMaxAttempts = 8;
+    if (!entry->binding.isPhysicallyDown(entry->allowExtraModifiers)) {
+        entry->keyDown = false;
         entry->pendingHoldEndGeneration = 0;
+        emitHotkeyHoldEnded(featureId);
         return;
     }
-    constexpr int kMaxAttempts = 8;
     if (attempt + 1 < kMaxAttempts) {
         QTimer::singleShot(32, this, [this, featureId, generation, attempt]() {
             recheckDeferredKeyboardHoldEnd(featureId, generation, attempt + 1);
         });
         return;
     }
-    entry->keyDown = false;
     entry->pendingHoldEndGeneration = 0;
-    emitHotkeyHoldEnded(featureId);
 }
 
 void HotkeyManager::emitHotkeyHoldEnded(const std::string& featureId) {
@@ -665,9 +665,6 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
                 continue;
             }
             swallow = true;
-            if (entry.binding.isPhysicallyDown(entry.allowExtraModifiers)) {
-                continue;
-            }
             scheduleDeferredKeyboardHoldEnd(entry);
         }
     }

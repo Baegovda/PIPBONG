@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.317` (from `project(PIPBONG VERSION 0.8.317)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.318` (from `project(PIPBONG VERSION 0.8.318)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1550,6 +1550,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.318] - 2026-07-24
+
+### Fixed
+
+- Hold hotkey release did not stop the feature (v0.8.317 regression): KEYUP always schedules deferred hold-end recheck; recheck keeps polling `GetAsyncKeyState` until key is up or max attempts exhaust while still down — avoids canceling hold-end on stale async state right after release (`HotkeyManager`).
 
 ## [0.8.317] - 2026-07-24
 
