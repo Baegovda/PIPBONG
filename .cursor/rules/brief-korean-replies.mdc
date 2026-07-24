@@ -1,0 +1,23 @@
+---
+description: Plain Korean, maximally brief user replies (default)
+alwaysApply: true
+---
+
+# Brief Korean replies (mandatory default)
+
+**Status:** User preference 2026-07-24 (§9.5). Applies to **every chat reply**, especially log/diagnosis readouts.
+
+## Rules
+
+| Do | Don't |
+|----|-------|
+| **한국어**, 짧게, 일상 말 | 영어 필드명, 클래스/파일명, 긴 표 |
+| 결론 먼저 (1~3줄) | 배경 설명·아키텍처 먼저 |
+| 숫자는 **초·회·%** 정도만 | ms, stall, burst, sampler, HWND |
+| 필요할 때만 **다음 한 줄** | 끝마다 “더 해드릴까요?” 류 |
+
+## Log / diagnosis reports (`app-spike`, CI, crash)
+
+Use the **6-bullet** template in `.cursor/rules/app-spike-profiling.mdc` when applicable.
+
+Full handover: [AGENTS.md §9.5](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only).

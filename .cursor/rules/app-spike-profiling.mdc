@@ -39,6 +39,21 @@ Diagnose PIPBONG UI lag / Not Responding during long Hold sessions (e.g. LOL Q/W
 
 **Do not** ask the user for workflow block details when analyzing this report.
 
+## AI report to user (mandatory — plain Korean, brief)
+
+When the user asks to check `app-spike/latest.md` (or pastes a session log), reply in **Korean only** with **at most ~6 short bullets**:
+
+1. **결론** — 멈춤 있었는지 / 없었는지 (한 줄)
+2. **얼마나** — 최대 멈춤 시간, 대략 횟수 (초·회만; ms/stall 같은 용어 금지)
+3. **언제** — 게임 중, 홀드 몇 개 같이, 키 뗄 때 등 (일상 말)
+4. **PIPBONG 탓인지** — PIPBONG CPU 낮으면 “앱이 무거운 건 아님”
+5. **PC 탓인지** — 시스템 CPU만 치솟았으면 “롤·크롬·윈도우 쪽”
+6. **다음** — 한 줄만 (필요할 때만)
+
+**Do not** dump TSV, counters table, HWND, or English field names in chat unless the user asks for detail.
+
+Cursor rule: `.cursor/rules/brief-korean-replies.mdc`.
+
 ## Anti-patterns
 
 - Reintroducing cursor-position sampler / per-hook instrumentation for app lag

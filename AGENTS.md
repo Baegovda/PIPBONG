@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.302` (from `project(PIPBONG VERSION 0.8.302)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.303` (from `project(PIPBONG VERSION 0.8.303)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1334,6 +1334,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 #### Work and collaboration style
 
 - **2026-07-21:** Directs work in **Korean chat only**; expects the codebase to stay **100% AI-maintained** (implement, document, changelog via agent).
+- **2026-07-24:** Wants **chat replies in plain Korean, as short as possible** — no jargon, no long tables, no class/file names unless the user asks; diagnosis/log reports default to a **few bullets** (결론 → 언제 → 심각도); full technical detail stays in `AGENTS.md` / rules only.
 - **2026-07-21:** Prefers the agent to **execute end-to-end** — scripts, rules, handover included — not hand the user a checklist of “copy this file / paste step 3”.
 - **2026-07-21:** When asking for **prompts or policy packs** for other projects, wants **one single copy block** (통째 복붙) — not split instructions where the user must paste multiple follow-up pieces.
 - **2026-07-21:** For prompt-only requests, deliver **the prompt block only** — avoid wrapping meta-explanation unless asked.
@@ -1455,6 +1456,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.303] - 2026-07-24
+
+### Changed
+
+- Agent default: plain Korean, maximally brief user replies (no jargon in chat); `app-spike` readout uses 6-bullet template (`brief-korean-replies.mdc`, `app-spike-profiling.mdc`, AGENTS.md §9.5).
 
 ## [0.8.302] - 2026-07-24
 
@@ -5553,6 +5560,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 - **프로그램 설정:** grouped `QGroupBox` sections; option detail on **tooltips** only — no inline `HintLabel` per row.
 - Full rules in [§8.13](#813-program-settings-dialog-mandatory--grouped--tooltips).
+
+### `brief-korean-replies.mdc`
+
+- **Mandatory** default chat style: plain Korean, minimal length, no jargon — especially log/diagnosis readouts.
+- Full preference: [§9.5](#95-user-preference-profile-cumulative--agents-only).
 
 ### `app-spike-profiling.mdc`
 
