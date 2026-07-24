@@ -35,6 +35,7 @@ private:
     DragAdjustSpinBox* m_logMaxLinesSpin = nullptr;
     QCheckBox* m_appSpikeProfilingCheck = nullptr;
     QCheckBox* m_profileSwitchProfilingCheck = nullptr;
+    QCheckBox* m_featureToggleProfilingCheck = nullptr;
     QLabel* m_clickFeedbackSummary = nullptr;
     QPushButton* m_clickFeedbackButton = nullptr;
     QLabel* m_windowSelectionFeedbackSummary = nullptr;

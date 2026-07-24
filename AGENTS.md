@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.306` (from `project(PIPBONG VERSION 0.8.306)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.307` (from `project(PIPBONG VERSION 0.8.307)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1197,6 +1197,7 @@ Cursor rule: `.cursor/rules/app-spike-profiling.mdc`.
 | Hotkey / foreground | Alt+Tab 후 단축키 죽음 | Opt-in hook latch + handler timing | `hotkey_*` |
 | ImageFind / capture | 매칭 느림, 검은 화면 | Per-poll capture+match ms | `imagefind_poll` |
 | Profile switch | 전환 핑퐁·GUI 멈춤 | `ProfileSwitchProfiler` phase timers on `requestAutoProfileSwitch` / `executeProfileSwitch` | `profile-switch/latest.md`, crumbs `switch requested/stable/committed` |
+| Feature enable toggle | 기능 **사용** ON/OFF 버벅임 | `FeatureToggleProfiler` on `FeatureListPanel::toggleFeatureEnabled` + `undo_copy_profiles` / `HotkeyManager::syncFromProject` sub-phases | `feature-toggle/latest.md`; `scripts/analyze-feature-toggle.ps1` |
 | Overlay / template pick | 캡처 실패, 커서 | BitBlt + teardown order ms | `overlay_pick` |
 
 Cursor rule: `.cursor/rules/targeted-profiling-on-bugs.mdc`.
@@ -1229,7 +1230,7 @@ Key files: `MainWindow.cpp` (`requestAutoProfileSwitch`, `executeProfileSwitch`,
 | Group | Contents |
 | ----- | -------- |
 | **기능 실행** | Auto-select running feature, profile-switch focus to target window, run without target window, log max lines |
-| **진단** | App spike profiling (`program/appSpikeProfiling`) — `app-spike/latest.md` |
+| **진단** | App spike profiling (`program/appSpikeProfiling`) — `app-spike/latest.md`; profile switch (`program/profileSwitchProfiling`) — `profile-switch/latest.md`; feature **사용** toggle (`program/featureToggleProfiling`) — `feature-toggle/latest.md` |
 | **시작·종료** | Windows startup launch, close to tray |
 | **업데이트** | Periodic update check + interval, auto-install |
 | **권한·호환** | Run as administrator (+ one-line elevated status when applicable) |
@@ -1520,6 +1521,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.307] - 2026-07-24
+
+### Added
+
+- **`FeatureToggleProfiler`**: opt-in feature list **사용** ON/OFF toggle diagnostics — phase timers (`undo_snapshot`, `undo_copy_profiles`, `set_enabled`, `configure_row`, `feature_enabled_handler`, `hotkeys_sync` + `HotkeyManager` sub-phases, `project_modified_handler`); Korean **Auto diagnosis**; repo `feature-toggle/latest.md` mirror + AppData backup; **프로그램 설정 → 진단 → 기능 사용 토글 진단** toggle (`program/featureToggleProfiling` or `PIPBONG_FEATURE_TOGGLE_PROFILE=1`); `scripts/analyze-feature-toggle.ps1` (AGENTS.md §8.16).
+
+### Changed
+
+- `HotkeyManager::syncFromProject` accepts optional phase callback for `hotkeys_fingerprint_skip` / `hotkeys_unregister` / `hotkeys_register` timing (`MainWindow::syncHotkeys` forwards to `FeatureToggleProfiler` during toggle).
 
 ## [0.8.306] - 2026-07-24
 

@@ -20,6 +20,7 @@ constexpr const char* kRunWithoutTargetWindowKey = "program/runWithoutTargetWind
 constexpr const char* kLogMaxLinesKey = "program/logMaxLines";
 constexpr const char* kAppSpikeProfilingKey = "program/appSpikeProfiling";
 constexpr const char* kProfileSwitchProfilingKey = "program/profileSwitchProfiling";
+constexpr const char* kFeatureToggleProfilingKey = "program/featureToggleProfiling";
 constexpr const char* kLegacyCursorStutterProfilingKey = "program/cursorStutterProfiling";
 constexpr const char* kFocusTargetWindowOnProfileSelectKey =
     "program/focusTargetWindowOnProfileSelect";
@@ -187,6 +188,16 @@ bool ProgramSettings::profileSwitchProfiling() {
 void ProgramSettings::setProfileSwitchProfiling(bool enabled) {
     QSettings settings;
     settings.setValue(kProfileSwitchProfilingKey, enabled);
+}
+
+bool ProgramSettings::featureToggleProfiling() {
+    QSettings settings;
+    return settings.value(kFeatureToggleProfilingKey, false).toBool();
+}
+
+void ProgramSettings::setFeatureToggleProfiling(bool enabled) {
+    QSettings settings;
+    settings.setValue(kFeatureToggleProfilingKey, enabled);
 }
 
 bool ProgramSettings::focusTargetWindowOnProfileSelect() {

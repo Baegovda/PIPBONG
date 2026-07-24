@@ -9,6 +9,7 @@
 
 #include <QAbstractNativeEventFilter>
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QMetaObject>
 #include <QTimer>
 
@@ -242,13 +243,26 @@ void HotkeyManager::unregisterAll() {
     m_lastProjectHotkeyFingerprint.clear();
 }
 
-std::vector<HotkeyManager::RegistrationFailure> HotkeyManager::syncFromProject(const Project& project) {
+std::vector<HotkeyManager::RegistrationFailure> HotkeyManager::syncFromProject(
+    const Project& project,
+    const SyncPhaseCallback& onPhase) {
+    QElapsedTimer phaseTimer;
+    if (onPhase) {
+        phaseTimer.start();
+    }
+
     const std::string fingerprint = buildProjectHotkeyFingerprint(project);
     if (fingerprint == m_lastProjectHotkeyFingerprint) {
+        if (onPhase) {
+            onPhase(QStringLiteral("hotkeys_fingerprint_skip"), phaseTimer.elapsed());
+        }
         return {};
     }
 
     unregisterAll();
+    if (onPhase) {
+        onPhase(QStringLiteral("hotkeys_unregister"), phaseTimer.restart());
+    }
     m_lastProjectHotkeyFingerprint = fingerprint;
 
     std::vector<RegistrationFailure> failures;
@@ -327,6 +341,10 @@ std::vector<HotkeyManager::RegistrationFailure> HotkeyManager::syncFromProject(c
 #else
     (void)project;
 #endif
+
+    if (onPhase) {
+        onPhase(QStringLiteral("hotkeys_register"), phaseTimer.elapsed());
+    }
 
     return failures;
 }

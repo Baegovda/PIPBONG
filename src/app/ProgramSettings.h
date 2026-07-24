@@ -72,6 +72,10 @@ public:
     static bool profileSwitchProfiling();
     static void setProfileSwitchProfiling(bool enabled);
 
+    /// When enabled, records feature 사용 ON/OFF toggle phases to feature-toggle/latest.md.
+    static bool featureToggleProfiling();
+    static void setFeatureToggleProfiling(bool enabled);
+
     /// When enabled, switching the active profile activates the linked target window.
     static bool focusTargetWindowOnProfileSelect();
     static void setFocusTargetWindowOnProfileSelect(bool enabled);

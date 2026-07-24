@@ -23,6 +23,7 @@
 #include "core/capture/WindowPicker.h"
 #include "core/diagnostics/AppSpikeProfiler.h"
 #include "core/diagnostics/ProfileSwitchProfiler.h"
+#include "core/diagnostics/FeatureToggleProfiler.h"
 #include "core/input/InputSimulator.h"
 #include "core/input/HotkeyBinding.h"
 #include "ui/WindowPickerHoverOverlay.h"
@@ -5864,7 +5865,17 @@ void MainWindow::syncHotkeys() {
         return;
     }
 
-    const auto failures = m_hotkeyManager->syncFromProject(*m_project);
+    QElapsedTimer hotkeyTimer;
+    const bool profileToggle = FeatureToggleProfiler::isToggleInProgress();
+    if (profileToggle) {
+        hotkeyTimer.start();
+    }
+
+    const auto failures = m_hotkeyManager->syncFromProject(*m_project, [&](const QString& phase, qint64 ms) {
+        if (profileToggle) {
+            FeatureToggleProfiler::notePhase(phase, ms);
+        }
+    });
 #ifdef _WIN32
     if (!m_hotkeyManager->isKeyboardHookActive()
         && (!failures.empty() || m_project->features().size() > 0)) {
@@ -9075,7 +9086,16 @@ bool MainWindow::pushGlobalUiUndoSnapshot(const QString& reason) {
     if (m_restoringGlobalUiHistory) {
         return false;
     }
+    QElapsedTimer undoTimer;
+    if (FeatureToggleProfiler::isToggleInProgress()) {
+        undoTimer.start();
+    }
     const GlobalUiHistorySnapshot snapshot = createGlobalUiSnapshot(reason);
+    if (FeatureToggleProfiler::isToggleInProgress()) {
+        FeatureToggleProfiler::notePhase(QStringLiteral("undo_copy_profiles"),
+                                         undoTimer.elapsed(),
+                                         reason);
+    }
     if (snapshot.backupRootPath.isEmpty()) {
         return false;
     }

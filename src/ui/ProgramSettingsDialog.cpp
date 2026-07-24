@@ -335,6 +335,16 @@ void ProgramSettingsDialog::setupUi() {
            "환경 변수 PIPBONG_PROFILE_SWITCH_PROFILE=1 로도 켤 수 있습니다."),
         ProgramSettings::profileSwitchProfiling());
 
+    m_featureToggleProfilingCheck = addGroupCheck(
+        diagnosticsLayout,
+        diagnosticsGroup,
+        tr("기능 사용 토글 진단"),
+        tr("기능 목록 사용 ON/OFF 클릭 시 단계별 소요 시간(ms)을 기록합니다(기본 꺼짐). "
+           "토글 직후 feature-toggle\\latest.md 에 저장(저장소 미러 + AppData). "
+           "버벅임 재현 시 이 옵션만 켜고 사용 토글을 3~5회 한 뒤 보고서를 공유하세요. "
+           "환경 변수 PIPBONG_FEATURE_TOGGLE_PROFILE=1 로도 켤 수 있습니다."),
+        ProgramSettings::featureToggleProfiling());
+
     layout->addStretch();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -354,6 +364,7 @@ void ProgramSettingsDialog::setupUi() {
         ProgramSettings::setAppSpikeProfiling(m_appSpikeProfilingCheck->isChecked());
         AppSpikeProfiler::reloadFromSettings();
         ProgramSettings::setProfileSwitchProfiling(m_profileSwitchProfilingCheck->isChecked());
+        ProgramSettings::setFeatureToggleProfiling(m_featureToggleProfilingCheck->isChecked());
         ProgramSettings::setImageFindCaptureMode(
             static_cast<ProgramSettings::ImageFindCaptureMode>(
                 m_imageFindCaptureModeCombo->currentData().toInt()));

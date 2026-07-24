@@ -6,6 +6,7 @@
 
 #include <QtGlobal>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -29,7 +30,10 @@ public:
     explicit HotkeyManager(QObject* parent = nullptr);
     ~HotkeyManager() override;
 
-    std::vector<RegistrationFailure> syncFromProject(const Project& project);
+    using SyncPhaseCallback = std::function<void(const QString& phase, qint64 durationMs)>;
+
+    std::vector<RegistrationFailure> syncFromProject(const Project& project,
+                                                     const SyncPhaseCallback& onPhase = {});
     void unregisterAll();
 
     static const Feature* findDuplicateHotkey(const Project& project,

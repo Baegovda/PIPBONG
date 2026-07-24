@@ -19,6 +19,8 @@
 
 **추가**
 
+- (개발용) **기능 사용 토글 진단**을 **프로그램 설정 → 진단**에서 켤 수 있습니다. 기능 목록 **사용** ON/OFF마다 단계별 ms와 가장 느린 구간을 `feature-toggle/latest.md`에 기록합니다. `scripts/analyze-feature-toggle.ps1`로 요약할 수 있습니다.
+
 - (개발용) **프로필 전환 진단**을 **프로그램 설정 → 진단**에서 켤 수 있습니다. 수동·자동 전환마다 단계별 ms와 가장 느린 구간을 `profile-switch/latest.md`에 기록합니다.
 - (개발용) **프로필 전환 진단**: `program/profileSwitchProfiling` 또는 환경 변수 `PIPBONG_PROFILE_SWITCH_PROFILE=1` — 전환 단계별 ms·핑퐁 횟수를 `profile-switch/latest.md`에 기록. `scripts/analyze-profile-switch.ps1`로 확인.
 
