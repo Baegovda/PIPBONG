@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.319` (from `project(PIPBONG VERSION 0.8.319)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.320` (from `project(PIPBONG VERSION 0.8.320)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1550,6 +1550,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.320] - 2026-07-24
+
+### Added
+
+- **`ProfileForegroundSync`**: unified foreground snapshot capture, profile resolution (process path → title binding with exe verification → default fallback), and tiered auto-switch timing (`ProfileForegroundSync.*`, `MainWindow`).
+
+### Changed
+
+- Profile auto-switch rewritten on a single path: `syncProfileToForegroundWindow` → `commitAutoProfileSwitch` (process match switches immediately when min-interval allows; title/default use 35–50 ms stability instead of 120–800 ms); removed separate `m_pendingDefaultProfileSwitchTimer` and legacy `WM_APP` foreground message; WinEvent primary with 300 ms poll fallback; HWND dedup skips redundant sync when foreground already matches active profile (`MainWindow`).
+
+### Fixed
+
+- Foreground profile resolution strengthened: title substring matches require matching `linkedTargetProcessPath` when configured, reducing false profile hits from unrelated windows (`ProfileForegroundSync`).
 
 ## [0.8.319] - 2026-07-24
 

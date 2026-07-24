@@ -2,6 +2,7 @@
 
 #include "app/FeatureRunSession.h"
 #include "app/PointerFeedbackSettings.h"
+#include "app/ProfileForegroundSync.h"
 #include "app/ProfileManager.h"
 #include "core/workflow/ExecutionContext.h"
 #include "model/UserInputInterruptMode.h"
@@ -294,6 +295,13 @@ private:
     bool profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
                               const ProgramSettings::ProfileSettings& b) const;
     void syncProfileToForegroundWindow();
+#ifdef _WIN32
+    void applyForegroundCaptureHints(HWND hwnd, const QString& foregroundTitle);
+    void commitAutoProfileSwitch(HWND hwnd,
+                                 const QString& foregroundTitle,
+                                 const ProfileForegroundSync::ResolveResult& resolved);
+    void handlePipbongForegroundFocus();
+#endif
     void updateWindowTitle();
     void syncWindowTitleDisplay();
     void refreshWorkflowEditor();
@@ -558,12 +566,15 @@ private:
     QString m_deferredProfileSwitchId;
     QString m_pendingAutoSwitchProfileId;
     QString m_stabilizingAutoSwitchProfileId;
-    int m_pendingAutoSwitchStabilityMs = 500;
-    int m_pendingAutoSwitchMinIntervalMs = 800;
+    int m_pendingAutoSwitchStabilityMs = 40;
+    int m_pendingAutoSwitchMinIntervalMs = 120;
+#ifdef _WIN32
+    HWND m_lastForegroundSyncHwnd = nullptr;
+#endif
     QElapsedTimer m_lastAutomaticProfileSwitchTimer;
     std::vector<std::unique_ptr<WorkflowEngine>> m_abandonedEngines;
     std::unordered_map<const WorkflowEngine*, std::string> m_abandonedEngineFeatureIds;
-    QElapsedTimer m_pendingDefaultProfileSwitchTimer;
+    QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;
     QString m_lastLinkedForegroundProfileId;
 #ifdef _WIN32
     HWND m_lastProfileLinkedForegroundHwnd = nullptr;
@@ -572,7 +583,6 @@ private:
     bool m_altTabModifierWasHeld = false;
 #endif
     QString m_lastProfiledForegroundTitle;
-    QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;
     bool m_scopedTargetForegroundResumePending = false;
     bool m_ensureTriggerMonitorPending = false;
     bool m_pruneAbandonedEnginesPending = false;

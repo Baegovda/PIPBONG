@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.319 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.320 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -42,6 +42,7 @@ set(PIPBONG_SOURCES
     src/app/TargetWindowCenterPin.cpp
     src/app/ProgramSettings.cpp
     src/app/ProfileManager.cpp
+    src/app/ProfileForegroundSync.cpp
     src/app/WindowsLaunchAtStartup.cpp
     src/app/WindowsRunAsAdmin.cpp
     src/app/PointerFeedbackSettings.cpp

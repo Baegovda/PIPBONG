@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "app/ProfileForegroundSync.h"
 #include "app/Application.h"
 #include "app/FeatureHotkeyGate.h"
 #include "app/ProgramSettings.h"
@@ -163,8 +164,6 @@ SessionRunPolicyInput sessionPolicyInputFrom(const FeatureRunSession& session) {
     return input;
 }
 
-constexpr UINT kForegroundProfileSyncMessage = WM_APP + 0x4A1;
-HWND g_foregroundProfileSyncReceiver = nullptr;
 MainWindow* g_foregroundSyncMainWindow = nullptr;
 
 void CALLBACK foregroundWindowEventProc(HWINEVENTHOOK,
@@ -183,48 +182,15 @@ void CALLBACK foregroundWindowEventProc(HWINEVENTHOOK,
 }
 
 bool isShellTransientForegroundWindow(HWND hwnd) {
-    if (!hwnd || !IsWindow(hwnd)) {
-        return true;
-    }
-    wchar_t className[256]{};
-    if (GetClassNameW(hwnd, className, 256) <= 0) {
-        return false;
-    }
-    // Classic Alt+Tab switcher + common Win10/11 shell overlays during focus transit.
-    static const wchar_t* kIgnoredClasses[] = {
-        L"#32771",
-        L"ForegroundStaging",
-        L"MultitaskingViewFrame",
-        L"XamlExplorerHostIslandWindow",
-        L"TaskSwitcherWnd",
-        L"Xaml_Window",
-        L"Windows.UI.Core.CoreWindow",
-        L"Shell_TrayWnd",
-        L"Shell_SecondaryTrayWnd",
-        L"NotifyIconOverflowWindow",
-        L"WorkerW",
-        L"Progman",
-    };
-    for (const wchar_t* ignored : kIgnoredClasses) {
-        if (_wcsicmp(className, ignored) == 0) {
-            return true;
-        }
-    }
-    return false;
+    return ProfileForegroundSync::isShellTransientWindow(hwnd);
 }
 
 bool isAltTabModifierHeld() {
-    return (GetAsyncKeyState(VK_MENU) & 0x8000) != 0 || (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0
-           || (GetAsyncKeyState(VK_RMENU) & 0x8000) != 0;
+    return ProfileForegroundSync::isAltTabModifierHeld();
 }
 
 bool isPipbongProcessForeground(HWND hwnd) {
-    if (!hwnd || !IsWindow(hwnd)) {
-        return false;
-    }
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    return pid == GetCurrentProcessId();
+    return ProfileForegroundSync::isPipbongProcessWindow(hwnd);
 }
 
 bool applyNativeAlwaysOnTop(QWidget* window, bool enabled) {
@@ -792,7 +758,7 @@ MainWindow::MainWindow(QWidget* parent)
 
     m_profileAutoSwitchTimer = new QTimer(this);
     m_profileAutoSwitchTimer->setTimerType(Qt::PreciseTimer);
-    m_profileAutoSwitchTimer->setInterval(50);
+    m_profileAutoSwitchTimer->setInterval(300);
     connect(m_profileAutoSwitchTimer, &QTimer::timeout, this, &MainWindow::onForegroundWindowChanged);
     m_profileAutoSwitchTimer->start();
 
@@ -824,7 +790,6 @@ MainWindow::MainWindow(QWidget* parent)
     scheduleProfilePackageSeal();
 
 #ifdef _WIN32
-    g_foregroundProfileSyncReceiver = reinterpret_cast<HWND>(winId());
     g_foregroundSyncMainWindow = this;
     m_profileForegroundEventHook =
         SetWinEventHook(EVENT_SYSTEM_FOREGROUND,
@@ -854,9 +819,6 @@ MainWindow::~MainWindow() {
     if (m_profileForegroundEventHook) {
         UnhookWinEvent(static_cast<HWINEVENTHOOK>(m_profileForegroundEventHook));
         m_profileForegroundEventHook = nullptr;
-    }
-    if (g_foregroundProfileSyncReceiver == reinterpret_cast<HWND>(winId())) {
-        g_foregroundProfileSyncReceiver = nullptr;
     }
     if (g_foregroundSyncMainWindow == this) {
         g_foregroundSyncMainWindow = nullptr;
@@ -2527,11 +2489,6 @@ void MainWindow::showEvent(QShowEvent* event) {
 bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result) {
     if (isWindowsNativeMessage(eventType)) {
         auto* msg = static_cast<MSG*>(message);
-        if (msg->message == kForegroundProfileSyncMessage) {
-            onForegroundWindowChanged();
-            *result = 0;
-            return true;
-        }
         if (msg->message == WM_NCHITTEST
             && framelessResizeHitTest(msg, this, result)) {
             return true;
@@ -7541,10 +7498,6 @@ void MainWindow::requestAutoProfileSwitch(const QString& targetProfileId,
     if (!m_profileManager || targetProfileId.isEmpty()) {
         return;
     }
-    if (concurrentActiveRepeatSessionCount() >= 2
-        && !(m_profileManager && m_profileManager->isDefaultProfile(targetProfileId))) {
-        return;
-    }
     if (targetProfileId == m_profileManager->activeProfileId()) {
         m_pendingAutoSwitchProfileId.clear();
         m_stabilizingAutoSwitchProfileId.clear();
@@ -7567,8 +7520,8 @@ void MainWindow::requestAutoProfileSwitch(const QString& targetProfileId,
 
     m_pendingAutoSwitchProfileId = targetProfileId;
     m_stabilizingAutoSwitchProfileId = targetProfileId;
-    m_pendingAutoSwitchStabilityMs = stabilityMs >= 0 ? stabilityMs : 500;
-    m_pendingAutoSwitchMinIntervalMs = minIntervalMs >= 0 ? minIntervalMs : 800;
+    m_pendingAutoSwitchStabilityMs = stabilityMs >= 0 ? stabilityMs : 40;
+    m_pendingAutoSwitchMinIntervalMs = minIntervalMs >= 0 ? minIntervalMs : 120;
     if (!m_autoProfileSwitchStabilityTimer) {
         return;
     }
@@ -7671,7 +7624,7 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
 
 void MainWindow::onForegroundWindowChanged() {
 #ifdef _WIN32
-    const bool altHeld = isAltTabModifierHeld();
+    const bool altHeld = ProfileForegroundSync::isAltTabModifierHeld();
     if (m_altTabModifierWasHeld && !altHeld) {
         flushDeferredProfileSwitchIfIdle();
         if (m_hotkeyManager) {
@@ -7679,6 +7632,30 @@ void MainWindow::onForegroundWindowChanged() {
         }
     }
     m_altTabModifierWasHeld = altHeld;
+
+    HWND foregroundHwnd = GetForegroundWindow();
+    if (foregroundHwnd && IsWindow(foregroundHwnd) && m_profileManager && !m_switchingProfile
+        && !m_profileSwitchPipelineActive) {
+        const ProfileForegroundSync::Snapshot snap =
+            ProfileForegroundSync::snapshotFrom(foregroundHwnd);
+        if (snap.rootHwnd && snap.rootHwnd == m_lastForegroundSyncHwnd
+            && m_pendingAutoSwitchProfileId.isEmpty() && m_deferredProfileSwitchId.isEmpty()) {
+            const ProfileForegroundSync::ResolveResult resolved =
+                ProfileForegroundSync::resolve(*m_profileManager, snap);
+            if (resolved.profileId == m_profileManager->activeProfileId()) {
+                if (!snap.pipbong) {
+                    applyForegroundCaptureHints(snap.rootHwnd, snap.title);
+                }
+                if (!m_switchingProfile && !m_profileSwitchPipelineActive) {
+                    finishForegroundSessionGate();
+                }
+                return;
+            }
+        }
+        if (snap.rootHwnd) {
+            m_lastForegroundSyncHwnd = snap.rootHwnd;
+        }
+    }
 
 #endif
     syncProfileToForegroundWindow();
@@ -7699,141 +7676,122 @@ void MainWindow::onForegroundWindowChanged() {
 #endif
 }
 
+void MainWindow::applyForegroundCaptureHints(HWND hwnd, const QString& foregroundTitle) {
+#ifdef _WIN32
+    if (!hwnd || !IsWindow(hwnd)) {
+        return;
+    }
+    ScreenCapture::setForegroundHintWindow(hwnd);
+    healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
+    ScreenCapture::invalidateTargetWindowCache();
+    syncEffectiveTargetWindowTitleToCapture();
+    rememberProfileLinkedForeground(hwnd, foregroundTitle);
+#else
+    Q_UNUSED(hwnd);
+    Q_UNUSED(foregroundTitle);
+#endif
+}
+
+void MainWindow::handlePipbongForegroundFocus() {
+#ifdef _WIN32
+    constexpr int kRestoreLinkedProfileWindowMs = 2500;
+    if (!m_lastLinkedForegroundProfileId.isEmpty()
+        && m_profileManager->activeProfileId() == m_profileManager->defaultProfileId()
+        && m_lastLinkedForegroundProfileId != m_profileManager->defaultProfileId()
+        && m_recentAutomaticDefaultProfileSwitchTimer.isValid()
+        && m_recentAutomaticDefaultProfileSwitchTimer.elapsed() < kRestoreLinkedProfileWindowMs) {
+        requestAutoProfileSwitch(m_lastLinkedForegroundProfileId);
+    }
+    if (!m_switchingProfile && !m_profileSwitchPipelineActive) {
+        finishForegroundSessionGate();
+    }
+#else
+    Q_UNUSED(this);
+#endif
+}
+
+void MainWindow::commitAutoProfileSwitch(HWND hwnd,
+                                         const QString& foregroundTitle,
+                                         const ProfileForegroundSync::ResolveResult& resolved) {
+#ifdef _WIN32
+    if (!m_profileManager || resolved.profileId.isEmpty()) {
+        return;
+    }
+    if (resolved.profileId == m_profileManager->activeProfileId()) {
+        return;
+    }
+
+    applyForegroundCaptureHints(hwnd, foregroundTitle);
+
+    if (m_profileManager->isDefaultProfile(resolved.profileId)) {
+        m_recentAutomaticDefaultProfileSwitchTimer.start();
+    } else {
+        m_recentAutomaticDefaultProfileSwitchTimer.invalidate();
+        m_lastLinkedForegroundProfileId = resolved.profileId;
+    }
+
+    int stabilityMs = 0;
+    int minIntervalMs = 0;
+    ProfileForegroundSync::autoSwitchTiming(resolved.matchKind, &stabilityMs, &minIntervalMs);
+
+    const bool minIntervalSatisfied =
+        !m_lastAutomaticProfileSwitchTimer.isValid()
+        || m_lastAutomaticProfileSwitchTimer.elapsed() >= minIntervalMs;
+    if (stabilityMs == 0 && minIntervalSatisfied) {
+        executeProfileSwitch(resolved.profileId, true);
+        return;
+    }
+
+    requestAutoProfileSwitch(resolved.profileId, stabilityMs, minIntervalMs);
+#else
+    Q_UNUSED(hwnd);
+    Q_UNUSED(foregroundTitle);
+    Q_UNUSED(resolved);
+#endif
+}
+
 void MainWindow::syncProfileToForegroundWindow() {
     if (!m_profileManager || m_switchingProfile || m_profileSwitchPipelineActive) {
         return;
     }
     schedulePruneAbandonedEngines();
 #ifdef _WIN32
-    HWND hwnd = GetForegroundWindow();
-    if (!hwnd || !IsWindow(hwnd)) {
+    HWND foregroundHwnd = GetForegroundWindow();
+    if (!foregroundHwnd || !IsWindow(foregroundHwnd)) {
         return;
     }
 
-    if (isPipbongProcessForeground(hwnd)) {
-        m_pendingDefaultProfileSwitchTimer.invalidate();
-        constexpr int kRestoreLinkedProfileWindowMs = 2500;
-        if (!m_lastLinkedForegroundProfileId.isEmpty()
-            && m_profileManager->activeProfileId() == m_profileManager->defaultProfileId()
-            && m_lastLinkedForegroundProfileId != m_profileManager->defaultProfileId()
-            && m_recentAutomaticDefaultProfileSwitchTimer.isValid()
-            && m_recentAutomaticDefaultProfileSwitchTimer.elapsed() < kRestoreLinkedProfileWindowMs) {
-            requestAutoProfileSwitch(m_lastLinkedForegroundProfileId);
-        }
-        if (!m_switchingProfile && !m_profileSwitchPipelineActive) {
-            finishForegroundSessionGate();
+    const ProfileForegroundSync::Snapshot snap =
+        ProfileForegroundSync::snapshotFrom(foregroundHwnd);
+    if (snap.pipbong) {
+        handlePipbongForegroundFocus();
+        return;
+    }
+    if (!snap.rootHwnd || snap.shellTransient) {
+        return;
+    }
+
+    const ProfileForegroundSync::ResolveResult resolved =
+        ProfileForegroundSync::resolve(*m_profileManager, snap);
+    if (resolved.profileId.isEmpty()) {
+        applyForegroundCaptureHints(snap.rootHwnd, snap.title);
+        return;
+    }
+
+    if (resolved.profileId == m_profileManager->activeProfileId()) {
+        applyForegroundCaptureHints(snap.rootHwnd, snap.title);
+        return;
+    }
+
+    if (ProfileForegroundSync::isAltTabModifierHeld()) {
+        if (!m_profileManager->isDefaultProfile(resolved.profileId)) {
+            m_deferredProfileSwitchId = resolved.profileId;
+            applyForegroundCaptureHints(snap.rootHwnd, snap.title);
         }
         return;
     }
 
-    hwnd = GetAncestor(hwnd, GA_ROOT);
-    if (!hwnd || !IsWindow(hwnd)) {
-        return;
-    }
-    if (isShellTransientForegroundWindow(hwnd)) {
-        m_pendingDefaultProfileSwitchTimer.invalidate();
-        return;
-    }
-
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(hwnd, titleBuffer, 512);
-    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
-
-    QString targetProfileId = resolveProfileIdForForeground(hwnd, foregroundTitle);
-    if (targetProfileId.isEmpty()) {
-        targetProfileId = m_profileManager->defaultProfileId();
-    }
-    if (targetProfileId.isEmpty()) {
-        m_pendingDefaultProfileSwitchTimer.invalidate();
-        ScreenCapture::setForegroundHintWindow(hwnd);
-        healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
-        if (adoptForegroundLinkedCaptureIfMatched()) {
-            rememberProfileLinkedForeground(hwnd, foregroundTitle);
-            finishForegroundSessionGate();
-        }
-        return;
-    }
-    if (targetProfileId != m_profileManager->defaultProfileId()) {
-        m_lastLinkedForegroundProfileId = targetProfileId;
-    }
-
-    // Always refresh capture HWND when the foreground window belongs to the active profile,
-    // even while Alt is held during Alt+Tab (binding only — profile switch may still defer).
-    if (targetProfileId == m_profileManager->activeProfileId()) {
-        m_pendingDefaultProfileSwitchTimer.invalidate();
-        ScreenCapture::setForegroundHintWindow(hwnd);
-        healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
-        ScreenCapture::invalidateTargetWindowCache();
-        syncEffectiveTargetWindowTitleToCapture();
-        rememberProfileLinkedForeground(hwnd, foregroundTitle);
-        finishForegroundSessionGate();
-        return;
-    }
-
-    if (isAltTabModifierHeld()) {
-        if (targetProfileId == m_profileManager->activeProfileId()) {
-            ScreenCapture::setForegroundHintWindow(hwnd);
-            healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
-            ScreenCapture::invalidateTargetWindowCache();
-            syncEffectiveTargetWindowTitleToCapture();
-            rememberProfileLinkedForeground(hwnd, foregroundTitle);
-            finishForegroundSessionGate();
-        } else if (!m_profileManager->isDefaultProfile(targetProfileId)) {
-            m_deferredProfileSwitchId = targetProfileId;
-            ScreenCapture::setForegroundHintWindow(hwnd);
-            healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
-            ScreenCapture::invalidateTargetWindowCache();
-            if (adoptForegroundLinkedCaptureIfMatched()) {
-                rememberProfileLinkedForeground(hwnd, foregroundTitle);
-            }
-        }
-        m_pendingDefaultProfileSwitchTimer.invalidate();
-        return;
-    }
-
-    // Matching a linked-window profile: switch immediately.
-    // Falling back to the default profile (unmatched title): require a short stable delay so
-    // Alt+Tab / shell overlays do not yank the profile away while returning to PIPBONG.
-    const bool fallingBackToDefault =
-        !m_profileManager->defaultProfileId().isEmpty()
-        && targetProfileId == m_profileManager->defaultProfileId();
-    if (fallingBackToDefault) {
-        constexpr int kDefaultFallbackStableMs = 250;
-        if (!m_pendingDefaultProfileSwitchTimer.isValid()) {
-            m_pendingDefaultProfileSwitchTimer.start();
-            return;
-        }
-        if (m_pendingDefaultProfileSwitchTimer.elapsed() < kDefaultFallbackStableMs) {
-            return;
-        }
-        HWND currentForeground = GetForegroundWindow();
-        if (!currentForeground || !IsWindow(currentForeground)
-            || isPipbongProcessForeground(currentForeground)) {
-            m_pendingDefaultProfileSwitchTimer.invalidate();
-            return;
-        }
-        currentForeground = GetAncestor(currentForeground, GA_ROOT);
-        if (!currentForeground || !IsWindow(currentForeground)
-            || isShellTransientForegroundWindow(currentForeground) || isAltTabModifierHeld()) {
-            m_pendingDefaultProfileSwitchTimer.invalidate();
-            return;
-        }
-    } else {
-        m_pendingDefaultProfileSwitchTimer.invalidate();
-    }
-
-    ScreenCapture::setForegroundHintWindow(hwnd);
-    healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
-
-    if (fallingBackToDefault) {
-        m_recentAutomaticDefaultProfileSwitchTimer.start();
-        m_pendingDefaultProfileSwitchTimer.invalidate();
-        executeProfileSwitch(targetProfileId, true);
-    } else {
-        m_recentAutomaticDefaultProfileSwitchTimer.invalidate();
-        switchToProfile(targetProfileId, true);
-        m_pendingDefaultProfileSwitchTimer.invalidate();
-    }
+    commitAutoProfileSwitch(snap.rootHwnd, snap.title, resolved);
 #else
     Q_UNUSED(this);
 #endif
@@ -8454,28 +8412,26 @@ QString MainWindow::resolveProfileIdForForeground(HWND hwnd,
     if (!m_profileManager) {
         return {};
     }
-
-    QString target;
-    if (!foregroundTitle.isEmpty()) {
-        target = m_profileManager->profileIdForForegroundTitle(foregroundTitle);
-    }
-
 #ifdef _WIN32
+    ProfileForegroundSync::Snapshot snap;
     if (hwnd && IsWindow(hwnd)) {
-        const QString byHwnd = profileIdForForegroundHwnd(hwnd);
-        if (!byHwnd.isEmpty()
-            && (target.isEmpty() || m_profileManager->isDefaultProfile(target))) {
-            target = byHwnd;
+        snap.rootHwnd = GetAncestor(hwnd, GA_ROOT);
+        if (!snap.rootHwnd || !IsWindow(snap.rootHwnd)) {
+            snap.rootHwnd = nullptr;
         }
     }
+    snap.title = foregroundTitle.trimmed();
+    if (snap.rootHwnd) {
+        ScreenCapture::TargetWindowInfo info;
+        if (ScreenCapture::queryWindowInfo(snap.rootHwnd, info) && !info.processPath.empty()) {
+            snap.processPath = QString::fromStdWString(info.processPath);
+        }
+    }
+    return ProfileForegroundSync::resolve(*m_profileManager, snap).profileId;
 #else
     Q_UNUSED(hwnd);
+    return m_profileManager->profileIdForForegroundTitle(foregroundTitle);
 #endif
-
-    if (target.isEmpty()) {
-        target = m_profileManager->defaultProfileId();
-    }
-    return target;
 }
 
 bool MainWindow::isDefinitiveProcessProfileMatch(HWND hwnd, const QString& profileId) const {
@@ -8500,35 +8456,13 @@ void MainWindow::autoProfileSwitchTimingForTarget(HWND hwnd,
                                                   const QString& targetProfileId,
                                                   int* stabilityMsOut,
                                                   int* minIntervalMsOut) const {
-    constexpr int kDefaultStabilityMs = 500;
-    constexpr int kDefaultMinIntervalMs = 800;
-    constexpr int kLinkedTitleStabilityMs = 120;
-    constexpr int kLinkedTitleMinIntervalMs = 350;
-    constexpr int kProcessMatchStabilityMs = 0;
-    constexpr int kProcessMatchMinIntervalMs = 150;
-    constexpr int kDefaultFallbackStabilityMs = 120;
-    constexpr int kDefaultFallbackMinIntervalMs = 600;
-
-    int stabilityMs = kDefaultStabilityMs;
-    int minIntervalMs = kDefaultMinIntervalMs;
-    if (m_profileManager && !targetProfileId.isEmpty()) {
-        if (m_profileManager->isDefaultProfile(targetProfileId)) {
-            stabilityMs = kDefaultFallbackStabilityMs;
-            minIntervalMs = kDefaultFallbackMinIntervalMs;
-        } else if (isDefinitiveProcessProfileMatch(hwnd, targetProfileId)) {
-            stabilityMs = kProcessMatchStabilityMs;
-            minIntervalMs = kProcessMatchMinIntervalMs;
-        } else {
-            stabilityMs = kLinkedTitleStabilityMs;
-            minIntervalMs = kLinkedTitleMinIntervalMs;
-        }
+    ProfileForegroundSync::MatchKind kind = ProfileForegroundSync::MatchKind::TitleBinding;
+    if (m_profileManager && m_profileManager->isDefaultProfile(targetProfileId)) {
+        kind = ProfileForegroundSync::MatchKind::DefaultFallback;
+    } else if (isDefinitiveProcessProfileMatch(hwnd, targetProfileId)) {
+        kind = ProfileForegroundSync::MatchKind::ProcessPath;
     }
-    if (stabilityMsOut) {
-        *stabilityMsOut = stabilityMs;
-    }
-    if (minIntervalMsOut) {
-        *minIntervalMsOut = minIntervalMs;
-    }
+    ProfileForegroundSync::autoSwitchTiming(kind, stabilityMsOut, minIntervalMsOut);
 }
 
 QString MainWindow::profileIdForForegroundHwnd(HWND hwnd) const {
@@ -8540,29 +8474,8 @@ QString MainWindow::profileIdForForegroundHwnd(HWND hwnd) const {
     if (!ScreenCapture::queryWindowInfo(hwnd, info) || info.processPath.empty()) {
         return {};
     }
-    const QString processPath = QString::fromStdWString(info.processPath);
-    QString bestId;
-    int bestScore = 0;
-    for (const ProfileManager::Profile& profile : m_profileManager->profiles()) {
-        if (m_profileManager->isDefaultProfile(profile.id)) {
-            continue;
-        }
-        const QString mainProc = m_profileManager->linkedTargetProcessPath(profile.id);
-        const QString subProc = m_profileManager->subLinkedTargetProcessPath(profile.id);
-        const auto scoreFor = [&](const QString& proc, const QString& binding) -> int {
-            if (proc.isEmpty() || processPath.compare(proc, Qt::CaseInsensitive) != 0) {
-                return 0;
-            }
-            return binding.isEmpty() ? 1 : static_cast<int>(binding.length());
-        };
-        const int score = qMax(scoreFor(mainProc, profile.targetWindowTitle),
-                               scoreFor(subProc, profile.subTargetWindowTitle));
-        if (score > bestScore) {
-            bestScore = score;
-            bestId = profile.id;
-        }
-    }
-    return bestId;
+    return ProfileForegroundSync::profileIdForProcessPath(
+        *m_profileManager, QString::fromStdWString(info.processPath));
 #else
     Q_UNUSED(hwnd);
     return {};
@@ -8576,26 +8489,19 @@ bool MainWindow::resolveForegroundTargetProfileId(HWND hwnd,
     if (!m_profileManager || !targetProfileIdOut || !hwnd || !IsWindow(hwnd)) {
         return false;
     }
-    if (isPipbongProcessForeground(hwnd) || isShellTransientForegroundWindow(hwnd)) {
+    const ProfileForegroundSync::Snapshot snap = ProfileForegroundSync::snapshotFrom(hwnd);
+    if (snap.pipbong || snap.shellTransient || !snap.rootHwnd) {
         return false;
     }
-    hwnd = GetAncestor(hwnd, GA_ROOT);
-    if (!hwnd || !IsWindow(hwnd)) {
-        return false;
-    }
-
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(hwnd, titleBuffer, 512);
-    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
     if (foregroundTitleOut) {
-        *foregroundTitleOut = foregroundTitle;
+        *foregroundTitleOut = snap.title;
     }
-
-    QString targetProfileId = resolveProfileIdForForeground(hwnd, foregroundTitle);
-    if (targetProfileId.isEmpty()) {
+    const ProfileForegroundSync::ResolveResult resolved =
+        ProfileForegroundSync::resolve(*m_profileManager, snap);
+    if (resolved.profileId.isEmpty()) {
         return false;
     }
-    *targetProfileIdOut = targetProfileId;
+    *targetProfileIdOut = resolved.profileId;
     return true;
 #else
     Q_UNUSED(hwnd);
@@ -8704,42 +8610,33 @@ bool MainWindow::switchToForegroundLinkedProfileIfNeeded(bool forceImmediate) {
     }
 
     HWND hwnd = GetForegroundWindow();
-    if (!hwnd || !IsWindow(hwnd) || isPipbongProcessForeground(hwnd)) {
+    if (!hwnd || !IsWindow(hwnd)) {
         return false;
     }
-    hwnd = GetAncestor(hwnd, GA_ROOT);
-    if (!hwnd || !IsWindow(hwnd) || isShellTransientForegroundWindow(hwnd)) {
-        return false;
-    }
-
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(hwnd, titleBuffer, 512);
-    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
-
-    const QString targetProfileId = !foregroundTitle.isEmpty()
-                                        ? m_profileManager->profileIdForForegroundTitle(
-                                              foregroundTitle)
-                                        : profileIdForForegroundHwnd(hwnd);
-    if (targetProfileId.isEmpty() || m_profileManager->isDefaultProfile(targetProfileId)) {
+    const ProfileForegroundSync::Snapshot snap = ProfileForegroundSync::snapshotFrom(hwnd);
+    if (snap.pipbong || !snap.rootHwnd || snap.shellTransient) {
         return false;
     }
 
-    ScreenCapture::setForegroundHintWindow(hwnd);
-    healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
-    ScreenCapture::invalidateTargetWindowCache();
+    const ProfileForegroundSync::ResolveResult resolved =
+        ProfileForegroundSync::resolve(*m_profileManager, snap);
+    if (resolved.profileId.isEmpty() || m_profileManager->isDefaultProfile(resolved.profileId)) {
+        return false;
+    }
 
-    if (targetProfileId == m_profileManager->activeProfileId()) {
+    applyForegroundCaptureHints(snap.rootHwnd, snap.title);
+
+    if (resolved.profileId == m_profileManager->activeProfileId()) {
         m_deferredProfileSwitchId.clear();
         return true;
     }
     if (!forceImmediate) {
-        m_deferredProfileSwitchId = targetProfileId;
+        m_deferredProfileSwitchId = resolved.profileId;
         return false;
     }
 
     m_deferredProfileSwitchId.clear();
-    m_pendingDefaultProfileSwitchTimer.invalidate();
-    executeProfileSwitch(targetProfileId, true);
+    executeProfileSwitch(resolved.profileId, true);
     return true;
 #else
     Q_UNUSED(forceImmediate);
