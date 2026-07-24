@@ -13,6 +13,7 @@
 #include <QMainWindow>
 #include <QPointer>
 #include <QSet>
+#include <unordered_set>
 #include <QMutex>
 #include <atomic>
 #include <map>
@@ -196,6 +197,16 @@ private:
     void connectSignals();
     void updateRunUiState(bool immediate = false);
     bool shouldCoalesceRunUiUpdates() const;
+    bool isHoldBurstActive() const;
+    bool shouldLogSessionDetailsInBurst() const;
+    void prepareForegroundForHoldBurst();
+    void scheduleCoalescedHoldStartUi(const std::string& featureId);
+    void flushCoalescedHoldStartUi();
+    void scheduleCoalescedHoldEndCleanup();
+    void flushCoalescedHoldEndCleanup();
+    void scheduleHoldBurstScopeDrain();
+    void drainHoldBurstScope();
+    void flushDeferredBurstSideEffects();
     void applyRunUiState();
     void scheduleWorkerFastRepeatUiFlush();
     void flushAllPendingWorkerFastRepeatUi();
@@ -545,4 +556,16 @@ private:
     bool m_scopedTargetForegroundResumePending = false;
     bool m_ensureTriggerMonitorPending = false;
     bool m_pruneAbandonedEnginesPending = false;
+    int m_holdBurstDepth = 0;
+    bool m_holdBurstScopeDrainScheduled = false;
+    QElapsedTimer m_holdBurstForegroundPrepTimer;
+    bool m_holdBurstForegroundPrepared = false;
+    bool m_holdBurstTargetActivated = false;
+    bool m_holdBurstCaptureTitleValid = false;
+    std::wstring m_holdBurstCaptureTitle;
+    std::unordered_set<std::string> m_pendingHoldStartUiFeatureIds;
+    bool m_holdStartUiFlushScheduled = false;
+    bool m_holdEndCleanupScheduled = false;
+    bool m_deferredBurstTriggerRestore = false;
+    bool m_deferredBurstPruneEngines = false;
 };

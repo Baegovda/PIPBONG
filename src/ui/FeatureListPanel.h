@@ -288,7 +288,9 @@ private:
     bool m_runAnimationLowCpu = false;
     int m_runStateBatchDepth = 0;
     bool m_runStateViewportDirty = false;
+    bool m_runStateMutationPolicyDirty = false;
     void requestRunStateViewportUpdate();
+    void requestRunStateMutationPolicyRefresh();
 
     int m_inlineRenameRow = -1;
 

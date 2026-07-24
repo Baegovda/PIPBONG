@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.310` (from `project(PIPBONG VERSION 0.8.310)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.311` (from `project(PIPBONG VERSION 0.8.311)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1194,6 +1194,7 @@ Cursor rule: `.cursor/rules/app-spike-profiling.mdc`.
 | Subsystem | Symptom examples | Profiler hook (examples) | Report / tags |
 | --------- | ---------------- | ------------------------ | ------------- |
 | UI / multi-hold | PIPBONG 창 버벅임, 홀드 2+ | `AppSpikeProfiler` crumbs + timers on `applyRunUiState`, fast-repeat flush | `gui_stall_*`, `sessions=` |
+| UI / multi-hold burst | Q/W/E/R 홀드 동시 누름·뗌 | `MultiHoldProfiler` on hold burst coordinator (`prepareForegroundForHoldBurst`, coalesced start/end UI, `applyRunUiState` burst path) | `multi-hold/latest.md`; `hold_burst_prep_ms`, `hold_start_ui_ms`, `hold_end_cleanup_ms`, `apply_run_ui_ms`; `scripts/analyze-multi-hold.ps1` |
 | Hotkey / foreground | Alt+Tab 후 단축키 죽음 | Opt-in hook latch + handler timing | `hotkey_*` |
 | ImageFind / capture | 매칭 느림, 검은 화면 | Per-poll capture+match ms | `imagefind_poll` |
 | Profile switch | 전환 핑퐁·GUI 멈춤 | `ProfileSwitchProfiler` phase timers on `requestAutoProfileSwitch` / `executeProfileSwitch` | `profile-switch/latest.md`, crumbs `switch requested/stable/committed` |
@@ -1546,6 +1547,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.311] - 2026-07-24
+
+### Added
+
+- **`MultiHoldProfiler`**: opt-in simultaneous Hold hotkey burst diagnostics — phase timers (`hold_burst_prep_ms`, `hold_start_ui_ms`, `hold_end_cleanup_ms`, `apply_run_ui_ms`, `hold_end_ms`); Korean auto-diagnosis; repo `multi-hold/latest.md` mirror + AppData backup; **프로그램 설정 → 진단 → 홀드 동시 입력 진단** (`program/multiHoldProfiling` or `PIPBONG_MULTI_HOLD_PROFILE=1`); `scripts/analyze-multi-hold.ps1` (AGENTS.md §8.16).
+
+### Changed
+
+- **Hold burst coordinator** (`MainWindow`): `prepareForegroundForHoldBurst` caches foreground prep and capture HWND lookup across simultaneous Hold starts; `scheduleCoalescedHoldStartUi` / `scheduleCoalescedHoldEndCleanup` batch start/end UI; burst-scoped `activateTargetWindow` once per burst; `HoldBurstScope` depth on hold hotkey handlers; `applyRunUiState` defers trigger restore, profile switch flush, and engine prune during burst (`flushDeferredBurstSideEffects` at burst end).
+- **`FeatureListPanel`**: `refreshListMutationPolicy` deferred to `endRunStateBatch` when run-state setters run inside `applyRunUiState` batch.
+
+### Fixed
+
+- Multi-Hold simultaneous **start** (Q/W/E/R together) and **end** no longer repeat heavy foreground sync, per-session mouse-lock reconcile, and full feature-list mutation policy on the GUI thread for each session (`MainWindow`, `FeatureListPanel`); block/start run logs suppressed when `sessions >= 2` or hold burst active (`shouldLogSessionDetailsInBurst`).
 
 ## [0.8.310] - 2026-07-24
 

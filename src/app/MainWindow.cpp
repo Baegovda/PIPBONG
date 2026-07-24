@@ -24,6 +24,7 @@
 #include "core/diagnostics/AppSpikeProfiler.h"
 #include "core/diagnostics/ProfileSwitchProfiler.h"
 #include "core/diagnostics/FeatureToggleProfiler.h"
+#include "core/diagnostics/MultiHoldProfiler.h"
 #include "core/input/InputSimulator.h"
 #include "core/input/HotkeyBinding.h"
 #include "ui/WindowPickerHoverOverlay.h"
@@ -2655,6 +2656,7 @@ void MainWindow::prepareForShutdown() {
     sealActiveProfilePackage(true);
     pruneAbandonedEngines();
     AppSpikeProfiler::stopAndWriteReport(QStringLiteral("app_shutdown"));
+    MultiHoldProfiler::flushReport(QStringLiteral("app_shutdown"));
     if (m_uiState) {
         m_uiState->saveNow();
     }
@@ -3148,6 +3150,143 @@ bool MainWindow::shouldCoalesceRunUiUpdates() const {
     return m_runSessions.size() > 1 || concurrentActiveRepeatSessionCount() >= 2;
 }
 
+bool MainWindow::isHoldBurstActive() const {
+    return m_holdBurstDepth > 0 || shouldCoalesceRunUiUpdates() || m_holdStartUiFlushScheduled
+           || m_holdEndCleanupScheduled || m_pendingHoldStartUiFeatureIds.size() > 1;
+}
+
+bool MainWindow::shouldLogSessionDetailsInBurst() const {
+    if (isHoldBurstActive()) {
+        return false;
+    }
+    return m_runSessions.size() < 2;
+}
+
+void MainWindow::prepareForegroundForHoldBurst() {
+    QElapsedTimer timer;
+    timer.start();
+    if (m_holdBurstForegroundPrepTimer.isValid()
+        && m_holdBurstForegroundPrepTimer.elapsed() < 50) {
+        MultiHoldProfiler::notePhase(QStringLiteral("hold_burst_prep_skipped"), 0);
+        return;
+    }
+#ifdef _WIN32
+    ensureForegroundReadyForFeatureHotkey();
+#endif
+    m_holdBurstForegroundPrepTimer.start();
+    m_holdBurstForegroundPrepared = true;
+    MultiHoldProfiler::notePhase(QStringLiteral("hold_burst_prep_ms"), timer.elapsed());
+}
+
+void MainWindow::scheduleCoalescedHoldStartUi(const std::string& featureId) {
+    m_pendingHoldStartUiFeatureIds.insert(featureId);
+    if (m_holdStartUiFlushScheduled) {
+        return;
+    }
+    m_holdStartUiFlushScheduled = true;
+    QTimer::singleShot(0, this, [this]() { flushCoalescedHoldStartUi(); });
+}
+
+void MainWindow::flushCoalescedHoldStartUi() {
+    m_holdStartUiFlushScheduled = false;
+    if (m_pendingHoldStartUiFeatureIds.empty()) {
+        return;
+    }
+    QElapsedTimer timer;
+    timer.start();
+
+    const auto pending = m_pendingHoldStartUiFeatureIds;
+    m_pendingHoldStartUiFeatureIds.clear();
+
+    bool loggedStart = false;
+    bool selectedDisplay = false;
+    for (const std::string& featureId : pending) {
+        FeatureRunSession* session = sessionFor(featureId);
+        if (!session) {
+            continue;
+        }
+        Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
+        if (!selectedDisplay && feature) {
+            selectRunningFeatureForDisplay(feature);
+            selectedDisplay = true;
+        }
+        if (isDisplayedRunningFeature(session) && m_workflowEditor) {
+            syncLoopTimingToWorkflowEditor(session);
+            m_workflowEditor->clearBlockMatchResults();
+            m_workflowEditor->clearExecutionHighlight();
+            if (session->runningBlockIndex >= 0
+                && session->runningBlockHighlight != BlockListWidget::ExecutionHighlight::None) {
+                m_workflowEditor->setActiveBlockIndex(session->runningBlockIndex,
+                                                      session->runningBlockHighlight);
+            }
+        }
+        if (shouldLogRunDetails(*session) && !loggedStart) {
+            appendSessionLog(*session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
+            loggedStart = true;
+        }
+    }
+    if (selectedDisplay && m_workflowEditor) {
+        m_workflowEditor->persistRunFeedbackForCurrentFeature();
+    }
+    updateRunUiState(false);
+    MultiHoldProfiler::notePhase(QStringLiteral("hold_start_ui_ms"),
+                                 timer.elapsed(),
+                                 QStringLiteral("sessions=%1").arg(static_cast<qint64>(pending.size())));
+}
+
+void MainWindow::scheduleCoalescedHoldEndCleanup() {
+    if (m_holdEndCleanupScheduled) {
+        return;
+    }
+    m_holdEndCleanupScheduled = true;
+    QTimer::singleShot(0, this, [this]() { flushCoalescedHoldEndCleanup(); });
+}
+
+void MainWindow::flushCoalescedHoldEndCleanup() {
+    if (!m_holdEndCleanupScheduled) {
+        return;
+    }
+    m_holdEndCleanupScheduled = false;
+    QElapsedTimer timer;
+    timer.start();
+    reconcileMouseLocksFromRunningSessions();
+    updateRunUiState(false);
+    flushDeferredBurstSideEffects();
+    MultiHoldProfiler::notePhase(QStringLiteral("hold_end_cleanup_ms"), timer.elapsed());
+}
+
+void MainWindow::scheduleHoldBurstScopeDrain() {
+    if (m_holdBurstScopeDrainScheduled) {
+        return;
+    }
+    m_holdBurstScopeDrainScheduled = true;
+    QTimer::singleShot(0, this, [this]() { drainHoldBurstScope(); });
+}
+
+void MainWindow::drainHoldBurstScope() {
+    m_holdBurstScopeDrainScheduled = false;
+    if (!m_pendingHoldStartUiFeatureIds.empty() && !m_holdStartUiFlushScheduled) {
+        flushCoalescedHoldStartUi();
+    }
+    flushDeferredBurstSideEffects();
+}
+
+void MainWindow::flushDeferredBurstSideEffects() {
+    if (m_deferredBurstTriggerRestore) {
+        m_deferredBurstTriggerRestore = false;
+        scheduleRestorePersistedTriggerSessions();
+    }
+    if (m_deferredBurstPruneEngines) {
+        m_deferredBurstPruneEngines = false;
+        schedulePruneAbandonedEngines();
+    }
+    m_holdBurstTargetActivated = false;
+    if (m_holdBurstForegroundPrepTimer.isValid() && m_holdBurstForegroundPrepTimer.elapsed() > 200) {
+        m_holdBurstCaptureTitleValid = false;
+        m_holdBurstForegroundPrepared = false;
+    }
+}
+
 int MainWindow::concurrentActiveRepeatSessionCount() const {
     int count = 0;
     for (const auto& entry : m_runSessions) {
@@ -3166,6 +3305,11 @@ bool MainWindow::shouldPublishFastRepeatLoopLog(const FeatureRunSession& session
 }
 
 void MainWindow::applyRunUiState() {
+    QElapsedTimer applyTimer;
+    if (MultiHoldProfiler::isEnabled()) {
+        applyTimer.start();
+    }
+    const bool burstUi = isHoldBurstActive() || shouldCoalesceRunUiUpdates();
     if (m_featureList) {
         bool suppressRunAnimation = m_runSessions.size() >= 2;
         if (!suppressRunAnimation) {
@@ -3233,7 +3377,11 @@ void MainWindow::applyRunUiState() {
                 needRestore = true;
             }
             if (needRestore) {
-                scheduleRestorePersistedTriggerSessions();
+                if (burstUi) {
+                    m_deferredBurstTriggerRestore = true;
+                } else {
+                    scheduleRestorePersistedTriggerSessions();
+                }
             }
         }
         m_featureList->endRunStateBatch();
@@ -3297,10 +3445,21 @@ void MainWindow::applyRunUiState() {
         }
     }
 
-    schedulePruneAbandonedEngines();
     scheduleEnsureTriggerMonitorEnginesRunning();
-    flushDeferredProfileSwitchIfIdle();
+    if (!burstUi) {
+        schedulePruneAbandonedEngines();
+        flushDeferredProfileSwitchIfIdle();
+    } else {
+        m_deferredBurstPruneEngines = true;
+    }
     maybeStartAutomaticUpdate();
+    if (MultiHoldProfiler::isEnabled() && applyTimer.isValid()) {
+        MultiHoldProfiler::notePhase(QStringLiteral("apply_run_ui_ms"),
+                                     applyTimer.elapsed(),
+                                     QStringLiteral("sessions=%1 burst=%2")
+                                         .arg(static_cast<qint64>(m_runSessions.size()))
+                                         .arg(burstUi ? QStringLiteral("yes") : QStringLiteral("no")));
+    }
 }
 
 void MainWindow::abandonSessionEngine(FeatureRunSession& session) {
@@ -3350,14 +3509,22 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     if (hadEngine) {
         appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
         abandonSessionEngine(*session);
-        reconcileMouseLocksFromRunningSessions();
-        updateRunUiState(false);
+        if (shouldCoalesceRunUiUpdates()) {
+            scheduleCoalescedHoldEndCleanup();
+        } else {
+            reconcileMouseLocksFromRunningSessions();
+            updateRunUiState(false);
+        }
         schedulePruneAbandonedEngines();
         return;
     }
 
     finishRunSession(featureId, session->lastLoopSuccess, QString(), shouldCoalesceRunUiUpdates());
-    updateRunUiState(false);
+    if (shouldCoalesceRunUiUpdates()) {
+        scheduleCoalescedHoldEndCleanup();
+    } else {
+        updateRunUiState(false);
+    }
 }
 
 void MainWindow::stopRunningSessionsForUpdate() {
@@ -4237,12 +4404,23 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
         return;
     }
     bool deferTriggerRestoreStart = false;
+    const bool holdHotkeyStart =
+        fromHotkey && feature->runMode() == FeatureRunMode::Hold;
+    if (holdHotkeyStart) {
+        prepareForegroundForHoldBurst();
+    }
 #ifdef _WIN32
     if (!ProgramSettings::runWithoutTargetWindow()) {
-        switchToForegroundLinkedProfileIfNeeded(true);
-        syncProfileToForegroundWindow();
-        syncEffectiveTargetWindowTitleToCapture();
-        reconcileRunSessionsWithForegroundGate();
+        const bool skipHeavyForegroundSync =
+            holdHotkeyStart && m_holdBurstForegroundPrepared
+            && m_holdBurstForegroundPrepTimer.isValid()
+            && m_holdBurstForegroundPrepTimer.elapsed() < 50;
+        if (!skipHeavyForegroundSync) {
+            switchToForegroundLinkedProfileIfNeeded(true);
+            syncProfileToForegroundWindow();
+            syncEffectiveTargetWindowTitleToCapture();
+            reconcileRunSessionsWithForegroundGate();
+        }
         const bool foregroundGateActive = runForegroundGateActive(feature);
         const std::wstring captureTitle = resolveRunCaptureTargetTitleW(feature);
         const FeatureCaptureTargetScope scope = feature->captureTargetScope();
@@ -4292,9 +4470,20 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
                         m_profileManager->linkedTargetProcessPath(profileId).toStdWString();
                 }
             }
-            const HWND captureHwnd =
-                ScreenCapture::findVisibleWindowMatchingTitle(captureTitle, processPath);
-            if (!captureHwnd) {
+            bool captureHwndValid = false;
+            if (holdHotkeyStart && m_holdBurstCaptureTitleValid
+                && captureTitle == m_holdBurstCaptureTitle) {
+                captureHwndValid = true;
+            } else {
+                const HWND captureHwnd =
+                    ScreenCapture::findVisibleWindowMatchingTitle(captureTitle, processPath);
+                captureHwndValid = captureHwnd != nullptr;
+                if (captureHwndValid && holdHotkeyStart) {
+                    m_holdBurstCaptureTitle = captureTitle;
+                    m_holdBurstCaptureTitleValid = true;
+                }
+            }
+            if (!captureHwndValid) {
                 if (!silentRestoreStart) {
                     QString message;
                     if (scope == FeatureCaptureTargetScope::SubOnly) {
@@ -4963,6 +5152,9 @@ void MainWindow::syncLoopTimingToWorkflowEditor(const FeatureRunSession* session
 }
 
 bool MainWindow::shouldLogRunDetails(const FeatureRunSession& session) const {
+    if (!shouldLogSessionDetailsInBurst()) {
+        return false;
+    }
     return !session.repeatSession || session.sessionIteration <= 0;
 }
 
@@ -5034,7 +5226,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
             updateRunUiState();
         } else {
             const std::string featureId = session.featureId;
-            QTimer::singleShot(0, this, [this, featureId]() { deferHoldSessionUiAfterStart(featureId); });
+            QTimer::singleShot(0, this, [this, featureId]() {
+                scheduleCoalescedHoldStartUi(featureId);
+            });
         }
         session.runningBlockIndex = -1;
         session.runningBlockHighlight = BlockListWidget::ExecutionHighlight::None;
@@ -5089,7 +5283,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
     const bool triggerBackgroundRun =
         featurePtr->runMode() == FeatureRunMode::Trigger
         && featurePtr->triggerRunWithoutTargetForeground();
-    engine->runPrepared([featurePtr, &session, targetTitle, projectDir, skipTargetActivation, triggerBackgroundRun]() {
+    const bool holdBurstFirstStart = hotkeyHoldFirstStart;
+    QPointer<MainWindow> self(this);
+    engine->runPrepared([featurePtr, &session, targetTitle, projectDir, skipTargetActivation, triggerBackgroundRun, self, holdBurstFirstStart]() {
         PreparedWorkflowRun run;
         run.workflow = session.sessionWorkflow;
         if (!run.workflow) {
@@ -5102,7 +5298,12 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         run.context->resetStop();
 #ifdef _WIN32
         if (!skipTargetActivation && !triggerBackgroundRun) {
-            ScreenCapture::activateTargetWindow();
+            if (!holdBurstFirstStart || !self || !self->m_holdBurstTargetActivated) {
+                ScreenCapture::activateTargetWindow();
+                if (holdBurstFirstStart && self) {
+                    self->m_holdBurstTargetActivated = true;
+                }
+            }
         }
 #endif
         return run;
@@ -5637,13 +5838,17 @@ void MainWindow::finishRunSession(const std::string& featureId,
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
     m_fastRepeatUiCoalesce.erase(featureId);
     m_runSessions.erase(featureId);
-    reconcileMouseLocksFromRunningSessions();
+    if (!coalesceUi) {
+        reconcileMouseLocksFromRunningSessions();
+    }
     if (!hasAnyRunningSession()) {
         WorkflowMatchFeedbackOverlay::dismissAll();
         WorkflowRoiFlashOverlay::dismissAll();
     }
     if (!deferUiUpdate) {
         updateRunUiState(false);
+    } else {
+        scheduleCoalescedHoldEndCleanup();
     }
     Q_UNUSED(message);
 }
@@ -5771,12 +5976,24 @@ void MainWindow::onHotkeyTriggered(const QString& featureId) {
 }
 
 void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
+    struct HoldBurstScope {
+        MainWindow* window = nullptr;
+        explicit HoldBurstScope(MainWindow* w) : window(w) {
+            if (window) {
+                ++window->m_holdBurstDepth;
+            }
+        }
+        ~HoldBurstScope() {
+            if (window) {
+                --window->m_holdBurstDepth;
+                window->scheduleHoldBurstScopeDrain();
+            }
+        }
+    } burstScope(this);
+
     if (!m_project) {
         return;
     }
-#ifdef _WIN32
-    ensureForegroundReadyForFeatureHotkey();
-#endif
     Feature* feature = m_project->featureById(featureId.toStdString());
     if (!feature || !feature->enabled()) {
         return;
@@ -5813,6 +6030,26 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
 }
 
 void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
+    struct HoldBurstScope {
+        MainWindow* window = nullptr;
+        explicit HoldBurstScope(MainWindow* w) : window(w) {
+            if (window) {
+                ++window->m_holdBurstDepth;
+            }
+        }
+        ~HoldBurstScope() {
+            if (window) {
+                --window->m_holdBurstDepth;
+                window->scheduleHoldBurstScopeDrain();
+            }
+        }
+    } burstScope(this);
+
+    QElapsedTimer endTimer;
+    if (MultiHoldProfiler::isEnabled()) {
+        endTimer.start();
+    }
+
     const std::string id = featureId.toStdString();
     FeatureRunSession* session = sessionFor(id);
     if (!session || session->runningMode != FeatureRunMode::Hold) {
@@ -5836,13 +6073,25 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     if (session->engine && session->engine->isRunning()) {
         session->userStopRequested = true;
         session->engine->stop();
-        updateRunUiState(false);
+        scheduleCoalescedHoldEndCleanup();
+        if (MultiHoldProfiler::isEnabled() && endTimer.isValid()) {
+            MultiHoldProfiler::notePhase(QStringLiteral("hold_end_ms"),
+                                         endTimer.elapsed(),
+                                         QStringLiteral("sessions=%1 engine=stop")
+                                             .arg(static_cast<qint64>(m_runSessions.size())));
+        }
         return;
     }
 
     session->userStopRequested = false;
     finishRunSession(id, true, QString(), shouldCoalesceRunUiUpdates());
-    updateRunUiState(false);
+    scheduleCoalescedHoldEndCleanup();
+    if (MultiHoldProfiler::isEnabled() && endTimer.isValid()) {
+        MultiHoldProfiler::notePhase(QStringLiteral("hold_end_ms"),
+                                     endTimer.elapsed(),
+                                     QStringLiteral("sessions=%1 engine=idle")
+                                         .arg(static_cast<qint64>(m_runSessions.size())));
+    }
 }
 
 bool MainWindow::shouldSuppressFeatureHotkeyExecution(const Feature* feature) const {
@@ -6329,7 +6578,11 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
     if (session->userStopRequested) {
         const bool deferUi = m_runSessions.size() > 1;
         finishRunSession(session->featureId, success, message, deferUi);
-        updateRunUiState(false);
+        if (deferUi) {
+            scheduleCoalescedHoldEndCleanup();
+        } else {
+            updateRunUiState(false);
+        }
         return;
     }
 

@@ -323,6 +323,16 @@ void ProgramSettingsDialog::setupUi() {
            "환경 변수 PIPBONG_FEATURE_TOGGLE_PROFILE=1 로도 켤 수 있습니다."),
         ProgramSettings::featureToggleProfiling());
 
+    m_multiHoldProfilingCheck = addGroupCheck(
+        diagnosticsLayout,
+        diagnosticsGroup,
+        tr("홀드 동시 입력 진단"),
+        tr("홀드 단축키(Q/W/E/R 등)를 동시에 누르거나 뗄 때 단계별 소요 시간(ms)을 기록합니다(기본 꺼짐). "
+           "재현 직후 multi-hold\\latest.md 에 저장(저장소 미러 + AppData). "
+           "버벅임 재현 시 이 옵션만 켜고 홀드 4개를 동시에 10회 누름/뗌 후 보고서를 공유하세요. "
+           "환경 변수 PIPBONG_MULTI_HOLD_PROFILE=1 로도 켤 수 있습니다."),
+        ProgramSettings::multiHoldProfiling());
+
     layout->addStretch();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -343,6 +353,7 @@ void ProgramSettingsDialog::setupUi() {
         AppSpikeProfiler::reloadFromSettings();
         ProgramSettings::setProfileSwitchProfiling(m_profileSwitchProfilingCheck->isChecked());
         ProgramSettings::setFeatureToggleProfiling(m_featureToggleProfilingCheck->isChecked());
+        ProgramSettings::setMultiHoldProfiling(m_multiHoldProfilingCheck->isChecked());
         ProgramSettings::setImageFindCaptureMode(
             static_cast<ProgramSettings::ImageFindCaptureMode>(
                 m_imageFindCaptureModeCombo->currentData().toInt()));

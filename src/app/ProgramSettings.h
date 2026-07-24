@@ -76,6 +76,10 @@ public:
     static bool featureToggleProfiling();
     static void setFeatureToggleProfiling(bool enabled);
 
+    /// When enabled, records multi-Hold hotkey burst phases to multi-hold/latest.md.
+    static bool multiHoldProfiling();
+    static void setMultiHoldProfiling(bool enabled);
+
     /// When enabled, switching the active profile activates the linked target window.
     static bool focusTargetWindowOnProfileSelect();
     static void setFocusTargetWindowOnProfileSelect(bool enabled);

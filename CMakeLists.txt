@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.310 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.311 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -93,6 +93,7 @@ set(PIPBONG_SOURCES
     src/core/diagnostics/AppSpikeProfiler.cpp
     src/core/diagnostics/ProfileSwitchProfiler.cpp
     src/core/diagnostics/FeatureToggleProfiler.cpp
+    src/core/diagnostics/MultiHoldProfiler.cpp
     src/core/diagnostics/Win32StackWalker.cpp
     src/ui/calculator/FormulaEvaluator.cpp
     src/ui/calculator/SpreadsheetModel.cpp

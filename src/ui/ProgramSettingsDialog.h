@@ -36,6 +36,7 @@ private:
     QCheckBox* m_appSpikeProfilingCheck = nullptr;
     QCheckBox* m_profileSwitchProfilingCheck = nullptr;
     QCheckBox* m_featureToggleProfilingCheck = nullptr;
+    QCheckBox* m_multiHoldProfilingCheck = nullptr;
     QLabel* m_clickFeedbackSummary = nullptr;
     QPushButton* m_clickFeedbackButton = nullptr;
     QLabel* m_windowSelectionFeedbackSummary = nullptr;

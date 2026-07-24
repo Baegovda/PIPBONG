@@ -21,6 +21,7 @@ constexpr const char* kLogMaxLinesKey = "program/logMaxLines";
 constexpr const char* kAppSpikeProfilingKey = "program/appSpikeProfiling";
 constexpr const char* kProfileSwitchProfilingKey = "program/profileSwitchProfiling";
 constexpr const char* kFeatureToggleProfilingKey = "program/featureToggleProfiling";
+constexpr const char* kMultiHoldProfilingKey = "program/multiHoldProfiling";
 constexpr const char* kLegacyCursorStutterProfilingKey = "program/cursorStutterProfiling";
 constexpr const char* kFocusTargetWindowOnProfileSelectKey =
     "program/focusTargetWindowOnProfileSelect";
@@ -198,6 +199,16 @@ bool ProgramSettings::featureToggleProfiling() {
 void ProgramSettings::setFeatureToggleProfiling(bool enabled) {
     QSettings settings;
     settings.setValue(kFeatureToggleProfilingKey, enabled);
+}
+
+bool ProgramSettings::multiHoldProfiling() {
+    QSettings settings;
+    return settings.value(kMultiHoldProfilingKey, false).toBool();
+}
+
+void ProgramSettings::setMultiHoldProfiling(bool enabled) {
+    QSettings settings;
+    settings.setValue(kMultiHoldProfilingKey, enabled);
 }
 
 bool ProgramSettings::focusTargetWindowOnProfileSelect() {

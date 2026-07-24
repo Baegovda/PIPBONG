@@ -1715,12 +1715,27 @@ void FeatureListPanel::endRunStateBatch() {
     if (m_runStateBatchDepth > 0) {
         --m_runStateBatchDepth;
     }
-    if (m_runStateBatchDepth == 0 && m_runStateViewportDirty) {
+    if (m_runStateBatchDepth != 0) {
+        return;
+    }
+    if (m_runStateMutationPolicyDirty) {
+        m_runStateMutationPolicyDirty = false;
+        refreshListMutationPolicy();
+    }
+    if (m_runStateViewportDirty) {
         m_runStateViewportDirty = false;
         if (m_list && m_list->viewport()) {
             m_list->viewport()->update();
         }
     }
+}
+
+void FeatureListPanel::requestRunStateMutationPolicyRefresh() {
+    if (m_runStateBatchDepth > 0) {
+        m_runStateMutationPolicyDirty = true;
+        return;
+    }
+    refreshListMutationPolicy();
 }
 
 void FeatureListPanel::setRunAnimationLowCpu(bool lowCpu) {
@@ -1750,20 +1765,20 @@ void FeatureListPanel::setRunningFeatureIds(const QSet<QString>& featureIds) {
         m_animTimer->start();
     }
     updateReorderEnabled();
-    refreshListMutationPolicy();
+    requestRunStateMutationPolicyRefresh();
     requestRunStateViewportUpdate();
 }
 
 void FeatureListPanel::setActiveWorkflowFeatureIds(const QSet<QString>& featureIds) {
     m_activeWorkflowFeatureIds = featureIds;
-    refreshListMutationPolicy();
+    requestRunStateMutationPolicyRefresh();
     requestRunStateViewportUpdate();
 }
 
 void FeatureListPanel::setFeatureRunVisualKinds(const QHash<QString, FeatureRunVisualKind>& kinds) {
     m_featureRunVisualKinds = kinds;
     requestRunStateViewportUpdate();
-    refreshListMutationPolicy();
+    requestRunStateMutationPolicyRefresh();
 }
 
 void FeatureListPanel::setTriggerCooldownStates(
