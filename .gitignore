@@ -1,8 +1,6 @@
 build/
-cursor-stutter/*
-!cursor-stutter/.gitkeep
-app-profile/
-workflow-profile/
+app-spike/*
+!app-spike/.gitkeep
 build-static/
 dist/
 out/

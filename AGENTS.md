@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.301` (from `project(PIPBONG VERSION 0.8.301)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.302` (from `project(PIPBONG VERSION 0.8.302)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -415,7 +415,7 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
 │   ├── run-policy-sim.ps1     # build PIPBONGPolicySim only + run (manual)
 │   ├── run-policy-sim-postbuild.ps1  # POST_BUILD hook: run sim after PIPBONG link
-│   ├── analyze-cursor-stutter.ps1  # summarize cursor-stutter/latest.md
+│   ├── analyze-app-spike.ps1  # summarize app-spike/latest.md
 │   ├── recover-ide-build.ps1  # IDE recovery (local default; optional -KillGlobalBuildProcesses)
 │   ├── ensure-dev-isolation.ps1  # dual-Cursor setup: settings check, F5 fix, deploy-qt if needed
 │   ├── fix-pipbong-cursor-f5.ps1  # workspace-gated F5 -> Build and Run (config.pipbong.f5BuildAndRun)
@@ -1140,25 +1140,24 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 **Stage 2 (not yet):** workflow `WorkflowRunner` dry-run with mocks — blocked by OpenCV/UI block dependencies; track as future `PIPBONGWorkflowDryRunSim`.
 
-### 8.14 Cursor stutter profiling (mandatory — mouse jump / QWER diagnosis)
+### 8.14 App spike profiling (mandatory — PIPBONG lag / UI stall diagnosis)
 
-**Status:** Strengthened 2026-07 (v0.8.301). Replaces app-wide `WorkflowRunProfiler` / `app-profile/` (removed v0.8.295). **Sampler is opt-in** — default OFF to avoid UI lag.
+**Status:** Added 2026-07 (v0.8.302). Replaces **`CursorStutterProfiler`** / **`cursor-stutter/`** (removed). Measures **PIPBONG app** GUI stalls and CPU spikes — not in-game cursor jumps.
 
 | Layer | Role |
 | ----- | ---- |
-| `CursorStutterProfiler` | **Opt-in** 12 ms `GetCursorPos` sampler when `program/cursorStutterProfiling` ON; sampler jumps/micro-jumps **counter-only** (no event rows); snap-back/sampler overrun from non-sampler sources; verbose: `SetCursorPos`, `ClipCursor`, hook snaps, keyboard-hook timing, QWER keys |
-| Verbose enable | `program/cursorStutterProfiling` (**default OFF**) or env `PIPBONG_CURSOR_STUTTER_PROFILE=1` |
-| `hold_feature` | Hold-mode feature name (`Q`/`W`/`E`/`R` LOL profile) on hold_start/hold_end (`MainWindow`) |
-| `foreground_focus` | Win32 `GetForegroundWindow` on HWND change (title, hwnd, exe); appended to jump/hold/hook events |
-| Output | **Repo** `cursor-stutter/latest.md` + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/cursor-stutter/latest.md`** fallback |
-| Flush | App shutdown only (async write); no periodic or Hold-end flush |
-| Repo root | Walk up from exe for `CMakeLists.txt` (`PIPBONG`); env `PIPBONG_REPO_ROOT` |
+| `AppSpikeProfiler` | Opt-in 50 ms GUI pulse timer (stall thresholds 80/150/300/1000 ms) + 500 ms background CPU sampler |
+| CPU | Reuses `SystemCpuSampler`, `ProcessCpuSampler`, `CpuSpikeDetector` (same family as **CPU 감시**) |
+| Session context | `MainWindow::applyRunUiState` → `setActiveFeatureSessionCount` / `setPipbongFeatureBurstActive` |
+| Enable | `program/appSpikeProfiling` (**default OFF**) or env `PIPBONG_APP_SPIKE_PROFILE=1`; legacy `program/cursorStutterProfiling` read once if new key missing |
+| Output | **Repo** `app-spike/latest.md` + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/app-spike/latest.md`** fallback |
+| Flush | App shutdown only (`MainWindow::prepareForShutdown`) |
 
-**User → AI workflow:** Run PIPBONG → reproduce Hold Q/W/E/R or cursor jump → exit (or release Hold) → read **`cursor-stutter/latest.md`** — confirm `sampler_ticks` > 0, then **Auto diagnosis** (do **not** ask user for workflow blocks).
+**User → AI workflow:** Enable **앱 스파이크 진단** only while reproducing → run PIPBONG → reproduce multi-Hold / long-session lag → exit → read **`app-spike/latest.md`** — **Auto diagnosis** first (do **not** ask user for workflow blocks).
 
-**Likely stutter sources (ranked):** `MouseCenterLock` hook snap; `InputSimulator` `SetCursorPos`; sampler thread overrun during slow hooks.
+**Do not** leave profiling ON during daily play — 50 ms GUI timer + CPU thread add overhead.
 
-Cursor rule: `.cursor/rules/cursor-stutter-profiling.mdc`.
+Cursor rule: `.cursor/rules/app-spike-profiling.mdc`.
 
 ### 8.13 Program settings dialog (mandatory — grouped + tooltips)
 
@@ -1167,7 +1166,7 @@ Cursor rule: `.cursor/rules/cursor-stutter-profiling.mdc`.
 | Group | Contents |
 | ----- | -------- |
 | **기능 실행** | Auto-select running feature, profile-switch focus to target window, run without target window, log max lines |
-| **진단** | Cursor stutter profiling (`program/cursorStutterProfiling`) — `cursor-stutter/latest.md` |
+| **진단** | App spike profiling (`program/appSpikeProfiling`) — `app-spike/latest.md` |
 | **시작·종료** | Windows startup launch, close to tray |
 | **업데이트** | Periodic update check + interval, auto-install |
 | **권한·호환** | Run as administrator (+ one-line elevated status when applicable) |
@@ -1456,6 +1455,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.302] - 2026-07-24
+
+### Added
+
+- **`AppSpikeProfiler`**: opt-in PIPBONG app lag diagnostics — 50 ms GUI pulse stall detection (80/150/300/1000 ms tiers), 500 ms background CPU spike sampling (`SystemCpuSampler`, `ProcessCpuSampler`, `CpuSpikeDetector`); session context from `MainWindow::applyRunUiState`; reports to **`app-spike/latest.md`** + AppData fallback; enable via **프로그램 설정 → 진단 → 앱 스파이크 진단** or `PIPBONG_APP_SPIKE_PROFILE=1` (`AppSpikeProfiler`, `ProgramSettings`, `ProgramSettingsDialog`, `scripts/analyze-app-spike.ps1`, AGENTS.md §8.14, `.cursor/rules/app-spike-profiling.mdc`).
+
+### Removed
+
+- **`CursorStutterProfiler`** / **`cursor-stutter/`** cursor-position sampler and per-hook instrumentation (`SetCursorPos`, keyboard hook timing, QWER correlation); replaced by app spike profiling (`InputSimulator`, `HotkeyManager`, `UserInputInterruptMonitor`, `MouseCenterLock`); `scripts/analyze-cursor-stutter.ps1`, `.cursor/rules/cursor-stutter-profiling.mdc`.
 
 ## [0.8.301] - 2026-07-24
 
@@ -5545,10 +5554,10 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **프로그램 설정:** grouped `QGroupBox` sections; option detail on **tooltips** only — no inline `HintLabel` per row.
 - Full rules in [§8.13](#813-program-settings-dialog-mandatory--grouped--tooltips).
 
-### `cursor-stutter-profiling.mdc`
+### `app-spike-profiling.mdc`
 
-- **Mandatory** for cursor jump / QWER stutter diagnosis — **`cursor-stutter/latest.md`** only.
-- Full rules in [§8.14](#814-cursor-stutter-profiling-mandatory--mouse-jump--qwer-diagnosis).
+- **Mandatory** for PIPBONG app lag / UI stall diagnosis — **`app-spike/latest.md`** only.
+- Full rules in [§8.14](#814-app-spike-profiling-mandatory--pipbong-lag--ui-stall-diagnosis).
 
 ### Korean update log (§3.7)
 

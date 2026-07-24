@@ -2,7 +2,7 @@
 
 #include "app/PointerFeedbackSettings.h"
 #include "app/ProgramSettings.h"
-#include "core/diagnostics/CursorStutterProfiler.h"
+#include "core/diagnostics/AppSpikeProfiler.h"
 #include "app/WindowsRunAsAdmin.h"
 #include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/WindowSelectionFeedbackSettingsDialog.h"
@@ -315,15 +315,15 @@ void ProgramSettingsDialog::setupUi() {
     auto* diagnosticsLayout = new QVBoxLayout(diagnosticsGroup);
     diagnosticsLayout->setSpacing(6);
 
-    m_cursorStutterProfilingCheck = addGroupCheck(
+    m_appSpikeProfilingCheck = addGroupCheck(
         diagnosticsLayout,
         diagnosticsGroup,
-        tr("커서 스터터 진단"),
-        tr("마우스 커서 점프·튐 현상(QWER 연타 등) 원인 분석용입니다. "
-           "커서 샘플링은 앱 실행 중 항상 동작합니다. 이 옵션을 켜면 SetCursorPos·마우스 잠금 훅·키보드 훅 상세 이벤트도 기록합니다(기본 켜짐). "
-           "보고서: 저장소 cursor-stutter\\latest.md 및 AppData 백업. Hold Q/W/E/R 키를 떼거나 앱 종료 시 갱신. "
-           "환경 변수 PIPBONG_CURSOR_STUTTER_PROFILE=1 로도 켤 수 있습니다."),
-        ProgramSettings::cursorStutterProfiling());
+        tr("앱 스파이크 진단"),
+        tr("PIPBONG 자체 버벅임·UI 지연·CPU 스파이크 원인 분석용입니다. "
+           "켜면 GUI 스레드 50 ms 펄스 모니터와 500 ms CPU 샘플링을 백그라운드에서 수행합니다(기본 꺼짐). "
+           "보고서: 저장소 app-spike\\latest.md 및 AppData 백업. 앱 종료 시 갱신. "
+           "환경 변수 PIPBONG_APP_SPIKE_PROFILE=1 로도 켤 수 있습니다."),
+        ProgramSettings::appSpikeProfiling());
 
     layout->addStretch();
 
@@ -341,8 +341,8 @@ void ProgramSettingsDialog::setupUi() {
         ProgramSettings::setRunAsAdministrator(m_runAsAdministratorCheck->isChecked());
         ProgramSettings::setRunWithoutTargetWindow(m_runWithoutTargetWindowCheck->isChecked());
         ProgramSettings::setLogMaxLines(m_logMaxLinesSpin->value());
-        ProgramSettings::setCursorStutterProfiling(m_cursorStutterProfilingCheck->isChecked());
-        CursorStutterProfiler::reloadFromSettings();
+        ProgramSettings::setAppSpikeProfiling(m_appSpikeProfilingCheck->isChecked());
+        AppSpikeProfiler::reloadFromSettings();
         ProgramSettings::setImageFindCaptureMode(
             static_cast<ProgramSettings::ImageFindCaptureMode>(
                 m_imageFindCaptureModeCombo->currentData().toInt()));

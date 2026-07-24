@@ -1,0 +1,54 @@
+---
+description: App spike / UI stall diagnostics — app-spike/latest.md
+alwaysApply: true
+---
+
+# App spike profiling (mandatory — PIPBONG lag diagnosis)
+
+**Status:** Replaces `CursorStutterProfiler` / `cursor-stutter/` (v0.8.302). Measures **PIPBONG app** stalls and CPU spikes — not in-game cursor jumps.
+
+## Purpose
+
+Diagnose PIPBONG UI lag / Not Responding during long Hold sessions (e.g. LOL Q/W/E/R) without hooking every `SetCursorPos` or sampling cursor at 12 ms.
+
+## Architecture
+
+| Layer | Responsibility |
+| ----- | -------------- |
+| `AppSpikeProfiler` | Opt-in GUI pulse timer (50 ms) + background CPU sampler (500 ms) |
+| GUI stalls | Pulse gaps ≥80 / 150 / 300 / 1000 ms → counters + event rows |
+| CPU spikes | `SystemCpuSampler` + `ProcessCpuSampler` + `CpuSpikeDetector` |
+| Session context | `MainWindow::applyRunUiState` → `setActiveFeatureSessionCount` / `setPipbongFeatureBurstActive` |
+| Output | **Repo** `app-spike/latest.md` + `%LOCALAPPDATA%/PIPBONG/PIPBONG/app-spike/latest.md` |
+| Flush | App shutdown only (`MainWindow::prepareForShutdown`) |
+
+## Enable (default OFF)
+
+| Path | Key / env |
+| ---- | --------- |
+| **프로그램 설정 → 진단 → 앱 스파이크 진단** | `program/appSpikeProfiling` |
+| Env override | `PIPBONG_APP_SPIKE_PROFILE=1` |
+| Legacy migration | Reads `program/cursorStutterProfiling` once if new key missing |
+
+## User → AI workflow
+
+1. Enable **앱 스파이크 진단** only while reproducing lag.
+2. Run PIPBONG, reproduce multi-Hold or long session stutter.
+3. Exit app → read **`app-spike/latest.md`** — **Auto diagnosis** first.
+4. Optional: `.\scripts\analyze-app-spike.ps1`
+
+**Do not** ask the user for workflow block details when analyzing this report.
+
+## Anti-patterns
+
+- Reintroducing cursor-position sampler / per-hook instrumentation for app lag
+- Leaving profiling ON during daily play (50 ms GUI timer + CPU thread overhead)
+- Using **CPU 감시** dialog output as a substitute — spike watch is interactive; `AppSpikeProfiler` is session-correlated markdown for AI handover
+
+## Key files
+
+- `src/core/diagnostics/AppSpikeProfiler.*`
+- `src/app/MainWindow.cpp` (`applyRunUiState`, shutdown flush)
+- `src/app/ProgramSettings.*`, `src/ui/ProgramSettingsDialog.cpp`
+- `scripts/analyze-app-spike.ps1`
+- AGENTS.md §8.14

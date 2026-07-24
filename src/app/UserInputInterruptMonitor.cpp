@@ -1,7 +1,6 @@
 #include "app/UserInputInterruptMonitor.h"
 
 #include "app/FeatureHotkeyGate.h"
-#include "core/diagnostics/CursorStutterProfiler.h"
 #include "core/input/HotkeyBinding.h"
 #include "core/workflow/ExecutionContext.h"
 
@@ -259,11 +258,7 @@ void UserInputInterruptMonitor::notifyPhysicalInput(int virtualKey) {
         return;
     }
 
-    if (HotkeyBinding::isMouseVirtualKey(virtualKey)) {
-        Q_UNUSED(virtualKey);
-    } else {
-        CursorStutterProfiler::recordPhysicalKey(virtualKey);
-    }
+    Q_UNUSED(virtualKey);
 
     std::vector<std::string> targets;
     InterruptHandler handler;

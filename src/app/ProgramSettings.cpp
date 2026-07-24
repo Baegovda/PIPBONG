@@ -18,7 +18,8 @@ constexpr const char* kPinSubTargetWindowToScreenCenterKey = "program/pinSubTarg
 constexpr const char* kImageFindCaptureModeKey = "program/imageFindCaptureMode";
 constexpr const char* kRunWithoutTargetWindowKey = "program/runWithoutTargetWindow";
 constexpr const char* kLogMaxLinesKey = "program/logMaxLines";
-constexpr const char* kCursorStutterProfilingKey = "program/cursorStutterProfiling";
+constexpr const char* kAppSpikeProfilingKey = "program/appSpikeProfiling";
+constexpr const char* kLegacyCursorStutterProfilingKey = "program/cursorStutterProfiling";
 constexpr const char* kFocusTargetWindowOnProfileSelectKey =
     "program/focusTargetWindowOnProfileSelect";
 
@@ -164,14 +165,17 @@ void ProgramSettings::setLogMaxLines(int lines) {
     settings.setValue(kLogMaxLinesKey, lines);
 }
 
-bool ProgramSettings::cursorStutterProfiling() {
+bool ProgramSettings::appSpikeProfiling() {
     QSettings settings;
-    return settings.value(kCursorStutterProfilingKey, true).toBool();
+    if (settings.contains(kAppSpikeProfilingKey)) {
+        return settings.value(kAppSpikeProfilingKey, false).toBool();
+    }
+    return settings.value(kLegacyCursorStutterProfilingKey, false).toBool();
 }
 
-void ProgramSettings::setCursorStutterProfiling(bool enabled) {
+void ProgramSettings::setAppSpikeProfiling(bool enabled) {
     QSettings settings;
-    settings.setValue(kCursorStutterProfilingKey, enabled);
+    settings.setValue(kAppSpikeProfilingKey, enabled);
 }
 
 bool ProgramSettings::focusTargetWindowOnProfileSelect() {

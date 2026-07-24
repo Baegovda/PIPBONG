@@ -64,9 +64,9 @@ public:
     static int logMaxLines();
     static void setLogMaxLines(int lines);
 
-    /// When enabled, records cursor jumps / SetCursorPos / hook snaps to cursor-stutter/latest.md.
-    static bool cursorStutterProfiling();
-    static void setCursorStutterProfiling(bool enabled);
+    /// When enabled, records GUI stalls and CPU spikes to app-spike/latest.md.
+    static bool appSpikeProfiling();
+    static void setAppSpikeProfiling(bool enabled);
 
     /// When enabled, switching the active profile activates the linked target window.
     static bool focusTargetWindowOnProfileSelect();

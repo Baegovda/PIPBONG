@@ -1,7 +1,6 @@
 #include "core/input/InputSimulator.h"
 
 #include "app/MouseCenterLock.h"
-#include "core/diagnostics/CursorStutterProfiler.h"
 #include "core/workflow/ExecutionContext.h"
 
 #ifdef _WIN32
@@ -218,7 +217,7 @@ void sendKeyboardTap(int virtualKey) {
 }
 
 void setCursorScreenPos(const char* caller, int screenX, int screenY) {
-    CursorStutterProfiler::recordSetCursorPos(caller, screenX, screenY);
+    Q_UNUSED(caller);
     SetCursorPos(screenX, screenY);
 }
 
@@ -1318,14 +1317,12 @@ void InputSimulator::sendKey(int virtualKey,
     if (sendMainKey) {
         switch (action) {
         case KeyAction::Down:
-            CursorStutterProfiler::recordSyntheticKey(virtualKey);
             sendKeyboardVk(virtualKey, true);
             break;
         case KeyAction::Up:
             sendKeyboardVk(virtualKey, false);
             break;
         case KeyAction::Tap:
-            CursorStutterProfiler::recordSyntheticKey(virtualKey);
             sendKeyboardTap(virtualKey);
             break;
         }

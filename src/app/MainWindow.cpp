@@ -21,7 +21,7 @@
 #include "core/capture/CursorPositionPicker.h"
 #include "core/capture/ClickContinuousInputRecorder.h"
 #include "core/capture/WindowPicker.h"
-#include "core/diagnostics/CursorStutterProfiler.h"
+#include "core/diagnostics/AppSpikeProfiler.h"
 #include "core/input/InputSimulator.h"
 #include "core/input/HotkeyBinding.h"
 #include "ui/WindowPickerHoverOverlay.h"
@@ -2612,7 +2612,7 @@ void MainWindow::prepareForShutdown() {
     saveActiveProfileSettings();
     sealActiveProfilePackage(true);
     pruneAbandonedEngines();
-    CursorStutterProfiler::stopAndWriteReport(QStringLiteral("app_shutdown"));
+    AppSpikeProfiler::stopAndWriteReport(QStringLiteral("app_shutdown"));
     if (m_uiState) {
         m_uiState->saveNow();
     }
@@ -3206,6 +3206,9 @@ void MainWindow::applyRunUiState() {
         }
         m_workflowEditor->setRunStatusButtonState(showStop, runBtnEnabled, disabledTip);
     }
+
+    AppSpikeProfiler::setActiveFeatureSessionCount(static_cast<int>(m_runSessions.size()));
+    AppSpikeProfiler::setPipbongFeatureBurstActive(hasAnyActiveWorkflowEngine());
 
     if (hasAnyRunningSession()) {
         bool anyPaused = false;
@@ -5728,7 +5731,6 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
         m_runSessions.erase(id);
     }
 
-    CursorStutterProfiler::recordHoldFeature(QString::fromStdString(feature->name()), "hold_start");
     startFeatureRun(feature, true);
 }
 
@@ -5750,7 +5752,6 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
 
     Feature* feature = m_project ? m_project->featureById(id) : nullptr;
     if (feature) {
-        CursorStutterProfiler::recordHoldFeature(QString::fromStdString(feature->name()), "hold_end");
     }
     releaseHoldHotkeyInputToTarget(*session, feature);
 

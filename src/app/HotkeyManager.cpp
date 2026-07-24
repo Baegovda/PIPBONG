@@ -2,8 +2,6 @@
 
 #include "app/FeatureHotkeyGate.h"
 #include "core/diagnostics/CrashReporter.h"
-#include "core/diagnostics/CursorStutterProfiler.h"
-#include <chrono>
 #include "core/input/HotkeyBinding.h"
 #include "model/Feature.h"
 #include "model/FeatureRunMode.h"
@@ -137,21 +135,10 @@ LRESULT CALLBACK keyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
         return CallNextHookEx(nullptr, code, wParam, lParam);
     }
 
-    const auto hookStart = std::chrono::steady_clock::now();
     const int vk = static_cast<int>(info->vkCode);
-    bool swallowed = false;
     if (g_hotkeyManager->handleKeyboardHookEvent(vk, keyDown)) {
-        swallowed = true;
-        const qint64 handlerUs = std::chrono::duration_cast<std::chrono::microseconds>(
-                                     std::chrono::steady_clock::now() - hookStart)
-                                     .count();
-        CursorStutterProfiler::recordKeyboardHook(vk, keyDown, handlerUs, true);
         return 1;
     }
-    const qint64 handlerUs = std::chrono::duration_cast<std::chrono::microseconds>(
-                                 std::chrono::steady_clock::now() - hookStart)
-                                 .count();
-    CursorStutterProfiler::recordKeyboardHook(vk, keyDown, handlerUs, false);
     return CallNextHookEx(nullptr, code, wParam, lParam);
 }
 
