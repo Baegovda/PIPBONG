@@ -36,7 +36,7 @@ User reports **버그**, **버벅임**, **스파이크**, **멈춤**, **느림**
 | PIPBONG UI lag, multi-hold | Extend `AppSpikeProfiler` events or scoped timers on `applyRunUiState`, fast-repeat flush, feature-list batch | `gui_stall_*` crumbs, `sessions=N` |
 | Hotkey miss / Alt+Tab | Opt-in hook-path timing or latch-state log; tag `hotkey_*` | `diagnostics/hotkey/latest.md` or app-spike events |
 | ImageFind slow / miss | Per-poll capture+match ms; tag `imagefind_poll` | app-spike or block-run feedback columns |
-| Profile switch jank / ping-pong | `ProfileSwitchProfiler` on `requestAutoProfileSwitch` / `executeProfileSwitch` | `profile-switch/latest.md`, `scripts/analyze-profile-switch.ps1` |
+| Profile switch jank / ping-pong | `ProfileSwitchProfiler` on `syncProfileToForegroundWindow` / `executeProfileSwitch` | `profile-switch/latest.md`, `scripts/analyze-profile-switch.ps1` |
 | Overlay / capture pick | Teardown order + BitBlt duration | `overlay_pick` events |
 | Input / modifier drop | Session key tracking audit (no blind KEYUP) | policy sim + manual checklist §8.6 |
 

@@ -42,6 +42,4 @@ ResolveResult resolve(const ProfileManager& profileManager, const Snapshot& snap
 
 QString profileIdForProcessPath(const ProfileManager& profileManager, const QString& processPath);
 
-void autoSwitchTiming(MatchKind matchKind, int* stabilityMsOut, int* minIntervalMsOut);
-
 } // namespace ProfileForegroundSync

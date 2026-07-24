@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.326` (from `project(PIPBONG VERSION 0.8.326)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.327` (from `project(PIPBONG VERSION 0.8.327)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -514,7 +514,7 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.6 UI
 
-- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked **주 대상 창** and optional **서브 대상 창** (e.g. launcher) per profile; **foreground-window auto-switch** reacts directly to Win32 `EVENT_SYSTEM_FOREGROUND` (50 ms precise poll remains as fallback), resolves profile by title **or** foreground process path when title only matches default, uses tiered stability (0 ms process match / 120 ms title / default fallback) before commit, and falls back to the default profile when unmatched after a short stable delay; PIPBONG foreground and Alt+Tab / shell transient windows keep the current profile (`MainWindow::syncProfileToForegroundWindow`, `ProfileManager::profileIdForForegroundTitle`, `resolveProfileIdForForeground`). Feature runs pick the effective capture target from the focused window (sub title when it matches, otherwise main) via `MainWindow::resolveEffectiveTargetTitleW`.
+- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked **주 대상 창** and optional **서브 대상 창** (e.g. launcher) per profile; **foreground-window auto-switch** uses Win32 `EVENT_SYSTEM_FOREGROUND` (primary) plus a 100 ms poll fallback: foreground HWND → `ProfileForegroundSync::resolve` (process path, then title binding) → immediate `executeProfileSwitch` when the resolved profile differs; Alt+Tab defers linked switches until Alt is released; PIPBONG foreground and shell transient windows are ignored (`MainWindow::syncProfileToForegroundWindow`, `ProfileForegroundSync`). Feature runs pick the effective capture target from the focused window (sub title when it matches, otherwise main) via `MainWindow::resolveEffectiveTargetTitleW`.
 - **Feature list:** Create/delete/rename features; hotkey binding (button, double-click, context menu).
 - **Workflow editor:** Block list with drag-and-drop reorder; per-type **블록 추가** buttons (템플릿 매칭, 마우스, 키보드, 딜레이); template thumbnails (48×48); block editors in `BlockEditorDialog`.
 - **ImageFind editor:** ROI preview, match test, screen capture overlay, `CaptureConfirmDialog`.
@@ -1197,33 +1197,29 @@ Cursor rule: `.cursor/rules/app-spike-profiling.mdc`.
 | UI / multi-hold burst | Q/W/E/R 홀드 동시 누름·뗌 | `MultiHoldProfiler` on hold burst coordinator (`prepareForegroundForHoldBurst`, coalesced start/end UI, `applyRunUiState` burst path) | `multi-hold/latest.md`; `hold_burst_prep_ms`, `hold_start_ui_ms`, `hold_end_cleanup_ms`, `apply_run_ui_ms`; `scripts/analyze-multi-hold.ps1` |
 | Hotkey / foreground | Alt+Tab 후 단축키 죽음 | Opt-in hook latch + handler timing | `hotkey_*` |
 | ImageFind / capture | 매칭 느림, 검은 화면 | Per-poll capture+match ms | `imagefind_poll` |
-| Profile switch | 전환 핑퐁·GUI 멈춤 | `ProfileSwitchProfiler` phase timers on `requestAutoProfileSwitch` / `executeProfileSwitch` | `profile-switch/latest.md`, crumbs `switch requested/stable/committed` |
+| Profile switch | 전환 핑퐁·GUI 멈춤 | `ProfileSwitchProfiler` phase timers on `syncProfileToForegroundWindow` / `executeProfileSwitch` | `profile-switch/latest.md`, crumbs `switch sync_switch/committed` |
 | Feature enable toggle | 기능 **사용** ON/OFF 버벅임 | `FeatureToggleProfiler` on `FeatureListPanel::toggleFeatureEnabled` + `undo_copy_project_json` / `undo_copy_profiles` / `HotkeyManager::syncFromProject` sub-phases | `feature-toggle/latest.md`; `scripts/analyze-feature-toggle.ps1` |
 | Overlay / template pick | 캡처 실패, 커서 | BitBlt + teardown order ms | `overlay_pick` |
 
 Cursor rule: `.cursor/rules/targeted-profiling-on-bugs.mdc`.
 
-### 8.17 Profile auto-switch coordinator (mandatory — do not regress)
+### 8.17 Profile auto-switch (mandatory — do not regress)
 
-**Status:** Added 2026-07-24 (v0.8.305). Fixes launcher↔game profile **ping-pong** and GUI-thread stalls during rapid foreground changes (LOL launcher/client).
+**Status:** Rewritten 2026-07-25 (v0.8.327). Single linear path — no stability timer queue.
 
 | Layer | Rule |
 | ----- | ---- |
-| Entry | **`requestAutoProfileSwitch`** only from `syncProfileToForegroundWindow` — **not** `switchToForegroundLinkedProfileIfNeeded(true)` on the same tick |
-| Stability | **Process-path match** (linked exe): **0 ms**; title-only linked: **120 ms**; default fallback: **120 ms** (+ **250 ms** pre-check in `syncProfileToForegroundWindow`) — was flat **500 ms** for all |
-| Min interval | **150 ms** (process match), **350 ms** (title linked), **600 ms** (default) — was flat **800 ms** |
-| Resolution | `resolveProfileIdForForeground`: title substring first; if that yields **default**, upgrade via **foreground HWND process path** before switching |
-| Pipeline | `executeProfileSwitch`: sync stop/save/`setActiveProfile` → `singleShot(0)` `loadActiveProfile(..., scheduleTriggerRestore=false)` → `singleShot(0)` `restorePersistedTriggerSessions` + `finishForegroundSessionGate` |
-| Reentrancy | `m_profileSwitchPipelineActive` blocks `finishForegroundSessionGate`, `restorePersistedTriggerSessions`, and foreground sync during pipeline |
-| Sessions | `stopAllSessionsForProfileSwitch` **immediately** stops trigger watch before load (user policy) |
-| Engines | `abandonSessionEngine` → **`schedulePruneAbandonedEngines`** only — no sync `pruneAbandonedEngines` on hot path |
-| Worker UI | `scheduleWorkerFastRepeatUiFlush` via **`QMetaObject::invokeMethod(..., Qt::QueuedConnection)`** |
-| DnD | `setProfileSwitchUiLocked` disables profile/feature list reorder; defer switch while `ReorderableListWidget::isAnyListDragActive()` |
-| Profiling | Opt-in `ProfileSwitchProfiler` — `program/profileSwitchProfiling` or `PIPBONG_PROFILE_SWITCH_PROFILE=1`; report `%LOCALAPPDATA%/PIPBONG/PIPBONG/profile-switch/latest.md`; `scripts/analyze-profile-switch.ps1` |
+| Entry | **`syncProfileToForegroundWindow`** only — WinEvent `onForegroundWindowChanged` + 100 ms poll fallback |
+| Resolve | `ProfileForegroundSync::snapshotFrom` → `resolve` (process path → title binding → default fallback) |
+| Switch | When resolved profile ≠ active → **`executeProfileSwitch`** immediately (80 ms min-interval ping-pong guard only) |
+| Defer | Alt held (linked targets only), list drag active, or switch pipeline in progress → `m_deferredProfileSwitchId` + `flushDeferredProfileSwitchIfIdle` |
+| Skip | PIPBONG foreground, shell transient HWNDs, profile switch pipeline active |
+| Pipeline | `executeProfileSwitch`: sync stop/save/`setActiveProfile` → `singleShot(0)` `loadActiveProfile` → `restorePersistedTriggerSessions` + `finishForegroundSessionGate` |
+| Profiling | Opt-in `ProfileSwitchProfiler` — `program/profileSwitchProfiling` or `PIPBONG_PROFILE_SWITCH_PROFILE=1` |
 
-**Manual verify:** LOL launcher↔client Alt+Tab — one profile commit after stabilize; trigger watch stops on switch and restarts after pipeline; no mass `startTimer` from worker thread.
+**Manual verify:** Focus linked game/launcher → profile switches immediately; Alt+Tab picker does not flip profiles mid-picker; PIPBONG focus does not spuriously switch to default; unrelated window → default profile.
 
-Key files: `MainWindow.cpp` (`requestAutoProfileSwitch`, `executeProfileSwitch`, `syncProfileToForegroundWindow`), `ProfileSwitchProfiler.*`, `ReorderableListWidget` drag deferral.
+Key files: `ProfileForegroundSync.*`, `MainWindow.cpp` (`syncProfileToForegroundWindow`, `executeProfileSwitch`, `flushDeferredProfileSwitchIfIdle`).
 
 ### 8.13 Settings and edit dialogs (mandatory — grouped + tooltips)
 
@@ -1550,6 +1546,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.327] - 2026-07-25
+
+### Changed
+
+- Profile foreground auto-switch rewritten as a single linear path: `syncProfileToForegroundWindow` → `ProfileForegroundSync::resolve` → immediate `executeProfileSwitch` (removed `requestAutoProfileSwitch`, stability timer queue, and `commitAutoProfileSwitch`); WinEvent primary with 100 ms poll fallback; 80 ms min-interval ping-pong guard only; Alt+Tab and list-drag defer via `m_deferredProfileSwitchId` (`MainWindow`, `ProfileForegroundSync`).
 
 ## [0.8.326] - 2026-07-25
 

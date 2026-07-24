@@ -759,16 +759,9 @@ MainWindow::MainWindow(QWidget* parent)
 
     m_profileAutoSwitchTimer = new QTimer(this);
     m_profileAutoSwitchTimer->setTimerType(Qt::PreciseTimer);
-    m_profileAutoSwitchTimer->setInterval(300);
+    m_profileAutoSwitchTimer->setInterval(100);
     connect(m_profileAutoSwitchTimer, &QTimer::timeout, this, &MainWindow::onForegroundWindowChanged);
     m_profileAutoSwitchTimer->start();
-
-    m_autoProfileSwitchStabilityTimer = new QTimer(this);
-    m_autoProfileSwitchStabilityTimer->setSingleShot(true);
-    connect(m_autoProfileSwitchStabilityTimer,
-            &QTimer::timeout,
-            this,
-            &MainWindow::onAutoProfileSwitchStabilityElapsed);
 
     if (ProgramSettings::pinTargetWindowToScreenCenter()
         || ProgramSettings::pinSubTargetWindowToScreenCenter()) {
@@ -3724,7 +3717,8 @@ void MainWindow::pruneAbandonedEngines() {
 }
 
 void MainWindow::flushDeferredProfileSwitchIfIdle() {
-    if (m_deferredProfileSwitchId.isEmpty() || m_switchingProfile || !m_profileManager) {
+    if (m_deferredProfileSwitchId.isEmpty() || m_switchingProfile || m_profileSwitchPipelineActive
+        || !m_profileManager) {
         return;
     }
     const QString profileId = m_deferredProfileSwitchId;
@@ -3732,8 +3726,12 @@ void MainWindow::flushDeferredProfileSwitchIfIdle() {
         m_deferredProfileSwitchId.clear();
         return;
     }
+    if (ReorderableListWidget::isAnyListDragActive()) {
+        QTimer::singleShot(50, this, &MainWindow::flushDeferredProfileSwitchIfIdle);
+        return;
+    }
     m_deferredProfileSwitchId.clear();
-    requestAutoProfileSwitch(profileId);
+    executeProfileSwitch(profileId, true);
 }
 
 void MainWindow::stopSessionEngineForProfileSwitch(FeatureRunSession& session, Feature* feature) {
@@ -7391,7 +7389,12 @@ void MainWindow::abortProfileSwitchPipeline(bool resyncSelection) {
     const QString deferred = m_deferredProfileSwitchId;
     if (!deferred.isEmpty()) {
         m_deferredProfileSwitchId.clear();
-        requestAutoProfileSwitch(deferred);
+        QTimer::singleShot(0, this, [this, deferred]() {
+            if (!m_profileManager || deferred == m_profileManager->activeProfileId()) {
+                return;
+            }
+            executeProfileSwitch(deferred, true);
+        });
     }
 }
 
@@ -7437,10 +7440,12 @@ void MainWindow::completeProfileSwitchPipeline(bool automatic) {
     const QString deferred = m_deferredProfileSwitchId;
     if (!deferred.isEmpty()) {
         m_deferredProfileSwitchId.clear();
-        requestAutoProfileSwitch(deferred);
-    }
-    if (!m_pendingAutoSwitchProfileId.isEmpty()) {
-        evaluatePendingAutoProfileSwitch();
+        QTimer::singleShot(0, this, [this, deferred]() {
+            if (!m_profileManager || deferred == m_profileManager->activeProfileId()) {
+                return;
+            }
+            executeProfileSwitch(deferred, true);
+        });
     }
 }
 
@@ -7454,10 +7459,8 @@ bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) 
         return false;
     }
     if (ReorderableListWidget::isAnyListDragActive()) {
-        m_pendingAutoSwitchProfileId = profileId;
-        if (m_autoProfileSwitchStabilityTimer && !m_autoProfileSwitchStabilityTimer->isActive()) {
-            m_autoProfileSwitchStabilityTimer->start(100);
-        }
+        m_deferredProfileSwitchId = profileId;
+        QTimer::singleShot(50, this, &MainWindow::flushDeferredProfileSwitchIfIdle);
         return false;
     }
 
@@ -7466,11 +7469,6 @@ bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) 
     m_switchingProfile = true;
     m_profileSwitchPipelineActive = true;
     m_deferTargetDetailsProfileRefresh = automatic;
-    m_pendingAutoSwitchProfileId.clear();
-    m_stabilizingAutoSwitchProfileId.clear();
-    if (m_autoProfileSwitchStabilityTimer) {
-        m_autoProfileSwitchStabilityTimer->stop();
-    }
 
     ProfileSwitchProfiler::beginSwitch(profileId, automatic ? QStringLiteral("auto")
                                                             : QStringLiteral("manual"));
@@ -7551,132 +7549,14 @@ bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) 
     return true;
 }
 
-void MainWindow::requestAutoProfileSwitch(const QString& targetProfileId,
-                                           int stabilityMs,
-                                           int minIntervalMs) {
-    if (!m_profileManager || targetProfileId.isEmpty()) {
-        return;
-    }
-    if (targetProfileId == m_profileManager->activeProfileId()) {
-        m_pendingAutoSwitchProfileId.clear();
-        m_stabilizingAutoSwitchProfileId.clear();
-        if (m_autoProfileSwitchStabilityTimer) {
-            m_autoProfileSwitchStabilityTimer->stop();
-        }
-        return;
-    }
-
-    ProfileSwitchProfiler::notePhase(QStringLiteral("requested"), -1, targetProfileId);
-    CrashReporter::noteBreadcrumb(QStringLiteral("profile"),
-                                  QStringLiteral("switch requested %1").arg(targetProfileId));
-
-    if (m_pendingAutoSwitchProfileId == targetProfileId && m_autoProfileSwitchStabilityTimer
-        && m_autoProfileSwitchStabilityTimer->isActive()
-        && stabilityMs == m_pendingAutoSwitchStabilityMs
-        && minIntervalMs == m_pendingAutoSwitchMinIntervalMs) {
-        return;
-    }
-
-    m_pendingAutoSwitchProfileId = targetProfileId;
-    m_stabilizingAutoSwitchProfileId = targetProfileId;
-    m_pendingAutoSwitchStabilityMs = stabilityMs >= 0 ? stabilityMs : 40;
-    m_pendingAutoSwitchMinIntervalMs = minIntervalMs >= 0 ? minIntervalMs : 120;
-    if (!m_autoProfileSwitchStabilityTimer) {
-        return;
-    }
-    m_autoProfileSwitchStabilityTimer->start(m_pendingAutoSwitchStabilityMs);
-}
-
-void MainWindow::onAutoProfileSwitchStabilityElapsed() {
-    evaluatePendingAutoProfileSwitch();
-}
-
-void MainWindow::evaluatePendingAutoProfileSwitch() {
-    const QString target = m_pendingAutoSwitchProfileId;
-    if (target.isEmpty() || !m_profileManager) {
-        return;
-    }
-    if (m_switchingProfile || m_profileSwitchPipelineActive) {
-        if (m_autoProfileSwitchStabilityTimer) {
-            m_autoProfileSwitchStabilityTimer->start(100);
-        }
-        return;
-    }
-    if (ReorderableListWidget::isAnyListDragActive()) {
-        if (m_autoProfileSwitchStabilityTimer) {
-            m_autoProfileSwitchStabilityTimer->start(100);
-        }
-        return;
-    }
-
-#ifdef _WIN32
-    QString resolvedTarget;
-    HWND hwnd = GetForegroundWindow();
-    if (hwnd && IsWindow(hwnd)) {
-        hwnd = GetAncestor(hwnd, GA_ROOT);
-    }
-    if (!resolveForegroundTargetProfileId(hwnd, &resolvedTarget)) {
-        if (m_autoProfileSwitchStabilityTimer) {
-            m_autoProfileSwitchStabilityTimer->start(m_pendingAutoSwitchStabilityMs);
-        }
-        return;
-    }
-    if (resolvedTarget != target) {
-        if (resolvedTarget == m_profileManager->activeProfileId()) {
-            m_pendingAutoSwitchProfileId.clear();
-            m_stabilizingAutoSwitchProfileId.clear();
-        } else if (!resolvedTarget.isEmpty()) {
-            m_pendingAutoSwitchProfileId = resolvedTarget;
-            autoProfileSwitchTimingForTarget(hwnd,
-                                             resolvedTarget,
-                                             &m_pendingAutoSwitchStabilityMs,
-                                             &m_pendingAutoSwitchMinIntervalMs);
-            if (m_autoProfileSwitchStabilityTimer) {
-                m_autoProfileSwitchStabilityTimer->start(m_pendingAutoSwitchStabilityMs);
-            }
-        }
-        return;
-    }
-#endif
-
-    const int kMinAutoSwitchIntervalMs = m_pendingAutoSwitchMinIntervalMs;
-    if (m_lastAutomaticProfileSwitchTimer.isValid()
-        && m_lastAutomaticProfileSwitchTimer.elapsed() < kMinAutoSwitchIntervalMs) {
-        ProfileSwitchProfiler::notePingpong();
-        if (m_autoProfileSwitchStabilityTimer) {
-            m_autoProfileSwitchStabilityTimer->start(
-                static_cast<int>(kMinAutoSwitchIntervalMs - m_lastAutomaticProfileSwitchTimer.elapsed()));
-        }
-        return;
-    }
-
-    ProfileSwitchProfiler::notePhase(QStringLiteral("stable"), -1, target);
-    CrashReporter::noteBreadcrumb(QStringLiteral("profile"),
-                                  QStringLiteral("switch stable %1").arg(target));
-    m_pendingAutoSwitchProfileId.clear();
-    m_stabilizingAutoSwitchProfileId.clear();
-    executeProfileSwitch(target, true);
-}
-
 bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
     if (!m_profileManager || profileId.isEmpty()
         || profileId == m_profileManager->activeProfileId()) {
         return false;
     }
     if (automatic) {
-#ifdef _WIN32
-        HWND hwnd = GetForegroundWindow();
-        if (hwnd && IsWindow(hwnd)) {
-            hwnd = GetAncestor(hwnd, GA_ROOT);
-        }
-        int stabilityMs = -1;
-        int minIntervalMs = -1;
-        autoProfileSwitchTimingForTarget(hwnd, profileId, &stabilityMs, &minIntervalMs);
-        requestAutoProfileSwitch(profileId, stabilityMs, minIntervalMs);
-#else
-        requestAutoProfileSwitch(profileId);
-#endif
-        return false;
+        syncProfileToForegroundWindow();
+        return m_profileManager->activeProfileId() == profileId;
     }
     return executeProfileSwitch(profileId, false);
 }
@@ -7698,7 +7578,7 @@ void MainWindow::onForegroundWindowChanged() {
         const ProfileForegroundSync::Snapshot snap =
             ProfileForegroundSync::snapshotFrom(foregroundHwnd);
         if (snap.rootHwnd && snap.rootHwnd == m_lastForegroundSyncHwnd
-            && m_pendingAutoSwitchProfileId.isEmpty() && m_deferredProfileSwitchId.isEmpty()) {
+            && m_deferredProfileSwitchId.isEmpty()) {
             const ProfileForegroundSync::ResolveResult resolved =
                 ProfileForegroundSync::resolve(*m_profileManager, snap);
             if (resolved.profileId == m_profileManager->activeProfileId()) {
@@ -7759,53 +7639,13 @@ void MainWindow::handlePipbongForegroundFocus() {
         && m_lastLinkedForegroundProfileId != m_profileManager->defaultProfileId()
         && m_recentAutomaticDefaultProfileSwitchTimer.isValid()
         && m_recentAutomaticDefaultProfileSwitchTimer.elapsed() < kRestoreLinkedProfileWindowMs) {
-        requestAutoProfileSwitch(m_lastLinkedForegroundProfileId);
+        executeProfileSwitch(m_lastLinkedForegroundProfileId, true);
     }
     if (!m_switchingProfile && !m_profileSwitchPipelineActive) {
         finishForegroundSessionGate();
     }
 #else
     Q_UNUSED(this);
-#endif
-}
-
-void MainWindow::commitAutoProfileSwitch(HWND hwnd,
-                                         const QString& foregroundTitle,
-                                         const ProfileForegroundSync::ResolveResult& resolved) {
-#ifdef _WIN32
-    if (!m_profileManager || resolved.profileId.isEmpty()) {
-        return;
-    }
-    if (resolved.profileId == m_profileManager->activeProfileId()) {
-        return;
-    }
-
-    applyForegroundCaptureHints(hwnd, foregroundTitle);
-
-    if (m_profileManager->isDefaultProfile(resolved.profileId)) {
-        m_recentAutomaticDefaultProfileSwitchTimer.start();
-    } else {
-        m_recentAutomaticDefaultProfileSwitchTimer.invalidate();
-        m_lastLinkedForegroundProfileId = resolved.profileId;
-    }
-
-    int stabilityMs = 0;
-    int minIntervalMs = 0;
-    ProfileForegroundSync::autoSwitchTiming(resolved.matchKind, &stabilityMs, &minIntervalMs);
-
-    const bool minIntervalSatisfied =
-        !m_lastAutomaticProfileSwitchTimer.isValid()
-        || m_lastAutomaticProfileSwitchTimer.elapsed() >= minIntervalMs;
-    if (stabilityMs == 0 && minIntervalSatisfied) {
-        executeProfileSwitch(resolved.profileId, true);
-        return;
-    }
-
-    requestAutoProfileSwitch(resolved.profileId, stabilityMs, minIntervalMs);
-#else
-    Q_UNUSED(hwnd);
-    Q_UNUSED(foregroundTitle);
-    Q_UNUSED(resolved);
 #endif
 }
 
@@ -7832,25 +7672,49 @@ void MainWindow::syncProfileToForegroundWindow() {
 
     const ProfileForegroundSync::ResolveResult resolved =
         ProfileForegroundSync::resolve(*m_profileManager, snap);
-    if (resolved.profileId.isEmpty()) {
-        applyForegroundCaptureHints(snap.rootHwnd, snap.title);
-        return;
-    }
 
-    if (resolved.profileId == m_profileManager->activeProfileId()) {
-        applyForegroundCaptureHints(snap.rootHwnd, snap.title);
+    applyForegroundCaptureHints(snap.rootHwnd, snap.title);
+
+    if (resolved.profileId.isEmpty()
+        || resolved.profileId == m_profileManager->activeProfileId()) {
         return;
     }
 
     if (ProfileForegroundSync::isAltTabModifierHeld()) {
         if (!m_profileManager->isDefaultProfile(resolved.profileId)) {
             m_deferredProfileSwitchId = resolved.profileId;
-            applyForegroundCaptureHints(snap.rootHwnd, snap.title);
         }
         return;
     }
 
-    commitAutoProfileSwitch(snap.rootHwnd, snap.title, resolved);
+    if (ReorderableListWidget::isAnyListDragActive()) {
+        m_deferredProfileSwitchId = resolved.profileId;
+        QTimer::singleShot(50, this, &MainWindow::flushDeferredProfileSwitchIfIdle);
+        return;
+    }
+
+    constexpr int kMinAutoSwitchIntervalMs = 80;
+    if (m_lastAutomaticProfileSwitchTimer.isValid()
+        && m_lastAutomaticProfileSwitchTimer.elapsed() < kMinAutoSwitchIntervalMs) {
+        m_deferredProfileSwitchId = resolved.profileId;
+        QTimer::singleShot(
+            static_cast<int>(kMinAutoSwitchIntervalMs - m_lastAutomaticProfileSwitchTimer.elapsed()),
+            this,
+            &MainWindow::flushDeferredProfileSwitchIfIdle);
+        return;
+    }
+
+    if (m_profileManager->isDefaultProfile(resolved.profileId)) {
+        m_recentAutomaticDefaultProfileSwitchTimer.start();
+    } else {
+        m_recentAutomaticDefaultProfileSwitchTimer.invalidate();
+        m_lastLinkedForegroundProfileId = resolved.profileId;
+    }
+
+    ProfileSwitchProfiler::notePhase(QStringLiteral("sync_switch"), -1, resolved.profileId);
+    CrashReporter::noteBreadcrumb(QStringLiteral("profile"),
+                                  QStringLiteral("switch %1").arg(resolved.profileId));
+    executeProfileSwitch(resolved.profileId, true);
 #else
     Q_UNUSED(this);
 #endif
@@ -8446,13 +8310,12 @@ QString MainWindow::foregroundProfileIdForActiveWindow() const {
     if (!foregroundHwnd || !m_profileManager) {
         return {};
     }
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(foregroundHwnd, titleBuffer, 512);
-    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
-    if (!foregroundTitle.isEmpty()) {
-        return m_profileManager->profileIdForForegroundTitle(foregroundTitle);
+    const ProfileForegroundSync::Snapshot snap =
+        ProfileForegroundSync::snapshotFrom(foregroundHwnd);
+    if (snap.pipbong || snap.shellTransient || !snap.rootHwnd) {
+        return {};
     }
-    return profileIdForForegroundHwnd(foregroundHwnd);
+    return ProfileForegroundSync::resolve(*m_profileManager, snap).profileId;
 #else
     return {};
 #endif
@@ -8485,37 +8348,6 @@ QString MainWindow::resolveProfileIdForForeground(HWND hwnd,
 #endif
 }
 
-bool MainWindow::isDefinitiveProcessProfileMatch(HWND hwnd, const QString& profileId) const {
-#ifdef _WIN32
-    if (!hwnd || !IsWindow(hwnd) || !m_profileManager || profileId.isEmpty()
-        || m_profileManager->isDefaultProfile(profileId)) {
-        return false;
-    }
-    hwnd = GetAncestor(hwnd, GA_ROOT);
-    if (!hwnd || !IsWindow(hwnd)) {
-        return false;
-    }
-    return profileIdForForegroundHwnd(hwnd) == profileId;
-#else
-    Q_UNUSED(hwnd);
-    Q_UNUSED(profileId);
-    return false;
-#endif
-}
-
-void MainWindow::autoProfileSwitchTimingForTarget(HWND hwnd,
-                                                  const QString& targetProfileId,
-                                                  int* stabilityMsOut,
-                                                  int* minIntervalMsOut) const {
-    ProfileForegroundSync::MatchKind kind = ProfileForegroundSync::MatchKind::TitleBinding;
-    if (m_profileManager && m_profileManager->isDefaultProfile(targetProfileId)) {
-        kind = ProfileForegroundSync::MatchKind::DefaultFallback;
-    } else if (isDefinitiveProcessProfileMatch(hwnd, targetProfileId)) {
-        kind = ProfileForegroundSync::MatchKind::ProcessPath;
-    }
-    ProfileForegroundSync::autoSwitchTiming(kind, stabilityMsOut, minIntervalMsOut);
-}
-
 QString MainWindow::profileIdForForegroundHwnd(HWND hwnd) const {
 #ifdef _WIN32
     if (!hwnd || !IsWindow(hwnd) || !m_profileManager) {
@@ -8530,35 +8362,6 @@ QString MainWindow::profileIdForForegroundHwnd(HWND hwnd) const {
 #else
     Q_UNUSED(hwnd);
     return {};
-#endif
-}
-
-bool MainWindow::resolveForegroundTargetProfileId(HWND hwnd,
-                                                  QString* targetProfileIdOut,
-                                                  QString* foregroundTitleOut) const {
-#ifdef _WIN32
-    if (!m_profileManager || !targetProfileIdOut || !hwnd || !IsWindow(hwnd)) {
-        return false;
-    }
-    const ProfileForegroundSync::Snapshot snap = ProfileForegroundSync::snapshotFrom(hwnd);
-    if (snap.pipbong || snap.shellTransient || !snap.rootHwnd) {
-        return false;
-    }
-    if (foregroundTitleOut) {
-        *foregroundTitleOut = snap.title;
-    }
-    const ProfileForegroundSync::ResolveResult resolved =
-        ProfileForegroundSync::resolve(*m_profileManager, snap);
-    if (resolved.profileId.isEmpty()) {
-        return false;
-    }
-    *targetProfileIdOut = resolved.profileId;
-    return true;
-#else
-    Q_UNUSED(hwnd);
-    Q_UNUSED(targetProfileIdOut);
-    Q_UNUSED(foregroundTitleOut);
-    return false;
 #endif
 }
 
@@ -8656,39 +8459,13 @@ bool MainWindow::foregroundProfileMatchesActive() const {
 
 bool MainWindow::switchToForegroundLinkedProfileIfNeeded(bool forceImmediate) {
 #ifdef _WIN32
+    Q_UNUSED(forceImmediate);
     if (!m_profileManager || m_switchingProfile || m_profileSwitchPipelineActive) {
         return false;
     }
-
-    HWND hwnd = GetForegroundWindow();
-    if (!hwnd || !IsWindow(hwnd)) {
-        return false;
-    }
-    const ProfileForegroundSync::Snapshot snap = ProfileForegroundSync::snapshotFrom(hwnd);
-    if (snap.pipbong || !snap.rootHwnd || snap.shellTransient) {
-        return false;
-    }
-
-    const ProfileForegroundSync::ResolveResult resolved =
-        ProfileForegroundSync::resolve(*m_profileManager, snap);
-    if (resolved.profileId.isEmpty() || m_profileManager->isDefaultProfile(resolved.profileId)) {
-        return false;
-    }
-
-    applyForegroundCaptureHints(snap.rootHwnd, snap.title);
-
-    if (resolved.profileId == m_profileManager->activeProfileId()) {
-        m_deferredProfileSwitchId.clear();
-        return true;
-    }
-    if (!forceImmediate) {
-        m_deferredProfileSwitchId = resolved.profileId;
-        return false;
-    }
-
-    m_deferredProfileSwitchId.clear();
-    executeProfileSwitch(resolved.profileId, true);
-    return true;
+    const QString before = m_profileManager->activeProfileId();
+    syncProfileToForegroundWindow();
+    return m_profileManager->activeProfileId() != before || activeProfileForegroundBindingMatches();
 #else
     Q_UNUSED(forceImmediate);
     return false;

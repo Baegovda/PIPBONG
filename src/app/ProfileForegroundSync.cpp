@@ -167,15 +167,6 @@ ResolveResult resolve(const ProfileManager& profileManager, const Snapshot& snap
         result.matchKind = MatchKind::TitleBinding;
         return result;
     }
-
-    if (!snapshot.title.isEmpty()) {
-        const QString legacyTitle = profileManager.profileIdForForegroundTitle(snapshot.title);
-        if (!legacyTitle.isEmpty() && !profileManager.isDefaultProfile(legacyTitle)) {
-            result.profileId = legacyTitle;
-            result.matchKind = MatchKind::TitleBinding;
-            return result;
-        }
-    }
 #else
     Q_UNUSED(snapshot);
 #endif
@@ -184,31 +175,6 @@ ResolveResult resolve(const ProfileManager& profileManager, const Snapshot& snap
         result.profileId = profileManager.defaultProfileId();
     }
     return result;
-}
-
-void autoSwitchTiming(MatchKind matchKind, int* stabilityMsOut, int* minIntervalMsOut) {
-    int stabilityMs = 40;
-    int minIntervalMs = 120;
-    switch (matchKind) {
-    case MatchKind::ProcessPath:
-        stabilityMs = 0;
-        minIntervalMs = 80;
-        break;
-    case MatchKind::TitleBinding:
-        stabilityMs = 35;
-        minIntervalMs = 100;
-        break;
-    case MatchKind::DefaultFallback:
-        stabilityMs = 50;
-        minIntervalMs = 80;
-        break;
-    }
-    if (stabilityMsOut) {
-        *stabilityMsOut = stabilityMs;
-    }
-    if (minIntervalMsOut) {
-        *minIntervalMsOut = minIntervalMs;
-    }
 }
 
 } // namespace ProfileForegroundSync

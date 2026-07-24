@@ -281,30 +281,17 @@ private:
     void updateAuxiliaryToolButtonStates();
     void wireAuxiliaryDialogVisibility(QWidget* dialog);
     bool switchToProfile(const QString& profileId, bool automatic = false);
-    void requestAutoProfileSwitch(const QString& targetProfileId,
-                                  int stabilityMs = -1,
-                                  int minIntervalMs = -1);
-    void evaluatePendingAutoProfileSwitch();
-    void onAutoProfileSwitchStabilityElapsed();
     bool executeProfileSwitch(const QString& profileId, bool automatic);
     void completeProfileSwitchPipeline(bool automatic);
     void abortProfileSwitchPipeline(bool resyncSelection = true);
     void setProfileSwitchUiLocked(bool locked);
     void schedulePostProfileSwitchForegroundReconcile();
-#ifdef _WIN32
-    bool resolveForegroundTargetProfileId(HWND hwnd,
-                                          QString* targetProfileIdOut,
-                                          QString* foregroundTitleOut = nullptr) const;
-#endif
     void saveActiveProfileSettings();
     bool profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
                               const ProgramSettings::ProfileSettings& b) const;
     void syncProfileToForegroundWindow();
 #ifdef _WIN32
     void applyForegroundCaptureHints(HWND hwnd, const QString& foregroundTitle);
-    void commitAutoProfileSwitch(HWND hwnd,
-                                 const QString& foregroundTitle,
-                                 const ProfileForegroundSync::ResolveResult& resolved);
     void handlePipbongForegroundFocus();
 #endif
     void updateWindowTitle();
@@ -424,11 +411,6 @@ private:
     bool adoptForegroundLinkedCaptureIfMatched();
     QString profileIdForForegroundHwnd(HWND hwnd) const;
     QString resolveProfileIdForForeground(HWND hwnd, const QString& foregroundTitle) const;
-    bool isDefinitiveProcessProfileMatch(HWND hwnd, const QString& profileId) const;
-    void autoProfileSwitchTimingForTarget(HWND hwnd,
-                                          const QString& targetProfileId,
-                                          int* stabilityMsOut,
-                                          int* minIntervalMsOut) const;
     HWND findMainTargetHwndForCenterPin() const;
     HWND findSubTargetHwndForCenterPin() const;
     HWND findLinkedTargetHwndForDisplay(const QString& mainBinding,
@@ -535,7 +517,6 @@ private:
     int m_lastWorkflowScaleClientWidth = 0;
     int m_lastWorkflowScaleClientHeight = 0;
     QTimer* m_profileAutoSwitchTimer = nullptr;
-    QTimer* m_autoProfileSwitchStabilityTimer = nullptr;
     void* m_profileForegroundEventHook = nullptr;
     UpdateChecker* m_updateChecker = nullptr;
     bool m_initialUpdateCheckDone = false;
@@ -570,10 +551,6 @@ private:
     std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;
-    QString m_pendingAutoSwitchProfileId;
-    QString m_stabilizingAutoSwitchProfileId;
-    int m_pendingAutoSwitchStabilityMs = 40;
-    int m_pendingAutoSwitchMinIntervalMs = 120;
 #ifdef _WIN32
     HWND m_lastForegroundSyncHwnd = nullptr;
 #endif
