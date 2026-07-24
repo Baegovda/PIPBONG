@@ -4,6 +4,7 @@
 #include <QSet>
 #include <QWidget>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -99,6 +100,9 @@ public:
     void setRunAnimationLowCpu(bool lowCpu);
 
     void setActiveWorkflowFeatureIds(const QSet<QString>& featureIds);
+
+    /// Live session query (e.g. MainWindow::isFeatureInActiveWorkflowRun) — used before cached run-state UI updates.
+    void setActiveWorkflowRunQuery(std::function<bool(const QString& featureId)> query);
 
     void setFeatureRunVisualKinds(const QHash<QString, FeatureRunVisualKind>& kinds);
 
@@ -204,6 +208,8 @@ private slots:
 
     void onAnimationTick();
 
+    void onDeferredRunButtonClick();
+
     void onFeatureRowsReordered(int fromRow, int toRow);
     void onFeatureMultiRowsReordered(const QList<int>& selectedRows, int insertIndex);
     void onLibraryRowsReordered(int fromRow, int toRow);
@@ -270,6 +276,12 @@ private:
     QPushButton* m_editButton = nullptr;
 
     QTimer* m_animTimer = nullptr;
+
+    QTimer* m_deferredRunTimer = nullptr;
+
+    int m_deferredRunRow = -1;
+
+    std::function<bool(const QString&)> m_activeWorkflowRunQuery;
 
     QSet<QString> m_runningFeatureIds;
 

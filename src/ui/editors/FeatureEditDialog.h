@@ -110,6 +110,7 @@ private:
     HotkeyBinding m_hotkey;
     bool m_listeningForHotkey = false;
     std::unique_ptr<FeatureHotkeyGateScope> m_hotkeyCaptureGate;
+    FeatureHotkeyGateScope m_featureHotkeyGate;
 
     QLineEdit* m_nameEdit = nullptr;
     QCheckBox* m_enabledCheck = nullptr;

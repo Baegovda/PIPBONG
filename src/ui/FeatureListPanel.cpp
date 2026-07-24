@@ -25,6 +25,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -1308,12 +1309,33 @@ void FeatureListPanel::setupUi() {
     m_animTimer = new QTimer(this);
     m_animTimer->setInterval(55);
     connect(m_animTimer, &QTimer::timeout, this, &FeatureListPanel::onAnimationTick);
+
+    m_deferredRunTimer = new QTimer(this);
+    m_deferredRunTimer->setSingleShot(true);
+    m_deferredRunTimer->setInterval(QApplication::doubleClickInterval());
+    connect(m_deferredRunTimer, &QTimer::timeout, this, &FeatureListPanel::onDeferredRunButtonClick);
+
     connect(m_addButton, &QPushButton::clicked, this, &FeatureListPanel::onAddFeature);
     connect(m_removeButton, &QPushButton::clicked, this, &FeatureListPanel::onRemoveFeature);
     connect(m_editButton, &QPushButton::clicked, this, &FeatureListPanel::onEditFeature);
     connect(m_list, &QListWidget::itemSelectionChanged, this, &FeatureListPanel::onSelectionChanged);
-    connect(m_list, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem*) {
-        onEditFeature();
+    connect(m_list, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
+        if (!item || !m_list) {
+            return;
+        }
+        if (m_deferredRunTimer) {
+            m_deferredRunTimer->stop();
+        }
+        m_deferredRunRow = -1;
+        const int row = m_list->row(item);
+        if (row < 0) {
+            return;
+        }
+        if (m_list->currentRow() != row) {
+            m_list->setCurrentRow(row);
+            emit selectionChanged();
+        }
+        editFeatureAt(row);
     });
     connect(m_list, &QListWidget::customContextMenuRequested, this, &FeatureListPanel::onContextMenu);
     updateReorderEnabled();
@@ -1775,6 +1797,11 @@ void FeatureListPanel::setActiveWorkflowFeatureIds(const QSet<QString>& featureI
     requestRunStateViewportUpdate();
 }
 
+void FeatureListPanel::setActiveWorkflowRunQuery(
+    std::function<bool(const QString& featureId)> query) {
+    m_activeWorkflowRunQuery = std::move(query);
+}
+
 void FeatureListPanel::setFeatureRunVisualKinds(const QHash<QString, FeatureRunVisualKind>& kinds) {
     m_featureRunVisualKinds = kinds;
     requestRunStateViewportUpdate();
@@ -1817,6 +1844,9 @@ bool FeatureListPanel::isFeatureRunning(const QString& featureId) const {
 }
 
 bool FeatureListPanel::isFeatureInActiveWorkflowRun(const QString& featureId) const {
+    if (m_activeWorkflowRunQuery && m_activeWorkflowRunQuery(featureId)) {
+        return true;
+    }
     return m_activeWorkflowFeatureIds.contains(featureId);
 }
 
@@ -1989,6 +2019,15 @@ void FeatureListPanel::requestFeatureRun(int row) {
     emit featureRunRequested(featureId);
 }
 
+void FeatureListPanel::onDeferredRunButtonClick() {
+    const int row = m_deferredRunRow;
+    m_deferredRunRow = -1;
+    if (row < 0) {
+        return;
+    }
+    requestFeatureRun(row);
+}
+
 void FeatureListPanel::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
     clampFeatureLibrarySplitterSizes();
@@ -2012,7 +2051,13 @@ bool FeatureListPanel::eventFilter(QObject* watched, QEvent* event) {
                     return true;
                 }
                 if (runButtonHitTest(row, mouseEvent->pos())) {
-                    requestFeatureRun(row);
+                    if (m_deferredRunTimer) {
+                        m_deferredRunTimer->stop();
+                    }
+                    m_deferredRunRow = row;
+                    if (m_deferredRunTimer) {
+                        m_deferredRunTimer->start();
+                    }
                     return true;
                 }
             }
@@ -2361,14 +2406,22 @@ void FeatureListPanel::updateFeatureEditButtonState() {
 }
 
 bool FeatureListPanel::editFeatureAt(int index) {
-    if (!isFeatureEditableAt(index)) {
-        return false;
-    }
     if (!m_project || index < 0 || index >= static_cast<int>(m_project->features().size())) {
         return false;
     }
     Feature* feature = m_project->featureAt(index);
     if (!feature) {
+        return false;
+    }
+    const QString featureId = QString::fromStdString(feature->id());
+    if (isFeatureInActiveWorkflowRun(featureId)) {
+        QMessageBox::information(
+            this,
+            tr("기능 편집"),
+            tr("이 기능이 실행 중입니다. 실행이 끝난 뒤 편집할 수 있습니다."));
+        return false;
+    }
+    if (!isFeatureEditableAt(index)) {
         return false;
     }
     const bool isNewFeature = feature->name().empty();
@@ -2406,7 +2459,15 @@ bool FeatureListPanel::editFeatureAt(int index) {
                              feature->id(),
                              this);
     dialog.setTriggerListAnimations(feature->triggerListAnimations());
-    if (dialog.exec() != QDialog::Accepted) {
+    const bool animWasActive = m_animTimer && m_animTimer->isActive();
+    if (m_animTimer) {
+        m_animTimer->stop();
+    }
+    const int dialogResult = dialog.exec();
+    if (animWasActive && m_animTimer && !m_runningFeatureIds.isEmpty() && !m_runAnimationLowCpu) {
+        m_animTimer->start();
+    }
+    if (dialogResult != QDialog::Accepted) {
         return false;
     }
     emit mutationAboutToCommit(QStringLiteral("feature-edit"));

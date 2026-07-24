@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.322` (from `project(PIPBONG VERSION 0.8.322)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.323` (from `project(PIPBONG VERSION 0.8.323)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1550,6 +1550,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.323] - 2026-07-25
+
+### Fixed
+
+- Feature list **기능 편집** no longer opens while the same feature is in an active workflow run (무한 반복 / 홀드 / N회 반복 loop gap): live `MainWindow::isFeatureInActiveWorkflowRun` query instead of debounced cached IDs only; blocked edit shows an informational dialog (`FeatureListPanel::setActiveWorkflowRunQuery`, `editFeatureAt`).
+- Double-click to edit no longer races the **▶** run column: run button click is deferred by `QApplication::doubleClickInterval()` and cancelled on double-click (`FeatureListPanel` deferred run timer).
+- Feature edit dialog pauses feature-list prism animation for the modal session and double-click edits the clicked row (`FeatureListPanel::editFeatureAt`, `itemDoubleClicked`).
+- **기능 편집** holds an explicit `FeatureHotkeyGateScope` for the dialog lifetime (`FeatureEditDialog`).
 
 ## [0.8.322] - 2026-07-25
 

@@ -1543,6 +1543,9 @@ void MainWindow::setupMenus() {
 
 void MainWindow::connectSignals() {
     m_featureList->setProject(m_project.get());
+    m_featureList->setActiveWorkflowRunQuery([this](const QString& featureId) {
+        return isFeatureInActiveWorkflowRun(featureId.toStdString());
+    });
     connect(m_featureList, &FeatureListPanel::selectionChanged, this, &MainWindow::onFeatureSelectionChanged);
     connect(m_featureList,
             &FeatureListPanel::mutationAboutToCommit,

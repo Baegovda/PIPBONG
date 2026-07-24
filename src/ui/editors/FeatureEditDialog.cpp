@@ -97,7 +97,8 @@ FeatureEditDialog::FeatureEditDialog(const QString& name,
     : QDialog(parent)
     , m_project(project)
     , m_featureId(featureId)
-    , m_hotkey(hotkey) {
+    , m_hotkey(hotkey)
+    , m_featureHotkeyGate() {
     setWindowTitle(tr("기능 편집"));
     setModal(true);
     setupUi();
