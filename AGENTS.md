@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.313` (from `project(PIPBONG VERSION 0.8.313)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.314` (from `project(PIPBONG VERSION 0.8.314)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1547,6 +1547,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.314] - 2026-07-24
+
+### Added
+
+- **`HoldKeyTapRunner`**: headless hold-mode fast path for single-block KeyPress Tap workflows (Q/W/E/R hold macros) — bypasses `WorkflowEngine` / per-loop Qt block signals during multi-hold sessions (`HoldKeyTapRunner`, `MainWindow::launchHoldKeyTapRun`).
+
+### Fixed
+
+- Multi-Hold sustained lag (~250 ms stalls every loop interval): `onEngineFinished` now calls `scheduleRepeatIteration` when the hold latch is still down instead of always `finishRunSession` (prevents abandon/relaunch cycle); Hold mode always sets `suppressRepeatUi` on launch; hold hotkey KEYUP ignores transient rollover when `GetAsyncKeyState` still reports the binding down (`HotkeyManager`, `MainWindow`).
 
 ## [0.8.313] - 2026-07-24
 

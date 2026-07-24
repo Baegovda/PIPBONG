@@ -136,6 +136,7 @@ private slots:
     void onEngineLog(const QString& message);
     void onEngineStarted();
     void onEngineFinished(bool success, const QString& message);
+    void onHoldKeyTapFinished(bool success, const QString& message);
     void onBlockStarted(int index, const QString& summary);
     void onBlockProgress(int index, BlockProgressKind kind);
     void onBlockMatchResult(int index,
@@ -220,6 +221,7 @@ private:
     FeatureRunSession* sessionFor(const std::string& featureId);
     const FeatureRunSession* sessionFor(const std::string& featureId) const;
     FeatureRunSession* sessionForEngine(const QObject* sender);
+    FeatureRunSession* sessionForHoldKeyTapRunner(const QObject* sender);
     bool isFeatureRunning(const std::string& featureId) const;
     bool isFeatureInActiveWorkflowRun(const std::string& featureId) const;
     bool hasAnyRunningSession() const;
@@ -310,6 +312,7 @@ private:
     bool tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Feature* feature);
     void selectRunningFeatureForDisplay(Feature* feature);
     void launchWorkflowRun(FeatureRunSession& session, Feature* feature, bool repeatIteration = false);
+    void launchHoldKeyTapRun(FeatureRunSession& session, Feature* feature, int virtualKey);
     void deferHoldSessionUiAfterStart(const std::string& featureId);
     void ensureRunSessionResources(FeatureRunSession& session,
                                    Feature* feature,

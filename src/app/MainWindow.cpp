@@ -32,6 +32,7 @@
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/Workflow.h"
 #include "core/workflow/WorkflowEngine.h"
+#include "core/workflow/HoldKeyTapRunner.h"
 #include "core/workflow/WorkflowRunner.h"
 #include "core/workflow/blocks/ImageFindBlock.h"
 #include "model/Feature.h"
@@ -153,7 +154,8 @@ SessionRunPolicyInput sessionPolicyInputFrom(const FeatureRunSession& session) {
     input.repeatSession = session.repeatSession;
     input.holdRunActive = session.holdRunActive;
     input.repeatRemaining = session.repeatRemaining;
-    input.engineRunning = session.engine && session.engine->isRunning();
+    input.engineRunning = (session.engine && session.engine->isRunning())
+                          || (session.holdKeyTapRunner && session.holdKeyTapRunner->isRunning());
     input.lockMouseDuringFirstLoopCount = session.lockMouseDuringFirstLoopCount;
     input.earlyLoopMouseLockReleased = session.earlyLoopMouseLockReleased;
     input.sessionIteration = session.sessionIteration;
@@ -3019,6 +3021,19 @@ FeatureRunSession* MainWindow::sessionForEngine(const QObject* sender) {
     return nullptr;
 }
 
+FeatureRunSession* MainWindow::sessionForHoldKeyTapRunner(const QObject* sender) {
+    const auto* runner = qobject_cast<const HoldKeyTapRunner*>(sender);
+    if (!runner) {
+        return nullptr;
+    }
+    for (auto& entry : m_runSessions) {
+        if (entry.second.holdKeyTapRunner.get() == runner) {
+            return &entry.second;
+        }
+    }
+    return nullptr;
+}
+
 bool MainWindow::isFeatureSessionActive(const FeatureRunSession& session) const {
     return SessionRunPolicy::isSessionActive(sessionPolicyInputFrom(session));
 }
@@ -3582,6 +3597,11 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
 
     const bool hadEngine = session->engine != nullptr;
+    const bool hadHoldTapRunner =
+        session->holdKeyTapRunner && session->holdKeyTapRunner->isRunning();
+    if (hadHoldTapRunner) {
+        session->holdKeyTapRunner->stop();
+    }
     if (hadEngine) {
         appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
         abandonSessionEngine(*session);
@@ -3592,6 +3612,17 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
             updateRunUiState(false);
         }
         schedulePruneAbandonedEngines();
+        return;
+    }
+
+    if (hadHoldTapRunner) {
+        const bool deferUi = shouldCoalesceRunUiUpdates();
+        finishRunSession(featureId, session->lastLoopSuccess, QString(), deferUi);
+        if (deferUi) {
+            scheduleCoalescedHoldEndCleanup();
+        } else {
+            updateRunUiState(false);
+        }
         return;
     }
 
@@ -4591,6 +4622,9 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
             existing->sessionContext->endRunInputSession();
         }
         UserInputInterruptMonitor::instance().unregisterSession(featureId);
+        if (existing->holdKeyTapRunner && existing->holdKeyTapRunner->isRunning()) {
+            existing->holdKeyTapRunner->stop();
+        }
         if (existing->engine) {
             abandonSessionEngine(*existing);
         }
@@ -4668,6 +4702,17 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
             return;
         }
         launchTriggerMonitor(activeSession, feature, true);
+        return;
+    }
+    int holdTapVirtualKey = 0;
+    if (holdKeyTapWorkflowVirtualKey(*feature, holdTapVirtualKey)) {
+        activeSession.usesHoldKeyTapFastPath = true;
+        activeSession.holdKeyTapRunner = std::make_unique<HoldKeyTapRunner>(this);
+        connect(activeSession.holdKeyTapRunner.get(),
+                &HoldKeyTapRunner::finished,
+                this,
+                &MainWindow::onHoldKeyTapFinished);
+        launchHoldKeyTapRun(activeSession, feature, holdTapVirtualKey);
         return;
     }
     launchWorkflowRun(activeSession, feature, false);
@@ -5255,8 +5300,18 @@ void MainWindow::continueRepeatSession(FeatureRunSession& session,
         finishRunSession(session.featureId, success, message);
         return;
     }
+    if (session.holdKeyTapRunner && session.holdKeyTapRunner->isRunning()) {
+        return;
+    }
     if (session.engine && session.engine->isRunning()) {
         return;
+    }
+    if (session.usesHoldKeyTapFastPath && feature) {
+        int virtualKey = 0;
+        if (holdKeyTapWorkflowVirtualKey(*feature, virtualKey)) {
+            launchHoldKeyTapRun(session, feature, virtualKey);
+            return;
+        }
     }
     launchWorkflowRun(session, feature, true);
 }
@@ -5342,9 +5397,9 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
     syncUserInputInterruptForSession(session, feature);
 
     const bool suppressRepeatUi =
-        repeatIteration
-        && (session.runningMode == FeatureRunMode::Hold
-            || session.runningMode == FeatureRunMode::RepeatInfinite);
+        session.runningMode == FeatureRunMode::Hold
+        || session.runningMode == FeatureRunMode::RepeatInfinite
+        || (repeatIteration && session.runningMode == FeatureRunMode::RepeatCount);
     if (session.sessionContext) {
         session.sessionContext->setSuppressRepeatUi(suppressRepeatUi);
     }
@@ -5402,6 +5457,71 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
 #endif
         return run;
     });
+}
+
+void MainWindow::launchHoldKeyTapRun(FeatureRunSession& session, Feature* feature, int virtualKey) {
+    if (!feature) {
+        return;
+    }
+
+    if (!session.holdKeyTapRunner || session.holdKeyTapRunner->isRunning()) {
+        return;
+    }
+
+    if (deferRunUntilScopedTargetForeground(session, feature)) {
+        return;
+    }
+
+    CrashReporter::noteBreadcrumb(
+        QStringLiteral("run"),
+        QStringLiteral("hold tap \"%1\" vk=%2")
+            .arg(QString::fromStdString(feature->name()))
+            .arg(virtualKey));
+
+    const bool hotkeyHoldFirstStart = session.hotkeyLaunchedSession;
+
+    if (!session.sessionContext) {
+        session.sessionContext = std::make_shared<ExecutionContext>();
+    }
+    syncRunSessionContext(session);
+    applyFeatureRunPoliciesToContext(session, feature);
+    session.sessionContext->setSuppressRepeatUi(true);
+    syncUserInputInterruptForSession(session, feature);
+
+    if (hotkeyHoldFirstStart) {
+        const std::string featureId = session.featureId;
+        QTimer::singleShot(0, this, [this, featureId]() {
+            scheduleCoalescedHoldStartUi(featureId);
+        });
+    } else {
+        selectRunningFeatureForDisplay(feature);
+        if (shouldLogRunDetails(session)) {
+            appendSessionLog(session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
+        }
+        updateRunUiState();
+    }
+
+    const std::string featureId = session.featureId;
+    Feature* featurePtr = feature;
+    HotkeyManager* hotkeyMgr = m_hotkeyManager;
+    const int intervalMs = feature->resolvedLoopIntervalMs();
+    std::shared_ptr<ExecutionContext> context = session.sessionContext;
+
+    session.holdKeyTapRunner->run(
+        virtualKey,
+        intervalMs,
+        [this, featureId, featurePtr, hotkeyMgr]() {
+            FeatureRunSession* active = sessionFor(featureId);
+            if (!active || !featurePtr) {
+                return false;
+            }
+            if (active->userStopRequested) {
+                return false;
+            }
+            return active->repeatSession && active->holdRunActive && hotkeyMgr
+                   && hotkeyMgr->isHoldBindingDown(featureId);
+        },
+        context);
 }
 
 void MainWindow::deferHoldSessionUiAfterStart(const std::string& featureId) {
@@ -5921,6 +6041,10 @@ void MainWindow::finishRunSession(const std::string& featureId,
         abandonSessionEngine(*session);
     }
 
+    if (session && session->holdKeyTapRunner && session->holdKeyTapRunner->isRunning()) {
+        session->holdKeyTapRunner->stop();
+    }
+
     for (auto it = m_abandonedEngineFeatureIds.begin(); it != m_abandonedEngineFeatureIds.end();) {
         if (it->second == featureId) {
             it = m_abandonedEngineFeatureIds.erase(it);
@@ -6104,7 +6228,10 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
     const std::string id = featureId.toStdString();
     if (FeatureRunSession* session = sessionFor(id)) {
         if (session->holdRunActive) {
-            if (session->engine && !session->engine->isRunning()) {
+            const bool runnerIdle =
+                !session->holdKeyTapRunner || !session->holdKeyTapRunner->isRunning();
+            const bool engineIdle = !session->engine || !session->engine->isRunning();
+            if (runnerIdle && engineIdle) {
                 session->repeatSession = true;
                 scheduleRepeatIteration(*session, feature, session->lastLoopSuccess, QString());
             }
@@ -6163,6 +6290,18 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     if (feature) {
     }
     releaseHoldHotkeyInputToTarget(*session, feature);
+
+    if (session->holdKeyTapRunner && session->holdKeyTapRunner->isRunning()) {
+        session->userStopRequested = true;
+        session->holdKeyTapRunner->stop();
+        if (MultiHoldProfiler::isEnabled() && endTimer.isValid()) {
+            MultiHoldProfiler::notePhase(QStringLiteral("hold_end_ms"),
+                                         endTimer.elapsed(),
+                                         QStringLiteral("sessions=%1 holdTap=stop")
+                                             .arg(static_cast<qint64>(m_runSessions.size())));
+        }
+        return;
+    }
 
     if (session->engine && session->engine->isRunning()) {
         session->userStopRequested = true;
@@ -6739,6 +6878,48 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
         }
     }
 #endif
+
+    if (feature && shouldContinueRunSession(*session, feature)) {
+        scheduleRepeatIteration(*session, feature, success, message);
+        return;
+    }
+
+    finishRunSession(session->featureId, success, message);
+}
+
+void MainWindow::onHoldKeyTapFinished(bool success, const QString& message) {
+    FeatureRunSession* session = sessionForHoldKeyTapRunner(sender());
+    if (!session) {
+        return;
+    }
+
+    if (session->userStopRequested) {
+        const bool deferHoldTeardown =
+            session->runningMode == FeatureRunMode::Hold
+            && (m_runSessions.size() > 1 || isHoldBurstActive()
+                || !m_pendingHoldFeatureEndFinishes.empty());
+        if (deferHoldTeardown) {
+            scheduleCoalescedHoldFeatureEndFinish(session->featureId);
+            return;
+        }
+        const bool deferUi = m_runSessions.size() > 1;
+        finishRunSession(session->featureId, success, message, deferUi);
+        if (deferUi) {
+            scheduleCoalescedHoldEndCleanup();
+        } else {
+            updateRunUiState(false);
+        }
+        return;
+    }
+
+    Feature* feature = m_project ? m_project->featureById(session->featureId) : nullptr;
+    if (feature && shouldContinueRunSession(*session, feature)) {
+        int virtualKey = 0;
+        if (holdKeyTapWorkflowVirtualKey(*feature, virtualKey)) {
+            launchHoldKeyTapRun(*session, feature, virtualKey);
+            return;
+        }
+    }
 
     finishRunSession(session->featureId, success, message);
 }

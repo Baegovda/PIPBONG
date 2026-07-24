@@ -623,6 +623,9 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
                 continue;
             }
             swallow = true;
+            if (entry.binding.isPhysicallyDown(entry.allowExtraModifiers)) {
+                continue;
+            }
             entry.keyDown = false;
             emitHotkeyHoldEnded(entry.featureId);
         }
