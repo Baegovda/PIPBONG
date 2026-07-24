@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.315` (from `project(PIPBONG VERSION 0.8.315)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.316` (from `project(PIPBONG VERSION 0.8.316)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -514,7 +514,7 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.6 UI
 
-- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked **주 대상 창** and optional **서브 대상 창** (e.g. launcher) per profile; **foreground-window auto-switch** reacts directly to Win32 `EVENT_SYSTEM_FOREGROUND` (50 ms precise poll remains as fallback), activates the profile whose main or sub linked title best matches the focused top-level window (longest substring wins), and falls back to the default profile when unmatched after a short stable delay; PIPBONG foreground and Alt+Tab / shell transient windows keep the current profile (`MainWindow::syncProfileToForegroundWindow`, `ProfileManager::profileIdForForegroundTitle`). Feature runs pick the effective capture target from the focused window (sub title when it matches, otherwise main) via `MainWindow::resolveEffectiveTargetTitleW`.
+- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked **주 대상 창** and optional **서브 대상 창** (e.g. launcher) per profile; **foreground-window auto-switch** reacts directly to Win32 `EVENT_SYSTEM_FOREGROUND` (50 ms precise poll remains as fallback), resolves profile by title **or** foreground process path when title only matches default, uses tiered stability (0 ms process match / 120 ms title / default fallback) before commit, and falls back to the default profile when unmatched after a short stable delay; PIPBONG foreground and Alt+Tab / shell transient windows keep the current profile (`MainWindow::syncProfileToForegroundWindow`, `ProfileManager::profileIdForForegroundTitle`, `resolveProfileIdForForeground`). Feature runs pick the effective capture target from the focused window (sub title when it matches, otherwise main) via `MainWindow::resolveEffectiveTargetTitleW`.
 - **Feature list:** Create/delete/rename features; hotkey binding (button, double-click, context menu).
 - **Workflow editor:** Block list with drag-and-drop reorder; per-type **블록 추가** buttons (템플릿 매칭, 마우스, 키보드, 딜레이); template thumbnails (48×48); block editors in `BlockEditorDialog`.
 - **ImageFind editor:** ROI preview, match test, screen capture overlay, `CaptureConfirmDialog`.
@@ -1210,8 +1210,9 @@ Cursor rule: `.cursor/rules/targeted-profiling-on-bugs.mdc`.
 | Layer | Rule |
 | ----- | ---- |
 | Entry | **`requestAutoProfileSwitch`** only from `syncProfileToForegroundWindow` — **not** `switchToForegroundLinkedProfileIfNeeded(true)` on the same tick |
-| Stability | 500 ms single-shot timer — commit only when foreground still requests the same profile |
-| Min interval | 800 ms between automatic commits (`m_lastAutomaticProfileSwitchTimer`) — coalesce ping-pong |
+| Stability | **Process-path match** (linked exe): **0 ms**; title-only linked: **120 ms**; default fallback: **120 ms** (+ **250 ms** pre-check in `syncProfileToForegroundWindow`) — was flat **500 ms** for all |
+| Min interval | **150 ms** (process match), **350 ms** (title linked), **600 ms** (default) — was flat **800 ms** |
+| Resolution | `resolveProfileIdForForeground`: title substring first; if that yields **default**, upgrade via **foreground HWND process path** before switching |
 | Pipeline | `executeProfileSwitch`: sync stop/save/`setActiveProfile` → `singleShot(0)` `loadActiveProfile(..., scheduleTriggerRestore=false)` → `singleShot(0)` `restorePersistedTriggerSessions` + `finishForegroundSessionGate` |
 | Reentrancy | `m_profileSwitchPipelineActive` blocks `finishForegroundSessionGate`, `restorePersistedTriggerSessions`, and foreground sync during pipeline |
 | Sessions | `stopAllSessionsForProfileSwitch` **immediately** stops trigger watch before load (user policy) |
@@ -1426,6 +1427,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 - **2026-07-21:** Directs work in **Korean chat only**; expects the codebase to stay **100% AI-maintained** (implement, document, changelog via agent).
 - **2026-07-24:** Wants **chat replies in plain Korean, as short as possible** — no jargon, no long tables, no class/file names unless the user asks; diagnosis/log reports default to a **few bullets** (결론 → 언제 → 심각도); full technical detail stays in `AGENTS.md` / rules only.
 - **2026-07-24:** On **problem reports** (bug, lag, crash, regression): agent must **investigate first**, then explain **증상 / 원인 추정 / 해결 방향 / 다음 조치** in beginner-friendly Korean **before** starting code or build fixes; always-applied `.cursor/rules/explain-before-fix.mdc`.
+- **2026-07-24:** Profile **foreground auto-switch** should feel snappy: prefer **process path** when title-only match would wrongly pick default; shorter stability/min-interval for definitive exe match (0 ms / 150 ms).
 - **2026-07-24:** When a **bug or spike** points at a specific subsystem, expects the agent to **add targeted opt-in profiling for that area in the same task** (measure → fix → re-measure) — not only broad `AppSpikeProfiler`; document in §8.16 + `.cursor/rules/targeted-profiling-on-bugs.mdc`.
 - **2026-07-21:** Prefers the agent to **execute end-to-end** — scripts, rules, handover included — not hand the user a checklist of “copy this file / paste step 3”.
 - **2026-07-21:** When asking for **prompts or policy packs** for other projects, wants **one single copy block** (통째 복붙) — not split instructions where the user must paste multiple follow-up pieces.
@@ -1548,6 +1550,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.316] - 2026-07-24
+
+### Fixed
+
+- Profile foreground auto-switch felt sluggish: tiered stability (0 ms process-path match, 120 ms title, default fallback) replaces flat 500 ms; min commit interval 150–600 ms by match type; `resolveProfileIdForForeground` upgrades default title hits via foreground exe path (`MainWindow`).
 
 ## [0.8.315] - 2026-07-24
 

@@ -275,7 +275,9 @@ private:
     void updateAuxiliaryToolButtonStates();
     void wireAuxiliaryDialogVisibility(QWidget* dialog);
     bool switchToProfile(const QString& profileId, bool automatic = false);
-    void requestAutoProfileSwitch(const QString& targetProfileId);
+    void requestAutoProfileSwitch(const QString& targetProfileId,
+                                  int stabilityMs = -1,
+                                  int minIntervalMs = -1);
     void evaluatePendingAutoProfileSwitch();
     void onAutoProfileSwitchStabilityElapsed();
     bool executeProfileSwitch(const QString& profileId, bool automatic);
@@ -408,6 +410,12 @@ private:
     /// Bind ScreenCapture to the desktop foreground HWND when its process path matches the active profile's linked main/sub exe (authoritative over title heuristics).
     bool adoptForegroundLinkedCaptureIfMatched();
     QString profileIdForForegroundHwnd(HWND hwnd) const;
+    QString resolveProfileIdForForeground(HWND hwnd, const QString& foregroundTitle) const;
+    bool isDefinitiveProcessProfileMatch(HWND hwnd, const QString& profileId) const;
+    void autoProfileSwitchTimingForTarget(HWND hwnd,
+                                          const QString& targetProfileId,
+                                          int* stabilityMsOut,
+                                          int* minIntervalMsOut) const;
     HWND findMainTargetHwndForCenterPin() const;
     HWND findSubTargetHwndForCenterPin() const;
     HWND findLinkedTargetHwndForDisplay(const QString& mainBinding,
@@ -550,6 +558,8 @@ private:
     QString m_deferredProfileSwitchId;
     QString m_pendingAutoSwitchProfileId;
     QString m_stabilizingAutoSwitchProfileId;
+    int m_pendingAutoSwitchStabilityMs = 500;
+    int m_pendingAutoSwitchMinIntervalMs = 800;
     QElapsedTimer m_lastAutomaticProfileSwitchTimer;
     std::vector<std::unique_ptr<WorkflowEngine>> m_abandonedEngines;
     std::unordered_map<const WorkflowEngine*, std::string> m_abandonedEngineFeatureIds;
