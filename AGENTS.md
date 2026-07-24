@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.307` (from `project(PIPBONG VERSION 0.8.307)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.308` (from `project(PIPBONG VERSION 0.8.308)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1223,23 +1223,48 @@ Cursor rule: `.cursor/rules/targeted-profiling-on-bugs.mdc`.
 
 Key files: `MainWindow.cpp` (`requestAutoProfileSwitch`, `executeProfileSwitch`, `syncProfileToForegroundWindow`), `ProfileSwitchProfiler.*`, `ReorderableListWidget` drag deferral.
 
-### 8.13 Program settings dialog (mandatory — grouped + tooltips)
+### 8.13 Settings and edit dialogs (mandatory — grouped + tooltips)
 
-**Status:** Verified working on Windows (2026-07, v0.8.245). **프로그램 설정** (`ProgramSettingsDialog`) must stay compact: options in category **QGroupBox** sections; detailed help on **tooltips** only — no inline `HintLabel` under each row.
+**Status:** Verified working on Windows (2026-07). Extended 2026-07-24 (v0.8.308) to **all** settings and edit dialogs — not only **프로그램 설정**.
+
+**Policy:** Options grouped by **category / kind** in `QGroupBox` sections; detailed help on **tooltips**; at most one muted intro line; long dialogs use `QScrollArea`. Shared helpers: `src/ui/UiSettingsLayout.h`. Cursor rules: `.cursor/rules/settings-edit-dialog-layout.mdc`, `.cursor/rules/program-settings-dialog.mdc`.
+
+#### Program settings (`ProgramSettingsDialog`)
 
 | Group | Contents |
 | ----- | -------- |
 | **기능 실행** | Auto-select running feature, profile-switch focus to target window, run without target window, log max lines |
-| **진단** | App spike profiling (`program/appSpikeProfiling`) — `app-spike/latest.md`; profile switch (`program/profileSwitchProfiling`) — `profile-switch/latest.md`; feature **사용** toggle (`program/featureToggleProfiling`) — `feature-toggle/latest.md` |
 | **시작·종료** | Windows startup launch, close to tray |
 | **업데이트** | Periodic update check + interval, auto-install |
-| **권한·호환** | Run as administrator (+ one-line elevated status when applicable) |
-| **템플릿 매칭** | ImageFind capture mode combo (mode-specific tooltip on combo) |
-| **화면 표시** | Default click/run feedback + window-pick animation (summary + **설정…**) |
+| **권한·호환** | Run as administrator (+ elevated status when applicable) |
+| **템플릿 매칭** | ImageFind capture mode combo |
+| **화면 표시** | Default click/run feedback, window-pick animation (summary + **설정…**) |
+| **진단** | App spike, profile switch, feature toggle profilers |
 
-**Adding options:** pick the matching group (or add a new group only when none fits); short Korean label; `setToolTip` on the control; optional group-box tooltip; persist via `ProgramSettings` / `QSettings`.
+#### Feature edit (`FeatureEditDialog`)
 
-Cursor rule: `.cursor/rules/program-settings-dialog.mdc`.
+| Group | Contents |
+| ----- | -------- |
+| **기본** | Enabled, name |
+| **단축키** | Binding, extra-modifier opt-in |
+| **타겟** | Capture scope, scoped-foreground gate |
+| **동작 방식** | Run mode, repeat / exit / loop interval / trigger options |
+| **실행 중 동작** | User-input interrupt, pointer feedback, mouse restore |
+| **마우스·탐색** | Early-loop mouse lock, ROI correction, first-run ROI edit |
+
+#### Profile / block editors
+
+| Dialog | Groups |
+| ------ | ------ |
+| `ProfileEditDialog` | 프로필, 대상 창 (메인 / 서브) |
+| `ImageFindEditor` | 매칭 설정, 템플릿, 탐색 ROI, 감지 피드백 |
+| `ClickEditor` | 대상, 좌표, 동작 설정, 기능 실행 |
+| `KeyPressEditor` | 키 입력, 조합키 |
+| `WaitEditor` | 대기 시간 |
+
+**Adding options:** correct group; short Korean label; `setToolTip` on control; optional group tooltip; persist via `ProgramSettings` / model JSON.
+
+**Anti-patterns:** flat 15+ row forms; per-row `HintLabel` walls; long labels duplicating tooltips; `changeEvent` → `setStyleSheet`.
 
 ### 8.15 Alt+Tab foreground sync and feature hotkey latch (mandatory — do not regress)
 
@@ -1521,6 +1546,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.308] - 2026-07-24
+
+### Added
+
+- Program-wide **settings and edit dialog** layout policy: `.cursor/rules/settings-edit-dialog-layout.mdc`, AGENTS.md §8.13 group tables; shared `UiSettingsLayout.h` helpers (`addSettingsGroup`, `addGroupCheck`, `applyOptionToolTip`).
+
+### Changed
+
+- **기능 편집** dialog reorganized into six category `QGroupBox` sections with scroll area (`FeatureEditDialog`).
+- **프로필 편집** grouped into **프로필** / **대상 창** sections; per-row `HintLabel` walls replaced with tooltips (`ProfileEditDialog`).
+- **키보드** block editor grouped into **키 입력** / **조합키** (`KeyPressEditor`); **딜레이** block editor uses **대기 시간** group (`WaitEditor`).
+- **프로그램 설정** uses shared `UiSettingsLayout` helpers (layout unchanged); `program-settings-dialog.mdc` points at the general policy rule.
 
 ## [0.8.307] - 2026-07-24
 
@@ -5668,8 +5706,13 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ### `program-settings-dialog.mdc`
 
-- **프로그램 설정:** grouped `QGroupBox` sections; option detail on **tooltips** only — no inline `HintLabel` per row.
-- Full rules in [§8.13](#813-program-settings-dialog-mandatory--grouped--tooltips).
+- **프로그램 설정:** subset of the program-wide settings/edit layout policy — grouped `QGroupBox`, tooltips only.
+- Full rules in [§8.13](#813-settings-and-edit-dialogs-mandatory--grouped--tooltips); general policy: `.cursor/rules/settings-edit-dialog-layout.mdc`.
+
+### `settings-edit-dialog-layout.mdc`
+
+- **All** settings and edit dialogs: options grouped by category/kind in `QGroupBox`; detail on tooltips; scroll for long forms; shared `UiSettingsLayout.h`.
+- Full rules in [§8.13](#813-settings-and-edit-dialogs-mandatory--grouped--tooltips).
 
 ### `targeted-profiling-on-bugs.mdc`
 
@@ -5694,4 +5737,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-22. Current application version: 0.8.272._
+_Last consolidated: 2026-07-24. Current application version: 0.8.308._

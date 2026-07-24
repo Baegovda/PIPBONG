@@ -6,6 +6,7 @@
 #include "app/WindowsRunAsAdmin.h"
 #include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/WindowSelectionFeedbackSettingsDialog.h"
+#include "ui/UiSettingsLayout.h"
 #include "ui/UiStrings.h"
 #include "ui/UiThemeColors.h"
 #include "ui/widgets/DragAdjustSpinBox.h"
@@ -19,32 +20,9 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-namespace {
-
-void applyOptionToolTip(QWidget* widget, const QString& toolTip) {
-    widget->setToolTip(toolTip);
-}
-
-QCheckBox* addGroupCheck(QVBoxLayout* groupLayout,
-                         QWidget* parent,
-                         const QString& label,
-                         const QString& toolTip,
-                         bool checked) {
-    auto* check = new QCheckBox(label, parent);
-    check->setChecked(checked);
-    applyOptionToolTip(check, toolTip);
-    groupLayout->addWidget(check);
-    return check;
-}
-
-QGroupBox* addSettingsGroup(QVBoxLayout* rootLayout, const QString& title, const QString& toolTip) {
-    auto* group = new QGroupBox(title);
-    applyOptionToolTip(group, toolTip);
-    rootLayout->addWidget(group);
-    return group;
-}
-
-} // namespace
+using UiSettingsLayout::addGroupCheck;
+using UiSettingsLayout::addSettingsGroup;
+using UiSettingsLayout::applyOptionToolTip;
 
 ProgramSettingsDialog::ProgramSettingsDialog(QWidget* parent)
     : QDialog(parent) {

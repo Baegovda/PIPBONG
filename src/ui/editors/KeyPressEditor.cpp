@@ -8,6 +8,7 @@
 #include <QDialogButtonBox>
 #include <QEvent>
 #include <QFormLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
@@ -292,34 +293,33 @@ ModifierKeyAction KeyPressEditor::modifierActionFromCombo(const QComboBox* combo
 
 void KeyPressEditor::setupUi() {
     auto* layout = new QVBoxLayout(this);
-    auto* form = new QFormLayout();
+    layout->setSpacing(10);
 
-    m_modifiersOnlyCheck = new QCheckBox(tr("수정키만"), this);
+    auto* keyGroup = new QGroupBox(tr("키 입력"), this);
+    keyGroup->setToolTip(tr("누를 키와 탭/누름/뗌 동작입니다."));
+    auto* keyForm = new QFormLayout(keyGroup);
+    keyForm->setSpacing(6);
+
+    m_modifiersOnlyCheck = new QCheckBox(tr("수정키만"), keyGroup);
     m_modifiersOnlyCheck->setToolTip(tr("체크하면 Space 등 일반 키 없이 Ctrl/Alt/Shift 동작만 실행합니다."));
     m_modifiersOnlyCheck->setChecked(!m_block->useMainKey);
+    keyForm->addRow(QString(), m_modifiersOnlyCheck);
 
-    m_keyDisplay = new QLineEdit(this);
+    m_keyDisplay = new QLineEdit(keyGroup);
     m_keyDisplay->setReadOnly(true);
     m_keyDisplay->setPlaceholderText(tr("클릭 후 키 입력"));
     m_keyDisplay->setCursor(Qt::PointingHandCursor);
     m_keyDisplay->installEventFilter(this);
-    m_clearKeyButton = new QPushButton(tr("지우기"), this);
+    m_clearKeyButton = new QPushButton(tr("지우기"), keyGroup);
     m_clearKeyButton->setToolTip(tr("입력된 키를 지웁니다."));
 
-    m_actionCombo = new QComboBox(this);
+    m_actionCombo = new QComboBox(keyGroup);
     m_actionCombo->addItem(tr("탭"), static_cast<int>(KeyAction::Tap));
     m_actionCombo->addItem(tr("누름"), static_cast<int>(KeyAction::Down));
     m_actionCombo->addItem(tr("뗌"), static_cast<int>(KeyAction::Up));
     m_actionCombo->setCurrentIndex(m_actionCombo->findData(static_cast<int>(m_block->action)));
 
-    m_ctrlActionCombo = new QComboBox(this);
-    m_altActionCombo = new QComboBox(this);
-    m_shiftActionCombo = new QComboBox(this);
-    populateModifierActionCombo(m_ctrlActionCombo, m_block->modifierActions.ctrl);
-    populateModifierActionCombo(m_altActionCombo, m_block->modifierActions.alt);
-    populateModifierActionCombo(m_shiftActionCombo, m_block->modifierActions.shift);
-
-    m_mainKeyRow = new QWidget(this);
+    m_mainKeyRow = new QWidget(keyGroup);
     auto* keyActionLayout = new QHBoxLayout(m_mainKeyRow);
     keyActionLayout->setContentsMargins(0, 0, 0, 0);
     keyActionLayout->setSpacing(8);
@@ -327,8 +327,22 @@ void KeyPressEditor::setupUi() {
     keyActionLayout->addWidget(m_clearKeyButton);
     keyActionLayout->addWidget(new QLabel(tr("동작"), m_mainKeyRow));
     keyActionLayout->addWidget(m_actionCombo);
+    keyForm->addRow(tr("키보드"), m_mainKeyRow);
+    layout->addWidget(keyGroup);
 
-    auto* modifierRow = new QWidget(this);
+    auto* modifierGroup = new QGroupBox(tr("조합키"), this);
+    modifierGroup->setToolTip(tr("Ctrl / Alt / Shift 각각의 동작을 지정합니다."));
+    auto* modifierForm = new QFormLayout(modifierGroup);
+    modifierForm->setSpacing(6);
+
+    m_ctrlActionCombo = new QComboBox(modifierGroup);
+    m_altActionCombo = new QComboBox(modifierGroup);
+    m_shiftActionCombo = new QComboBox(modifierGroup);
+    populateModifierActionCombo(m_ctrlActionCombo, m_block->modifierActions.ctrl);
+    populateModifierActionCombo(m_altActionCombo, m_block->modifierActions.alt);
+    populateModifierActionCombo(m_shiftActionCombo, m_block->modifierActions.shift);
+
+    auto* modifierRow = new QWidget(modifierGroup);
     auto* modifierLayout = new QHBoxLayout(modifierRow);
     modifierLayout->setContentsMargins(0, 0, 0, 0);
     modifierLayout->setSpacing(8);
@@ -339,10 +353,8 @@ void KeyPressEditor::setupUi() {
     modifierLayout->addWidget(new QLabel(tr("Shift"), modifierRow));
     modifierLayout->addWidget(m_shiftActionCombo);
     modifierLayout->addStretch();
-
-    form->addRow(QString(), m_modifiersOnlyCheck);
-    form->addRow(tr("키보드"), m_mainKeyRow);
-    form->addRow(tr("조합키"), modifierRow);
+    modifierForm->addRow(QString(), modifierRow);
+    layout->addWidget(modifierGroup);
 
     connect(m_modifiersOnlyCheck, &QCheckBox::toggled, this, [this](bool) { updateMainKeyRowEnabled(); });
     connect(m_clearKeyButton, &QPushButton::clicked, this, [this]() {
@@ -356,8 +368,6 @@ void KeyPressEditor::setupUi() {
 
     updateMainKeyRowEnabled();
     updateKeyDisplay();
-
-    layout->addLayout(form);
 
     if (!m_embedded) {
         auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);

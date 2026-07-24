@@ -8,6 +8,7 @@
 #include "model/Feature.h"
 #include "model/FeatureCaptureTargetScope.h"
 #include "ui/TriggerModeAnimationSettingsDialog.h"
+#include "ui/UiSettingsLayout.h"
 #include "ui/UiStrings.h"
 #include "ui/UiThemeColors.h"
 #include "ui/widgets/AnimatedTwoWaySwitch.h"
@@ -18,6 +19,8 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QFrame>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
@@ -25,6 +28,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QShowEvent>
 #include <QStackedWidget>
 
@@ -172,28 +176,48 @@ void FeatureEditDialog::showEvent(QShowEvent* event) {
 }
 
 void FeatureEditDialog::setupUi() {
-    auto* layout = new QVBoxLayout(this);
+    auto* rootLayout = new QVBoxLayout(this);
+    rootLayout->setSpacing(10);
 
-    auto* form = new QFormLayout();
-    m_enabledCheck = new QCheckBox(tr("기능 사용"), this);
+    auto* scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto* scrollContent = new QWidget(scroll);
+    auto* contentLayout = new QVBoxLayout(scrollContent);
+    contentLayout->setSpacing(10);
+    scroll->setWidget(scrollContent);
+
+    // --- 기본 ---
+    auto* basicGroup = new QGroupBox(tr("기본"), scrollContent);
+    basicGroup->setToolTip(tr("기능 이름과 사용 여부입니다."));
+    auto* basicForm = new QFormLayout(basicGroup);
+    basicForm->setSpacing(6);
+    m_enabledCheck = new QCheckBox(tr("기능 사용"), basicGroup);
     m_enabledCheck->setToolTip(tr("끄면 단축키·실행 버튼으로 이 기능을 시작할 수 없습니다."));
-    form->addRow(QString(), m_enabledCheck);
-
-    m_nameEdit = new QLineEdit(this);
+    basicForm->addRow(QString(), m_enabledCheck);
+    m_nameEdit = new QLineEdit(basicGroup);
     m_nameEdit->setPlaceholderText(tr("기능 이름"));
-    form->addRow(tr("이름"), m_nameEdit);
+    basicForm->addRow(tr("이름"), m_nameEdit);
+    contentLayout->addWidget(basicGroup);
 
-    auto* hotkeyRow = new QWidget(this);
+    // --- 단축키 ---
+    auto* hotkeyGroup = new QGroupBox(tr("단축키"), scrollContent);
+    hotkeyGroup->setToolTip(tr("이 기능을 시작·중지할 전역 단축키입니다."));
+    auto* hotkeyGroupLayout = new QVBoxLayout(hotkeyGroup);
+    hotkeyGroupLayout->setSpacing(6);
+
+    auto* hotkeyRow = new QWidget(hotkeyGroup);
     auto* hotkeyLayout = new QVBoxLayout(hotkeyRow);
     hotkeyLayout->setContentsMargins(0, 0, 0, 0);
     hotkeyLayout->setSpacing(4);
 
-    m_hotkeyLabel = new QLabel(this);
+    m_hotkeyLabel = new QLabel(hotkeyRow);
     m_hotkeyLabel->setAlignment(Qt::AlignCenter);
     m_hotkeyLabel->setCursor(Qt::PointingHandCursor);
     m_hotkeyLabel->installEventFilter(this);
 
-    auto* clearButton = new QPushButton(tr("단축키 지우기"), this);
+    auto* clearButton = new QPushButton(tr("단축키 지우기"), hotkeyRow);
     auto* hotkeyButtons = new QHBoxLayout();
     hotkeyButtons->addWidget(clearButton);
     hotkeyButtons->addStretch();
@@ -202,14 +226,21 @@ void FeatureEditDialog::setupUi() {
     hotkeyLayout->addLayout(hotkeyButtons);
 
     m_hotkeyAllowExtraModifiersCheck =
-        new QCheckBox(tr("다른 조합키와 함께 눌러도 실행"), this);
+        new QCheckBox(tr("다른 조합키와 함께 눌러도 실행"), hotkeyRow);
     m_hotkeyAllowExtraModifiersCheck->setToolTip(
         tr("단축키에 없는 Ctrl, Alt, Shift가 함께 눌려 있어도 이 기능이 실행됩니다."));
     hotkeyLayout->addWidget(m_hotkeyAllowExtraModifiersCheck);
+    hotkeyGroupLayout->addWidget(hotkeyRow);
+    contentLayout->addWidget(hotkeyGroup);
 
-    form->addRow(tr("단축키"), hotkeyRow);
+    // --- 타겟 ---
+    auto* targetGroup = new QGroupBox(tr("타겟"), scrollContent);
+    targetGroup->setToolTip(
+        tr("이 기능이 동작할 창 범위입니다. 프로필의 메인·서브 타겟과 함께 사용합니다."));
+    auto* targetForm = new QFormLayout(targetGroup);
+    targetForm->setSpacing(6);
 
-    m_captureTargetScopeCombo = new QComboBox(this);
+    m_captureTargetScopeCombo = new QComboBox(targetGroup);
     m_captureTargetScopeCombo->addItem(tr("자동 (메인·서브)"),
                                        static_cast<int>(FeatureCaptureTargetScope::Auto));
     m_captureTargetScopeCombo->addItem(tr("메인 창만"),
@@ -217,18 +248,23 @@ void FeatureEditDialog::setupUi() {
     m_captureTargetScopeCombo->addItem(tr("서브 창만"),
                                        static_cast<int>(FeatureCaptureTargetScope::SubOnly));
     m_captureTargetScopeCombo->setToolTip(
-        tr("이 기능이 동작할 타겟입니다. 프로필의 메인·서브 타겟 지정과 함께 사용합니다. "
-           "자동은 포커스·실행 중인 창에 따라 메인 또는 서브를 선택합니다."));
-    form->addRow(tr("타겟"), m_captureTargetScopeCombo);
+        tr("자동은 포커스·실행 중인 창에 따라 메인 또는 서브를 선택합니다."));
+    targetForm->addRow(tr("대상 창"), m_captureTargetScopeCombo);
 
     m_requireScopedTargetForegroundCheck =
-        new QCheckBox(tr("지정한 타겟이 활성(포커스)일 때만 동작"), this);
+        new QCheckBox(tr("지정한 타겟이 활성(포커스)일 때만 동작"), targetGroup);
     m_requireScopedTargetForegroundCheck->setToolTip(
-        tr("메인 창만·서브 창만을 선택했을 때 사용합니다. 체크하면 해당 창이 "
-           "포커스되어 있지 않을 때는 감시·실행을 하지 않습니다."));
-    form->addRow(QString(), m_requireScopedTargetForegroundCheck);
+        tr("메인 창만·서브 창만을 선택했을 때, 해당 창이 포커스되어 있지 않으면 감시·실행을 하지 않습니다."));
+    targetForm->addRow(QString(), m_requireScopedTargetForegroundCheck);
+    contentLayout->addWidget(targetGroup);
 
-    m_modeCombo = new QComboBox(this);
+    // --- 동작 방식 ---
+    auto* modeGroup = new QGroupBox(tr("동작 방식"), scrollContent);
+    modeGroup->setToolTip(tr("반복·홀드·트리거 등 실행 방식과 루프 간격입니다."));
+    auto* modeForm = new QFormLayout(modeGroup);
+    modeForm->setSpacing(6);
+
+    m_modeCombo = new QComboBox(modeGroup);
     m_modeCombo->addItem(tr("N회 반복"), static_cast<int>(FeatureRunMode::RepeatCount));
     m_modeCombo->addItem(tr("홀드"), static_cast<int>(FeatureRunMode::Hold));
     m_modeCombo->addItem(tr("무한 반복"), static_cast<int>(FeatureRunMode::RepeatInfinite));
@@ -240,37 +276,37 @@ void FeatureEditDialog::setupUi() {
                              tr("첫 번째 템플릿 매칭 블록만 상시 감시합니다. 감지되면 워크플로를 1회 실행하고, "
                                 "성공한 뒤 쿨다운 시간이 지나면 다시 감시합니다. 단축키로 감시를 켜고 끕니다."),
                              Qt::ToolTipRole);
-    m_modePreviewChip = new QLabel(this);
+    m_modePreviewChip = new QLabel(modeGroup);
     m_modePreviewChip->setAlignment(Qt::AlignCenter);
     m_modePreviewChip->setFixedWidth(52);
-    auto* modeRow = new QWidget(this);
+    auto* modeRow = new QWidget(modeGroup);
     auto* modeRowLayout = new QHBoxLayout(modeRow);
     modeRowLayout->setContentsMargins(0, 0, 0, 0);
     modeRowLayout->setSpacing(8);
     modeRowLayout->addWidget(m_modePreviewChip, 0);
     modeRowLayout->addWidget(m_modeCombo, 1);
-    form->addRow(tr("동작 방식"), modeRow);
+    modeForm->addRow(tr("방식"), modeRow);
 
-    m_repeatSpin = new DragAdjustSpinBox(this);
+    m_repeatSpin = new DragAdjustSpinBox(modeGroup);
     m_repeatSpin->setRange(1, 9999);
     m_repeatSpin->setToolTip(tr("워크플로를 실행할 횟수입니다. 1회면 한 번 실행 후 종료하며, 실행 중 같은 단축키를 누르면 중지됩니다."));
-    m_repeatCountLabel = new QLabel(tr("반복 횟수"), this);
-    form->addRow(m_repeatCountLabel, m_repeatSpin);
+    m_repeatCountLabel = new QLabel(tr("반복 횟수"), modeGroup);
+    modeForm->addRow(m_repeatCountLabel, m_repeatSpin);
 
-    m_infiniteExitCheck = new QCheckBox(tr("연속 감지 실패 시 종료"), this);
+    m_infiniteExitCheck = new QCheckBox(tr("연속 감지 실패 시 종료"), modeGroup);
     m_infiniteExitCheck->setToolTip(
         tr("무한 반복·홀드 실행에서 템플릿 매칭 감지에 연속으로 실패하면 자동으로 중지합니다."));
-    form->addRow(QString(), m_infiniteExitCheck);
+    modeForm->addRow(QString(), m_infiniteExitCheck);
 
-    m_infiniteExitSpin = new DragAdjustSpinBox(this);
+    m_infiniteExitSpin = new DragAdjustSpinBox(modeGroup);
     m_infiniteExitSpin->setRange(1, 9999);
     m_infiniteExitSpin->setValue(3);
     m_infiniteExitSpin->setSuffix(tr(" 회"));
     m_infiniteExitSpin->setToolTip(tr("연속으로 감지에 실패한 루프 횟수가 이 값에 도달하면 실행을 종료합니다."));
-    m_infiniteExitCountLabel = new QLabel(tr("연속 실패 허용"), this);
-    form->addRow(m_infiniteExitCountLabel, m_infiniteExitSpin);
+    m_infiniteExitCountLabel = new QLabel(tr("연속 실패 허용"), modeGroup);
+    modeForm->addRow(m_infiniteExitCountLabel, m_infiniteExitSpin);
 
-    m_loopIntervalSection = new QWidget(this);
+    m_loopIntervalSection = new QWidget(modeGroup);
     auto* loopIntervalLayout = new QVBoxLayout(m_loopIntervalSection);
     loopIntervalLayout->setContentsMargins(0, 0, 0, 0);
     loopIntervalLayout->setSpacing(8);
@@ -317,40 +353,40 @@ void FeatureEditDialog::setupUi() {
             this,
             &FeatureEditDialog::updateLoopIntervalInputUi);
 
-    form->addRow(tr("루프 간격"), m_loopIntervalSection);
+    modeForm->addRow(tr("루프 간격"), m_loopIntervalSection);
     m_loopIntervalSection->setToolTip(
         tr("한 루프(워크플로 전체 1회)가 끝난 뒤, 다음 루프를 시작하기 전에 대기합니다. "
            "블록 사이 대기가 아니라 사이클 사이 대기입니다. "
            "고정/랜덤, 0ms면 즉시 다음 루프. "
            "무한 반복·N회 반복(2회 이상)·홀드에서 사용합니다."));
 
-    m_triggerCooldownSpin = new DragAdjustSpinBox(this);
+    m_triggerCooldownSpin = new DragAdjustSpinBox(modeGroup);
     m_triggerCooldownSpin->setRange(0, kTriggerCooldownMaxSeconds);
     m_triggerCooldownSpin->setSingleStep(1);
     m_triggerCooldownSpin->setToolTip(
         tr("워크플로 1회 실행이 성공한 뒤, 다음 트리거 감시를 시작하기 전에 대기하는 시간(초)입니다. "
            "블록 편집기의 「탐지 재시도」 간격(감시 중 매칭 실패 시 재탐색)과는 별개입니다. "
            "0초면 성공 직후 바로 다시 감시합니다."));
-    m_triggerCooldownLabel = new QLabel(tr("쿨다운"), this);
-    m_triggerCooldownRow = new QWidget(this);
+    m_triggerCooldownLabel = new QLabel(tr("쿨다운"), modeGroup);
+    m_triggerCooldownRow = new QWidget(modeGroup);
     auto* triggerCooldownLayout = new QHBoxLayout(m_triggerCooldownRow);
     triggerCooldownLayout->setContentsMargins(0, 0, 0, 0);
     triggerCooldownLayout->setSpacing(4);
     triggerCooldownLayout->addWidget(m_triggerCooldownSpin);
     triggerCooldownLayout->addWidget(new QLabel(tr("초"), m_triggerCooldownRow));
-    form->addRow(QString(), m_triggerCooldownRow);
+    modeForm->addRow(m_triggerCooldownLabel, m_triggerCooldownRow);
     connect(m_triggerCooldownSpin, &QAbstractSpinBox::editingFinished, this, [this]() {
         m_triggerCooldownSpin->setValue(
             std::clamp(m_triggerCooldownSpin->value(), 0, kTriggerCooldownMaxSeconds));
     });
 
     m_triggerRunWithoutTargetForegroundCheck =
-        new QCheckBox(tr("타겟이 포커스가 아니어도 감지하고 동작"), this);
+        new QCheckBox(tr("타겟이 포커스가 아니어도 감지하고 동작"), modeGroup);
     m_triggerRunWithoutTargetForegroundCheck->setToolTip(
         tr("트리거 모드에서 타겟 창이 화면에 보이기만 하면 포커스가 없어도 감시·실행합니다. "
            "다른 창을 사용하는 동안에도 백그라운드로 템플릿을 찾습니다. "
            "「지정한 타겟이 활성(포커스)일 때만 동작」과 함께 켤 수 없습니다."));
-    form->addRow(QString(), m_triggerRunWithoutTargetForegroundCheck);
+    modeForm->addRow(QString(), m_triggerRunWithoutTargetForegroundCheck);
     connect(m_triggerRunWithoutTargetForegroundCheck, &QCheckBox::toggled, this, [this](bool checked) {
         if (checked && m_requireScopedTargetForegroundCheck
             && m_requireScopedTargetForegroundCheck->isChecked()) {
@@ -365,7 +401,7 @@ void FeatureEditDialog::setupUi() {
         }
     });
 
-    m_triggerAnimationRow = new QWidget(this);
+    m_triggerAnimationRow = new QWidget(modeGroup);
     auto* triggerAnimationLayout = new QVBoxLayout(m_triggerAnimationRow);
     triggerAnimationLayout->setContentsMargins(0, 0, 0, 0);
     triggerAnimationLayout->setSpacing(4);
@@ -379,14 +415,21 @@ void FeatureEditDialog::setupUi() {
     triggerAnimationLayout->addLayout(triggerAnimationButtonRow);
     m_triggerAnimationRow->setToolTip(
         tr("기능 목록에서 트리거 감시·쿨다운·동작 상태별로 표시되는 아이콘과 강조 애니메이션을 설정합니다."));
-    form->addRow(tr("목록 표시"), m_triggerAnimationRow);
+    modeForm->addRow(tr("목록 표시"), m_triggerAnimationRow);
     connect(m_triggerAnimationButton,
             &QPushButton::clicked,
             this,
             &FeatureEditDialog::openTriggerAnimationSettings);
     updateTriggerAnimationSummary();
+    contentLayout->addWidget(modeGroup);
 
-    m_userInputInterruptCombo = new QComboBox(this);
+    // --- 실행 중 동작 ---
+    auto* runBehaviorGroup = new QGroupBox(tr("실행 중 동작"), scrollContent);
+    runBehaviorGroup->setToolTip(tr("워크플로 실행 중 사용자 입력·화면 표시 동작입니다."));
+    auto* runBehaviorForm = new QFormLayout(runBehaviorGroup);
+    runBehaviorForm->setSpacing(6);
+
+    m_userInputInterruptCombo = new QComboBox(runBehaviorGroup);
     m_userInputInterruptCombo->addItem(tr("완전 정지"), static_cast<int>(UserInputInterruptMode::Stop));
     m_userInputInterruptCombo->addItem(tr("일시정지"), static_cast<int>(UserInputInterruptMode::Pause));
     m_userInputInterruptCombo->addItem(tr("영향 없음"), static_cast<int>(UserInputInterruptMode::None));
@@ -394,27 +437,32 @@ void FeatureEditDialog::setupUi() {
         tr("워크플로 실행 중 사용자가 직접 키보드를 누르거나 마우스 버튼을 클릭하면(이동 제외) "
            "일시정지하거나 완전히 정지합니다. 영향 없음은 사용자 입력을 무시합니다. "
            "기능 단축키 입력은 항상 제외됩니다."));
-    form->addRow(tr("사용자 입력 시"), m_userInputInterruptCombo);
+    runBehaviorForm->addRow(tr("사용자 입력 시"), m_userInputInterruptCombo);
 
-    m_pointerVisualFeedbackCheck =
-        new QCheckBox(tr("실행 위치 표시"), this);
-    m_pointerVisualFeedbackCheck->setToolTip(
-        tr("실행 중 타겟에 클릭·감지 위치를 펄스로 표시합니다."));
-    form->addRow(QString(), m_pointerVisualFeedbackCheck);
+    m_pointerVisualFeedbackCheck = new QCheckBox(tr("실행 위치 표시"), runBehaviorGroup);
+    m_pointerVisualFeedbackCheck->setToolTip(tr("실행 중 타겟에 클릭·감지 위치를 펄스로 표시합니다."));
+    runBehaviorForm->addRow(QString(), m_pointerVisualFeedbackCheck);
 
-    m_restoreMousePositionOnEndCheck = new QCheckBox(tr("마우스 위치 복귀"), this);
+    m_restoreMousePositionOnEndCheck = new QCheckBox(tr("마우스 위치 복귀"), runBehaviorGroup);
     m_restoreMousePositionOnEndCheck->setToolTip(
         tr("기능 실행이 끝나면 워크플로가 시작될 때의 마우스 커서 위치로 되돌립니다."));
-    form->addRow(QString(), m_restoreMousePositionOnEndCheck);
+    runBehaviorForm->addRow(QString(), m_restoreMousePositionOnEndCheck);
+    contentLayout->addWidget(runBehaviorGroup);
 
-    m_earlyLoopMouseLockCheck = new QCheckBox(tr("초기 루프 마우스 잠금"), this);
+    // --- 마우스·탐색 ---
+    auto* mouseRoiGroup = new QGroupBox(tr("마우스·탐색"), scrollContent);
+    mouseRoiGroup->setToolTip(tr("마우스 잠금과 템플릿 탐색 ROI 보정입니다."));
+    auto* mouseRoiForm = new QFormLayout(mouseRoiGroup);
+    mouseRoiForm->setSpacing(6);
+
+    m_earlyLoopMouseLockCheck = new QCheckBox(tr("초기 루프 마우스 잠금"), mouseRoiGroup);
     m_earlyLoopMouseLockCheck->setToolTip(
         tr("처음 N회 루프 동안 마우스를 직전 템플릿 매칭 위치에 고정해 커서가 어긋나지 않게 합니다. "
            "매칭 성공마다 잠금 위치가 갱신됩니다. 잠금 구간 안에서 어떤 블록이든 실패가 누적되면 해제됩니다. "
            "트리거 모드에서는 감시·쿨다운 중에는 잠기지 않고, 매칭 후 워크플로 동작 페이즈에서만 적용됩니다."));
-    form->addRow(QString(), m_earlyLoopMouseLockCheck);
+    mouseRoiForm->addRow(QString(), m_earlyLoopMouseLockCheck);
 
-    m_earlyLoopMouseLockDetailsRow = new QWidget(this);
+    m_earlyLoopMouseLockDetailsRow = new QWidget(mouseRoiGroup);
     auto* earlyLockLayout = new QHBoxLayout(m_earlyLoopMouseLockDetailsRow);
     earlyLockLayout->setContentsMargins(0, 0, 0, 0);
     earlyLockLayout->setSpacing(8);
@@ -438,20 +486,20 @@ void FeatureEditDialog::setupUi() {
     earlyLockLayout->addWidget(new QLabel(tr("실패 시 해제"), m_earlyLoopMouseLockDetailsRow));
     earlyLockLayout->addWidget(m_earlyLoopMouseUnlockFailureSpin);
     earlyLockLayout->addStretch();
-    form->addRow(QString(), m_earlyLoopMouseLockDetailsRow);
+    mouseRoiForm->addRow(QString(), m_earlyLoopMouseLockDetailsRow);
 
     connect(m_earlyLoopMouseLockCheck, &QCheckBox::toggled, this, [this](bool) {
         updateModeDependentUi();
     });
 
-    m_roiCorrectionCheck = new QCheckBox(tr("전체 ROI 보정"), this);
+    m_roiCorrectionCheck = new QCheckBox(tr("전체 ROI 보정"), mouseRoiGroup);
     m_roiCorrectionCheck->setToolTip(
         tr("무한 반복·N회 반복(2회 이상) 실행 시 모든 템플릿 매칭 블록에 ROI 보정을 적용합니다. "
            "해제하면 워크플로 목록의 ROI 보정 열 또는 각 템플릿 매칭 블록 편집에서 블록별로 설정할 수 있습니다. "
            "보정 ROI는 실행 중에만 사용되며 저장되지 않습니다."));
-    form->addRow(QString(), m_roiCorrectionCheck);
+    mouseRoiForm->addRow(QString(), m_roiCorrectionCheck);
 
-    m_roiCorrectionExpandRow = new QWidget(this);
+    m_roiCorrectionExpandRow = new QWidget(mouseRoiGroup);
     auto* roiCorrectionExpandLayout = new QHBoxLayout(m_roiCorrectionExpandRow);
     roiCorrectionExpandLayout->setContentsMargins(0, 0, 0, 0);
     roiCorrectionExpandLayout->setSpacing(4);
@@ -468,21 +516,23 @@ void FeatureEditDialog::setupUi() {
     roiCorrectionExpandLayout->addWidget(m_roiCorrectionExpandSpin);
     roiCorrectionExpandLayout->addWidget(new QLabel(QStringLiteral("%"), m_roiCorrectionExpandRow));
     roiCorrectionExpandLayout->addStretch(1);
-    form->addRow(QString(), m_roiCorrectionExpandRow);
+    mouseRoiForm->addRow(QString(), m_roiCorrectionExpandRow);
 
     m_editFirstTemplateRoiOnStartCheck =
-        new QCheckBox(tr("첫 시작 시 첫 번째 템플릿의 ROI 수정한 뒤 바로 시작"), this);
+        new QCheckBox(tr("첫 시작 시 첫 번째 템플릿의 ROI 수정한 뒤 바로 시작"), mouseRoiGroup);
     m_editFirstTemplateRoiOnStartCheck->setToolTip(
         tr("기능 실행 직전에 워크플로 첫 템플릿 매칭 블록의 탐색 ROI를 타겟에서 조정합니다. "
            "확인 후 워크플로가 시작되며, Esc는 실행을 취소합니다. "
            "탐색 ROI가 지정된 템플릿 매칭 블록이 있을 때만 동작합니다."));
-    form->addRow(QString(), m_editFirstTemplateRoiOnStartCheck);
+    mouseRoiForm->addRow(QString(), m_editFirstTemplateRoiOnStartCheck);
+    contentLayout->addWidget(mouseRoiGroup);
+
+    contentLayout->addStretch();
+    rootLayout->addWidget(scroll, 1);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     localizeDialogButtons(buttons);
-
-    layout->addLayout(form);
-    layout->addWidget(buttons);
+    rootLayout->addWidget(buttons);
 
     connect(clearButton, &QPushButton::clicked, this, [this]() {
         stopHotkeyCapture();
@@ -503,6 +553,8 @@ void FeatureEditDialog::setupUi() {
     connect(m_infiniteExitCheck, &QCheckBox::toggled, this, [this](bool) { updateModeDependentUi(); });
     connect(buttons, &QDialogButtonBox::accepted, this, &FeatureEditDialog::tryAccept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+    resize(520, 640);
 }
 
 void FeatureEditDialog::applyHotkeyLabelIdleStyle() {

@@ -5,6 +5,7 @@
 #include "ui/widgets/DragAdjustSpinBox.h"
 
 #include <QDialogButtonBox>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QStackedWidget>
@@ -83,15 +84,20 @@ QWidget* WaitEditor::makeMsInputRow(DragAdjustSpinBox* spin) {
 
 void WaitEditor::setupUi() {
     auto* layout = new QVBoxLayout(this);
-    layout->setSpacing(12);
+    layout->setSpacing(10);
 
-    m_modeSwitch = new AnimatedTwoWaySwitch(tr("고정"), tr("랜덤"), this);
+    auto* delayGroup = new QGroupBox(tr("대기 시간"), this);
+    delayGroup->setToolTip(tr("고정 또는 랜덤 범위로 워크플로를 일시 정지합니다."));
+    auto* delayLayout = new QVBoxLayout(delayGroup);
+    delayLayout->setSpacing(8);
+
+    m_modeSwitch = new AnimatedTwoWaySwitch(tr("고정"), tr("랜덤"), delayGroup);
 
     auto* switchRow = new QHBoxLayout();
     switchRow->addStretch();
     switchRow->addWidget(m_modeSwitch);
     switchRow->addStretch();
-    layout->addLayout(switchRow);
+    delayLayout->addLayout(switchRow);
 
     m_msSpin = new DragAdjustSpinBox(this);
     configureWaitMsSpin(m_msSpin);
@@ -122,10 +128,11 @@ void WaitEditor::setupUi() {
     rangeLayout->addWidget(makeMsInputRow(m_maxSpin));
     rangeLayout->addStretch();
 
-    m_inputStack = new QStackedWidget(this);
+    m_inputStack = new QStackedWidget(delayGroup);
     m_inputStack->addWidget(fixedInputRow);
     m_inputStack->addWidget(randomInputRow);
-    layout->addWidget(m_inputStack);
+    delayLayout->addWidget(m_inputStack);
+    layout->addWidget(delayGroup);
 
     m_modeSwitch->setRightSelected(m_block->randomRange, false);
 

@@ -6,10 +6,13 @@
 #include "ui/TargetWindowHighlightOverlay.h"
 #include "ui/TargetWindowListPicker.h"
 #include "ui/UiStrings.h"
+#include "ui/UiThemeColors.h"
 #include "ui/widgets/HintLabel.h"
 
 #include <QCheckBox>
 #include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -75,6 +78,7 @@ ProfileEditDialog::Result ProfileEditDialog::result() const {
 
 void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     auto* layout = new QVBoxLayout(this);
+    layout->setSpacing(10);
 
     if (m_fixedDefaultProfile) {
         auto* hint = new HintLabel(
@@ -82,10 +86,12 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
             this);
         layout->addWidget(hint);
 
-        auto* nameLabel = new QLabel(tr("프로필 이름"), this);
-        layout->addWidget(nameLabel);
+        auto* profileGroup = new QGroupBox(tr("프로필"), this);
+        profileGroup->setToolTip(tr("기본 프로필은 전역으로 동작하며 타겟을 지정하지 않습니다."));
+        auto* profileLayout = new QVBoxLayout(profileGroup);
+        profileLayout->setSpacing(6);
 
-        m_fixedDefaultNameLabel = new QLabel(QStringLiteral("기본"), this);
+        m_fixedDefaultNameLabel = new QLabel(QStringLiteral("기본"), profileGroup);
         m_fixedDefaultNameLabel->setObjectName(QStringLiteral("fixedDefaultProfileName"));
         m_fixedDefaultNameLabel->setStyleSheet(QStringLiteral(
             "QLabel#fixedDefaultProfileName {"
@@ -95,42 +101,53 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
             "  background-color: palette(button);"
             "  color: palette(windowText);"
             "}"));
-        layout->addWidget(m_fixedDefaultNameLabel);
-
-        auto* lockedHint = new HintLabel(
-            tr("전역으로 동작하며 타겟을 지정하지 않습니다. 연결된 프로그램이 없을 때 자동으로 선택됩니다."),
-            this);
-        layout->addWidget(lockedHint);
+        profileLayout->addWidget(m_fixedDefaultNameLabel);
+        layout->addWidget(profileGroup);
     } else {
-        auto* hint = new HintLabel(
-            tr("프로필마다 이름과 연결된 프로그램(메인·서브 창)을 따로 저장합니다. 기본 프로필은 타겟 없이 전역으로 동작합니다."),
-            this);
-        layout->addWidget(hint);
+        auto* intro = new QLabel(
+            tr("옵션 위에 마우스를 올리면 자세한 설명이 표시됩니다."), this);
+        intro->setWordWrap(true);
+        {
+            QPalette pal = intro->palette();
+            pal.setColor(QPalette::WindowText, secondaryHintTextColor(pal));
+            intro->setPalette(pal);
+        }
+        layout->addWidget(intro);
 
-        auto* nameLabel = new QLabel(tr("프로필 이름"), this);
-        layout->addWidget(nameLabel);
+        auto* profileGroup = new QGroupBox(tr("프로필"), this);
+        profileGroup->setToolTip(tr("프로필 이름과 시작 시 기본으로 열 프로필입니다."));
+        auto* profileForm = new QFormLayout(profileGroup);
+        profileForm->setSpacing(6);
 
-        m_nameEdit = new QLineEdit(this);
+        m_nameEdit = new QLineEdit(profileGroup);
         m_nameEdit->setPlaceholderText(tr("프로필 이름"));
-        layout->addWidget(m_nameEdit);
+        profileForm->addRow(tr("이름"), m_nameEdit);
+
+        m_defaultProfileCheck = new QCheckBox(tr("기본 프로필로 지정"), profileGroup);
+        m_defaultProfileCheck->setToolTip(
+            tr("기본 프로필은 하나만 유지되며, 다음 실행부터 이 프로필이 먼저 열립니다. "
+               "타겟은 지정할 수 없고 타겟 미지정 상태에서도 동작합니다."));
+        profileForm->addRow(QString(), m_defaultProfileCheck);
+        layout->addWidget(profileGroup);
+
+        connect(m_defaultProfileCheck, &QCheckBox::toggled, this, &ProfileEditDialog::updateDefaultProfileUi);
     }
 
-    m_linkedProgramSection = new QWidget(this);
+    m_linkedProgramSection = new QGroupBox(tr("대상 창"), this);
+    m_linkedProgramSection->setToolTip(
+        tr("프로필마다 메인·서브 창 제목을 저장합니다. 포커스에 따라 자동 전환됩니다."));
     auto* linkedLayout = new QVBoxLayout(m_linkedProgramSection);
-    linkedLayout->setContentsMargins(0, 0, 0, 0);
-    linkedLayout->setSpacing(6);
+    linkedLayout->setSpacing(8);
 
-    auto* targetLabel = new QLabel(tr("메인 창"), m_linkedProgramSection);
-    linkedLayout->addWidget(targetLabel);
+    auto* mainCaption = new QLabel(tr("메인 창"), m_linkedProgramSection);
+    mainCaption->setStyleSheet(QStringLiteral("font-weight: 600;"));
+    linkedLayout->addWidget(mainCaption);
 
     m_targetWindowTitleEdit = new QLineEdit(m_linkedProgramSection);
     m_targetWindowTitleEdit->setPlaceholderText(tr("타겟 제목 또는 일부 문자열"));
+    m_targetWindowTitleEdit->setToolTip(
+        tr("기능 실행 시 기본으로 이 제목을 기준으로 타겟을 찾습니다. 비워두면 타겟 미지정 상태로 저장됩니다."));
     linkedLayout->addWidget(m_targetWindowTitleEdit);
-
-    auto* targetHint = new HintLabel(
-        tr("기능 실행 시 기본으로 이 제목을 기준으로 타겟을 찾습니다. 비워두면 타겟 미지정 상태로 저장됩니다."),
-        m_linkedProgramSection);
-    linkedLayout->addWidget(targetHint);
 
     auto* targetButtons = new QHBoxLayout();
     auto* useCurrentButton = new QPushButton(tr("현재 설정 사용"), m_linkedProgramSection);
@@ -164,17 +181,15 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         }
     });
 
-    auto* subLabel = new QLabel(tr("서브 창"), m_linkedProgramSection);
-    linkedLayout->addWidget(subLabel);
+    auto* subCaption = new QLabel(tr("서브 창"), m_linkedProgramSection);
+    subCaption->setStyleSheet(QStringLiteral("font-weight: 600;"));
+    linkedLayout->addWidget(subCaption);
 
     m_subTargetWindowTitleEdit = new QLineEdit(m_linkedProgramSection);
     m_subTargetWindowTitleEdit->setPlaceholderText(tr("예: 런처 창 제목 또는 일부 문자열"));
+    m_subTargetWindowTitleEdit->setToolTip(
+        tr("같은 프로필로 자동 전환되는 추가 감지 창입니다. 이 창이 포커스일 때 기능을 실행하면 서브 타겟이 적용됩니다."));
     linkedLayout->addWidget(m_subTargetWindowTitleEdit);
-
-    auto* subHint = new HintLabel(
-        tr("같은 프로필로 자동 전환되는 추가 감지 창입니다. 이 창이 포커스일 때 기능을 실행하면 서브 타겟이 적용됩니다."),
-        m_linkedProgramSection);
-    linkedLayout->addWidget(subHint);
 
     auto* subButtons = new QHBoxLayout();
     auto* subPickButton = new QPushButton(tr("지정"), m_linkedProgramSection);
@@ -203,18 +218,6 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     });
 
     layout->addWidget(m_linkedProgramSection);
-
-    if (!m_fixedDefaultProfile) {
-        m_defaultProfileCheck = new QCheckBox(tr("기본 프로필로 지정"), this);
-        layout->addWidget(m_defaultProfileCheck);
-
-        auto* defaultHint = new HintLabel(
-            tr("기본 프로필은 하나만 유지되며, 다음 실행부터 이 프로필이 먼저 열립니다. 타겟은 지정할 수 없고 타겟 미지정 상태에서도 동작합니다."),
-            this);
-        layout->addWidget(defaultHint);
-
-        connect(m_defaultProfileCheck, &QCheckBox::toggled, this, &ProfileEditDialog::updateDefaultProfileUi);
-    }
 
     auto* buttons = new QDialogButtonBox(
         m_fixedDefaultProfile ? QDialogButtonBox::Ok : (QDialogButtonBox::Ok | QDialogButtonBox::Cancel), this);

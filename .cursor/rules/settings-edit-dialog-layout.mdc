@@ -1,0 +1,55 @@
+---
+description: Settings and edit dialogs — group by category, tooltips, readable layout
+alwaysApply: true
+---
+
+# Settings and Edit Dialog Layout (Mandatory — Do Not Regress)
+
+**Status:** Policy added 2026-07-24 (v0.8.308). All **설정** and **편집** dialogs must group options by **category / kind** with readable spacing — not flat ungrouped lists.
+
+## Scope
+
+| Surface | Examples |
+| ------- | -------- |
+| Program settings | `ProgramSettingsDialog` |
+| Feature / profile edit | `FeatureEditDialog`, `ProfileEditDialog` |
+| Block editors | `ImageFindEditor`, `ClickEditor`, `KeyPressEditor`, `WaitEditor`, … |
+| Nested settings | `ClickPointerFeedbackSettingsDialog`, `TriggerModeAnimationSettingsDialog`, … |
+
+## Required layout
+
+| Rule | Detail |
+| ---- | ------ |
+| **Group** | Use `QGroupBox` per logical category (기본, 단축키, 타겟, 동작 방식, 실행 중, …). Add a new group only when no existing group fits. |
+| **Label** | Short Korean label on the control or form row — no multi-line explanation in the label. |
+| **Detail** | `setToolTip()` on checkbox, label, combo, spin, or group title — **not** a `HintLabel` under every row. |
+| **Intro** | At most **one** muted top `QLabel` (or fixed-profile info) for dialog-wide context; use `secondaryHintTextColor`. |
+| **Density** | `layout->setSpacing(8–10)` between groups; `6` inside group; long dialogs use `QScrollArea` + `setWidgetResizable(true)`. |
+| **Sub-dialogs** | Summary + **설정…** button pattern for heavy option sets (see program **화면 표시**). |
+| **Helpers** | Reuse `UiSettingsLayout.h` (`addSettingsGroup`, `addGroupCheck`, `applyOptionToolTip`). |
+
+## Category examples
+
+| Dialog | Groups (minimum) |
+| ------ | ---------------- |
+| **프로그램 설정** | 기능 실행, 시작·종료, 업데이트, 권한·호환, 템플릿 매칭, 화면 표시, 진단 |
+| **기능 편집** | 기본, 단축키, 타겟, 동작 방식, 실행 중 동작, 마우스·탐색 |
+| **프로필 편집** | 프로필, 대상 창 (메인 / 서브) |
+| **키보드 블록** | 키 입력, 조합키 |
+| **마우스 블록** | 대상, 좌표, 동작 설정, 기능 실행 (existing) |
+| **템플릿 매칭** | 매칭 설정, 템플릿, 탐색 ROI, 감지 피드백 (existing) |
+
+## Anti-patterns
+
+- Flat `QFormLayout` with 15+ unrelated rows and no `QGroupBox`
+- Inline `HintLabel` under every checkbox (program settings + feature edit)
+- Long option labels duplicating tooltip text
+- `changeEvent` → `setStyleSheet` on dialog chrome
+
+## Key files
+
+- `src/ui/UiSettingsLayout.h` — shared group/tooltip helpers
+- `src/ui/ProgramSettingsDialog.cpp` — program settings reference
+- `src/ui/editors/FeatureEditDialog.cpp` — grouped feature edit reference
+
+Full handover: [AGENTS.md](../../AGENTS.md) — **§8.13 Settings and edit dialogs**.

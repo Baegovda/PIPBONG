@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Program Settings Dialog (Mandatory — Do Not Regress)
 
-**Status:** Verified working on Windows (2026-07). **프로그램 설정** (`ProgramSettingsDialog`) uses category **QGroupBox** sections and **tooltips** for all option detail — not inline `HintLabel` paragraphs under each row.
+**Status:** Verified working on Windows (2026-07). Subset of the program-wide **settings and edit dialog** policy — see `.cursor/rules/settings-edit-dialog-layout.mdc` and AGENTS.md §8.13.
 
 ## Required layout
 
