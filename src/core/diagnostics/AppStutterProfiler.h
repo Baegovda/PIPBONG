@@ -4,10 +4,10 @@
 
 #include <cstdint>
 
-/// Background app spike / UI stall diagnostics (replaces CursorStutterProfiler).
-/// Opt-in via program/appSpikeProfiling or env PIPBONG_APP_SPIKE_PROFILE=1 (default OFF).
-/// Reports: repo app-spike/latest.md + %LOCALAPPDATA% fallback; written on app shutdown.
-class AppSpikeProfiler {
+/// Background app stutter / UI stall diagnostics (single unified profiler).
+/// Opt-in via program/appStutterProfiling or env PIPBONG_APP_STUTTER_PROFILE=1 (default OFF).
+/// Reports: repo app-stutter/latest.md + %LOCALAPPDATA% fallback; written on app shutdown.
+class AppStutterProfiler {
 public:
     static bool isEnabled();
     static void reloadFromSettings();

@@ -64,21 +64,9 @@ public:
     static int logMaxLines();
     static void setLogMaxLines(int lines);
 
-    /// When enabled, records GUI stalls and CPU spikes to app-spike/latest.md.
-    static bool appSpikeProfiling();
-    static void setAppSpikeProfiling(bool enabled);
-
-    /// When enabled, records profile auto-switch pipeline phases to profile-switch/latest.md.
-    static bool profileSwitchProfiling();
-    static void setProfileSwitchProfiling(bool enabled);
-
-    /// When enabled, records feature 사용 ON/OFF toggle phases to feature-toggle/latest.md.
-    static bool featureToggleProfiling();
-    static void setFeatureToggleProfiling(bool enabled);
-
-    /// When enabled, records multi-Hold hotkey burst phases to multi-hold/latest.md.
-    static bool multiHoldProfiling();
-    static void setMultiHoldProfiling(bool enabled);
+    /// When enabled, records GUI stalls and CPU spikes to app-stutter/latest.md.
+    static bool appStutterProfiling();
+    static void setAppStutterProfiling(bool enabled);
 
     /// When enabled, switching the active profile activates the linked target window.
     static bool focusTargetWindowOnProfileSelect();

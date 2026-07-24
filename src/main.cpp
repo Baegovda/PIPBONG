@@ -2,7 +2,7 @@
 #include "app/MainWindow.h"
 #include "app/PointerFeedbackSettings.h"
 #include "core/diagnostics/CrashReporter.h"
-#include "core/diagnostics/AppSpikeProfiler.h"
+#include "core/diagnostics/AppStutterProfiler.h"
 
 #include <QLocale>
 #include <QMetaType>
@@ -11,7 +11,7 @@ int main(int argc, char* argv[]) {
     Application::ensureDpiAwareness();
     QLocale::setDefault(QLocale(QLocale::Korean, QLocale::SouthKorea));
     Application app(argc, argv);
-    AppSpikeProfiler::reloadFromSettings();
+    AppStutterProfiler::reloadFromSettings();
     qRegisterMetaType<ClickPointerFeedbackSettings>();
     if (CrashReporter::runViewerModeIfRequested()) {
         return 0;

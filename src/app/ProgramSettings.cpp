@@ -18,10 +18,8 @@ constexpr const char* kPinSubTargetWindowToScreenCenterKey = "program/pinSubTarg
 constexpr const char* kImageFindCaptureModeKey = "program/imageFindCaptureMode";
 constexpr const char* kRunWithoutTargetWindowKey = "program/runWithoutTargetWindow";
 constexpr const char* kLogMaxLinesKey = "program/logMaxLines";
-constexpr const char* kAppSpikeProfilingKey = "program/appSpikeProfiling";
-constexpr const char* kProfileSwitchProfilingKey = "program/profileSwitchProfiling";
-constexpr const char* kFeatureToggleProfilingKey = "program/featureToggleProfiling";
-constexpr const char* kMultiHoldProfilingKey = "program/multiHoldProfiling";
+constexpr const char* kAppStutterProfilingKey = "program/appStutterProfiling";
+constexpr const char* kLegacyAppSpikeProfilingKey = "program/appSpikeProfiling";
 constexpr const char* kLegacyCursorStutterProfilingKey = "program/cursorStutterProfiling";
 constexpr const char* kFocusTargetWindowOnProfileSelectKey =
     "program/focusTargetWindowOnProfileSelect";
@@ -168,47 +166,20 @@ void ProgramSettings::setLogMaxLines(int lines) {
     settings.setValue(kLogMaxLinesKey, lines);
 }
 
-bool ProgramSettings::appSpikeProfiling() {
+bool ProgramSettings::appStutterProfiling() {
     QSettings settings;
-    if (settings.contains(kAppSpikeProfilingKey)) {
-        return settings.value(kAppSpikeProfilingKey, false).toBool();
+    if (settings.contains(kAppStutterProfilingKey)) {
+        return settings.value(kAppStutterProfilingKey, false).toBool();
+    }
+    if (settings.contains(kLegacyAppSpikeProfilingKey)) {
+        return settings.value(kLegacyAppSpikeProfilingKey, false).toBool();
     }
     return settings.value(kLegacyCursorStutterProfilingKey, false).toBool();
 }
 
-void ProgramSettings::setAppSpikeProfiling(bool enabled) {
+void ProgramSettings::setAppStutterProfiling(bool enabled) {
     QSettings settings;
-    settings.setValue(kAppSpikeProfilingKey, enabled);
-}
-
-bool ProgramSettings::profileSwitchProfiling() {
-    QSettings settings;
-    return settings.value(kProfileSwitchProfilingKey, false).toBool();
-}
-
-void ProgramSettings::setProfileSwitchProfiling(bool enabled) {
-    QSettings settings;
-    settings.setValue(kProfileSwitchProfilingKey, enabled);
-}
-
-bool ProgramSettings::featureToggleProfiling() {
-    QSettings settings;
-    return settings.value(kFeatureToggleProfilingKey, false).toBool();
-}
-
-void ProgramSettings::setFeatureToggleProfiling(bool enabled) {
-    QSettings settings;
-    settings.setValue(kFeatureToggleProfilingKey, enabled);
-}
-
-bool ProgramSettings::multiHoldProfiling() {
-    QSettings settings;
-    return settings.value(kMultiHoldProfilingKey, false).toBool();
-}
-
-void ProgramSettings::setMultiHoldProfiling(bool enabled) {
-    QSettings settings;
-    settings.setValue(kMultiHoldProfilingKey, enabled);
+    settings.setValue(kAppStutterProfilingKey, enabled);
 }
 
 bool ProgramSettings::focusTargetWindowOnProfileSelect() {

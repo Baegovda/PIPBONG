@@ -1,4 +1,4 @@
-#include "core/diagnostics/AppSpikeProfiler.h"
+#include "core/diagnostics/AppStutterProfiler.h"
 
 #include "app/ProgramSettings.h"
 #include "core/diagnostics/CpuSpikeDetector.h"
@@ -29,7 +29,7 @@
 #include <windows.h>
 #endif
 
-Q_LOGGING_CATEGORY(lcAppSpike, "pipbong.app_spike")
+Q_LOGGING_CATEGORY(lcAppStutter, "pipbong.app_stutter")
 
 namespace {
 
@@ -94,14 +94,20 @@ qint64 relUsLocked() {
     return steadyUs() - g_sessionStartUs;
 }
 
-bool envEnabled() {
+bool envVarEnabled(const wchar_t* name) {
 #ifdef _WIN32
     wchar_t buffer[16]{};
-    if (GetEnvironmentVariableW(L"PIPBONG_APP_SPIKE_PROFILE", buffer, 16) > 0) {
-        return buffer[0] == L'1';
-    }
-#endif
+    return GetEnvironmentVariableW(name, buffer, 16) > 0 && buffer[0] == L'1';
+#else
+    Q_UNUSED(name);
     return false;
+#endif
+}
+
+bool envEnabled() {
+    return envVarEnabled(L"PIPBONG_APP_STUTTER_PROFILE")
+           || envVarEnabled(L"PIPBONG_APP_SPIKE_PROFILE")
+           || envVarEnabled(L"PIPBONG_CURSOR_STUTTER_PROFILE");
 }
 
 QString findRepoRootDirectory() {
@@ -133,7 +139,7 @@ QString findRepoRootDirectory() {
 QString appDataOutputDirectory() {
     const QString base =
         QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    return QDir(base).filePath(QStringLiteral("PIPBONG/PIPBONG/app-spike"));
+    return QDir(base).filePath(QStringLiteral("PIPBONG/PIPBONG/app-stutter"));
 }
 
 QString appendSessionContext(const QString& detail) {
@@ -330,7 +336,7 @@ void startGuiPulseTimer() {
         g_guiPulseTimer = new QTimer(QCoreApplication::instance());
         g_guiPulseTimer->setInterval(kGuiPulseIntervalMs);
         QObject::connect(g_guiPulseTimer, &QTimer::timeout, g_guiPulseTimer, []() {
-            AppSpikeProfiler::noteGuiPulse();
+            AppStutterProfiler::noteGuiPulse();
         });
     }
     if (!g_guiPulseTimer->isActive()) {
@@ -368,7 +374,7 @@ QString buildMarkdownReport(const QString& reason) {
 
     QStringList lines;
     lines << QStringLiteral("---");
-    lines << QStringLiteral("format: pipbong-app-spike");
+    lines << QStringLiteral("format: pipbong-app-stutter");
     lines << QStringLiteral("format_version: 1");
     lines << QStringLiteral("end_reason: %1").arg(reason);
     lines << QStringLiteral("session_end: %1")
@@ -381,11 +387,11 @@ QString buildMarkdownReport(const QString& reason) {
     lines << QStringLiteral("events_recorded: %1").arg(g_events.size());
     lines << QStringLiteral("foreground_at_end: %1").arg(g_cachedForegroundDetail);
     lines << QStringLiteral("foreground_changes: %1").arg(g_foregroundChangeCount);
-    const QStringList paths = AppSpikeProfiler::allReportPaths();
+    const QStringList paths = AppStutterProfiler::allReportPaths();
     lines << QStringLiteral("report_paths: %1").arg(paths.join(QStringLiteral("; ")));
     lines << QStringLiteral("---");
     lines << QString();
-    lines << QStringLiteral("# App spike report");
+    lines << QStringLiteral("# App stutter report");
     lines << QString();
     lines << QStringLiteral("## Auto diagnosis");
     lines << QString();
@@ -478,33 +484,33 @@ QString buildMarkdownReport(const QString& reason) {
 bool writeReportFiles(const QString& reason) {
     const QString content = buildMarkdownReport(reason);
     bool anyWritten = false;
-    for (const QString& path : AppSpikeProfiler::allReportPaths()) {
+    for (const QString& path : AppStutterProfiler::allReportPaths()) {
         const QFileInfo info(path);
         QDir().mkpath(info.absolutePath());
         QFile file(path);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-            qCWarning(lcAppSpike) << "Failed to write app spike report:" << path
-                                  << file.errorString();
+            qCWarning(lcAppStutter) << "Failed to write app stutter report:" << path
+                                    << file.errorString();
             continue;
         }
         file.write(content.toUtf8());
         anyWritten = true;
-        qCInfo(lcAppSpike) << "Wrote app spike report (" << reason << "):" << path;
+        qCInfo(lcAppStutter) << "Wrote app stutter report (" << reason << "):" << path;
     }
     if (!anyWritten) {
-        qCWarning(lcAppSpike) << "No app spike report path writable for reason:" << reason;
+        qCWarning(lcAppStutter) << "No app stutter report path writable for reason:" << reason;
     }
     return anyWritten;
 }
 
 } // namespace
 
-bool AppSpikeProfiler::isEnabled() {
+bool AppStutterProfiler::isEnabled() {
     return g_enabled;
 }
 
-void AppSpikeProfiler::reloadFromSettings() {
-    const bool want = ProgramSettings::appSpikeProfiling() || envEnabled();
+void AppStutterProfiler::reloadFromSettings() {
+    const bool want = ProgramSettings::appStutterProfiling() || envEnabled();
     if (want == g_enabled) {
         return;
     }
@@ -542,37 +548,37 @@ void AppSpikeProfiler::reloadFromSettings() {
     startCpuThread();
 }
 
-QString AppSpikeProfiler::outputDirectory() {
+QString AppStutterProfiler::outputDirectory() {
     const QString repo = findRepoRootDirectory();
     if (!repo.isEmpty()) {
-        return QDir(repo).filePath(QStringLiteral("app-spike"));
+        return QDir(repo).filePath(QStringLiteral("app-stutter"));
     }
     return appDataOutputDirectory();
 }
 
-QString AppSpikeProfiler::latestReportPath() {
+QString AppStutterProfiler::latestReportPath() {
     return QDir(outputDirectory()).filePath(QStringLiteral("latest.md"));
 }
 
-QStringList AppSpikeProfiler::allReportPaths() {
+QStringList AppStutterProfiler::allReportPaths() {
     QStringList paths;
     const QString repo = findRepoRootDirectory();
     if (!repo.isEmpty()) {
-        paths << QDir(repo).filePath(QStringLiteral("app-spike/latest.md"));
+        paths << QDir(repo).filePath(QStringLiteral("app-stutter/latest.md"));
     }
     paths << QDir(appDataOutputDirectory()).filePath(QStringLiteral("latest.md"));
     paths.removeDuplicates();
     return paths;
 }
 
-void AppSpikeProfiler::flushReport(const QString& reason) {
+void AppStutterProfiler::flushReport(const QString& reason) {
     if (!g_enabled && g_events.empty() && g_sessionStartUs <= 0) {
         return;
     }
     writeReportFiles(reason);
 }
 
-void AppSpikeProfiler::stopAndWriteReport(const QString& reason) {
+void AppStutterProfiler::stopAndWriteReport(const QString& reason) {
     if (g_enabled) {
         stopGuiPulseTimer();
         stopCpuThread();
@@ -581,7 +587,7 @@ void AppSpikeProfiler::stopAndWriteReport(const QString& reason) {
     writeReportFiles(reason);
 }
 
-void AppSpikeProfiler::noteGuiPulse() {
+void AppStutterProfiler::noteGuiPulse() {
     if (!g_enabled) {
         return;
     }
@@ -596,10 +602,10 @@ void AppSpikeProfiler::noteGuiPulse() {
     g_hasGuiPulse = true;
 }
 
-void AppSpikeProfiler::setActiveFeatureSessionCount(int count) {
+void AppStutterProfiler::setActiveFeatureSessionCount(int count) {
     g_activeFeatureSessions.store(std::max(0, count), std::memory_order_relaxed);
 }
 
-void AppSpikeProfiler::setPipbongFeatureBurstActive(bool active) {
+void AppStutterProfiler::setPipbongFeatureBurstActive(bool active) {
     g_pipbongFeatureBurst.store(active, std::memory_order_relaxed);
 }

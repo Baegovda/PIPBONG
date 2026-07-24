@@ -1,12 +1,12 @@
-# Summarize app-spike/latest.md for AI / human review.
+# Summarize app-stutter/latest.md for AI / human review.
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 
-function Find-AppSpikeReport {
+function Find-AppStutterReport {
     param([string]$Base)
     $candidates = @(
-        (Join-Path $Base "app-spike\latest.md"),
-        (Join-Path $env:LOCALAPPDATA "PIPBONG\PIPBONG\app-spike\latest.md")
+        (Join-Path $Base "app-stutter\latest.md"),
+        (Join-Path $env:LOCALAPPDATA "PIPBONG\PIPBONG\app-stutter\latest.md")
     )
     foreach ($path in $candidates) {
         if (Test-Path $path) { return (Resolve-Path $path).Path }
@@ -15,7 +15,7 @@ function Find-AppSpikeReport {
     for ($i = 0; $i -lt 8; $i++) {
         $cmake = Join-Path $dir "CMakeLists.txt"
         if (Test-Path $cmake) {
-            $p = Join-Path $dir "app-spike\latest.md"
+            $p = Join-Path $dir "app-stutter\latest.md"
             if (Test-Path $p) { return (Resolve-Path $p).Path }
         }
         $parent = Split-Path $dir -Parent
@@ -25,22 +25,22 @@ function Find-AppSpikeReport {
     return $null
 }
 
-$logPath = Find-AppSpikeReport -Base $root
+$logPath = Find-AppStutterReport -Base $root
 if (-not $logPath) {
-    $logPath = Find-AppSpikeReport -Base (Get-Location).Path
+    $logPath = Find-AppStutterReport -Base (Get-Location).Path
 }
 if (-not $logPath) {
     throw @"
 Report not found. Expected:
-  <repo>\app-spike\latest.md
-  or %LOCALAPPDATA%\PIPBONG\PIPBONG\app-spike\latest.md
+  <repo>\app-stutter\latest.md
+  or %LOCALAPPDATA%\PIPBONG\PIPBONG\app-stutter\latest.md
 
-Enable **프로그램 설정 → 진단 → 앱 스파이크 진단** (or PIPBONG_APP_SPIKE_PROFILE=1), reproduce lag, exit app.
+Enable **프로그램 설정 → 진단 → 앱 스터터 진단** (or PIPBONG_APP_STUTTER_PROFILE=1), reproduce lag, exit app.
 "@
 }
 
 $content = Get-Content -Raw -Encoding UTF8 $logPath
-Write-Host "=== app-spike report ===" -ForegroundColor Cyan
+Write-Host "=== app-stutter report ===" -ForegroundColor Cyan
 Write-Host $logPath
 Write-Host ""
 

@@ -18,8 +18,8 @@ alwaysApply: true
 
 **Exception — user reports a bug/lag/crash:** send the **4-block 진단** (증상 → 원인 추정 → 해결 방향 → 다음 조치) **before** editing code or building a fix — see `.cursor/rules/explain-before-fix.mdc`.
 
-## Log / diagnosis reports (`app-spike`, CI, crash)
+## Log / diagnosis reports (`app-stutter`, CI, crash)
 
-Use the **6-bullet** template in `.cursor/rules/app-spike-profiling.mdc` when applicable.
+When reading **`app-stutter/latest.md`**, reply in **6 bullets max**: (1) 결론 (2) 언제/재현 (3) 심각도 (4) 의심 원인 (5) 다음 조치 (6) 사용자가 할 일. See `.cursor/rules/app-stutter-profiling.mdc`.
 
 Full handover: [AGENTS.md §9.5](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only).

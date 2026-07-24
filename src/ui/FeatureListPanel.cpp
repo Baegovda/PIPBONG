@@ -10,7 +10,6 @@
 #include "model/FeatureRunMode.h"
 #include "model/Project.h"
 #include "core/input/HotkeyBinding.h"
-#include "core/diagnostics/FeatureToggleProfiler.h"
 #include "ui/editors/FeatureEditDialog.h"
 #include "ui/editors/FeatureEditPrefs.h"
 #include "ui/FeatureRunModeTheme.h"
@@ -1963,15 +1962,9 @@ void FeatureListPanel::toggleFeatureEnabled(int row) {
     const bool newEnabled = !feature->enabled();
     const QString featureId = QString::fromStdString(feature->id());
 
-    FeatureToggleProfiler::beginToggle(featureId, newEnabled);
-    QElapsedTimer phaseTimer;
-    phaseTimer.start();
-
     emit mutationAboutToCommit(QStringLiteral("feature-toggle-enabled"));
-    FeatureToggleProfiler::notePhase(QStringLiteral("undo_snapshot"), phaseTimer.restart());
 
     feature->setEnabled(newEnabled);
-    FeatureToggleProfiler::notePhase(QStringLiteral("set_enabled"), phaseTimer.restart());
 
     if (QListWidgetItem* item = m_list->item(row)) {
         configureListItem(item, *feature);
@@ -1979,19 +1972,12 @@ void FeatureListPanel::toggleFeatureEnabled(int row) {
     if (m_list->viewport()) {
         m_list->viewport()->update();
     }
-    FeatureToggleProfiler::notePhase(QStringLiteral("configure_row"), phaseTimer.restart());
 
     emit featureEnabledChanged(featureId, feature->enabled());
-    FeatureToggleProfiler::notePhase(QStringLiteral("feature_enabled_handler"), phaseTimer.restart());
 
     emit hotkeysChanged();
-    FeatureToggleProfiler::notePhase(QStringLiteral("hotkeys_sync"), phaseTimer.restart());
 
     emit projectModified();
-    FeatureToggleProfiler::notePhase(QStringLiteral("project_modified_handler"), phaseTimer.restart());
-
-    FeatureToggleProfiler::notePhase(QStringLiteral("pipeline_complete"));
-    FeatureToggleProfiler::flushReport(QStringLiteral("committed"));
 }
 
 void FeatureListPanel::requestFeatureRun(int row) {

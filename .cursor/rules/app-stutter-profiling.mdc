@@ -1,0 +1,32 @@
+---
+description: App stutter profiling — single unified PIPBONG lag / UI stall diagnostic
+alwaysApply: true
+---
+
+# App stutter profiling (mandatory — PIPBONG lag / UI stall diagnosis)
+
+**Status:** Added 2026-07 (v0.8.328). Replaces all prior profilers (`AppSpikeProfiler`, `ProfileSwitchProfiler`, `FeatureToggleProfiler`, `MultiHoldProfiler`, `WorkflowRunProfiler`, `CursorStutterProfiler`, …).
+
+## Single profiler only
+
+| Layer | Role |
+| ----- | ---- |
+| `AppStutterProfiler` | Opt-in 50 ms GUI pulse timer (stall thresholds 80/150/300/1000 ms) + 500 ms background CPU sampler |
+| CPU | Reuses `SystemCpuSampler`, `ProcessCpuSampler`, `CpuSpikeDetector` (same family as **CPU 감시**) |
+| Session context | `MainWindow::applyRunUiState` → `setActiveFeatureSessionCount` / `setPipbongFeatureBurstActive` |
+| Enable | `program/appStutterProfiling` (**default OFF**) or env `PIPBONG_APP_STUTTER_PROFILE=1`; legacy `program/appSpikeProfiling` / `program/cursorStutterProfiling` read once if new key missing |
+| Output | **Repo** `app-stutter/latest.md` + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/app-stutter/latest.md`** fallback |
+| Flush | App shutdown only (`MainWindow::prepareForShutdown`) |
+| Analysis | `scripts/analyze-app-stutter.ps1` |
+
+**User → AI workflow:** Enable **앱 스터터 진단** only while reproducing → run PIPBONG → reproduce lag/stutter → exit → read **`app-stutter/latest.md`** — **Auto diagnosis** first (do **not** ask user for workflow blocks).
+
+**Do not** leave profiling ON during daily play — 50 ms GUI timer + CPU thread add overhead.
+
+**Do not** add subsystem-specific profiler classes — extend `AppStutterProfiler` event kinds or `DiagnosticHub` breadcrumbs instead.
+
+## Agent readout (Korean chat)
+
+When summarizing **`app-stutter/latest.md`** for the user, use **at most 6 bullets**: (1) 결론 (2) 언제/재현 (3) 심각도 (4) 의심 원인 (5) 다음 조치 (6) 사용자가 할 일. Plain Korean — see `.cursor/rules/brief-korean-replies.mdc`.
+
+Full handover: [AGENTS.md](../../AGENTS.md) — **§8.14 App stutter profiling**.

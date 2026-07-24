@@ -26,7 +26,7 @@ Do **not** defer handover to a follow-up chat or assume the user will ask “doc
 | New mandatory build preset or close-out policy | §3.1 / §3.2 + `.cursor/rules/build-policy.mdc` + `no-full-rebuild.mdc` |
 | F5 / IDE run path (tasks vs debugger) | §3.1 F5 daily run + `.cursor/rules/f5-build-and-run.mdc` + `ide-build-workflow.mdc` |
 | New subsystem / critical pattern (overlay, input, etc.) | §8 + dedicated `.cursor/rules/*.mdc` if always-applied |
-| New **targeted** bug/spike profiler for a subsystem | [§8.16 Targeted profiling](../../AGENTS.md#816-targeted-profiling-on-bugs-and-spikes-mandatory--same-task) + `.cursor/rules/targeted-profiling-on-bugs.mdc` |
+| App stutter / lag profiling changes | [§8.14 App stutter profiling](../../AGENTS.md#814-app-stutter-profiling-mandatory--pipbong-lag--ui-stall-diagnosis) + `.cursor/rules/app-stutter-profiling.mdc` |
 | Verified multi-attempt bug fix (user-confirmed) | §8.x pattern + [§9.6 Regression mistake log](../../AGENTS.md#96-regression-mistake-log-오답노트--agents-only) (wrong fixes + shipped symbols) |
 | New scripts in `scripts/` that agents must run | §3 or §4 path table |
 | User-facing Korean update log (`UpdateLog/update_log.md`) | §3.7 + changelog step in `changelog-versioning.mdc` |

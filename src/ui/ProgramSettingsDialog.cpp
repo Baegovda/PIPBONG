@@ -2,7 +2,7 @@
 
 #include "app/PointerFeedbackSettings.h"
 #include "app/ProgramSettings.h"
-#include "core/diagnostics/AppSpikeProfiler.h"
+#include "core/diagnostics/AppStutterProfiler.h"
 #include "app/WindowsRunAsAdmin.h"
 #include "ui/ClickPointerFeedbackSettingsDialog.h"
 #include "ui/WindowSelectionFeedbackSettingsDialog.h"
@@ -293,45 +293,15 @@ void ProgramSettingsDialog::setupUi() {
     auto* diagnosticsLayout = new QVBoxLayout(diagnosticsGroup);
     diagnosticsLayout->setSpacing(6);
 
-    m_appSpikeProfilingCheck = addGroupCheck(
+    m_appStutterProfilingCheck = addGroupCheck(
         diagnosticsLayout,
         diagnosticsGroup,
-        tr("앱 스파이크 진단"),
+        tr("앱 스터터 진단"),
         tr("PIPBONG 자체 버벅임·UI 지연·CPU 스파이크 원인 분석용입니다. "
            "켜면 GUI 스레드 50 ms 펄스 모니터와 500 ms CPU 샘플링을 백그라운드에서 수행합니다(기본 꺼짐). "
-           "보고서: 저장소 app-spike\\latest.md 및 AppData 백업. 앱 종료 시 갱신. "
-           "환경 변수 PIPBONG_APP_SPIKE_PROFILE=1 로도 켤 수 있습니다."),
-        ProgramSettings::appSpikeProfiling());
-
-    m_profileSwitchProfilingCheck = addGroupCheck(
-        diagnosticsLayout,
-        diagnosticsGroup,
-        tr("프로필 전환 진단"),
-        tr("프로필 수동·자동 전환 시 단계별 소요 시간(ms)을 기록합니다(기본 꺼짐). "
-           "전환 직후 profile-switch\\latest.md 에 저장(저장소 미러 + AppData). "
-           "수동 전환 렉 재현 시 이 옵션만 켜고 프로필을 2~3회 바꾼 뒤 보고서를 공유하세요. "
-           "환경 변수 PIPBONG_PROFILE_SWITCH_PROFILE=1 로도 켤 수 있습니다."),
-        ProgramSettings::profileSwitchProfiling());
-
-    m_featureToggleProfilingCheck = addGroupCheck(
-        diagnosticsLayout,
-        diagnosticsGroup,
-        tr("기능 사용 토글 진단"),
-        tr("기능 목록 사용 ON/OFF 클릭 시 단계별 소요 시간(ms)을 기록합니다(기본 꺼짐). "
-           "토글 직후 feature-toggle\\latest.md 에 저장(저장소 미러 + AppData). "
-           "버벅임 재현 시 이 옵션만 켜고 사용 토글을 3~5회 한 뒤 보고서를 공유하세요. "
-           "환경 변수 PIPBONG_FEATURE_TOGGLE_PROFILE=1 로도 켤 수 있습니다."),
-        ProgramSettings::featureToggleProfiling());
-
-    m_multiHoldProfilingCheck = addGroupCheck(
-        diagnosticsLayout,
-        diagnosticsGroup,
-        tr("홀드 동시 입력 진단"),
-        tr("홀드 단축키(Q/W/E/R 등)를 동시에 누르거나 뗄 때 단계별 소요 시간(ms)을 기록합니다(기본 꺼짐). "
-           "재현 직후 multi-hold\\latest.md 에 저장(저장소 미러 + AppData). "
-           "버벅임 재현 시 이 옵션만 켜고 홀드 4개를 동시에 10회 누름/뗌 후 보고서를 공유하세요. "
-           "환경 변수 PIPBONG_MULTI_HOLD_PROFILE=1 로도 켤 수 있습니다."),
-        ProgramSettings::multiHoldProfiling());
+           "보고서: 저장소 app-stutter\\latest.md 및 AppData 백업. 앱 종료 시 갱신. "
+           "환경 변수 PIPBONG_APP_STUTTER_PROFILE=1 로도 켤 수 있습니다."),
+        ProgramSettings::appStutterProfiling());
 
     layout->addStretch();
 
@@ -349,11 +319,8 @@ void ProgramSettingsDialog::setupUi() {
         ProgramSettings::setRunAsAdministrator(m_runAsAdministratorCheck->isChecked());
         ProgramSettings::setRunWithoutTargetWindow(m_runWithoutTargetWindowCheck->isChecked());
         ProgramSettings::setLogMaxLines(m_logMaxLinesSpin->value());
-        ProgramSettings::setAppSpikeProfiling(m_appSpikeProfilingCheck->isChecked());
-        AppSpikeProfiler::reloadFromSettings();
-        ProgramSettings::setProfileSwitchProfiling(m_profileSwitchProfilingCheck->isChecked());
-        ProgramSettings::setFeatureToggleProfiling(m_featureToggleProfilingCheck->isChecked());
-        ProgramSettings::setMultiHoldProfiling(m_multiHoldProfilingCheck->isChecked());
+        ProgramSettings::setAppStutterProfiling(m_appStutterProfilingCheck->isChecked());
+        AppStutterProfiler::reloadFromSettings();
         ProgramSettings::setImageFindCaptureMode(
             static_cast<ProgramSettings::ImageFindCaptureMode>(
                 m_imageFindCaptureModeCombo->currentData().toInt()));

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.327` (from `project(PIPBONG VERSION 0.8.327)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.328` (from `project(PIPBONG VERSION 0.8.328)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -415,7 +415,7 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
 │   ├── run-policy-sim.ps1     # build PIPBONGPolicySim only + run (manual)
 │   ├── run-policy-sim-postbuild.ps1  # POST_BUILD hook: run sim after PIPBONG link
-│   ├── analyze-app-spike.ps1  # summarize app-spike/latest.md
+│   ├── analyze-app-stutter.ps1  # summarize app-stutter/latest.md
 │   ├── recover-ide-build.ps1  # IDE recovery (local default; optional -KillGlobalBuildProcesses)
 │   ├── ensure-dev-isolation.ps1  # dual-Cursor setup: settings check, F5 fix, deploy-qt if needed
 │   ├── fix-pipbong-cursor-f5.ps1  # workspace-gated F5 -> Build and Run (config.pipbong.f5BuildAndRun)
@@ -1140,68 +1140,27 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 **Stage 2 (not yet):** workflow `WorkflowRunner` dry-run with mocks — blocked by OpenCV/UI block dependencies; track as future `PIPBONGWorkflowDryRunSim`.
 
-### 8.14 App spike profiling (mandatory — PIPBONG lag / UI stall diagnosis)
+### 8.14 App stutter profiling (mandatory — PIPBONG lag / UI stall diagnosis)
 
-**Status:** Added 2026-07 (v0.8.302). Replaces **`CursorStutterProfiler`** / **`cursor-stutter/`** (removed). Measures **PIPBONG app** GUI stalls and CPU spikes — not in-game cursor jumps.
+**Status:** Added 2026-07 (v0.8.328). **Single unified profiler** — replaces `AppSpikeProfiler`, `ProfileSwitchProfiler`, `FeatureToggleProfiler`, `MultiHoldProfiler`, `WorkflowRunProfiler`, `CursorStutterProfiler`, and related output folders/scripts.
 
 | Layer | Role |
 | ----- | ---- |
-| `AppSpikeProfiler` | Opt-in 50 ms GUI pulse timer (stall thresholds 80/150/300/1000 ms) + 500 ms background CPU sampler |
+| `AppStutterProfiler` | Opt-in 50 ms GUI pulse timer (stall thresholds 80/150/300/1000 ms) + 500 ms background CPU sampler |
 | CPU | Reuses `SystemCpuSampler`, `ProcessCpuSampler`, `CpuSpikeDetector` (same family as **CPU 감시**) |
 | Session context | `MainWindow::applyRunUiState` → `setActiveFeatureSessionCount` / `setPipbongFeatureBurstActive` |
-| Enable | `program/appSpikeProfiling` (**default OFF**) or env `PIPBONG_APP_SPIKE_PROFILE=1`; legacy `program/cursorStutterProfiling` read once if new key missing |
-| Output | **Repo** `app-spike/latest.md` + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/app-spike/latest.md`** fallback |
+| Enable | `program/appStutterProfiling` (**default OFF**) or env `PIPBONG_APP_STUTTER_PROFILE=1`; legacy `program/appSpikeProfiling` / `program/cursorStutterProfiling` read once if new key missing |
+| Output | **Repo** `app-stutter/latest.md` + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/app-stutter/latest.md`** fallback |
 | Flush | App shutdown only (`MainWindow::prepareForShutdown`) |
+| Analysis | `scripts/analyze-app-stutter.ps1` |
 
-**User → AI workflow:** Enable **앱 스파이크 진단** only while reproducing → run PIPBONG → reproduce multi-Hold / long-session lag → exit → read **`app-spike/latest.md`** — **Auto diagnosis** first (do **not** ask user for workflow blocks).
+**User → AI workflow:** Enable **앱 스터터 진단** only while reproducing → run PIPBONG → reproduce lag/stutter → exit → read **`app-stutter/latest.md`** — **Auto diagnosis** first (do **not** ask user for workflow blocks).
 
 **Do not** leave profiling ON during daily play — 50 ms GUI timer + CPU thread add overhead.
 
-Cursor rule: `.cursor/rules/app-spike-profiling.mdc`.
+**Do not** add subsystem-specific profiler classes — extend `AppStutterProfiler` event kinds or `DiagnosticHub` breadcrumbs instead.
 
-**Narrow / subsystem profilers:** When a bug or spike is tied to a **specific area**, add targeted opt-in profiling for **that area** in the **same task** — see [§8.16](#816-targeted-profiling-on-bugs-and-spikes-mandatory--same-task) and `.cursor/rules/targeted-profiling-on-bugs.mdc`.
-
-### 8.16 Targeted profiling on bugs and spikes (mandatory — same task)
-
-**Status:** Added 2026-07-24 (v0.8.304). User policy: when a problem is found in a **particular subsystem**, the agent **proactively builds profiling for that subsystem** — not only the broad `AppSpikeProfiler`.
-
-#### Trigger
-
-- User reports lag, spike, freeze, wrong behavior, or regression in a **named area** (UI, 홀드, 단축키, 캡처, 프로필 전환, …).
-- OR session logs (`app-spike/latest.md`, crash `report.txt`, CPU 감시) show repeated events/crumbs for one subsystem.
-
-#### Mandatory same-task workflow
-
-| Step | Requirement |
-| ---- | ------------- |
-| 1 | Classify **subsystem** (one primary owner: `MainWindow` UI, `HotkeyManager`, `ImageFindBlock`, `ScreenCapture`, `ProfileManager`, …) |
-| 2 | Add **opt-in** measurement scoped to that path (`program/<area>Profiling` or env `PIPBONG_<AREA>_PROFILE=1` when settings UI is justified) — **default OFF** |
-| 3 | Emit **tagged** counters/events (e.g. `hotkey_*`, `imagefind_poll`, `profile_switch`) into `app-spike/latest.md` and/or `diagnostics/<subsystem>/latest.md` (+ AppData mirror) |
-| 4 | Report includes **Auto diagnosis** (Korean) so the next agent/user needs no workflow interview |
-| 5 | Update **§8.16** table below when adding a new subsystem profiler; add `scripts/analyze-*.ps1` when helpful |
-| 6 | **Measure → fix → re-measure** on multi-attempt perf bugs; do not close with guess-only patches |
-
-#### Layering
-
-| Layer | Role |
-| ----- | ---- |
-| §8.14 `AppSpikeProfiler` | Session-wide GUI pulse gaps + CPU spikes |
-| §8.16 subsystem profiler | **Narrow** repro for the failing code path |
-| `CrashReporter` / `DiagnosticHub` | Always-light breadcrumbs — complement, not replace opt-in profilers |
-
-#### Subsystem catalog (extend when shipping new profilers)
-
-| Subsystem | Symptom examples | Profiler hook (examples) | Report / tags |
-| --------- | ---------------- | ------------------------ | ------------- |
-| UI / multi-hold | PIPBONG 창 버벅임, 홀드 2+ | `AppSpikeProfiler` crumbs + timers on `applyRunUiState`, fast-repeat flush | `gui_stall_*`, `sessions=` |
-| UI / multi-hold burst | Q/W/E/R 홀드 동시 누름·뗌 | `MultiHoldProfiler` on hold burst coordinator (`prepareForegroundForHoldBurst`, coalesced start/end UI, `applyRunUiState` burst path) | `multi-hold/latest.md`; `hold_burst_prep_ms`, `hold_start_ui_ms`, `hold_end_cleanup_ms`, `apply_run_ui_ms`; `scripts/analyze-multi-hold.ps1` |
-| Hotkey / foreground | Alt+Tab 후 단축키 죽음 | Opt-in hook latch + handler timing | `hotkey_*` |
-| ImageFind / capture | 매칭 느림, 검은 화면 | Per-poll capture+match ms | `imagefind_poll` |
-| Profile switch | 전환 핑퐁·GUI 멈춤 | `ProfileSwitchProfiler` phase timers on `syncProfileToForegroundWindow` / `executeProfileSwitch` | `profile-switch/latest.md`, crumbs `switch sync_switch/committed` |
-| Feature enable toggle | 기능 **사용** ON/OFF 버벅임 | `FeatureToggleProfiler` on `FeatureListPanel::toggleFeatureEnabled` + `undo_copy_project_json` / `undo_copy_profiles` / `HotkeyManager::syncFromProject` sub-phases | `feature-toggle/latest.md`; `scripts/analyze-feature-toggle.ps1` |
-| Overlay / template pick | 캡처 실패, 커서 | BitBlt + teardown order ms | `overlay_pick` |
-
-Cursor rule: `.cursor/rules/targeted-profiling-on-bugs.mdc`.
+Cursor rule: `.cursor/rules/app-stutter-profiling.mdc`.
 
 ### 8.17 Profile auto-switch (mandatory — do not regress)
 
@@ -1215,7 +1174,6 @@ Cursor rule: `.cursor/rules/targeted-profiling-on-bugs.mdc`.
 | Defer | Alt held (linked targets only), list drag active, or switch pipeline in progress → `m_deferredProfileSwitchId` + `flushDeferredProfileSwitchIfIdle` |
 | Skip | PIPBONG foreground, shell transient HWNDs, profile switch pipeline active |
 | Pipeline | `executeProfileSwitch`: sync stop/save/`setActiveProfile` → `singleShot(0)` `loadActiveProfile` → `restorePersistedTriggerSessions` + `finishForegroundSessionGate` |
-| Profiling | Opt-in `ProfileSwitchProfiler` — `program/profileSwitchProfiling` or `PIPBONG_PROFILE_SWITCH_PROFILE=1` |
 
 **Manual verify:** Focus linked game/launcher → profile switches immediately; Alt+Tab picker does not flip profiles mid-picker; PIPBONG focus does not spuriously switch to default; unrelated window → default profile.
 
@@ -1237,7 +1195,7 @@ Key files: `ProfileForegroundSync.*`, `MainWindow.cpp` (`syncProfileToForeground
 | **권한·호환** | Run as administrator (+ elevated status when applicable) |
 | **템플릿 매칭** | ImageFind capture mode combo |
 | **화면 표시** | Default click/run feedback, window-pick animation (summary + **설정…**) |
-| **진단** | App spike, profile switch, feature toggle profilers |
+| **진단** | App stutter profiler (**앱 스터터 진단**, default OFF) |
 
 #### Feature edit (`FeatureEditDialog`)
 
@@ -1424,7 +1382,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 - **2026-07-24:** Wants **chat replies in plain Korean, as short as possible** — no jargon, no long tables, no class/file names unless the user asks; diagnosis/log reports default to a **few bullets** (결론 → 언제 → 심각도); full technical detail stays in `AGENTS.md` / rules only.
 - **2026-07-24:** On **problem reports** (bug, lag, crash, regression): agent must **investigate first**, then explain **증상 / 원인 추정 / 해결 방향 / 다음 조치** in beginner-friendly Korean **before** starting code or build fixes; always-applied `.cursor/rules/explain-before-fix.mdc`.
 - **2026-07-24:** Profile **foreground auto-switch** should feel snappy: prefer **process path** when title-only match would wrongly pick default; shorter stability/min-interval for definitive exe match (0 ms / 150 ms).
-- **2026-07-24:** When a **bug or spike** points at a specific subsystem, expects the agent to **add targeted opt-in profiling for that area in the same task** (measure → fix → re-measure) — not only broad `AppSpikeProfiler`; document in §8.16 + `.cursor/rules/targeted-profiling-on-bugs.mdc`.
+- **2026-07-25:** All PIPBONG lag/stutter diagnosis uses **one** opt-in profiler — **`AppStutterProfiler`** → `app-stutter/latest.md` (§8.14); do **not** add per-subsystem profiler classes; extend `AppStutterProfiler` event kinds or `DiagnosticHub` breadcrumbs instead.
 - **2026-07-21:** Prefers the agent to **execute end-to-end** — scripts, rules, handover included — not hand the user a checklist of “copy this file / paste step 3”.
 - **2026-07-21:** When asking for **prompts or policy packs** for other projects, wants **one single copy block** (통째 복붙) — not split instructions where the user must paste multiple follow-up pieces.
 - **2026-07-21:** For prompt-only requests, deliver **the prompt block only** — avoid wrapping meta-explanation unless asked.
@@ -1546,6 +1504,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.328] - 2026-07-25
+
+### Added
+
+- **`AppStutterProfiler`**: single unified PIPBONG app stutter diagnostic — 50 ms GUI pulse stall tiers (80/150/300/1000 ms), 500 ms CPU spike sampling, session context from `MainWindow::applyRunUiState`; reports to **`app-stutter/latest.md`** + AppData fallback; enable via **프로그램 설정 → 진단 → 앱 스터터 진단** or `PIPBONG_APP_STUTTER_PROFILE=1` (`AppStutterProfiler`, `ProgramSettings`, `ProgramSettingsDialog`, `scripts/analyze-app-stutter.ps1`, AGENTS.md §8.14, `.cursor/rules/app-stutter-profiling.mdc`).
+
+### Removed
+
+- All prior profilers and outputs: `AppSpikeProfiler`, `ProfileSwitchProfiler`, `FeatureToggleProfiler`, `MultiHoldProfiler`, `WorkflowRunProfiler` / `WorkflowProfileSnapshot`, `PerfTrace`; folders `app-spike/`, `profile-switch/`, `feature-toggle/`, `multi-hold/`, `cursor-stutter/`, `app-profile/`; analyze scripts `analyze-app-spike.ps1`, `analyze-profile-switch.ps1`, `analyze-feature-toggle.ps1`, `analyze-multi-hold.ps1`, `analyze-app-profile.ps1`, `analyze-workflow-profile.ps1`; rules `app-spike-profiling.mdc`, `targeted-profiling-on-bugs.mdc`, `app-profiling.mdc`; program settings keys `profileSwitchProfiling`, `featureToggleProfiling`, `multiHoldProfiling` (legacy `appSpikeProfiling` still read for migration).
 
 ## [0.8.327] - 2026-07-25
 
@@ -5858,12 +5826,10 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **All** settings and edit dialogs: options grouped by category/kind in `QGroupBox`; detail on tooltips; scroll for long forms; shared `UiSettingsLayout.h`.
 - Full rules in [§8.13](#813-settings-and-edit-dialogs-mandatory--grouped--tooltips).
 
-### `targeted-profiling-on-bugs.mdc`
+### `app-stutter-profiling.mdc`
 
-- On bug/spike in a **specific subsystem**, add **opt-in targeted profiling** same task (measure → fix → re-measure).
-- Full rules: [§8.16](#816-targeted-profiling-on-bugs-and-spikes-mandatory--same-task).
-
-### `brief-korean-replies.mdc`
+- **Mandatory** for PIPBONG app lag / UI stall diagnosis — **`app-stutter/latest.md`** only (single unified profiler).
+- Full rules in [§8.14](#814-app-stutter-profiling-mandatory--pipbong-lag--ui-stall-diagnosis).
 
 - **Mandatory** default chat style: plain Korean, minimal length, no jargon — especially log/diagnosis readouts.
 - Full preference: [§9.5](#95-user-preference-profile-cumulative--agents-only).
@@ -5873,12 +5839,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - On user **problem reports**: investigate, then plain Korean **증상 → 원인 추정 → 해결 방향 → 다음 조치** before code/build fixes.
 - Full preference: [§9.5](#95-user-preference-profile-cumulative--agents-only); exception noted in `brief-korean-replies.mdc`.
 
-### `app-spike-profiling.mdc`
-
-- **Mandatory** for PIPBONG app lag / UI stall diagnosis — **`app-spike/latest.md`** only.
-- Full rules in [§8.14](#814-app-spike-profiling-mandatory--pipbong-lag--ui-stall-diagnosis).
-
-### Korean update log (§3.7)
+### `brief-korean-replies.mdc`
 
 - **`UpdateLog/update_log.md`** — user-facing Korean changelog; linked from `README.md`.
 - **Patch-decade blocks** (e.g. `v0.8.60–0.8.69`); append within block or open new block at decade boundary.
@@ -5886,4 +5847,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-24. Current application version: 0.8.309._
+_Last consolidated: 2026-07-25. Current application version: 0.8.328._
