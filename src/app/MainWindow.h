@@ -161,9 +161,17 @@ private slots:
     void syncHotkeys();
 
 private:
+    enum class GlobalUiSnapshotScope {
+        Auto,
+        FullWorkspace,
+        ActiveProjectJsonOnly,
+    };
+
     struct GlobalUiHistorySnapshot {
         QString backupRootPath;
         QString reason;
+        GlobalUiSnapshotScope scope = GlobalUiSnapshotScope::FullWorkspace;
+        QString profileId;
     };
 
     void setupUi();
@@ -392,7 +400,12 @@ private:
     void clearGlobalUiRedoHistory();
     void clearGlobalUiUndoHistory();
     bool restoreGlobalUiSnapshot(const GlobalUiHistorySnapshot& snapshot);
-    GlobalUiHistorySnapshot createGlobalUiSnapshot(const QString& reason) const;
+    GlobalUiHistorySnapshot createGlobalUiSnapshot(const QString& reason,
+                                                   GlobalUiSnapshotScope scope = GlobalUiSnapshotScope::Auto) const;
+    GlobalUiHistorySnapshot createActiveProjectJsonSnapshot(const QString& reason) const;
+    bool restoreActiveProjectJsonSnapshot(const GlobalUiHistorySnapshot& snapshot);
+    static GlobalUiSnapshotScope resolveGlobalUiSnapshotScope(const QString& reason,
+                                                                GlobalUiSnapshotScope scope);
     static bool copyDirectoryRecursive(const QString& sourceDir, const QString& targetDir);
     static void removeDirectoryRecursive(const QString& path);
     void onGlobalUndoRequested();

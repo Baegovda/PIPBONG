@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.308` (from `project(PIPBONG VERSION 0.8.308)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.309` (from `project(PIPBONG VERSION 0.8.309)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1197,7 +1197,7 @@ Cursor rule: `.cursor/rules/app-spike-profiling.mdc`.
 | Hotkey / foreground | Alt+Tab 후 단축키 죽음 | Opt-in hook latch + handler timing | `hotkey_*` |
 | ImageFind / capture | 매칭 느림, 검은 화면 | Per-poll capture+match ms | `imagefind_poll` |
 | Profile switch | 전환 핑퐁·GUI 멈춤 | `ProfileSwitchProfiler` phase timers on `requestAutoProfileSwitch` / `executeProfileSwitch` | `profile-switch/latest.md`, crumbs `switch requested/stable/committed` |
-| Feature enable toggle | 기능 **사용** ON/OFF 버벅임 | `FeatureToggleProfiler` on `FeatureListPanel::toggleFeatureEnabled` + `undo_copy_profiles` / `HotkeyManager::syncFromProject` sub-phases | `feature-toggle/latest.md`; `scripts/analyze-feature-toggle.ps1` |
+| Feature enable toggle | 기능 **사용** ON/OFF 버벅임 | `FeatureToggleProfiler` on `FeatureListPanel::toggleFeatureEnabled` + `undo_copy_project_json` / `undo_copy_profiles` / `HotkeyManager::syncFromProject` sub-phases | `feature-toggle/latest.md`; `scripts/analyze-feature-toggle.ps1` |
 | Overlay / template pick | 캡처 실패, 커서 | BitBlt + teardown order ms | `overlay_pick` |
 
 Cursor rule: `.cursor/rules/targeted-profiling-on-bugs.mdc`.
@@ -1546,6 +1546,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.309] - 2026-07-24
+
+### Fixed
+
+- Feature list **사용** ON/OFF no longer copies the entire `profiles/` tree for Ctrl+Z undo: lightweight snapshot backs up only the active profile `project.json` (`MainWindow::GlobalUiSnapshotScope::ActiveProjectJsonOnly`, `createActiveProjectJsonSnapshot`, `restoreActiveProjectJsonSnapshot`); undo/redo chains preserve the same scope; `FeatureToggleProfiler` phase `undo_copy_project_json`.
 
 ## [0.8.308] - 2026-07-24
 
@@ -5737,4 +5743,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-24. Current application version: 0.8.308._
+_Last consolidated: 2026-07-24. Current application version: 0.8.309._

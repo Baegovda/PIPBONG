@@ -8993,7 +8993,64 @@ void MainWindow::prepareProjectUnload() {
     }
 }
 
-MainWindow::GlobalUiHistorySnapshot MainWindow::createGlobalUiSnapshot(const QString& reason) const {
+MainWindow::GlobalUiSnapshotScope MainWindow::resolveGlobalUiSnapshotScope(
+    const QString& reason,
+    GlobalUiSnapshotScope scope) {
+    if (scope != GlobalUiSnapshotScope::Auto) {
+        return scope;
+    }
+    if (reason == QStringLiteral("feature-toggle-enabled")) {
+        return GlobalUiSnapshotScope::ActiveProjectJsonOnly;
+    }
+    return GlobalUiSnapshotScope::FullWorkspace;
+}
+
+MainWindow::GlobalUiHistorySnapshot MainWindow::createActiveProjectJsonSnapshot(
+    const QString& reason) const {
+    GlobalUiHistorySnapshot snapshot;
+    if (!m_profileManager) {
+        return {};
+    }
+    const QString profileId = m_profileManager->activeProfileId();
+    const QString projectPath = m_profileManager->projectPath(profileId);
+    if (profileId.isEmpty() || !QFileInfo::exists(projectPath)) {
+        return {};
+    }
+
+    const QString tempRoot =
+        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+            .filePath(QStringLiteral("pipbong-global-history"));
+    const QString snapshotId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString backupRoot = QDir(tempRoot).filePath(snapshotId);
+    if (!QDir().mkpath(backupRoot)) {
+        return {};
+    }
+
+    const QString backupProjectPath = QDir(backupRoot).filePath(QStringLiteral("project.json"));
+    if (QFileInfo::exists(backupProjectPath) && !QFile::remove(backupProjectPath)) {
+        removeDirectoryRecursive(backupRoot);
+        return {};
+    }
+    if (!QFile::copy(projectPath, backupProjectPath)) {
+        removeDirectoryRecursive(backupRoot);
+        return {};
+    }
+
+    snapshot.backupRootPath = backupRoot;
+    snapshot.reason = reason;
+    snapshot.scope = GlobalUiSnapshotScope::ActiveProjectJsonOnly;
+    snapshot.profileId = profileId;
+    return snapshot;
+}
+
+MainWindow::GlobalUiHistorySnapshot MainWindow::createGlobalUiSnapshot(
+    const QString& reason,
+    GlobalUiSnapshotScope scope) const {
+    const GlobalUiSnapshotScope resolved = resolveGlobalUiSnapshotScope(reason, scope);
+    if (resolved == GlobalUiSnapshotScope::ActiveProjectJsonOnly) {
+        return createActiveProjectJsonSnapshot(reason);
+    }
+
     GlobalUiHistorySnapshot snapshot;
     const QString tempRoot =
         QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
@@ -9025,6 +9082,7 @@ MainWindow::GlobalUiHistorySnapshot MainWindow::createGlobalUiSnapshot(const QSt
 
     snapshot.backupRootPath = backupRoot;
     snapshot.reason = reason;
+    snapshot.scope = GlobalUiSnapshotScope::FullWorkspace;
     return snapshot;
 }
 
@@ -9092,9 +9150,11 @@ bool MainWindow::pushGlobalUiUndoSnapshot(const QString& reason) {
     }
     const GlobalUiHistorySnapshot snapshot = createGlobalUiSnapshot(reason);
     if (FeatureToggleProfiler::isToggleInProgress()) {
-        FeatureToggleProfiler::notePhase(QStringLiteral("undo_copy_profiles"),
-                                         undoTimer.elapsed(),
-                                         reason);
+        const QString phase =
+            snapshot.scope == GlobalUiSnapshotScope::ActiveProjectJsonOnly
+                ? QStringLiteral("undo_copy_project_json")
+                : QStringLiteral("undo_copy_profiles");
+        FeatureToggleProfiler::notePhase(phase, undoTimer.elapsed(), reason);
     }
     if (snapshot.backupRootPath.isEmpty()) {
         return false;
@@ -9109,7 +9169,50 @@ bool MainWindow::pushGlobalUiUndoSnapshot(const QString& reason) {
     return true;
 }
 
+bool MainWindow::restoreActiveProjectJsonSnapshot(const GlobalUiHistorySnapshot& snapshot) {
+    if (snapshot.backupRootPath.isEmpty() || snapshot.profileId.isEmpty() || !m_profileManager) {
+        return false;
+    }
+
+    const QString backupProjectPath =
+        QDir(snapshot.backupRootPath).filePath(QStringLiteral("project.json"));
+    const QString projectPath = m_profileManager->projectPath(snapshot.profileId);
+    if (!QFileInfo::exists(backupProjectPath) || projectPath.isEmpty()) {
+        return false;
+    }
+
+    stopAllSessions();
+    maybeSave(true);
+
+    struct RestoreGuard {
+        MainWindow* window = nullptr;
+        ~RestoreGuard() {
+            if (window) {
+                window->m_restoringGlobalUiHistory = false;
+            }
+        }
+    } guard{this};
+    m_restoringGlobalUiHistory = true;
+
+    m_profileManager->invalidateCachedProject(snapshot.profileId);
+    if (QFileInfo::exists(projectPath) && !QFile::remove(projectPath)) {
+        return false;
+    }
+    if (!QFile::copy(backupProjectPath, projectPath)) {
+        return false;
+    }
+
+    if (m_profileManager->activeProfileId() == snapshot.profileId) {
+        loadProjectFromFile(projectPath, true);
+    }
+    showTransientStatus(tr("실행 취소/다시 실행 적용됨"), 1200);
+    return true;
+}
+
 bool MainWindow::restoreGlobalUiSnapshot(const GlobalUiHistorySnapshot& snapshot) {
+    if (snapshot.scope == GlobalUiSnapshotScope::ActiveProjectJsonOnly) {
+        return restoreActiveProjectJsonSnapshot(snapshot);
+    }
     if (snapshot.backupRootPath.isEmpty() || !m_profileManager) {
         return false;
     }
@@ -9155,11 +9258,12 @@ void MainWindow::onGlobalUndoRequested() {
     if (m_globalUiUndoHistory.empty()) {
         return;
     }
-    const GlobalUiHistorySnapshot redoSnapshot = createGlobalUiSnapshot(QStringLiteral("redo"));
+    const GlobalUiHistorySnapshot target = m_globalUiUndoHistory.back();
+    const GlobalUiHistorySnapshot redoSnapshot =
+        createGlobalUiSnapshot(QStringLiteral("redo"), target.scope);
     if (redoSnapshot.backupRootPath.isEmpty()) {
         return;
     }
-    const GlobalUiHistorySnapshot target = m_globalUiUndoHistory.back();
     m_globalUiUndoHistory.pop_back();
     if (!restoreGlobalUiSnapshot(target)) {
         removeDirectoryRecursive(redoSnapshot.backupRootPath);
@@ -9178,11 +9282,12 @@ void MainWindow::onGlobalRedoRequested() {
     if (m_globalUiRedoHistory.empty()) {
         return;
     }
-    const GlobalUiHistorySnapshot undoSnapshot = createGlobalUiSnapshot(QStringLiteral("undo"));
+    const GlobalUiHistorySnapshot target = m_globalUiRedoHistory.back();
+    const GlobalUiHistorySnapshot undoSnapshot =
+        createGlobalUiSnapshot(QStringLiteral("undo"), target.scope);
     if (undoSnapshot.backupRootPath.isEmpty()) {
         return;
     }
-    const GlobalUiHistorySnapshot target = m_globalUiRedoHistory.back();
     m_globalUiRedoHistory.pop_back();
     if (!restoreGlobalUiSnapshot(target)) {
         removeDirectoryRecursive(undoSnapshot.backupRootPath);

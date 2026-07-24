@@ -110,10 +110,13 @@ QString phaseLabelKo(const QString& phase) {
         return QStringLiteral("토글 시작");
     }
     if (phase == QStringLiteral("undo_snapshot")) {
-        return QStringLiteral("실행 취소 스냅샷(전체)");
+        return QStringLiteral("실행 취소 스냅샷");
     }
     if (phase == QStringLiteral("undo_copy_profiles")) {
         return QStringLiteral("프로필 폴더 복사(undo)");
+    }
+    if (phase == QStringLiteral("undo_copy_project_json")) {
+        return QStringLiteral("project.json 복사(undo)");
     }
     if (phase == QStringLiteral("set_enabled")) {
         return QStringLiteral("enabled 플래그 변경");
@@ -186,10 +189,15 @@ QString buildAutoDiagnosis(const std::vector<PhaseRow>& phases,
     if (!timed.empty()) {
         const QString& topPhase = timed.front().phase;
         const qint64 topMs = timed.front().durationMs;
-        if (topPhase == QStringLiteral("undo_snapshot")
-            || topPhase == QStringLiteral("undo_copy_profiles")) {
+        if (topPhase == QStringLiteral("undo_copy_profiles")) {
             lines << QStringLiteral(
                 "- **사용 토글 렉 의심**: Ctrl+Z용 **전체 프로필 폴더 복사**가 동기 실행됨 — 이 단계 최적화 우선");
+        } else if (topPhase == QStringLiteral("undo_copy_project_json") && topMs >= 15) {
+            lines << QStringLiteral(
+                "- **사용 토글**: project.json 백업이 %1 ms — 프로젝트가 크면 추가 최적화 검토").arg(topMs);
+        } else if (topPhase == QStringLiteral("undo_snapshot") && topMs >= 30) {
+            lines << QStringLiteral(
+                "- **사용 토글 렉 의심**: 실행 취소 스냅샷 비용 큼 — Phases에서 하위 단계 확인");
         } else if (topPhase.startsWith(QStringLiteral("hotkeys"))) {
             lines << QStringLiteral(
                 "- **사용 토글 렉 의심**: 단축키 전체 재등록 — fingerprint 스킵 여부·증분 갱신 검토");
