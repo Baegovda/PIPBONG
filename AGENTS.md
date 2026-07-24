@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.314` (from `project(PIPBONG VERSION 0.8.314)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.315` (from `project(PIPBONG VERSION 0.8.315)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1425,6 +1425,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 
 - **2026-07-21:** Directs work in **Korean chat only**; expects the codebase to stay **100% AI-maintained** (implement, document, changelog via agent).
 - **2026-07-24:** Wants **chat replies in plain Korean, as short as possible** — no jargon, no long tables, no class/file names unless the user asks; diagnosis/log reports default to a **few bullets** (결론 → 언제 → 심각도); full technical detail stays in `AGENTS.md` / rules only.
+- **2026-07-24:** On **problem reports** (bug, lag, crash, regression): agent must **investigate first**, then explain **증상 / 원인 추정 / 해결 방향 / 다음 조치** in beginner-friendly Korean **before** starting code or build fixes; always-applied `.cursor/rules/explain-before-fix.mdc`.
 - **2026-07-24:** When a **bug or spike** points at a specific subsystem, expects the agent to **add targeted opt-in profiling for that area in the same task** (measure → fix → re-measure) — not only broad `AppSpikeProfiler`; document in §8.16 + `.cursor/rules/targeted-profiling-on-bugs.mdc`.
 - **2026-07-21:** Prefers the agent to **execute end-to-end** — scripts, rules, handover included — not hand the user a checklist of “copy this file / paste step 3”.
 - **2026-07-21:** When asking for **prompts or policy packs** for other projects, wants **one single copy block** (통째 복붙) — not split instructions where the user must paste multiple follow-up pieces.
@@ -1547,6 +1548,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.315] - 2026-07-24
+
+### Added
+
+- Always-applied agent rule **explain before fix**: on user bug/lag/crash reports, plain Korean diagnosis (symptom, cause estimate, fix direction) before code changes — `.cursor/rules/explain-before-fix.mdc`, §9.5, `ai-governance.mdc`, `brief-korean-replies.mdc` exception.
 
 ## [0.8.314] - 2026-07-24
 
@@ -5773,6 +5780,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 - **Mandatory** default chat style: plain Korean, minimal length, no jargon — especially log/diagnosis readouts.
 - Full preference: [§9.5](#95-user-preference-profile-cumulative--agents-only).
+
+### `explain-before-fix.mdc`
+
+- On user **problem reports**: investigate, then plain Korean **증상 → 원인 추정 → 해결 방향 → 다음 조치** before code/build fixes.
+- Full preference: [§9.5](#95-user-preference-profile-cumulative--agents-only); exception noted in `brief-korean-replies.mdc`.
 
 ### `app-spike-profiling.mdc`
 

@@ -1,0 +1,39 @@
+---
+description: On user bug reports — investigate, explain plainly in Korean, then fix
+alwaysApply: true
+---
+
+# Explain Before Fix (mandatory — user bug reports)
+
+**Status:** User preference 2026-07-24 (§9.5). Applies when the user **reports a problem** (bug, lag, crash, regression, “still broken”, “왜 이래”, spike logs).
+
+## Order (do not skip)
+
+| Step | What | User-visible? |
+| ---- | ---- | ------------- |
+| 1 | **Look first** — logs, repro, recent changes, relevant code (read-only tools OK) | No |
+| 2 | **Explain** — plain Korean, beginner eye level, **before any fix** | **Yes — required** |
+| 3 | **Act** — code/build/test/commit only **after** step 2 in the same turn or a follow-up | Yes (brief) |
+
+Step 2 must appear **before** the first tool call that **edits** source, **bumps version**, or **runs build/release** for the fix. Reading files/logs for diagnosis is allowed before step 2.
+
+## Explanation template (Korean, short)
+
+Use **4 blocks** — everyday words, no class/file names unless the user asked for technical detail:
+
+1. **증상** — what you feel (1 sentence).
+2. **원인 추정** — why it happens; use a simple analogy if helpful; say **확실** vs **추정** vs **아직 모름**.
+3. **해결 방향** — what we will change and what should improve (1–3 bullets).
+4. **다음 조치** — “이제 이렇게 고치겠습니다” (one line).
+
+Complements `.cursor/rules/brief-korean-replies.mdc`: this block may be **slightly longer** than a normal reply; still avoid jargon and long tables.
+
+## When step 2 can be very short
+
+- User said **“설명만”** / **“왜?”** only → explain only; no step 3 unless asked.
+- User said **“바로 고쳐”** after a prior explanation in the **same chat** → one-line recap then step 3.
+- Trivial typo/docs with no symptom → skip; normal task flow.
+
+## Handover
+
+Full preference: [AGENTS.md §9.5](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only). Pointer in `ai-governance.mdc`.

@@ -13,6 +13,7 @@ alwaysApply: true
 ## Language
 
 - **User replies**: Korean only — **plain words, as short as possible** (see `.cursor/rules/brief-korean-replies.mdc`).
+- **Bug/problem reports**: investigate first, then **plain Korean diagnosis before any fix** (see `.cursor/rules/explain-before-fix.mdc`).
 - **Code, comments, docs, rules, changelog, handover**: English only.
 - **In-app UI**: Korean via `tr()` / `QStringLiteral`. Keep JSON block `type` values in English.
 

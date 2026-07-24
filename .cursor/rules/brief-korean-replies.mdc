@@ -16,6 +16,8 @@ alwaysApply: true
 | 숫자는 **초·회·%** 정도만 | ms, stall, burst, sampler, HWND |
 | 필요할 때만 **다음 한 줄** | 끝마다 “더 해드릴까요?” 류 |
 
+**Exception — user reports a bug/lag/crash:** send the **4-block 진단** (증상 → 원인 추정 → 해결 방향 → 다음 조치) **before** editing code or building a fix — see `.cursor/rules/explain-before-fix.mdc`.
+
 ## Log / diagnosis reports (`app-spike`, CI, crash)
 
 Use the **6-bullet** template in `.cursor/rules/app-spike-profiling.mdc` when applicable.
