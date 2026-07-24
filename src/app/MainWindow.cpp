@@ -3152,7 +3152,10 @@ bool MainWindow::shouldCoalesceRunUiUpdates() const {
 
 bool MainWindow::isHoldBurstActive() const {
     return m_holdBurstDepth > 0 || shouldCoalesceRunUiUpdates() || m_holdStartUiFlushScheduled
-           || m_holdEndCleanupScheduled || m_pendingHoldStartUiFeatureIds.size() > 1;
+           || m_holdEndCleanupScheduled || m_holdFeatureStartFlushScheduled
+           || m_holdFeatureEndFinishFlushScheduled || !m_pendingHoldFeatureStartOrder.empty()
+           || !m_pendingHoldFeatureEndFinishes.empty()
+           || m_pendingHoldStartUiFeatureIds.size() > 1;
 }
 
 bool MainWindow::shouldLogSessionDetailsInBurst() const {
@@ -3281,10 +3284,68 @@ void MainWindow::flushDeferredBurstSideEffects() {
         schedulePruneAbandonedEngines();
     }
     m_holdBurstTargetActivated = false;
+    m_holdBurstCaptureAppliedToCapture = false;
     if (m_holdBurstForegroundPrepTimer.isValid() && m_holdBurstForegroundPrepTimer.elapsed() > 200) {
         m_holdBurstCaptureTitleValid = false;
         m_holdBurstForegroundPrepared = false;
     }
+}
+
+void MainWindow::scheduleCoalescedHoldFeatureStart(const std::string& featureId) {
+    if (m_pendingHoldFeatureStartIds.insert(featureId).second) {
+        m_pendingHoldFeatureStartOrder.push_back(featureId);
+    }
+    if (m_holdFeatureStartFlushScheduled) {
+        return;
+    }
+    m_holdFeatureStartFlushScheduled = true;
+    QTimer::singleShot(0, this, [this]() { flushCoalescedHoldFeatureStarts(); });
+}
+
+void MainWindow::flushCoalescedHoldFeatureStarts() {
+    m_holdFeatureStartFlushScheduled = false;
+    if (m_pendingHoldFeatureStartOrder.empty()) {
+        return;
+    }
+
+    const std::string featureId = m_pendingHoldFeatureStartOrder.front();
+    m_pendingHoldFeatureStartOrder.erase(m_pendingHoldFeatureStartOrder.begin());
+    m_pendingHoldFeatureStartIds.erase(featureId);
+
+    if (Feature* feature = m_project ? m_project->featureById(featureId) : nullptr) {
+        if (feature->enabled() && feature->runMode() == FeatureRunMode::Hold) {
+            startFeatureRun(feature, true);
+        }
+    }
+
+    if (!m_pendingHoldFeatureStartOrder.empty()) {
+        m_holdFeatureStartFlushScheduled = true;
+        QTimer::singleShot(0, this, [this]() { flushCoalescedHoldFeatureStarts(); });
+    }
+}
+
+void MainWindow::scheduleCoalescedHoldFeatureEndFinish(const std::string& featureId) {
+    m_pendingHoldFeatureEndFinishes.insert(featureId);
+    if (m_holdFeatureEndFinishFlushScheduled) {
+        return;
+    }
+    m_holdFeatureEndFinishFlushScheduled = true;
+    QTimer::singleShot(0, this, [this]() { flushCoalescedHoldFeatureEndFinishes(); });
+}
+
+void MainWindow::flushCoalescedHoldFeatureEndFinishes() {
+    m_holdFeatureEndFinishFlushScheduled = false;
+    if (m_pendingHoldFeatureEndFinishes.empty()) {
+        return;
+    }
+    const auto pending = std::move(m_pendingHoldFeatureEndFinishes);
+    m_pendingHoldFeatureEndFinishes.clear();
+    for (const std::string& featureId : pending) {
+        if (sessionFor(featureId)) {
+            finishRunSession(featureId, true, QString(), true);
+        }
+    }
+    scheduleCoalescedHoldEndCleanup();
 }
 
 int MainWindow::concurrentActiveRepeatSessionCount() const {
@@ -3473,7 +3534,11 @@ void MainWindow::abandonSessionEngine(FeatureRunSession& session) {
     m_abandonedEngineFeatureIds[enginePtr] = session.featureId;
     enginePtr->stop();
     m_abandonedEngines.push_back(std::move(session.engine));
-    schedulePruneAbandonedEngines();
+    if (isHoldBurstActive() || shouldCoalesceRunUiUpdates()) {
+        m_deferredBurstPruneEngines = true;
+    } else {
+        schedulePruneAbandonedEngines();
+    }
 }
 
 void MainWindow::stopFeatureRun(const std::string& featureId) {
@@ -4554,8 +4619,20 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
     connectSessionEngine(session);
     m_runSessions.emplace(featureId, std::move(session));
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
-    activeSession.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW(feature);
-    applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
+    if (holdHotkeyStart && m_holdBurstCaptureTitleValid) {
+        activeSession.lockedCaptureTargetTitle = m_holdBurstCaptureTitle;
+        if (!m_holdBurstCaptureAppliedToCapture) {
+            applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
+            m_holdBurstCaptureAppliedToCapture = true;
+        }
+    } else {
+        activeSession.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW(feature);
+        applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
+        if (holdHotkeyStart && !activeSession.lockedCaptureTargetTitle.empty()) {
+            m_holdBurstCaptureTitle = activeSession.lockedCaptureTargetTitle;
+            m_holdBurstCaptureTitleValid = true;
+        }
+    }
     if (m_runSessions.size() >= 2) {
         for (auto& entry : m_runSessions) {
             if (entry.second.sessionContext) {
@@ -4740,13 +4817,16 @@ void MainWindow::requestSessionWorkflowRefresh(const std::string& featureId) {
 
 void MainWindow::ensureRunSessionResources(FeatureRunSession& session,
                                            Feature* feature,
-                                           bool refreshWorkflow) {
+                                           bool refreshWorkflow,
+                                           bool deferWorkflowCloneToWorker) {
     if (!feature) {
         return;
     }
     if (refreshWorkflow || !session.sessionWorkflow) {
-        session.sessionWorkflow = std::shared_ptr<Workflow>(feature->workflow().clone());
-        session.deferredSessionWorkflowRefresh = false;
+        if (!deferWorkflowCloneToWorker) {
+            session.sessionWorkflow = std::shared_ptr<Workflow>(feature->workflow().clone());
+            session.deferredSessionWorkflowRefresh = false;
+        }
     }
     if (!session.sessionContext) {
         session.sessionContext = std::make_shared<ExecutionContext>();
@@ -5266,7 +5346,8 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
 
     // The workflow cannot be edited while its session is running. Reuse the session
     // clone instead of allocating a fresh block graph on every fast Hold/infinite loop.
-    ensureRunSessionResources(session, feature, false);
+    const bool deferWorkflowCloneToWorker = hotkeyHoldFirstStart;
+    ensureRunSessionResources(session, feature, false, deferWorkflowCloneToWorker);
 
     if (repeatIteration) {
         engine->runPrepared([&session]() {
@@ -6026,7 +6107,7 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
         m_runSessions.erase(id);
     }
 
-    startFeatureRun(feature, true);
+    scheduleCoalescedHoldFeatureStart(id);
 }
 
 void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
@@ -6084,8 +6165,7 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     }
 
     session->userStopRequested = false;
-    finishRunSession(id, true, QString(), shouldCoalesceRunUiUpdates());
-    scheduleCoalescedHoldEndCleanup();
+    scheduleCoalescedHoldFeatureEndFinish(id);
     if (MultiHoldProfiler::isEnabled() && endTimer.isValid()) {
         MultiHoldProfiler::notePhase(QStringLiteral("hold_end_ms"),
                                      endTimer.elapsed(),

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.311` (from `project(PIPBONG VERSION 0.8.311)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.312` (from `project(PIPBONG VERSION 0.8.312)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1547,6 +1547,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.312] - 2026-07-24
+
+### Fixed
+
+- Multi-Hold simultaneous start still stalled GUI (v0.8.311 `max_gui_stall_ms` 1250): `onHotkeyHoldStarted` no longer calls `startFeatureRun` synchronously per queued hotkey — `scheduleCoalescedHoldFeatureStart` drains **one feature per event-loop tick**; Hold first-start **workflow clone** deferred to worker `runPrepared`; burst reuses cached capture title / single `applySessionCaptureTarget`; coalesced idle hold-end `finishRunSession`; `abandonSessionEngine` defers prune during burst (`MainWindow`).
 
 ## [0.8.311] - 2026-07-24
 

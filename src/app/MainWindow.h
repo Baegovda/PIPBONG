@@ -207,6 +207,10 @@ private:
     void scheduleHoldBurstScopeDrain();
     void drainHoldBurstScope();
     void flushDeferredBurstSideEffects();
+    void scheduleCoalescedHoldFeatureStart(const std::string& featureId);
+    void flushCoalescedHoldFeatureStarts();
+    void scheduleCoalescedHoldFeatureEndFinish(const std::string& featureId);
+    void flushCoalescedHoldFeatureEndFinishes();
     void applyRunUiState();
     void scheduleWorkerFastRepeatUiFlush();
     void flushAllPendingWorkerFastRepeatUi();
@@ -307,7 +311,10 @@ private:
     void selectRunningFeatureForDisplay(Feature* feature);
     void launchWorkflowRun(FeatureRunSession& session, Feature* feature, bool repeatIteration = false);
     void deferHoldSessionUiAfterStart(const std::string& featureId);
-    void ensureRunSessionResources(FeatureRunSession& session, Feature* feature, bool refreshWorkflow = false);
+    void ensureRunSessionResources(FeatureRunSession& session,
+                                   Feature* feature,
+                                   bool refreshWorkflow = false,
+                                   bool deferWorkflowCloneToWorker = false);
     void syncRunSessionContext(FeatureRunSession& session);
     void applyFeatureRunPoliciesToContext(FeatureRunSession& session, Feature* feature);
     bool shouldLogRunDetails(const FeatureRunSession& session) const;
@@ -562,7 +569,13 @@ private:
     bool m_holdBurstForegroundPrepared = false;
     bool m_holdBurstTargetActivated = false;
     bool m_holdBurstCaptureTitleValid = false;
+    bool m_holdBurstCaptureAppliedToCapture = false;
     std::wstring m_holdBurstCaptureTitle;
+    std::vector<std::string> m_pendingHoldFeatureStartOrder;
+    std::unordered_set<std::string> m_pendingHoldFeatureStartIds;
+    bool m_holdFeatureStartFlushScheduled = false;
+    std::unordered_set<std::string> m_pendingHoldFeatureEndFinishes;
+    bool m_holdFeatureEndFinishFlushScheduled = false;
     std::unordered_set<std::string> m_pendingHoldStartUiFeatureIds;
     bool m_holdStartUiFlushScheduled = false;
     bool m_holdEndCleanupScheduled = false;
