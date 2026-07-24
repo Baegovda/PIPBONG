@@ -3168,6 +3168,10 @@ bool MainWindow::shouldLogSessionDetailsInBurst() const {
 void MainWindow::prepareForegroundForHoldBurst() {
     QElapsedTimer timer;
     timer.start();
+    if (m_holdBurstForegroundPrepared && isHoldBurstActive()) {
+        MultiHoldProfiler::notePhase(QStringLiteral("hold_burst_prep_skipped"), 0);
+        return;
+    }
     if (m_holdBurstForegroundPrepTimer.isValid()
         && m_holdBurstForegroundPrepTimer.elapsed() < 50) {
         MultiHoldProfiler::notePhase(QStringLiteral("hold_burst_prep_skipped"), 0);
@@ -3338,12 +3342,19 @@ void MainWindow::flushCoalescedHoldFeatureEndFinishes() {
     if (m_pendingHoldFeatureEndFinishes.empty()) {
         return;
     }
-    const auto pending = std::move(m_pendingHoldFeatureEndFinishes);
-    m_pendingHoldFeatureEndFinishes.clear();
-    for (const std::string& featureId : pending) {
-        if (sessionFor(featureId)) {
-            finishRunSession(featureId, true, QString(), true);
-        }
+
+    auto it = m_pendingHoldFeatureEndFinishes.begin();
+    const std::string featureId = *it;
+    m_pendingHoldFeatureEndFinishes.erase(it);
+
+    if (sessionFor(featureId)) {
+        finishRunSession(featureId, true, QString(), true);
+    }
+
+    if (!m_pendingHoldFeatureEndFinishes.empty()) {
+        m_holdFeatureEndFinishFlushScheduled = true;
+        QTimer::singleShot(0, this, [this]() { flushCoalescedHoldFeatureEndFinishes(); });
+        return;
     }
     scheduleCoalescedHoldEndCleanup();
 }
@@ -4477,9 +4488,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
 #ifdef _WIN32
     if (!ProgramSettings::runWithoutTargetWindow()) {
         const bool skipHeavyForegroundSync =
-            holdHotkeyStart && m_holdBurstForegroundPrepared
-            && m_holdBurstForegroundPrepTimer.isValid()
-            && m_holdBurstForegroundPrepTimer.elapsed() < 50;
+            holdHotkeyStart && m_holdBurstForegroundPrepared && isHoldBurstActive();
         if (!skipHeavyForegroundSync) {
             switchToForegroundLinkedProfileIfNeeded(true);
             syncProfileToForegroundWindow();
@@ -5273,7 +5282,11 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
                                       && session.runningMode == FeatureRunMode::Hold;
 
     if (!repeatIteration) {
-        applySessionCaptureTarget(sessionCaptureTargetTitleW(session));
+        const bool skipCaptureApply =
+            hotkeyHoldFirstStart && m_holdBurstCaptureAppliedToCapture;
+        if (!skipCaptureApply) {
+            applySessionCaptureTarget(sessionCaptureTargetTitleW(session));
+        }
         session.sessionIteration = 0;
         session.hasLastLoopTiming = false;
         session.totalLoopElapsedMs = 0;
@@ -6154,7 +6167,6 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     if (session->engine && session->engine->isRunning()) {
         session->userStopRequested = true;
         session->engine->stop();
-        scheduleCoalescedHoldEndCleanup();
         if (MultiHoldProfiler::isEnabled() && endTimer.isValid()) {
             MultiHoldProfiler::notePhase(QStringLiteral("hold_end_ms"),
                                          endTimer.elapsed(),
@@ -6656,6 +6668,14 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
     }
 
     if (session->userStopRequested) {
+        const bool deferHoldTeardown =
+            session->runningMode == FeatureRunMode::Hold
+            && (m_runSessions.size() > 1 || isHoldBurstActive()
+                || !m_pendingHoldFeatureEndFinishes.empty());
+        if (deferHoldTeardown) {
+            scheduleCoalescedHoldFeatureEndFinish(session->featureId);
+            return;
+        }
         const bool deferUi = m_runSessions.size() > 1;
         finishRunSession(session->featureId, success, message, deferUi);
         if (deferUi) {

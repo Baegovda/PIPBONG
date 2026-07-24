@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.312` (from `project(PIPBONG VERSION 0.8.312)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.313` (from `project(PIPBONG VERSION 0.8.313)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1547,6 +1547,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.313] - 2026-07-24
+
+### Fixed
+
+- Multi-Hold GUI stalls still ~300–360 ms (v0.8.312): hold-burst foreground prep/sync skipped for the whole burst (not only 50 ms); redundant `applySessionCaptureTarget` skipped on subsequent hold launches; hold-end `finishRunSession` and engine-stop teardown drain **one session per event-loop tick**; hold engine `userStopRequested` finish defers to the same queue (`MainWindow`).
 
 ## [0.8.312] - 2026-07-24
 
