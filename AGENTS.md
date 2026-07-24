@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.320` (from `project(PIPBONG VERSION 0.8.320)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.321` (from `project(PIPBONG VERSION 0.8.321)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1550,6 +1550,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.321] - 2026-07-25
+
+### Fixed
+
+- Feature hotkey (toggle + hold) stutter: removed duplicate `syncProfileToForegroundWindow` / `executeProfileSwitch` / `reconcileRunSessionsWithForegroundGate` from `ensureForegroundReadyForFeatureHotkey` and `onHotkeyTriggered`; hotkey `startFeatureRun` skips full profile poll sync and defers foreground-gate reconcile to the next event-loop tick (`MainWindow`).
 
 ## [0.8.320] - 2026-07-24
 

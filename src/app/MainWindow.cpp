@@ -4479,9 +4479,17 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
             holdHotkeyStart && m_holdBurstForegroundPrepared && isHoldBurstActive();
         if (!skipHeavyForegroundSync) {
             switchToForegroundLinkedProfileIfNeeded(true);
-            syncProfileToForegroundWindow();
+            if (!fromHotkey) {
+                syncProfileToForegroundWindow();
+            }
             syncEffectiveTargetWindowTitleToCapture();
-            reconcileRunSessionsWithForegroundGate();
+            if (fromHotkey) {
+                QTimer::singleShot(0, this, [this]() {
+                    reconcileRunSessionsWithForegroundGate();
+                });
+            } else {
+                reconcileRunSessionsWithForegroundGate();
+            }
         }
         const bool foregroundGateActive = runForegroundGateActive(feature);
         const std::wstring captureTitle = resolveRunCaptureTargetTitleW(feature);
@@ -6127,9 +6135,6 @@ void MainWindow::onHotkeyTriggered(const QString& featureId) {
     if (!m_project) {
         return;
     }
-#ifdef _WIN32
-    ensureForegroundReadyForFeatureHotkey();
-#endif
     Feature* feature = m_project->featureById(featureId.toStdString());
     if (!feature || !feature->enabled()) {
         return;
@@ -7841,19 +7846,11 @@ void MainWindow::ensureForegroundReadyForFeatureHotkey() {
         return;
     }
     flushDeferredProfileSwitchIfIdle();
-    syncProfileToForegroundWindow();
-    if (!foregroundProfileMatchesActive()) {
-        const QString fgProfileId = foregroundProfileIdForActiveWindow();
-        if (!fgProfileId.isEmpty() && !m_profileManager->isDefaultProfile(fgProfileId)
-            && fgProfileId != m_profileManager->activeProfileId()) {
-            executeProfileSwitch(fgProfileId, true);
-        }
-    }
+    switchToForegroundLinkedProfileIfNeeded(true);
     if (!adoptForegroundLinkedCaptureIfMatched()) {
         syncEffectiveTargetWindowTitleToCapture();
     }
     maybeResetHotkeyLatchForForeground(foregroundRootHwnd());
-    reconcileRunSessionsWithForegroundGate();
 #else
     Q_UNUSED(this);
 #endif
