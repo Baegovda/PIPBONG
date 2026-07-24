@@ -728,6 +728,19 @@ MainWindow::MainWindow(QWidget* parent)
     m_mouseLockSyncTimer->setInterval(100);
     connect(m_mouseLockSyncTimer, &QTimer::timeout, this, &MainWindow::syncMouseLockPositions);
 
+    m_workerFastRepeatUiFlushTimer = new QTimer(this);
+    m_workerFastRepeatUiFlushTimer->setSingleShot(true);
+    m_workerFastRepeatUiFlushTimer->setInterval(80);
+    connect(m_workerFastRepeatUiFlushTimer,
+            &QTimer::timeout,
+            this,
+            &MainWindow::flushAllPendingWorkerFastRepeatUi);
+
+    m_runUiDebounceTimer = new QTimer(this);
+    m_runUiDebounceTimer->setSingleShot(true);
+    m_runUiDebounceTimer->setInterval(50);
+    connect(m_runUiDebounceTimer, &QTimer::timeout, this, &MainWindow::applyRunUiState);
+
     m_targetWindowCenterPinTimer = new QTimer(this);
     m_targetWindowCenterPinTimer->setInterval(200);
     connect(m_targetWindowCenterPinTimer, &QTimer::timeout, this, &MainWindow::syncTargetWindowCenterPin);
@@ -3060,15 +3073,49 @@ void MainWindow::connectSessionEngine(FeatureRunSession& session) {
             &MainWindow::onPointerFeedbackAtClientPoint);
 }
 
-void MainWindow::updateRunUiState() {
+void MainWindow::updateRunUiState(bool immediate) {
+    const bool debounce = !immediate && m_runSessions.size() >= 2;
+    if (debounce) {
+        if (!m_runUiDebounceTimer->isActive()) {
+            m_runUiDebounceTimer->start();
+        }
+        return;
+    }
+    if (m_runUiDebounceTimer) {
+        m_runUiDebounceTimer->stop();
+    }
+    applyRunUiState();
+}
+
+int MainWindow::concurrentActiveRepeatSessionCount() const {
+    int count = 0;
+    for (const auto& entry : m_runSessions) {
+        if (isFeatureSessionActive(entry.second) && entry.second.repeatSession) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool MainWindow::shouldPublishFastRepeatLoopLog(const FeatureRunSession& session) const {
+    if (concurrentActiveRepeatSessionCount() <= 1) {
+        return true;
+    }
+    return isDisplayedRunningFeature(&session);
+}
+
+void MainWindow::applyRunUiState() {
     if (m_featureList) {
-        bool suppressRunAnimation = false;
-        for (const auto& entry : m_runSessions) {
-            if (entry.second.sessionContext && entry.second.sessionContext->suppressRepeatUi()) {
-                suppressRunAnimation = true;
-                break;
+        bool suppressRunAnimation = m_runSessions.size() >= 2;
+        if (!suppressRunAnimation) {
+            for (const auto& entry : m_runSessions) {
+                if (entry.second.sessionContext && entry.second.sessionContext->suppressRepeatUi()) {
+                    suppressRunAnimation = true;
+                    break;
+                }
             }
         }
+        m_featureList->beginRunStateBatch();
         m_featureList->setRunAnimationLowCpu(suppressRunAnimation);
         m_featureList->setRunningFeatureIds(runningFeatureIds());
         QHash<QString, FeatureRunVisualKind> visualKinds;
@@ -3128,6 +3175,7 @@ void MainWindow::updateRunUiState() {
                 scheduleRestorePersistedTriggerSessions();
             }
         }
+        m_featureList->endRunStateBatch();
     }
 
     Feature* selected = m_featureList ? m_featureList->selectedFeature() : nullptr;
@@ -3239,7 +3287,7 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
         appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
         abandonSessionEngine(*session);
         reconcileMouseLocksFromRunningSessions();
-        updateRunUiState();
+        updateRunUiState(true);
         schedulePruneAbandonedEngines();
         return;
     }
@@ -4254,6 +4302,16 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
     activeSession.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW(feature);
     applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
+    if (m_runSessions.size() >= 2) {
+        for (auto& entry : m_runSessions) {
+            if (entry.second.sessionContext) {
+                entry.second.sessionContext->setSuppressRepeatUi(true);
+            }
+        }
+        if (m_featureList) {
+            m_featureList->setRunAnimationLowCpu(true);
+        }
+    }
     const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
     if (!hotkeyHoldStart) {
         selectRunningFeatureForDisplay(feature);
@@ -4542,6 +4600,45 @@ void MainWindow::accumulateLoopCompletionStats(FeatureRunSession& session,
     session.lastLoopSuccess = success;
 }
 
+void MainWindow::scheduleWorkerFastRepeatUiFlush() {
+    if (!m_workerFastRepeatUiFlushTimer) {
+        return;
+    }
+    if (!m_workerFastRepeatUiFlushTimer->isActive()) {
+        m_workerFastRepeatUiFlushTimer->start();
+    }
+}
+
+void MainWindow::flushAllPendingWorkerFastRepeatUi() {
+    std::vector<std::string> featureIds;
+    featureIds.reserve(m_fastRepeatUiCoalesce.size());
+    for (const auto& entry : m_fastRepeatUiCoalesce) {
+        featureIds.push_back(entry.first);
+    }
+    for (const std::string& featureId : featureIds) {
+        flushWorkerFastRepeatUi(featureId);
+    }
+
+    bool morePending = false;
+    for (const auto& entry : m_fastRepeatUiCoalesce) {
+        if (!entry.second) {
+            continue;
+        }
+        QMutexLocker lock(&entry.second->mutex);
+        if (entry.second->pendingIterations > 0) {
+            morePending = true;
+            break;
+        }
+    }
+    if (morePending) {
+        scheduleWorkerFastRepeatUiFlush();
+    }
+
+    if (concurrentActiveRepeatSessionCount() >= 2) {
+        updateRunUiState();
+    }
+}
+
 void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
     FeatureRunSession* session = sessionFor(featureId);
     if (!session) {
@@ -4591,26 +4688,15 @@ void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
         session->sessionContext->setRunLoopNumber(session->sessionIteration + 1);
     }
 
-    if (m_featureList && session->sessionContext && session->sessionContext->suppressRepeatUi()) {
-        m_featureList->setRunAnimationLowCpu(true);
+    if (session->loopsSinceLastLogPublish > 0) {
+        publishLoopCompletionUi(*session, lastSuccess, lastMessage);
     }
-
-    publishLoopCompletionUi(*session, lastSuccess, lastMessage);
 
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
     if (feature
-        && (session->lockMouseDuringFirstLoopCount > 0 || hasFeatureMouseLock(*session))) {
+        && (session->lockMouseDuringFirstLoopCount > 0 || hasFeatureMouseLock(*session))
+        && concurrentActiveRepeatSessionCount() <= 1) {
         syncEarlyLoopMouseLock(*session);
-    }
-
-    {
-        QMutexLocker lock(&coalesce.mutex);
-        if (coalesce.pendingIterations > 0 && !coalesce.flushScheduled) {
-            coalesce.flushScheduled = true;
-            QTimer::singleShot(0, this, [this, featureId]() {
-                flushWorkerFastRepeatUi(featureId);
-            });
-        }
     }
 }
 
@@ -4651,7 +4737,6 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
             }
             WorkerFastRepeatUiCoalesce& coalesce = fastRepeatUiCoalesceFor(featureId);
             const QString qMessage = QString::fromStdString(message);
-            bool scheduleFlush = false;
             {
                 QMutexLocker lock(&coalesce.mutex);
                 ++coalesce.pendingIterations;
@@ -4659,16 +4744,8 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
                 coalesce.pendingLastSuccess = success;
                 coalesce.pendingLastElapsedMs = elapsedMs;
                 coalesce.pendingLastMessage = qMessage;
-                if (!coalesce.flushScheduled) {
-                    coalesce.flushScheduled = true;
-                    scheduleFlush = true;
-                }
             }
-            if (scheduleFlush) {
-                QTimer::singleShot(0, this, [this, featureId]() {
-                    flushWorkerFastRepeatUi(featureId);
-                });
-            }
+            scheduleWorkerFastRepeatUiFlush();
         };
     callbacks.shouldContinue = [this, featureId, featurePtr, hotkeyMgr, contextWeak](bool success,
                                                                                      bool detectionFailed) {
@@ -4756,10 +4833,14 @@ void MainWindow::publishLoopCompletionUi(FeatureRunSession& session,
         syncLoopTimingToWorkflowEditor(&session);
     }
 
+    if (fastRepeat && !shouldPublishFastRepeatLoopLog(session)) {
+        return;
+    }
+
     if (fastRepeat) {
-        constexpr int kMinLogIntervalMs = 500;
+        const int minLogIntervalMs = concurrentActiveRepeatSessionCount() >= 2 ? 1000 : 500;
         if (session.loopLogPublishTimer.isValid()
-            && session.loopLogPublishTimer.elapsed() < kMinLogIntervalMs) {
+            && session.loopLogPublishTimer.elapsed() < minLogIntervalMs) {
             return;
         }
         session.loopLogPublishTimer.restart();
@@ -5655,25 +5736,20 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
 
     Feature* feature = m_project ? m_project->featureById(id) : nullptr;
     if (feature) {
-        const QString featureName = QString::fromStdString(feature->name());
-        CursorStutterProfiler::recordHoldFeature(featureName, "hold_end");
-        if (featureName == QLatin1String("Q") || featureName == QLatin1String("W")
-            || featureName == QLatin1String("E") || featureName == QLatin1String("R")) {
-            CursorStutterProfiler::flushReport(QStringLiteral("hold_end"));
-        }
+        CursorStutterProfiler::recordHoldFeature(QString::fromStdString(feature->name()), "hold_end");
     }
     releaseHoldHotkeyInputToTarget(*session, feature);
 
     if (session->engine && session->engine->isRunning()) {
         session->userStopRequested = true;
         session->engine->stop();
-        updateRunUiState();
+        updateRunUiState(true);
         return;
     }
 
     session->userStopRequested = false;
     finishRunSession(id, true, QString());
-    updateRunUiState();
+    updateRunUiState(true);
 }
 
 bool MainWindow::shouldSuppressFeatureHotkeyExecution(const Feature* feature) const {

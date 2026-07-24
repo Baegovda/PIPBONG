@@ -1695,6 +1695,32 @@ void FeatureListPanel::restoreColumnLayout(const QSettings& settings, const QStr
     setColumnLayout(layout, false);
     m_restoringColumnLayout = false;
 }
+void FeatureListPanel::requestRunStateViewportUpdate() {
+    if (m_runStateBatchDepth > 0) {
+        m_runStateViewportDirty = true;
+        return;
+    }
+    if (m_list && m_list->viewport()) {
+        m_list->viewport()->update();
+    }
+}
+
+void FeatureListPanel::beginRunStateBatch() {
+    ++m_runStateBatchDepth;
+}
+
+void FeatureListPanel::endRunStateBatch() {
+    if (m_runStateBatchDepth > 0) {
+        --m_runStateBatchDepth;
+    }
+    if (m_runStateBatchDepth == 0 && m_runStateViewportDirty) {
+        m_runStateViewportDirty = false;
+        if (m_list && m_list->viewport()) {
+            m_list->viewport()->update();
+        }
+    }
+}
+
 void FeatureListPanel::setRunAnimationLowCpu(bool lowCpu) {
     if (m_runAnimationLowCpu == lowCpu) {
         return;
@@ -1723,33 +1749,25 @@ void FeatureListPanel::setRunningFeatureIds(const QSet<QString>& featureIds) {
     }
     updateReorderEnabled();
     refreshListMutationPolicy();
-    if (m_list && m_list->viewport()) {
-        m_list->viewport()->update();
-    }
+    requestRunStateViewportUpdate();
 }
 
 void FeatureListPanel::setActiveWorkflowFeatureIds(const QSet<QString>& featureIds) {
     m_activeWorkflowFeatureIds = featureIds;
     refreshListMutationPolicy();
-    if (m_list && m_list->viewport()) {
-        m_list->viewport()->update();
-    }
+    requestRunStateViewportUpdate();
 }
 
 void FeatureListPanel::setFeatureRunVisualKinds(const QHash<QString, FeatureRunVisualKind>& kinds) {
     m_featureRunVisualKinds = kinds;
-    if (m_list && m_list->viewport()) {
-        m_list->viewport()->update();
-    }
+    requestRunStateViewportUpdate();
     refreshListMutationPolicy();
 }
 
 void FeatureListPanel::setTriggerCooldownStates(
     const QHash<QString, FeatureTriggerCooldownState>& states) {
     m_triggerCooldownStates = states;
-    if (m_list && m_list->viewport()) {
-        m_list->viewport()->update();
-    }
+    requestRunStateViewportUpdate();
 }
 
 qint64 FeatureListPanel::triggerCooldownRemainingMs(const QString& featureId) const {

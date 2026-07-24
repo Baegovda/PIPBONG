@@ -134,12 +134,14 @@ protected:
 
             WorkflowRunHooks hooks;
             hooks.onBlockStarted = [this, context](int i, const std::string& summary) {
-                DiagnosticHub::touchWorkerHeartbeat();
-                CrashReporter::noteBreadcrumb(
-                    QStringLiteral("workflow"),
-                    QStringLiteral("block start #%1 %2")
-                        .arg(i + 1)
-                        .arg(QString::fromStdString(summary)));
+                if (!context->suppressRepeatUi()) {
+                    DiagnosticHub::touchWorkerHeartbeat();
+                    CrashReporter::noteBreadcrumb(
+                        QStringLiteral("workflow"),
+                        QStringLiteral("block start #%1 %2")
+                            .arg(i + 1)
+                            .arg(QString::fromStdString(summary)));
+                }
                 if (context->suppressRepeatUi()) {
                     return;
                 }
@@ -154,12 +156,14 @@ protected:
                 Q_UNUSED(message);
                 Q_UNUSED(imageFindMatchDurationMs);
                 Q_UNUSED(imageFindPollAttempts);
-                CrashReporter::noteBreadcrumb(
-                    QStringLiteral("workflow"),
-                    QStringLiteral("block finish #%1 success=%2 attempts=%3")
-                        .arg(i + 1)
-                        .arg(success ? QStringLiteral("yes") : QStringLiteral("no"))
-                        .arg(imageFindPollAttempts));
+                if (!context->suppressRepeatUi()) {
+                    CrashReporter::noteBreadcrumb(
+                        QStringLiteral("workflow"),
+                        QStringLiteral("block finish #%1 success=%2 attempts=%3")
+                            .arg(i + 1)
+                            .arg(success ? QStringLiteral("yes") : QStringLiteral("no"))
+                            .arg(imageFindPollAttempts));
+                }
                 if (context->suppressRepeatUi()) {
                     return;
                 }
@@ -246,7 +250,9 @@ protected:
 
             int workerFastRepeatPass = 0;
             for (;;) {
-                DiagnosticHub::touchWorkerHeartbeat();
+                if (workerFastRepeatPass == 0 || !workerFastRepeat) {
+                    DiagnosticHub::touchWorkerHeartbeat();
+                }
                 if (workerFastRepeatPass > 0) {
                     context->setSuppressRepeatUi(true);
                 }

@@ -102,6 +102,10 @@ public:
 
     void setTriggerCooldownStates(const QHash<QString, FeatureTriggerCooldownState>& states);
 
+    /// Coalesce viewport repaints while applying multiple run-state setters (e.g. MainWindow::applyRunUiState).
+    void beginRunStateBatch();
+    void endRunStateBatch();
+
     FeatureRunVisualKind featureRunVisualKind(const QString& featureId) const;
 
     qint64 triggerCooldownRemainingMs(const QString& featureId) const;
@@ -280,6 +284,9 @@ private:
 
     int m_animPhase = 0;
     bool m_runAnimationLowCpu = false;
+    int m_runStateBatchDepth = 0;
+    bool m_runStateViewportDirty = false;
+    void requestRunStateViewportUpdate();
 
     int m_inlineRenameRow = -1;
 

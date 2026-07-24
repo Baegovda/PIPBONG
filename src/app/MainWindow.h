@@ -186,7 +186,12 @@ private:
     void clampMainVerticalSplitterSizes();
     void setupUiState();
     void connectSignals();
-    void updateRunUiState();
+    void updateRunUiState(bool immediate = false);
+    void applyRunUiState();
+    void scheduleWorkerFastRepeatUiFlush();
+    void flushAllPendingWorkerFastRepeatUi();
+    int concurrentActiveRepeatSessionCount() const;
+    bool shouldPublishFastRepeatLoopLog(const FeatureRunSession& session) const;
     void connectSessionEngine(FeatureRunSession& session);
     FeatureRunSession* sessionFor(const std::string& featureId);
     const FeatureRunSession* sessionFor(const std::string& featureId) const;
@@ -450,6 +455,8 @@ private:
     QTimer* m_statusClearTimer = nullptr;
     QTimer* m_updateCheckTimer = nullptr;
     QTimer* m_mouseLockSyncTimer = nullptr;
+    QTimer* m_workerFastRepeatUiFlushTimer = nullptr;
+    QTimer* m_runUiDebounceTimer = nullptr;
     QTimer* m_targetWindowCenterPinTimer = nullptr;
     QTimer* m_targetWindowDetailRefreshTimer = nullptr;
     int m_lastWorkflowScaleClientWidth = 0;

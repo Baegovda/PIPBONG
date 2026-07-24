@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.297` (from `project(PIPBONG VERSION 0.8.297)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.300` (from `project(PIPBONG VERSION 0.8.300)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1142,16 +1142,16 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 ### 8.14 Cursor stutter profiling (mandatory — mouse jump / QWER diagnosis)
 
-**Status:** Strengthened 2026-07 (v0.8.296). Replaces app-wide `WorkflowRunProfiler` / `app-profile/` (removed v0.8.295).
+**Status:** Strengthened 2026-07 (v0.8.299). Replaces app-wide `WorkflowRunProfiler` / `app-profile/` (removed v0.8.295). **Sampler is opt-in** — default OFF to avoid UI lag.
 
 | Layer | Role |
 | ----- | ---- |
-| `CursorStutterProfiler` | **Always-on** 4 ms `GetCursorPos` sampler; jumps ≥8 px, micro-jumps 3–7 px, snap-back, sampler overrun; verbose: `SetCursorPos`, `ClipCursor`, hook snaps, keyboard-hook timing, QWER keys |
-| Verbose enable | `program/cursorStutterProfiling` (**default ON**) or env `PIPBONG_CURSOR_STUTTER_PROFILE=1` |
+| `CursorStutterProfiler` | **Opt-in** 4 ms `GetCursorPos` sampler when `program/cursorStutterProfiling` ON; jumps ≥8 px (large sampler moves ≥24 px logged), micro-jumps counted only; snap-back, sampler overrun; verbose: `SetCursorPos`, `ClipCursor`, hook snaps, keyboard-hook timing, QWER keys |
+| Verbose enable | `program/cursorStutterProfiling` (**default OFF**) or env `PIPBONG_CURSOR_STUTTER_PROFILE=1` |
 | `hold_feature` | Hold-mode feature name (`Q`/`W`/`E`/`R` LOL profile) on hold_start/hold_end (`MainWindow`) |
 | `foreground_focus` | Win32 `GetForegroundWindow` on HWND change (title, hwnd, exe); appended to jump/hold/hook events |
 | Output | **Repo** `cursor-stutter/latest.md` + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/cursor-stutter/latest.md`** fallback |
-| Flush | App shutdown; periodic 30 s when verbose; Hold Q/W/E/R `hold_end` |
+| Flush | App shutdown only (async write); no periodic or Hold-end flush |
 | Repo root | Walk up from exe for `CMakeLists.txt` (`PIPBONG`); env `PIPBONG_REPO_ROOT` |
 
 **User → AI workflow:** Run PIPBONG → reproduce Hold Q/W/E/R or cursor jump → exit (or release Hold) → read **`cursor-stutter/latest.md`** — confirm `sampler_ticks` > 0, then **Auto diagnosis** (do **not** ask user for workflow blocks).
@@ -1456,6 +1456,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.300] - 2026-07-24
+
+### Fixed
+
+- Concurrent Hold/repeat feature sessions (e.g. LOL Q/W/E/R held together) no longer stall the PIPBONG UI: worker fast-repeat UI flushes are batched on an 80 ms timer across all sessions; `updateRunUiState` debounces when two or more sessions are active; feature-list run-state updates repaint once per batch; prism row animation pauses with multiple concurrent sessions; loop logs for non-displayed features are suppressed/throttled during multi-session fast repeat; workflow worker skips crash breadcrumbs and heartbeat on suppressed repeat iterations (`MainWindow`, `FeatureListPanel`, `WorkflowEngine`).
+
+## [0.8.299] - 2026-07-24
+
+### Fixed
+
+- **커서 스터터 진단** caused severe UI lag / Not Responding: sampler no longer runs by default (`program/cursorStutterProfiling` default **OFF**); removed Hold Q/W/E/R `hold_end` and periodic 30 s disk flush; report write is async; foreground window cached (no per-jump `OpenProcess`); sampler micro-jumps count-only; sampler cursor jumps <24 px count-only unless mouse lock active (`CursorStutterProfiler`, `MainWindow`, `ProgramSettings`, `main.cpp`).
+
+## [0.8.298] - 2026-07-24
+
+### Removed
+
+- Obsolete **`app-profile/`** folder and local `latest.md` / `trace.json` logs (legacy workflow profiler output, superseded by **`cursor-stutter/`**); dropped `.gitignore` entries for `app-profile/` and `workflow-profile/`.
 
 ## [0.8.297] - 2026-07-24
 
