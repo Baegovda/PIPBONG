@@ -54,6 +54,8 @@ When the user asks to check `app-spike/latest.md` (or pastes a session log), rep
 
 Cursor rule: `.cursor/rules/brief-korean-replies.mdc`.
 
+**Subsystem bugs/spikes:** add narrow opt-in profiling for the failing area in the **same task** — [§8.16](../../AGENTS.md#816-targeted-profiling-on-bugs-and-spikes-mandatory--same-task), `.cursor/rules/targeted-profiling-on-bugs.mdc`.
+
 ## Anti-patterns
 
 - Reintroducing cursor-position sampler / per-hook instrumentation for app lag

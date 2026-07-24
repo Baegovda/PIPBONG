@@ -37,6 +37,7 @@ alwaysApply: true
 ## References
 
 - **Single master document:** [AGENTS.md](../../AGENTS.md) — handover, changelog, build, JSON format, governance, patterns
+- **Targeted profiling on bugs/spikes:** `.cursor/rules/targeted-profiling-on-bugs.mdc` — §8.16
 - Changelog + version bump + backup/release: `.cursor/rules/changelog-versioning.mdc`
 - Incremental / release build: `.cursor/rules/build-policy.mdc`
 - IDE build workflow (Ctrl+Shift+B, F5 Build and Run, empty launch.json, CMake Tools off): `.cursor/rules/ide-build-workflow.mdc`

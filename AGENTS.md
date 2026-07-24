@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.303` (from `project(PIPBONG VERSION 0.8.303)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.304` (from `project(PIPBONG VERSION 0.8.304)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1159,6 +1159,48 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 Cursor rule: `.cursor/rules/app-spike-profiling.mdc`.
 
+**Narrow / subsystem profilers:** When a bug or spike is tied to a **specific area**, add targeted opt-in profiling for **that area** in the **same task** — see [§8.16](#816-targeted-profiling-on-bugs-and-spikes-mandatory--same-task) and `.cursor/rules/targeted-profiling-on-bugs.mdc`.
+
+### 8.16 Targeted profiling on bugs and spikes (mandatory — same task)
+
+**Status:** Added 2026-07-24 (v0.8.304). User policy: when a problem is found in a **particular subsystem**, the agent **proactively builds profiling for that subsystem** — not only the broad `AppSpikeProfiler`.
+
+#### Trigger
+
+- User reports lag, spike, freeze, wrong behavior, or regression in a **named area** (UI, 홀드, 단축키, 캡처, 프로필 전환, …).
+- OR session logs (`app-spike/latest.md`, crash `report.txt`, CPU 감시) show repeated events/crumbs for one subsystem.
+
+#### Mandatory same-task workflow
+
+| Step | Requirement |
+| ---- | ------------- |
+| 1 | Classify **subsystem** (one primary owner: `MainWindow` UI, `HotkeyManager`, `ImageFindBlock`, `ScreenCapture`, `ProfileManager`, …) |
+| 2 | Add **opt-in** measurement scoped to that path (`program/<area>Profiling` or env `PIPBONG_<AREA>_PROFILE=1` when settings UI is justified) — **default OFF** |
+| 3 | Emit **tagged** counters/events (e.g. `hotkey_*`, `imagefind_poll`, `profile_switch`) into `app-spike/latest.md` and/or `diagnostics/<subsystem>/latest.md` (+ AppData mirror) |
+| 4 | Report includes **Auto diagnosis** (Korean) so the next agent/user needs no workflow interview |
+| 5 | Update **§8.16** table below when adding a new subsystem profiler; add `scripts/analyze-*.ps1` when helpful |
+| 6 | **Measure → fix → re-measure** on multi-attempt perf bugs; do not close with guess-only patches |
+
+#### Layering
+
+| Layer | Role |
+| ----- | ---- |
+| §8.14 `AppSpikeProfiler` | Session-wide GUI pulse gaps + CPU spikes |
+| §8.16 subsystem profiler | **Narrow** repro for the failing code path |
+| `CrashReporter` / `DiagnosticHub` | Always-light breadcrumbs — complement, not replace opt-in profilers |
+
+#### Subsystem catalog (extend when shipping new profilers)
+
+| Subsystem | Symptom examples | Profiler hook (examples) | Report / tags |
+| --------- | ---------------- | ------------------------ | ------------- |
+| UI / multi-hold | PIPBONG 창 버벅임, 홀드 2+ | `AppSpikeProfiler` crumbs + timers on `applyRunUiState`, fast-repeat flush | `gui_stall_*`, `sessions=` |
+| Hotkey / foreground | Alt+Tab 후 단축키 죽음 | Opt-in hook latch + handler timing | `hotkey_*` |
+| ImageFind / capture | 매칭 느림, 검은 화면 | Per-poll capture+match ms | `imagefind_poll` |
+| Profile switch | 전환 시 끊김 | `switchToProfile` phase timers | `profile_switch` |
+| Overlay / template pick | 캡처 실패, 커서 | BitBlt + teardown order ms | `overlay_pick` |
+
+Cursor rule: `.cursor/rules/targeted-profiling-on-bugs.mdc`.
+
 ### 8.13 Program settings dialog (mandatory — grouped + tooltips)
 
 **Status:** Verified working on Windows (2026-07, v0.8.245). **프로그램 설정** (`ProgramSettingsDialog`) must stay compact: options in category **QGroupBox** sections; detailed help on **tooltips** only — no inline `HintLabel` under each row.
@@ -1335,6 +1377,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 
 - **2026-07-21:** Directs work in **Korean chat only**; expects the codebase to stay **100% AI-maintained** (implement, document, changelog via agent).
 - **2026-07-24:** Wants **chat replies in plain Korean, as short as possible** — no jargon, no long tables, no class/file names unless the user asks; diagnosis/log reports default to a **few bullets** (결론 → 언제 → 심각도); full technical detail stays in `AGENTS.md` / rules only.
+- **2026-07-24:** When a **bug or spike** points at a specific subsystem, expects the agent to **add targeted opt-in profiling for that area in the same task** (measure → fix → re-measure) — not only broad `AppSpikeProfiler`; document in §8.16 + `.cursor/rules/targeted-profiling-on-bugs.mdc`.
 - **2026-07-21:** Prefers the agent to **execute end-to-end** — scripts, rules, handover included — not hand the user a checklist of “copy this file / paste step 3”.
 - **2026-07-21:** When asking for **prompts or policy packs** for other projects, wants **one single copy block** (통째 복붙) — not split instructions where the user must paste multiple follow-up pieces.
 - **2026-07-21:** For prompt-only requests, deliver **the prompt block only** — avoid wrapping meta-explanation unless asked.
@@ -1456,6 +1499,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.304] - 2026-07-24
+
+### Added
+
+- **Targeted profiling on bugs/spikes** (§8.16): when a lag/bug points at a specific subsystem, agents must add opt-in narrow profiling for that area in the **same task** (measure → fix → re-measure); catalog + layering with §8.14 `AppSpikeProfiler` (`.cursor/rules/targeted-profiling-on-bugs.mdc`, AGENTS.md §9.5).
 
 ## [0.8.303] - 2026-07-24
 
@@ -5560,6 +5609,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 - **프로그램 설정:** grouped `QGroupBox` sections; option detail on **tooltips** only — no inline `HintLabel` per row.
 - Full rules in [§8.13](#813-program-settings-dialog-mandatory--grouped--tooltips).
+
+### `targeted-profiling-on-bugs.mdc`
+
+- On bug/spike in a **specific subsystem**, add **opt-in targeted profiling** same task (measure → fix → re-measure).
+- Full rules: [§8.16](#816-targeted-profiling-on-bugs-and-spikes-mandatory--same-task).
 
 ### `brief-korean-replies.mdc`
 
