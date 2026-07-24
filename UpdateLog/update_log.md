@@ -19,6 +19,7 @@
 
 **추가**
 
+- (개발용) **프로필 전환 진단**을 **프로그램 설정 → 진단**에서 켤 수 있습니다. 수동·자동 전환마다 단계별 ms와 가장 느린 구간을 `profile-switch/latest.md`에 기록합니다.
 - (개발용) **프로필 전환 진단**: `program/profileSwitchProfiling` 또는 환경 변수 `PIPBONG_PROFILE_SWITCH_PROFILE=1` — 전환 단계별 ms·핑퐁 횟수를 `profile-switch/latest.md`에 기록. `scripts/analyze-profile-switch.ps1`로 확인.
 
 - Q/W/E/R처럼 **홀드** 기능을 **두 개 이상** 동시에 켠 채 오래 쓸 때 PIPBONG이 다시 느려지던 문제를 추가로 줄였습니다. 동시 실행 중에는 반복 루프 실행 로그를 아예 쓰지 않고, 화면 갱신 주기도 세션 수에 따라 늘립니다.

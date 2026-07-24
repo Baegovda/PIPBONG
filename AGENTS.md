@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.305` (from `project(PIPBONG VERSION 0.8.305)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.306` (from `project(PIPBONG VERSION 0.8.306)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1520,6 +1520,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.306] - 2026-07-24
+
+### Added
+
+- **`ProfileSwitchProfiler`** manual/auto mode (`beginSwitch(..., mode)`), sub-phase timers on profile load (`load_settings`, `json_deserialize`, `workflow_refresh`, `sync_hotkeys`, …), Korean **Auto diagnosis** with slowest-phase hint; repo `profile-switch/latest.md` mirror + AppData backup; **프로그램 설정 → 진단 → 프로필 전환 진단** toggle (`ProfileSwitchProfiler`, `MainWindow`, `ProgramSettingsDialog`, `scripts/analyze-profile-switch.ps1`).
+
+### Fixed
+
+- Profile switch pipeline now restores persisted trigger sessions after clearing `m_profileSwitchPipelineActive` (was no-op while the pipeline flag was still set) (`MainWindow::completeProfileSwitchPipeline`).
 
 ## [0.8.305] - 2026-07-24
 

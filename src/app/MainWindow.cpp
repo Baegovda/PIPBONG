@@ -627,6 +627,38 @@ void configureBottomAuxiliaryToggleButton(QPushButton* button) {
     button->setFocusPolicy(Qt::NoFocus);
 }
 
+bool profileSwitchProfilingActive() {
+    return ProfileSwitchProfiler::isSwitchInProgress();
+}
+
+void noteSwitchPhase(const char* phase, QElapsedTimer& timer) {
+    if (!profileSwitchProfilingActive()) {
+        return;
+    }
+    ProfileSwitchProfiler::notePhase(QString::fromUtf8(phase), timer.elapsed());
+    timer.restart();
+}
+
+class SwitchPhaseScope {
+public:
+    explicit SwitchPhaseScope(const char* phase) : m_phase(phase) {
+        if (profileSwitchProfilingActive()) {
+            m_active = true;
+            m_timer.start();
+        }
+    }
+    ~SwitchPhaseScope() {
+        if (m_active) {
+            ProfileSwitchProfiler::notePhase(QString::fromUtf8(m_phase), m_timer.elapsed());
+        }
+    }
+
+private:
+    const char* m_phase = nullptr;
+    QElapsedTimer m_timer;
+    bool m_active = false;
+};
+
 int featureIndexById(const Project& project, const std::string& featureId) {
     const auto& features = project.features();
     for (int i = 0; i < static_cast<int>(features.size()); ++i) {
@@ -6541,8 +6573,14 @@ void MainWindow::loadActiveProfile(bool quiet, bool scheduleTriggerRestore) {
         return;
     }
 
+    QElapsedTimer phaseTimer;
+    if (profileSwitchProfilingActive()) {
+        phaseTimer.start();
+    }
+
     const QString profileId = m_profileManager->activeProfileId();
     ProgramSettings::applyProfileSettings(m_profileManager->loadSettings(profileId));
+    noteSwitchPhase("load_settings", phaseTimer);
     m_lastPersistedProfileSettings = ProgramSettings::profileSettings();
     m_lastPersistedProfileSettings.linkedTargetProcessPath =
         m_profileManager->linkedTargetProcessPath(profileId);
@@ -6563,6 +6601,7 @@ void MainWindow::loadActiveProfile(bool quiet, bool scheduleTriggerRestore) {
             ProgramSettings::pinSubTargetWindowToScreenCenter());
     }
     applyTargetWindowCenterPin();
+    noteSwitchPhase("center_pin_apply", phaseTimer);
 
     const QString projectPath = m_profileManager->activeProjectPath();
     Application::instance()->setProjectDirectory(m_profileManager->activeProjectDirectory());
@@ -6761,9 +6800,8 @@ void MainWindow::abortProfileSwitchPipeline(bool resyncSelection) {
 }
 
 void MainWindow::completeProfileSwitchPipeline(bool automatic) {
+    ProfileSwitchProfiler::notePhase(QStringLiteral("run_warmup_scheduled"));
     scheduleRunWarmup();
-    restorePersistedTriggerSessions();
-    ProfileSwitchProfiler::notePhase(QStringLiteral("triggers_restored"));
 
     if (!automatic) {
         const ProfileManager::Profile* profile = m_profileManager->activeProfile();
@@ -6773,10 +6811,14 @@ void MainWindow::completeProfileSwitchPipeline(bool automatic) {
         showTransientStatus(tr("프로필 전환: %1").arg(name), 1200);
 #ifdef _WIN32
         if (ProgramSettings::focusTargetWindowOnProfileSelect() && !isActiveDefaultProfile()) {
+            QElapsedTimer activationTimer;
+            activationTimer.start();
             syncTargetWindowTitleToCapture();
             if (ScreenCapture::findTargetWindow()) {
                 ScreenCapture::activateTargetWindow();
             }
+            ProfileSwitchProfiler::notePhase(QStringLiteral("target_activation"),
+                                             activationTimer.elapsed());
         }
 #endif
     }
@@ -6786,7 +6828,14 @@ void MainWindow::completeProfileSwitchPipeline(bool automatic) {
     m_profileSwitchPipelineActive = false;
     m_deferTargetDetailsProfileRefresh = false;
     setProfileSwitchUiLocked(false);
+
+    QElapsedTimer triggerPhase;
+    triggerPhase.start();
+    restorePersistedTriggerSessions();
+    ProfileSwitchProfiler::notePhase(QStringLiteral("triggers_restored"), triggerPhase.elapsed());
+
     schedulePostProfileSwitchForegroundReconcile();
+    ProfileSwitchProfiler::notePhase(QStringLiteral("pipeline_complete"));
     ProfileSwitchProfiler::flushReport(QStringLiteral("committed"));
 
     const QString deferred = m_deferredProfileSwitchId;
@@ -6827,7 +6876,8 @@ bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) 
         m_autoProfileSwitchStabilityTimer->stop();
     }
 
-    ProfileSwitchProfiler::beginSwitch(profileId);
+    ProfileSwitchProfiler::beginSwitch(profileId, automatic ? QStringLiteral("auto")
+                                                            : QStringLiteral("manual"));
     CrashReporter::noteBreadcrumb(QStringLiteral("profile"),
                                   QStringLiteral("switch committed %1%2")
                                       .arg(profileId,
@@ -6847,12 +6897,17 @@ bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) 
             }
         }
     }
+    ProfileSwitchProfiler::notePhase(QStringLiteral("ui_selection"), phaseTimer.restart());
 
     if (!maybeSave(true)) {
         abortProfileSwitchPipeline(true);
         return false;
     }
+    ProfileSwitchProfiler::notePhase(QStringLiteral("maybe_save"), phaseTimer.restart());
+
     saveActiveProfileSettings();
+    ProfileSwitchProfiler::notePhase(QStringLiteral("save_profile_settings"), phaseTimer.restart());
+
     stopAllSessionsForProfileSwitch();
     ProfileSwitchProfiler::notePhase(QStringLiteral("sessions_stopped"), phaseTimer.restart());
 
@@ -6887,8 +6942,11 @@ bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) 
             m_lastProfileLinkedForegroundIsSub = false;
         }
 #endif
+        QElapsedTimer postSync;
+        postSync.start();
         syncMemoDialogProfile();
         syncProfileListSelection();
+        ProfileSwitchProfiler::notePhase(QStringLiteral("post_load_sync"), postSync.elapsed());
 
         QTimer::singleShot(0, this, [this, automatic]() {
             completeProfileSwitchPipeline(automatic);
@@ -7293,12 +7351,20 @@ void MainWindow::reconcileRunSessionsWithForegroundGate() {
 void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
     QString projectDirectory;
     std::unique_ptr<Project> loaded;
+    QElapsedTimer phaseTimer;
+    if (profileSwitchProfilingActive()) {
+        phaseTimer.start();
+    }
     if (m_profileManager) {
         loaded = m_profileManager->cloneCachedProject(m_profileManager->activeProfileId(), path,
                                                      &projectDirectory);
     }
+    if (loaded) {
+        noteSwitchPhase("project_cache_hit", phaseTimer);
+    }
     if (!loaded) {
         loaded = JsonSerializer::loadFromFile(path, &projectDirectory);
+        noteSwitchPhase("json_deserialize", phaseTimer);
         if (!loaded) {
             QMessageBox::critical(this, tr("프로젝트 열기"), tr("프로젝트를 불러오지 못했습니다."));
             return;
@@ -7316,7 +7382,10 @@ void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
         projectDirectory = m_profileManager->activeProjectDirectory();
     }
 
-    prepareProjectUnload();
+    {
+        SwitchPhaseScope unloadScope("prepare_unload");
+        prepareProjectUnload();
+    }
     m_project = std::move(loaded);
     m_projectFilePath = path;
     if (!projectDirectory.isEmpty()) {
@@ -7326,22 +7395,34 @@ void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
     ScreenCapture::setTargetWindow(nullptr);
     syncTargetWindowTitleToCapture();
 
-    m_featureList->setProject(m_project.get());
-    if (m_profileManager) {
-        m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
+    {
+        SwitchPhaseScope bindScope("feature_list_bind");
+        m_featureList->setProject(m_project.get());
+        if (m_profileManager) {
+            m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
+        }
+        restoreSelectedFeaturePreference();
     }
-    restoreSelectedFeaturePreference();
-    refreshWorkflowEditor();
+    {
+        SwitchPhaseScope workflowScope("workflow_refresh");
+        refreshWorkflowEditor();
+    }
 
     m_modified = false;
     updateWindowTitle();
-    syncHotkeys();
-    if (m_deferTargetDetailsProfileRefresh) {
-        QTimer::singleShot(0, this, &MainWindow::updateTargetWindowDetails);
-    } else {
-        updateTargetWindowDetails();
+    {
+        SwitchPhaseScope hotkeyScope("sync_hotkeys");
+        syncHotkeys();
     }
-    updateTargetWindowControlsForActiveProfile();
+    {
+        SwitchPhaseScope targetScope("target_details");
+        if (m_deferTargetDetailsProfileRefresh) {
+            QTimer::singleShot(0, this, &MainWindow::updateTargetWindowDetails);
+        } else {
+            updateTargetWindowDetails();
+        }
+        updateTargetWindowControlsForActiveProfile();
+    }
     if (m_profileManager) {
         m_profileManager->setProfileTargetWindowTitleInMemory(
             m_profileManager->activeProfileId(),

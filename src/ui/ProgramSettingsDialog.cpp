@@ -325,6 +325,16 @@ void ProgramSettingsDialog::setupUi() {
            "환경 변수 PIPBONG_APP_SPIKE_PROFILE=1 로도 켤 수 있습니다."),
         ProgramSettings::appSpikeProfiling());
 
+    m_profileSwitchProfilingCheck = addGroupCheck(
+        diagnosticsLayout,
+        diagnosticsGroup,
+        tr("프로필 전환 진단"),
+        tr("프로필 수동·자동 전환 시 단계별 소요 시간(ms)을 기록합니다(기본 꺼짐). "
+           "전환 직후 profile-switch\\latest.md 에 저장(저장소 미러 + AppData). "
+           "수동 전환 렉 재현 시 이 옵션만 켜고 프로필을 2~3회 바꾼 뒤 보고서를 공유하세요. "
+           "환경 변수 PIPBONG_PROFILE_SWITCH_PROFILE=1 로도 켤 수 있습니다."),
+        ProgramSettings::profileSwitchProfiling());
+
     layout->addStretch();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -343,6 +353,7 @@ void ProgramSettingsDialog::setupUi() {
         ProgramSettings::setLogMaxLines(m_logMaxLinesSpin->value());
         ProgramSettings::setAppSpikeProfiling(m_appSpikeProfilingCheck->isChecked());
         AppSpikeProfiler::reloadFromSettings();
+        ProgramSettings::setProfileSwitchProfiling(m_profileSwitchProfilingCheck->isChecked());
         ProgramSettings::setImageFindCaptureMode(
             static_cast<ProgramSettings::ImageFindCaptureMode>(
                 m_imageFindCaptureModeCombo->currentData().toInt()));
