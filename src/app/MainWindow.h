@@ -48,6 +48,7 @@ class WorkflowEditorPanel;
 class WorkflowEngine;
 class Project;
 class HotkeyManager;
+class HoldKeyTapMultiplexer;
 class Feature;
 class FeatureLibraryManager;
 class UiStateManager;
@@ -137,7 +138,6 @@ private slots:
     void onEngineLog(const QString& message);
     void onEngineStarted();
     void onEngineFinished(bool success, const QString& message);
-    void onHoldKeyTapFinished(bool success, const QString& message);
     void onBlockStarted(int index, const QString& summary);
     void onBlockProgress(int index, BlockProgressKind kind);
     void onBlockMatchResult(int index,
@@ -222,7 +222,7 @@ private:
     FeatureRunSession* sessionFor(const std::string& featureId);
     const FeatureRunSession* sessionFor(const std::string& featureId) const;
     FeatureRunSession* sessionForEngine(const QObject* sender);
-    FeatureRunSession* sessionForHoldKeyTapRunner(const QObject* sender);
+    void onHoldKeyTapLaneFinished(const QString& featureId, bool success, const QString& message);
     bool isFeatureRunning(const std::string& featureId) const;
     bool isFeatureInActiveWorkflowRun(const std::string& featureId) const;
     bool hasAnyRunningSession() const;
@@ -512,6 +512,7 @@ private:
     CustomTitleBar* m_titleBar = nullptr;
 
     HotkeyManager* m_hotkeyManager = nullptr;
+    HoldKeyTapMultiplexer* m_holdKeyTapMux = nullptr;
     UiStateManager* m_uiState = nullptr;
     std::unique_ptr<FeatureLibraryManager> m_featureLibraryManager;
     std::unique_ptr<Feature> m_libraryPreviewFeature;

@@ -2,7 +2,6 @@
 
 #include "app/SessionRunPolicy.h"
 #include "core/workflow/ExecutionContext.h"
-#include "core/workflow/HoldKeyTapRunner.h"
 #include "core/workflow/WorkflowEngine.h"
 #include "model/FeatureRunMode.h"
 #include "ui/BlockListWidget.h"
@@ -21,8 +20,8 @@ struct TriggerPreemptedSession {
 struct FeatureRunSession {
     std::string featureId;
     std::unique_ptr<WorkflowEngine> engine;
-    std::unique_ptr<HoldKeyTapRunner> holdKeyTapRunner;
     bool usesHoldKeyTapFastPath = false;
+    bool holdKeyTapLaneActive = false;
     FeatureRunMode runningMode = FeatureRunMode::RepeatCount;
     int repeatRemaining = 0;
     bool repeatSession = false;

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.323` (from `project(PIPBONG VERSION 0.8.323)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.324` (from `project(PIPBONG VERSION 0.8.324)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1551,6 +1551,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Removed
 
+## [0.8.324] - 2026-07-25
+
+### Changed
+
+- Multi-hold architecture rewrite: **`HoldKeyTapMultiplexer`** — one shared worker thread multiplexes all hold-mode KeyPress Tap lanes (Q/W/E/R macros) instead of per-session `std::thread` runners; fast-path sessions no longer allocate a `WorkflowEngine` / `QThread` (`HoldKeyTapMultiplexer`, `MainWindow`, `FeatureRunSession`).
+- Hold hotkey burst: coalesced feature **start** and **end** flush processes all pending IDs in one event-loop tick (not one-per-tick `singleShot` chains); `applyRunUiState` defers heavy prune/trigger-restore work and stops debounce churn during burst (`MainWindow::flushCoalescedHoldFeatureStarts`, `flushCoalescedHoldFeatureEndFinishes`, `applyRunUiState`).
+- Worker fast-repeat UI: multi-session runs coalesce iteration stats via timer only — no per-loop `QMetaObject::invokeMethod` to the GUI thread (`MainWindow::configureWorkerFastRepeat`).
+
+### Removed
+
+- Per-session **`HoldKeyTapRunner`** (`std::thread` per Q/W/E/R hold macro) — superseded by `HoldKeyTapMultiplexer`.
+
 ## [0.8.323] - 2026-07-25
 
 ### Fixed
@@ -1620,7 +1632,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
-- **`HoldKeyTapRunner`**: headless hold-mode fast path for single-block KeyPress Tap workflows (Q/W/E/R hold macros) — bypasses `WorkflowEngine` / per-loop Qt block signals during multi-hold sessions (`HoldKeyTapRunner`, `MainWindow::launchHoldKeyTapRun`).
+- **`HoldKeyTapMultiplexer`**: single worker thread multiplexing all hold-mode KeyPress Tap lanes (Q/W/E/R hold macros) — replaces per-session `HoldKeyTapRunner` threads and skips `WorkflowEngine` for fast-path hold sessions (`HoldKeyTapMultiplexer`, `MainWindow::launchHoldKeyTapRun`).
 
 ### Fixed
 

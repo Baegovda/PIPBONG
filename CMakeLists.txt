@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.323 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.324 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -69,7 +69,7 @@ set(PIPBONG_SOURCES
     src/core/workflow/BlockFactory.cpp
     src/core/workflow/Workflow.cpp
     src/core/workflow/WorkflowEngine.cpp
-    src/core/workflow/HoldKeyTapRunner.cpp
+    src/core/workflow/HoldKeyTapMultiplexer.cpp
     src/core/workflow/WorkflowRunner.cpp
     src/core/workflow/WorkflowLoopRegion.cpp
     src/core/workflow/LoopExitCondition.cpp
