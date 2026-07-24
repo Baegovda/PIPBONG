@@ -69,6 +69,8 @@ private:
         HotkeyBinding binding;
         bool allowExtraModifiers = false;
         bool keyDown = false;
+        /// Incremented to cancel a pending deferred hold-end recheck (multi-key rollover).
+        quint32 pendingHoldEndGeneration = 0;
     };
 
     struct ToggleBindingEntry {
@@ -90,6 +92,11 @@ private:
     void emitHotkeyTriggered(const std::string& featureId);
     void emitHotkeyHoldStarted(const std::string& featureId);
     void emitHotkeyHoldEnded(const std::string& featureId);
+    HoldBindingEntry* holdBindingFor(const std::string& featureId);
+    void scheduleDeferredKeyboardHoldEnd(HoldBindingEntry& entry);
+    void recheckDeferredKeyboardHoldEnd(const std::string& featureId,
+                                        quint32 generation,
+                                        int attempt);
 #ifdef _WIN32
     void installKeyboardHook();
     void uninstallKeyboardHook();

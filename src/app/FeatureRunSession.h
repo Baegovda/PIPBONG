@@ -38,6 +38,8 @@ struct FeatureRunSession {
     std::shared_ptr<ExecutionContext> sessionContext;
     int sessionIteration = 0;
     bool hotkeyLaunchedSession = false;
+    /// Hold-key-tap fast path: coalesced start UI runs once per session, not every runner relaunch.
+    bool holdKeyTapStartUiDone = false;
     /// Skip the first workflow/trigger target-window activation (profile restore without focus steal).
     bool skipTargetActivationOnStart = false;
     bool pointerVisualFeedback = true;

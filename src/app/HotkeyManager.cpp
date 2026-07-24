@@ -508,6 +508,47 @@ void HotkeyManager::emitHotkeyHoldStarted(const std::string& featureId) {
         Qt::QueuedConnection);
 }
 
+HotkeyManager::HoldBindingEntry* HotkeyManager::holdBindingFor(const std::string& featureId) {
+    for (HoldBindingEntry& entry : m_holdBindings) {
+        if (entry.featureId == featureId) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+void HotkeyManager::scheduleDeferredKeyboardHoldEnd(HoldBindingEntry& entry) {
+    ++entry.pendingHoldEndGeneration;
+    const quint32 generation = entry.pendingHoldEndGeneration;
+    const std::string featureId = entry.featureId;
+    QTimer::singleShot(32, this, [this, featureId, generation]() {
+        recheckDeferredKeyboardHoldEnd(featureId, generation, 0);
+    });
+}
+
+void HotkeyManager::recheckDeferredKeyboardHoldEnd(const std::string& featureId,
+                                                   quint32 generation,
+                                                   int attempt) {
+    HoldBindingEntry* entry = holdBindingFor(featureId);
+    if (!entry || entry->pendingHoldEndGeneration != generation || !entry->keyDown) {
+        return;
+    }
+    if (entry->binding.isPhysicallyDown(entry->allowExtraModifiers)) {
+        entry->pendingHoldEndGeneration = 0;
+        return;
+    }
+    constexpr int kMaxAttempts = 8;
+    if (attempt + 1 < kMaxAttempts) {
+        QTimer::singleShot(32, this, [this, featureId, generation, attempt]() {
+            recheckDeferredKeyboardHoldEnd(featureId, generation, attempt + 1);
+        });
+        return;
+    }
+    entry->keyDown = false;
+    entry->pendingHoldEndGeneration = 0;
+    emitHotkeyHoldEnded(featureId);
+}
+
 void HotkeyManager::emitHotkeyHoldEnded(const std::string& featureId) {
     const QString qFeatureId = QString::fromStdString(featureId);
     QMetaObject::invokeMethod(
@@ -611,6 +652,7 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
                 continue;
             }
             swallow = true;
+            ++entry.pendingHoldEndGeneration;
             if (!entry.keyDown) {
                 entry.keyDown = true;
                 emitHotkeyHoldStarted(entry.featureId);
@@ -626,8 +668,7 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
             if (entry.binding.isPhysicallyDown(entry.allowExtraModifiers)) {
                 continue;
             }
-            entry.keyDown = false;
-            emitHotkeyHoldEnded(entry.featureId);
+            scheduleDeferredKeyboardHoldEnd(entry);
         }
     }
 

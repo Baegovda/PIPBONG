@@ -5478,8 +5478,6 @@ void MainWindow::launchHoldKeyTapRun(FeatureRunSession& session, Feature* featur
             .arg(QString::fromStdString(feature->name()))
             .arg(virtualKey));
 
-    const bool hotkeyHoldFirstStart = session.hotkeyLaunchedSession;
-
     if (!session.sessionContext) {
         session.sessionContext = std::make_shared<ExecutionContext>();
     }
@@ -5488,12 +5486,15 @@ void MainWindow::launchHoldKeyTapRun(FeatureRunSession& session, Feature* featur
     session.sessionContext->setSuppressRepeatUi(true);
     syncUserInputInterruptForSession(session, feature);
 
-    if (hotkeyHoldFirstStart) {
+    const bool needHoldTapStartUi =
+        session.hotkeyLaunchedSession && !session.holdKeyTapStartUiDone;
+    if (needHoldTapStartUi) {
+        session.holdKeyTapStartUiDone = true;
         const std::string featureId = session.featureId;
         QTimer::singleShot(0, this, [this, featureId]() {
             scheduleCoalescedHoldStartUi(featureId);
         });
-    } else {
+    } else if (!session.hotkeyLaunchedSession) {
         selectRunningFeatureForDisplay(feature);
         if (shouldLogRunDetails(session)) {
             appendSessionLog(session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
@@ -7538,6 +7539,9 @@ void MainWindow::requestAutoProfileSwitch(const QString& targetProfileId,
                                            int stabilityMs,
                                            int minIntervalMs) {
     if (!m_profileManager || targetProfileId.isEmpty()) {
+        return;
+    }
+    if (concurrentActiveRepeatSessionCount() >= 2) {
         return;
     }
     if (targetProfileId == m_profileManager->activeProfileId()) {
