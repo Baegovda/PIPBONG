@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.325` (from `project(PIPBONG VERSION 0.8.325)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.326` (from `project(PIPBONG VERSION 0.8.326)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1550,6 +1550,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.326] - 2026-07-25
+
+### Fixed
+
+- Hold mode feature-list glow now tracks key press/release in real time: optimistic highlight via `m_pendingHoldFeatureStartIds` on hotkey DOWN (sync `refreshFeatureListHoldVisuals` before deferred `startFeatureRun`); pending cleared on UP; prism animation no longer frozen during multi-hold (`setRunAnimationLowCpu` only when `suppressRepeatUi`, not session count alone).
 
 ## [0.8.325] - 2026-07-25
 

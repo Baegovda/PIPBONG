@@ -3049,6 +3049,9 @@ QSet<QString> MainWindow::runningFeatureIds() const {
             ids.insert(QString::fromStdString(entry.first));
         }
     }
+    for (const std::string& pendingId : m_pendingHoldFeatureStartIds) {
+        ids.insert(QString::fromStdString(pendingId));
+    }
     return ids;
 }
 
@@ -3094,6 +3097,12 @@ QHash<QString, FeatureRunVisualKind> MainWindow::buildFeatureListRunVisualKinds(
             break;
         }
     }
+    for (const std::string& pendingId : m_pendingHoldFeatureStartIds) {
+        const QString featureId = QString::fromStdString(pendingId);
+        if (!visualKinds.contains(featureId)) {
+            visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
+        }
+    }
     return visualKinds;
 }
 
@@ -3101,8 +3110,12 @@ void MainWindow::refreshFeatureListHoldVisuals() {
     if (!m_featureList) {
         return;
     }
+    const QSet<QString> runningIds = runningFeatureIds();
     m_featureList->beginRunStateBatch();
-    m_featureList->setRunningFeatureIds(runningFeatureIds());
+    if (!runningIds.isEmpty()) {
+        m_featureList->setRunAnimationLowCpu(false);
+    }
+    m_featureList->setRunningFeatureIds(runningIds);
     m_featureList->setFeatureRunVisualKinds(buildFeatureListRunVisualKinds());
     m_featureList->endRunStateBatch();
 }
@@ -3355,6 +3368,7 @@ void MainWindow::flushCoalescedHoldFeatureStarts() {
             startFeatureRun(feature, true);
         }
     }
+    refreshFeatureListHoldVisuals();
 }
 
 void MainWindow::scheduleCoalescedHoldFeatureEndFinish(const std::string& featureId) {
@@ -3408,13 +3422,11 @@ void MainWindow::applyRunUiState() {
     }
     const bool burstUi = isHoldBurstActive() || shouldCoalesceRunUiUpdates();
     if (m_featureList) {
-        bool suppressRunAnimation = m_runSessions.size() >= 2;
-        if (!suppressRunAnimation) {
-            for (const auto& entry : m_runSessions) {
-                if (entry.second.sessionContext && entry.second.sessionContext->suppressRepeatUi()) {
-                    suppressRunAnimation = true;
-                    break;
-                }
+        bool suppressRunAnimation = false;
+        for (const auto& entry : m_runSessions) {
+            if (entry.second.sessionContext && entry.second.sessionContext->suppressRepeatUi()) {
+                suppressRunAnimation = true;
+                break;
             }
         }
         m_featureList->beginRunStateBatch();
@@ -4680,9 +4692,6 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
             if (entry.second.sessionContext) {
                 entry.second.sessionContext->setSuppressRepeatUi(true);
             }
-        }
-        if (m_featureList) {
-            m_featureList->setRunAnimationLowCpu(true);
         }
     }
     const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
@@ -6248,6 +6257,7 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
     }
 
     scheduleCoalescedHoldFeatureStart(id);
+    refreshFeatureListHoldVisuals();
 }
 
 void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
@@ -6272,14 +6282,21 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     }
 
     const std::string id = featureId.toStdString();
+    m_pendingHoldFeatureStartIds.erase(id);
+    m_pendingHoldFeatureStartOrder.erase(
+        std::remove(m_pendingHoldFeatureStartOrder.begin(), m_pendingHoldFeatureStartOrder.end(), id),
+        m_pendingHoldFeatureStartOrder.end());
+
     FeatureRunSession* session = sessionFor(id);
     if (!session || session->runningMode != FeatureRunMode::Hold) {
+        refreshFeatureListHoldVisuals();
         return;
     }
 
     ++session->holdRepeatGeneration;
 
     if (!session->holdRunActive) {
+        refreshFeatureListHoldVisuals();
         return;
     }
 
