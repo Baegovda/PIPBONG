@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.300` (from `project(PIPBONG VERSION 0.8.300)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.301` (from `project(PIPBONG VERSION 0.8.301)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1142,11 +1142,11 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 ### 8.14 Cursor stutter profiling (mandatory — mouse jump / QWER diagnosis)
 
-**Status:** Strengthened 2026-07 (v0.8.299). Replaces app-wide `WorkflowRunProfiler` / `app-profile/` (removed v0.8.295). **Sampler is opt-in** — default OFF to avoid UI lag.
+**Status:** Strengthened 2026-07 (v0.8.301). Replaces app-wide `WorkflowRunProfiler` / `app-profile/` (removed v0.8.295). **Sampler is opt-in** — default OFF to avoid UI lag.
 
 | Layer | Role |
 | ----- | ---- |
-| `CursorStutterProfiler` | **Opt-in** 4 ms `GetCursorPos` sampler when `program/cursorStutterProfiling` ON; jumps ≥8 px (large sampler moves ≥24 px logged), micro-jumps counted only; snap-back, sampler overrun; verbose: `SetCursorPos`, `ClipCursor`, hook snaps, keyboard-hook timing, QWER keys |
+| `CursorStutterProfiler` | **Opt-in** 12 ms `GetCursorPos` sampler when `program/cursorStutterProfiling` ON; sampler jumps/micro-jumps **counter-only** (no event rows); snap-back/sampler overrun from non-sampler sources; verbose: `SetCursorPos`, `ClipCursor`, hook snaps, keyboard-hook timing, QWER keys |
 | Verbose enable | `program/cursorStutterProfiling` (**default OFF**) or env `PIPBONG_CURSOR_STUTTER_PROFILE=1` |
 | `hold_feature` | Hold-mode feature name (`Q`/`W`/`E`/`R` LOL profile) on hold_start/hold_end (`MainWindow`) |
 | `foreground_focus` | Win32 `GetForegroundWindow` on HWND change (title, hwnd, exe); appended to jump/hold/hook events |
@@ -1456,6 +1456,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.301] - 2026-07-24
+
+### Fixed
+
+- Long-session multi-Hold UI lag (v0.8.300 follow-up): fast-repeat loop logs are fully suppressed when two or more Hold/repeat sessions run together; multi-session flush interval scales 100–160 ms; workflow loop-timing title updates skip when multiple sessions are active; fast-repeat flush no longer forces immediate `updateRunUiState` (`MainWindow`).
+- **커서 스터터 진단** long-session overhead when enabled: sampler interval 4 ms → 12 ms; sampler-originated cursor jumps are counter-only (no event rows or correlate scans); report event tail capped at 2000 rows (`CursorStutterProfiler`).
 
 ## [0.8.300] - 2026-07-24
 

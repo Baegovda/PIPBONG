@@ -3098,8 +3098,8 @@ int MainWindow::concurrentActiveRepeatSessionCount() const {
 }
 
 bool MainWindow::shouldPublishFastRepeatLoopLog(const FeatureRunSession& session) const {
-    if (concurrentActiveRepeatSessionCount() <= 1) {
-        return true;
+    if (concurrentActiveRepeatSessionCount() >= 2) {
+        return false;
     }
     return isDisplayedRunningFeature(&session);
 }
@@ -4604,6 +4604,16 @@ void MainWindow::scheduleWorkerFastRepeatUiFlush() {
     if (!m_workerFastRepeatUiFlushTimer) {
         return;
     }
+    const int active = concurrentActiveRepeatSessionCount();
+    int intervalMs = 80;
+    if (active >= 4) {
+        intervalMs = 160;
+    } else if (active >= 3) {
+        intervalMs = 120;
+    } else if (active >= 2) {
+        intervalMs = 100;
+    }
+    m_workerFastRepeatUiFlushTimer->setInterval(intervalMs);
     if (!m_workerFastRepeatUiFlushTimer->isActive()) {
         m_workerFastRepeatUiFlushTimer->start();
     }
@@ -4634,8 +4644,9 @@ void MainWindow::flushAllPendingWorkerFastRepeatUi() {
         scheduleWorkerFastRepeatUiFlush();
     }
 
-    if (concurrentActiveRepeatSessionCount() >= 2) {
-        updateRunUiState();
+    if (concurrentActiveRepeatSessionCount() >= 2 && m_runUiDebounceTimer
+        && !m_runUiDebounceTimer->isActive()) {
+        m_runUiDebounceTimer->start();
     }
 }
 
@@ -4830,7 +4841,9 @@ void MainWindow::publishLoopCompletionUi(FeatureRunSession& session,
         session.sessionContext && session.sessionContext->suppressRepeatUi();
 
     if (isDisplayedRunningFeature(&session)) {
-        syncLoopTimingToWorkflowEditor(&session);
+        if (concurrentActiveRepeatSessionCount() < 2) {
+            syncLoopTimingToWorkflowEditor(&session);
+        }
     }
 
     if (fastRepeat && !shouldPublishFastRepeatLoopLog(session)) {
@@ -4838,7 +4851,8 @@ void MainWindow::publishLoopCompletionUi(FeatureRunSession& session,
     }
 
     if (fastRepeat) {
-        const int minLogIntervalMs = concurrentActiveRepeatSessionCount() >= 2 ? 1000 : 500;
+        const int minLogIntervalMs =
+            concurrentActiveRepeatSessionCount() >= 2 ? 5000 : 500;
         if (session.loopLogPublishTimer.isValid()
             && session.loopLogPublishTimer.elapsed() < minLogIntervalMs) {
             return;

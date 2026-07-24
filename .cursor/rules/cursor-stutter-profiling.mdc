@@ -5,26 +5,27 @@ alwaysApply: true
 
 # Cursor Stutter Profiling (Mandatory — QWER / Mouse Jump Diagnosis)
 
-**Status:** Strengthened 2026-07 (v0.8.296). Replaces app-wide `WorkflowRunProfiler` / `app-profile/`.
+**Status:** Strengthened 2026-07 (v0.8.301). Replaces app-wide `WorkflowRunProfiler` / `app-profile/`. **Opt-in only** — default OFF (always-on sampler caused UI lag).
 
 ## Purpose
 
 Find **mouse cursor jump / stutter** (especially LOL profile Hold features **Q/W/E/R**) by correlating:
 
-- **Always-on** background `GetCursorPos` sampler (4 ms)
-- Jumps ≥8 px, micro-jumps 3–7 px, **snap-back** (A→B→A), **sampler_overrun** (thread stalls)
-- `hold_feature` events (feature display name + hold_start/hold_end)
-- **`foreground_focus`**: foreground HWND change with title + exe; **`fg=...`** on jumps/holds/hooks; `foreground_at_end` in report header
+- **Opt-in** background `GetCursorPos` sampler (12 ms) when `program/cursorStutterProfiling` ON
+- Sampler jumps/micro-jumps **counter-only** (no event rows — normal mouse movement)
+- **snap-back** (A→B→A), **sampler_overrun** (thread stalls) from instrumentation paths
+- `hold_feature` events (feature display name + hold_start/hold_end) when verbose
+- **`foreground_focus`**: foreground HWND change with title + exe; cached `fg=...` on events
 - When verbose: `SetCursorPos`, `ClipCursor`, `mouse_hook_snap`, `keyboard_hook`, physical/synthetic QWER
 
-## Enable (verbose hook detail)
+## Enable (required for sampler + verbose hook detail)
 
 | Method | Value |
 |--------|--------|
-| **프로그램 설정 → 진단 → 커서 스터터 진단** | `program/cursorStutterProfiling` (**default ON**) |
+| **프로그램 설정 → 진단 → 커서 스터터 진단** | `program/cursorStutterProfiling` (**default OFF**) |
 | Env | `PIPBONG_CURSOR_STUTTER_PROFILE=1` |
 
-**Sampler always runs** after app start — jump detection does not require the setting. Verbose logging adds hook/SetCursorPos TSV.
+**Sampler does not run** when the setting is off — no background thread, no jump logging.
 
 ## Output
 
@@ -34,17 +35,16 @@ Find **mouse cursor jump / stutter** (especially LOL profile Hold features **Q/W
 | **`%LOCALAPPDATA%/PIPBONG/PIPBONG/cursor-stutter/latest.md`** | Fallback copy (always attempted) |
 | Format | `pipbong-cursor-stutter` v3 — **Auto diagnosis** (Korean) + `foreground_at_end` + counters + event TSV |
 
-Written on: **app shutdown**, **periodic 30 s** (verbose), **Hold Q/W/E/R end** (`hold_end` flush).
+Written on: **app shutdown** only (async write).
 
 **Do not** use `app-profile/` — removed.
 
 ## User → AI workflow
 
-1. Run PIPBONG (sampler starts automatically).
-2. Reproduce: Hold **Q/W/E/R** features / move mouse during stutter.
-3. Exit PIPBONG (or release Hold key for Q/W/E/R — partial flush).
-4. Read **`cursor-stutter/latest.md`** — check `sampler_ticks` > 0, then **Auto diagnosis**.
-5. Optional: `.\scripts\analyze-cursor-stutter.ps1`
+1. Enable **커서 스터터 진단** in program settings (or env).
+2. Run PIPBONG → reproduce Hold Q/W/E/R or cursor jump.
+3. Exit PIPBONG → read **`cursor-stutter/latest.md`** — check `sampler_ticks` > 0, then **Auto diagnosis**.
+4. Optional: `.\scripts\analyze-cursor-stutter.ps1`
 
 **Do not** ask the user for workflow block lists.
 

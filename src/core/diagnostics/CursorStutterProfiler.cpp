@@ -31,7 +31,7 @@ Q_LOGGING_CATEGORY(lcCursorStutter, "pipbong.cursor_stutter")
 
 namespace {
 
-constexpr int kSamplerIntervalMs = 4;
+constexpr int kSamplerIntervalMs = 12;
 constexpr int kJumpThresholdPx = 8;
 constexpr int kMicroJumpThresholdPx = 3;
 constexpr int kSnapBackWindowUs = 50000;
@@ -84,6 +84,7 @@ qint64 g_slowKeyboardHookCount = 0;
 qint64 g_holdFeatureStartCount = 0;
 qint64 g_foregroundChangeCount = 0;
 quintptr g_lastForegroundHwnd = static_cast<quintptr>(-1);
+QString g_cachedForegroundDetail = QStringLiteral("fg=(unknown)");
 
 struct RecentMove {
     qint64 relUs = 0;
@@ -270,7 +271,16 @@ QString foregroundWindowDetail(HWND hwnd = nullptr) {
 }
 
 QString appendForegroundContext(const QString& base) {
-    return base + QLatin1Char(' ') + foregroundWindowDetail();
+    return base + QLatin1Char(' ') + g_cachedForegroundDetail;
+}
+
+void refreshForegroundCacheLocked(HWND hwnd = nullptr) {
+#ifdef _WIN32
+    g_cachedForegroundDetail = foregroundWindowDetail(hwnd);
+#else
+    (void)hwnd;
+    g_cachedForegroundDetail = QStringLiteral("fg=unknown");
+#endif
 }
 
 void pollForegroundWindowChange() {
@@ -280,7 +290,6 @@ void pollForegroundWindowChange() {
         fg = nullptr;
     }
     const quintptr hwndVal = reinterpret_cast<quintptr>(fg);
-    const QString detail = foregroundWindowDetail(fg);
 
     std::lock_guard<std::mutex> lock(g_mutex);
     if (hwndVal == g_lastForegroundHwnd) {
@@ -288,7 +297,8 @@ void pollForegroundWindowChange() {
     }
     g_lastForegroundHwnd = hwndVal;
     ++g_foregroundChangeCount;
-    pushEventLocked("foreground_focus", detail, -1, "sampler");
+    refreshForegroundCacheLocked(fg);
+    pushEventLocked("foreground_focus", g_cachedForegroundDetail, -1, "sampler");
 #endif
 }
 
@@ -296,7 +306,9 @@ void correlateJumpWithRecentEventsLocked() {
     const qint64 windowStart = relUsLocked() - 100000;
     bool nearQwer = false;
     bool nearHold = false;
-    for (auto it = g_events.rbegin(); it != g_events.rend(); ++it) {
+    int scanned = 0;
+    constexpr int kMaxCorrelateScan = 48;
+    for (auto it = g_events.rbegin(); it != g_events.rend() && scanned < kMaxCorrelateScan; ++it, ++scanned) {
         if (it->relUs < windowStart) {
             break;
         }
@@ -368,8 +380,18 @@ void noteJumpLocked(int fromX,
                     bool micro) {
     if (micro) {
         ++g_microJumpCount;
+        // Sampler micro-jumps are mostly normal mouse movement — count only, no event row.
+        if (std::strcmp(source, "sampler") == 0) {
+            g_lastMove = {relUsLocked(), fromX, fromY, toX, toY};
+            return;
+        }
     } else {
         ++g_jumpCount;
+        // Sampler jumps are normal mouse movement — counters only, no correlate/scan.
+        if (std::strcmp(source, "sampler") == 0) {
+            g_lastMove = {relUsLocked(), fromX, fromY, toX, toY};
+            return;
+        }
     }
     const char* kind = micro ? "micro_jump" : "cursor_jump";
     const QString detail = appendForegroundContext(QStringLiteral("%1 from=(%2,%3) to=(%4,%5) dist=%6px %7")
@@ -424,7 +446,11 @@ void sampleCursorPosition() {
 }
 
 QString buildMarkdownReport(const QString& endReason) {
-    const QString foregroundAtEnd = foregroundWindowDetail();
+    QString foregroundAtEnd;
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        foregroundAtEnd = g_cachedForegroundDetail;
+    }
     std::lock_guard<std::mutex> lock(g_mutex);
 
     QStringList lines;
@@ -611,7 +637,7 @@ QString buildMarkdownReport(const QString& endReason) {
     lines << QString();
     lines << QStringLiteral("```tsv");
     lines << QStringLiteral("rel_us\tthread\tevent\tdetail\tdur_us");
-    const int tail = std::min<int>(8000, static_cast<int>(g_events.size()));
+    const int tail = std::min<int>(2000, static_cast<int>(g_events.size()));
     for (int i = static_cast<int>(g_events.size()) - tail; i < static_cast<int>(g_events.size()); ++i) {
         if (i < 0) {
             continue;
@@ -665,26 +691,22 @@ void samplerLoop() {
         pollForegroundWindowChange();
         sampleCursorPosition();
 
-        bool shouldFlush = false;
-        {
-            std::lock_guard<std::mutex> lock(g_mutex);
-            if (g_verbose && g_lastPeriodicFlushUs > 0
-                && (tickStart - g_lastPeriodicFlushUs) >= kPeriodicFlushUs) {
-                g_lastPeriodicFlushUs = tickStart;
-                shouldFlush = true;
-            } else if (g_verbose && g_lastPeriodicFlushUs <= 0) {
-                g_lastPeriodicFlushUs = tickStart;
-            }
-        }
-        if (shouldFlush) {
-            writeReportToPaths(buildMarkdownReport(QStringLiteral("periodic")), QStringLiteral("periodic"));
-        }
-
         std::this_thread::sleep_for(std::chrono::milliseconds(kSamplerIntervalMs));
     }
 }
 
 } // namespace
+
+void stopSamplerThread() {
+    if (!g_sampling) {
+        return;
+    }
+    g_stopSampler.store(true, std::memory_order_relaxed);
+    if (g_samplerThread.joinable()) {
+        g_samplerThread.join();
+    }
+    g_sampling = false;
+}
 
 bool CursorStutterProfiler::isVerboseLogging() {
     return g_verbose;
@@ -696,9 +718,14 @@ void CursorStutterProfiler::reloadFromSettings() {
     if (g_sessionStartUs <= 0) {
         g_sessionStartUs = steadyUs();
     }
-    startSampling();
-    if (!g_verbose && wasVerbose) {
-        flushReport(QStringLiteral("verbose_disabled"));
+    if (g_verbose) {
+        refreshForegroundCacheLocked();
+        startSampling();
+    } else {
+        stopSamplerThread();
+        if (wasVerbose) {
+            flushReport(QStringLiteral("verbose_disabled"));
+        }
     }
 }
 
@@ -726,7 +753,7 @@ QStringList CursorStutterProfiler::allReportPaths() {
 }
 
 void CursorStutterProfiler::startSampling() {
-    if (g_sampling) {
+    if (!g_verbose || g_sampling) {
         return;
     }
     g_sampling = true;
@@ -740,18 +767,14 @@ void CursorStutterProfiler::startSampling() {
 }
 
 void CursorStutterProfiler::flushReport(const QString& reason) {
-    writeReportToPaths(buildMarkdownReport(reason), reason);
+    const QString content = buildMarkdownReport(reason);
+    std::thread([content, reason]() { writeReportToPaths(content, reason); }).detach();
 }
 
 void CursorStutterProfiler::stopAndWriteReport(const QString& reason) {
-    if (g_sampling) {
-        g_stopSampler.store(true, std::memory_order_relaxed);
-        if (g_samplerThread.joinable()) {
-            g_samplerThread.join();
-        }
-        g_sampling = false;
-    }
-    flushReport(reason);
+    stopSamplerThread();
+    const QString content = buildMarkdownReport(reason);
+    writeReportToPaths(content, reason);
 }
 
 qint64 CursorStutterProfiler::monotonicUs() {
@@ -862,6 +885,9 @@ void CursorStutterProfiler::recordHoldFeature(const QString& featureName, const 
     std::lock_guard<std::mutex> lock(g_mutex);
     if (std::strcmp(phase, "hold_start") == 0) {
         ++g_holdFeatureStartCount;
+    }
+    if (!g_verbose) {
+        return;
     }
     pushEventLocked("hold_feature",
                     appendForegroundContext(
