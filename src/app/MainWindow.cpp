@@ -3045,11 +3045,66 @@ QSet<QString> MainWindow::activeWorkflowFeatureIds() const {
 QSet<QString> MainWindow::runningFeatureIds() const {
     QSet<QString> ids;
     for (const auto& entry : m_runSessions) {
-        if (isFeatureSessionActive(entry.second)) {
+        if (isFeatureRunHighlighted(entry.second)) {
             ids.insert(QString::fromStdString(entry.first));
         }
     }
     return ids;
+}
+
+bool MainWindow::isFeatureRunHighlighted(const FeatureRunSession& session) const {
+    if (session.runningMode == FeatureRunMode::Hold) {
+        return session.holdRunActive;
+    }
+    return isFeatureSessionActive(session);
+}
+
+QHash<QString, FeatureRunVisualKind> MainWindow::buildFeatureListRunVisualKinds() const {
+    QHash<QString, FeatureRunVisualKind> visualKinds;
+    for (const auto& entry : m_runSessions) {
+        const QString featureId = QString::fromStdString(entry.first);
+        const FeatureRunSession& session = entry.second;
+
+        if (session.runningMode == FeatureRunMode::Hold) {
+            if (session.holdRunActive) {
+                visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
+            }
+            continue;
+        }
+
+        if (!isFeatureSessionActive(session)) {
+            continue;
+        }
+
+        if (session.runningMode != FeatureRunMode::Trigger || !session.repeatSession) {
+            visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
+            continue;
+        }
+        switch (session.triggerPhase) {
+        case TriggerSessionPhase::Monitoring:
+            visualKinds.insert(featureId, FeatureRunVisualKind::TriggerWatch);
+            break;
+        case TriggerSessionPhase::Cooldown:
+            visualKinds.insert(featureId, FeatureRunVisualKind::TriggerCooldown);
+            break;
+        case TriggerSessionPhase::RunningAction:
+            visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
+            break;
+        case TriggerSessionPhase::None:
+            break;
+        }
+    }
+    return visualKinds;
+}
+
+void MainWindow::refreshFeatureListHoldVisuals() {
+    if (!m_featureList) {
+        return;
+    }
+    m_featureList->beginRunStateBatch();
+    m_featureList->setRunningFeatureIds(runningFeatureIds());
+    m_featureList->setFeatureRunVisualKinds(buildFeatureListRunVisualKinds());
+    m_featureList->endRunStateBatch();
 }
 
 QString MainWindow::featureDisplayName(const std::string& featureId) const {
@@ -3365,25 +3420,7 @@ void MainWindow::applyRunUiState() {
         m_featureList->beginRunStateBatch();
         m_featureList->setRunAnimationLowCpu(suppressRunAnimation);
         m_featureList->setRunningFeatureIds(runningFeatureIds());
-        QHash<QString, FeatureRunVisualKind> visualKinds;
-        for (const auto& entry : m_runSessions) {
-            const QString featureId = QString::fromStdString(entry.first);
-            if (entry.second.runningMode != FeatureRunMode::Trigger || !entry.second.repeatSession) {
-                visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
-                continue;
-            }
-            switch (entry.second.triggerPhase) {
-            case TriggerSessionPhase::Monitoring:
-                visualKinds.insert(featureId, FeatureRunVisualKind::TriggerWatch);
-                break;
-            case TriggerSessionPhase::Cooldown:
-                visualKinds.insert(featureId, FeatureRunVisualKind::TriggerCooldown);
-                break;
-            case TriggerSessionPhase::RunningAction:
-                visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
-                break;
-            }
-        }
+        QHash<QString, FeatureRunVisualKind> visualKinds = buildFeatureListRunVisualKinds();
         m_featureList->setFeatureRunVisualKinds(visualKinds);
         m_featureList->setActiveWorkflowFeatureIds(activeWorkflowFeatureIds());
 
@@ -4649,6 +4686,9 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
         }
     }
     const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
+    if (feature->runMode() == FeatureRunMode::Hold) {
+        refreshFeatureListHoldVisuals();
+    }
     if (!hotkeyHoldStart) {
         selectRunningFeatureForDisplay(feature);
     }
@@ -6247,9 +6287,8 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     session->repeatSession = false;
 
     Feature* feature = m_project ? m_project->featureById(id) : nullptr;
-    if (feature) {
-    }
     releaseHoldHotkeyInputToTarget(*session, feature);
+    refreshFeatureListHoldVisuals();
 
     if (session->holdKeyTapLaneActive && m_holdKeyTapMux) {
         session->userStopRequested = true;

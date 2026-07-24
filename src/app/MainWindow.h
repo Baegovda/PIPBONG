@@ -29,6 +29,8 @@
 
 class Feature;
 
+enum class FeatureRunVisualKind;
+
 struct WorkerFastRepeatUiCoalesce {
     QMutex mutex;
     bool flushScheduled = false;
@@ -214,6 +216,9 @@ private:
     void scheduleCoalescedHoldFeatureEndFinish(const std::string& featureId);
     void flushCoalescedHoldFeatureEndFinishes();
     void applyRunUiState();
+    bool isFeatureRunHighlighted(const FeatureRunSession& session) const;
+    QHash<QString, FeatureRunVisualKind> buildFeatureListRunVisualKinds() const;
+    void refreshFeatureListHoldVisuals();
     void scheduleWorkerFastRepeatUiFlush();
     void flushAllPendingWorkerFastRepeatUi();
     int concurrentActiveRepeatSessionCount() const;
