@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.304` (from `project(PIPBONG VERSION 0.8.304)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.305` (from `project(PIPBONG VERSION 0.8.305)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1196,10 +1196,31 @@ Cursor rule: `.cursor/rules/app-spike-profiling.mdc`.
 | UI / multi-hold | PIPBONG 창 버벅임, 홀드 2+ | `AppSpikeProfiler` crumbs + timers on `applyRunUiState`, fast-repeat flush | `gui_stall_*`, `sessions=` |
 | Hotkey / foreground | Alt+Tab 후 단축키 죽음 | Opt-in hook latch + handler timing | `hotkey_*` |
 | ImageFind / capture | 매칭 느림, 검은 화면 | Per-poll capture+match ms | `imagefind_poll` |
-| Profile switch | 전환 시 끊김 | `switchToProfile` phase timers | `profile_switch` |
+| Profile switch | 전환 핑퐁·GUI 멈춤 | `ProfileSwitchProfiler` phase timers on `requestAutoProfileSwitch` / `executeProfileSwitch` | `profile-switch/latest.md`, crumbs `switch requested/stable/committed` |
 | Overlay / template pick | 캡처 실패, 커서 | BitBlt + teardown order ms | `overlay_pick` |
 
 Cursor rule: `.cursor/rules/targeted-profiling-on-bugs.mdc`.
+
+### 8.17 Profile auto-switch coordinator (mandatory — do not regress)
+
+**Status:** Added 2026-07-24 (v0.8.305). Fixes launcher↔game profile **ping-pong** and GUI-thread stalls during rapid foreground changes (LOL launcher/client).
+
+| Layer | Rule |
+| ----- | ---- |
+| Entry | **`requestAutoProfileSwitch`** only from `syncProfileToForegroundWindow` — **not** `switchToForegroundLinkedProfileIfNeeded(true)` on the same tick |
+| Stability | 500 ms single-shot timer — commit only when foreground still requests the same profile |
+| Min interval | 800 ms between automatic commits (`m_lastAutomaticProfileSwitchTimer`) — coalesce ping-pong |
+| Pipeline | `executeProfileSwitch`: sync stop/save/`setActiveProfile` → `singleShot(0)` `loadActiveProfile(..., scheduleTriggerRestore=false)` → `singleShot(0)` `restorePersistedTriggerSessions` + `finishForegroundSessionGate` |
+| Reentrancy | `m_profileSwitchPipelineActive` blocks `finishForegroundSessionGate`, `restorePersistedTriggerSessions`, and foreground sync during pipeline |
+| Sessions | `stopAllSessionsForProfileSwitch` **immediately** stops trigger watch before load (user policy) |
+| Engines | `abandonSessionEngine` → **`schedulePruneAbandonedEngines`** only — no sync `pruneAbandonedEngines` on hot path |
+| Worker UI | `scheduleWorkerFastRepeatUiFlush` via **`QMetaObject::invokeMethod(..., Qt::QueuedConnection)`** |
+| DnD | `setProfileSwitchUiLocked` disables profile/feature list reorder; defer switch while `ReorderableListWidget::isAnyListDragActive()` |
+| Profiling | Opt-in `ProfileSwitchProfiler` — `program/profileSwitchProfiling` or `PIPBONG_PROFILE_SWITCH_PROFILE=1`; report `%LOCALAPPDATA%/PIPBONG/PIPBONG/profile-switch/latest.md`; `scripts/analyze-profile-switch.ps1` |
+
+**Manual verify:** LOL launcher↔client Alt+Tab — one profile commit after stabilize; trigger watch stops on switch and restarts after pipeline; no mass `startTimer` from worker thread.
+
+Key files: `MainWindow.cpp` (`requestAutoProfileSwitch`, `executeProfileSwitch`, `syncProfileToForegroundWindow`), `ProfileSwitchProfiler.*`, `ReorderableListWidget` drag deferral.
 
 ### 8.13 Program settings dialog (mandatory — grouped + tooltips)
 
@@ -1499,6 +1520,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.305] - 2026-07-24
+
+### Added
+
+- **`ProfileSwitchProfiler`**: opt-in profile auto-switch pipeline diagnostics — phase timers (request→stable→sessions stop→load→trigger restore), ping-pong counter; `program/profileSwitchProfiling` or `PIPBONG_PROFILE_SWITCH_PROFILE=1`; report `%LOCALAPPDATA%/PIPBONG/PIPBONG/profile-switch/latest.md`; `scripts/analyze-profile-switch.ps1` (AGENTS.md §8.16–§8.17).
+
+### Changed
+
+- Profile auto-switch uses a single coordinator: `requestAutoProfileSwitch` with 500 ms foreground stability + 800 ms min commit interval; removed duplicate `switchToForegroundLinkedProfileIfNeeded(true)` on the same foreground tick (`MainWindow`).
+- Profile switch pipeline is chunked on the GUI thread: stop sessions → `setActiveProfile` → deferred `loadActiveProfile` (no immediate trigger restore) → deferred `restorePersistedTriggerSessions` + `finishForegroundSessionGate` (`executeProfileSwitch`, `completeProfileSwitchPipeline`).
+- `abandonSessionEngine` and profile-switch session stop use `schedulePruneAbandonedEngines` only — no synchronous `pruneAbandonedEngines` on the hot path (`MainWindow`).
+- `scheduleWorkerFastRepeatUiFlush` marshaled to the GUI thread via `Qt::QueuedConnection` (`configureWorkerFastRepeat`).
+- Profile/feature list DnD disabled during switch; auto-switch defers while a list drag is active (`ReorderableListWidget`, `FeatureListPanel::setListDragEnabled`, `setProfileSwitchUiLocked`).
+
+### Fixed
+
+- Profile auto-switch ping-pong (e.g. LOL launcher↔client) no longer double-commits from parallel foreground paths; reentrancy blocked during switch pipeline (`m_profileSwitchPipelineActive`, guarded `finishForegroundSessionGate` / `restorePersistedTriggerSessions`).
+- Worker-thread `QTimer` warnings from fast-repeat UI flush (`startTimer: Timers cannot be started from another thread`) — flush scheduled on GUI thread only.
 
 ## [0.8.304] - 2026-07-24
 

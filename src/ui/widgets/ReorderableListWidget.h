@@ -19,6 +19,10 @@ public:
 
     void setReorderEnabled(bool enabled);
     bool reorderEnabled() const { return m_reorderEnabled; }
+
+    static bool isAnyListDragActive();
+    static void cancelActiveListDrags();
+
     int dragSourceRow() const { return m_dragSourceRow; }
 
 signals:

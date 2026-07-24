@@ -222,7 +222,7 @@ private:
     void appendLog(const QString& message, LogLineKind kind = LogLineKind::Info);
     bool maybeSave(bool quiet = false);
     void loadProjectFromFile(const QString& path, bool quiet = false);
-    void loadActiveProfile(bool quiet = false);
+    void loadActiveProfile(bool quiet = false, bool scheduleTriggerRestore = true);
     void refreshProfileList();
     void refreshFeatureLibraryPanel();
     bool importLibraryEntry(const QString& entryId);
@@ -249,6 +249,19 @@ private:
     void updateAuxiliaryToolButtonStates();
     void wireAuxiliaryDialogVisibility(QWidget* dialog);
     bool switchToProfile(const QString& profileId, bool automatic = false);
+    void requestAutoProfileSwitch(const QString& targetProfileId);
+    void evaluatePendingAutoProfileSwitch();
+    void onAutoProfileSwitchStabilityElapsed();
+    bool executeProfileSwitch(const QString& profileId, bool automatic);
+    void completeProfileSwitchPipeline(bool automatic);
+    void abortProfileSwitchPipeline(bool resyncSelection = true);
+    void setProfileSwitchUiLocked(bool locked);
+    void schedulePostProfileSwitchForegroundReconcile();
+#ifdef _WIN32
+    bool resolveForegroundTargetProfileId(HWND hwnd,
+                                          QString* targetProfileIdOut,
+                                          QString* foregroundTitleOut = nullptr) const;
+#endif
     void saveActiveProfileSettings();
     bool profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
                               const ProgramSettings::ProfileSettings& b) const;
@@ -462,6 +475,7 @@ private:
     int m_lastWorkflowScaleClientWidth = 0;
     int m_lastWorkflowScaleClientHeight = 0;
     QTimer* m_profileAutoSwitchTimer = nullptr;
+    QTimer* m_autoProfileSwitchStabilityTimer = nullptr;
     void* m_profileForegroundEventHook = nullptr;
     UpdateChecker* m_updateChecker = nullptr;
     bool m_initialUpdateCheckDone = false;
@@ -484,6 +498,8 @@ private:
     bool m_modified = false;
     bool m_refreshingProfileList = false;
     bool m_switchingProfile = false;
+    bool m_profileSwitchPipelineActive = false;
+    bool m_postSwitchForegroundReconcileScheduled = false;
     bool m_deferTargetDetailsProfileRefresh = false;
     bool m_lastPersistedProfileSettingsValid = false;
     QString m_lastPersistedProfileSettingsProfileId;
@@ -494,6 +510,8 @@ private:
     std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;
+    QString m_pendingAutoSwitchProfileId;
+    QString m_stabilizingAutoSwitchProfileId;
     QElapsedTimer m_lastAutomaticProfileSwitchTimer;
     std::vector<std::unique_ptr<WorkflowEngine>> m_abandonedEngines;
     std::unordered_map<const WorkflowEngine*, std::string> m_abandonedEngineFeatureIds;

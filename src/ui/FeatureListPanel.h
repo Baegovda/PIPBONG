@@ -72,6 +72,8 @@ public:
 
     void setActiveProfileId(const QString& profileId);
 
+    void setListDragEnabled(bool enabled);
+
     void refresh();
 
     Feature* selectedFeature() const;

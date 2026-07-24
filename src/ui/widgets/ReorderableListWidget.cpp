@@ -9,13 +9,17 @@
 #include <QDragLeaveEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
+#include <QEvent>
+#include <QGuiApplication>
 #include <QListWidgetItem>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QResizeEvent>
 #include <QTimer>
 
 #include <algorithm>
+#include <atomic>
 
 namespace {
 
@@ -75,7 +79,27 @@ private:
     bool m_bright = true;
 };
 
+std::atomic<int> g_activeListDragCount{0};
+
 } // namespace
+
+bool ReorderableListWidget::isAnyListDragActive() {
+    return g_activeListDragCount.load(std::memory_order_acquire) > 0;
+}
+
+void ReorderableListWidget::cancelActiveListDrags() {
+    if (!isAnyListDragActive()) {
+        return;
+    }
+    const QPoint globalPos = QCursor::pos();
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        QPointF(globalPos),
+                        QPointF(globalPos),
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QGuiApplication::sendEvent(QGuiApplication::instance(), &release);
+}
 
 ReorderableListWidget::ReorderableListWidget(QWidget* parent)
     : QListWidget(parent) {
@@ -208,7 +232,9 @@ void ReorderableListWidget::startDrag(Qt::DropActions supportedActions) {
     ListDragVisuals::applyToDrag(drag, lifted);
     m_externalDragScroll = false;
     m_dragAutoScroll->begin();
+    g_activeListDragCount.fetch_add(1, std::memory_order_acq_rel);
     drag->exec(supportedActions | Qt::CopyAction, Qt::MoveAction);
+    g_activeListDragCount.fetch_sub(1, std::memory_order_acq_rel);
     m_dragAutoScroll->end();
 
     ListDragVisuals::hideDragSlotPlaceholder(&m_dragSlotPlaceholder);

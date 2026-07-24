@@ -68,6 +68,10 @@ public:
     static bool appSpikeProfiling();
     static void setAppSpikeProfiling(bool enabled);
 
+    /// When enabled, records profile auto-switch pipeline phases to profile-switch/latest.md.
+    static bool profileSwitchProfiling();
+    static void setProfileSwitchProfiling(bool enabled);
+
     /// When enabled, switching the active profile activates the linked target window.
     static bool focusTargetWindowOnProfileSelect();
     static void setFocusTargetWindowOnProfileSelect(bool enabled);

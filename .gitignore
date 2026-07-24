@@ -1,6 +1,8 @@
 build/
 app-spike/*
 !app-spike/.gitkeep
+profile-switch/*
+!profile-switch/.gitkeep
 build-static/
 dist/
 out/

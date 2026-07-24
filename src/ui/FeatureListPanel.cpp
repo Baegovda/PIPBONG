@@ -2086,6 +2086,15 @@ void FeatureListPanel::setActiveProfileId(const QString& profileId) {
     }
 }
 
+void FeatureListPanel::setListDragEnabled(bool enabled) {
+    if (m_list) {
+        m_list->setReorderEnabled(enabled);
+    }
+    if (m_libraryList) {
+        m_libraryList->setTransferEnabled(enabled);
+    }
+}
+
 void FeatureListPanel::setProject(Project* project, bool refreshList) {
     m_project = project;
     if (refreshList) {

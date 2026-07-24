@@ -19,6 +19,7 @@ constexpr const char* kImageFindCaptureModeKey = "program/imageFindCaptureMode";
 constexpr const char* kRunWithoutTargetWindowKey = "program/runWithoutTargetWindow";
 constexpr const char* kLogMaxLinesKey = "program/logMaxLines";
 constexpr const char* kAppSpikeProfilingKey = "program/appSpikeProfiling";
+constexpr const char* kProfileSwitchProfilingKey = "program/profileSwitchProfiling";
 constexpr const char* kLegacyCursorStutterProfilingKey = "program/cursorStutterProfiling";
 constexpr const char* kFocusTargetWindowOnProfileSelectKey =
     "program/focusTargetWindowOnProfileSelect";
@@ -176,6 +177,16 @@ bool ProgramSettings::appSpikeProfiling() {
 void ProgramSettings::setAppSpikeProfiling(bool enabled) {
     QSettings settings;
     settings.setValue(kAppSpikeProfilingKey, enabled);
+}
+
+bool ProgramSettings::profileSwitchProfiling() {
+    QSettings settings;
+    return settings.value(kProfileSwitchProfilingKey, false).toBool();
+}
+
+void ProgramSettings::setProfileSwitchProfiling(bool enabled) {
+    QSettings settings;
+    settings.setValue(kProfileSwitchProfilingKey, enabled);
 }
 
 bool ProgramSettings::focusTargetWindowOnProfileSelect() {
