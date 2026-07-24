@@ -16,6 +16,7 @@ public:
     QMenuBar* menuBar() const { return m_menuBar; }
     void syncFromWindowTitle();
     void setAlwaysOnTopCheckBox(QCheckBox* checkBox);
+    bool hitTestCaptionDrag(const QPoint& globalPos) const;
 
 protected:
     void showEvent(QShowEvent* event) override;
@@ -26,7 +27,7 @@ private:
     void setupUi();
     void updateTitleElide();
     void updateMaximizeButton();
-    void startSystemMove(const QPoint& globalPos);
+    void beginNativeWindowDrag(const QPoint& globalPos);
     void toggleMaximize();
 
     QMainWindow* m_window = nullptr;
@@ -39,6 +40,4 @@ private:
     QPushButton* m_closeButton = nullptr;
     QCheckBox* m_alwaysOnTopCheck = nullptr;
     QString m_fullTitle;
-    bool m_dragging = false;
-    QPoint m_dragOffset;
 };

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.321` (from `project(PIPBONG VERSION 0.8.321)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.322` (from `project(PIPBONG VERSION 0.8.322)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1550,6 +1550,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.322] - 2026-07-25
+
+### Fixed
+
+- Main window edge snap (Windows Aero Snap): title-bar drag uses `QWindow::startSystemMove()` instead of manual `move()` during drag; `WM_NCHITTEST` returns `HTCAPTION` over the title drag region (`CustomTitleBar`, `MainWindow::nativeEvent`).
 
 ## [0.8.321] - 2026-07-25
 

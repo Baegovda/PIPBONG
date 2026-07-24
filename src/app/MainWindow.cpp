@@ -2489,9 +2489,16 @@ void MainWindow::showEvent(QShowEvent* event) {
 bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result) {
     if (isWindowsNativeMessage(eventType)) {
         auto* msg = static_cast<MSG*>(message);
-        if (msg->message == WM_NCHITTEST
-            && framelessResizeHitTest(msg, this, result)) {
-            return true;
+        if (msg->message == WM_NCHITTEST) {
+            if (framelessResizeHitTest(msg, this, result)) {
+                return true;
+            }
+            if (m_titleBar
+                && m_titleBar->hitTestCaptionDrag(
+                    QPoint(GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam)))) {
+                *result = HTCAPTION;
+                return true;
+            }
         }
     }
     return QMainWindow::nativeEvent(eventType, message, result);

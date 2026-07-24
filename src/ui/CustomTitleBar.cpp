@@ -16,6 +16,7 @@
 #include <QSizePolicy>
 #include <QApplication>
 #include <QCheckBox>
+#include <QWindow>
 
 namespace {
 
@@ -189,6 +190,14 @@ void CustomTitleBar::setAlwaysOnTopCheckBox(QCheckBox* checkBox) {
     }
 }
 
+bool CustomTitleBar::hitTestCaptionDrag(const QPoint& globalPos) const {
+    if (!m_dragRegion) {
+        return false;
+    }
+    const QPoint local = m_dragRegion->mapFromGlobal(globalPos);
+    return m_dragRegion->rect().contains(local);
+}
+
 void CustomTitleBar::syncFromWindowTitle() {
     if (!m_window) {
         return;
@@ -235,20 +244,24 @@ void CustomTitleBar::updateMaximizeButton() {
     m_maximizeButton->setToolTip(maximized ? tr("복원") : tr("최대화"));
 }
 
-void CustomTitleBar::startSystemMove(const QPoint& globalPos) {
+void CustomTitleBar::beginNativeWindowDrag(const QPoint& globalPos) {
     if (!m_window) {
         return;
     }
     if (m_window->isMaximized()) {
+        const QRect frame = m_window->frameGeometry();
         const double widthRatio =
-            static_cast<double>(globalPos.x() - m_window->frameGeometry().left())
-            / static_cast<double>(qMax(m_window->frameGeometry().width(), 1));
+            static_cast<double>(globalPos.x() - frame.left())
+            / static_cast<double>(qMax(frame.width(), 1));
+        const int topInset = globalPos.y() - frame.top();
         m_window->showNormal();
         const int restoredX = globalPos.x() - static_cast<int>(m_window->width() * widthRatio);
-        m_window->move(restoredX, globalPos.y() - m_dragOffset.y());
+        m_window->move(restoredX, globalPos.y() - topInset);
+        updateMaximizeButton();
     }
-    m_dragging = true;
-    m_dragOffset = globalPos - m_window->frameGeometry().topLeft();
+    if (QWindow* windowHandle = m_window->windowHandle()) {
+        windowHandle->startSystemMove();
+    }
 }
 
 void CustomTitleBar::toggleMaximize() {
@@ -303,26 +316,7 @@ bool CustomTitleBar::eventFilter(QObject* watched, QEvent* event) {
         case QEvent::MouseButtonPress: {
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
             if (mouseEvent->button() == Qt::LeftButton) {
-                startSystemMove(mouseEvent->globalPosition().toPoint());
-                return true;
-            }
-            break;
-        }
-        case QEvent::MouseMove: {
-            if (!m_dragging) {
-                break;
-            }
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            if (mouseEvent->buttons() & Qt::LeftButton) {
-                m_window->move(mouseEvent->globalPosition().toPoint() - m_dragOffset);
-                return true;
-            }
-            break;
-        }
-        case QEvent::MouseButtonRelease: {
-            auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            if (mouseEvent->button() == Qt::LeftButton) {
-                m_dragging = false;
+                beginNativeWindowDrag(mouseEvent->globalPosition().toPoint());
                 return true;
             }
             break;
