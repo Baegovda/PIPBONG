@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.309` (from `project(PIPBONG VERSION 0.8.309)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.310` (from `project(PIPBONG VERSION 0.8.310)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1546,6 +1546,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.310] - 2026-07-24
+
+### Fixed
+
+- Multi Hold hotkey release (e.g. Q/W/E/R together) no longer stalls the GUI for seconds: coalesce `updateRunUiState` when multiple run sessions are active (adaptive debounce, ignore `immediate` under load), batch `finishRunSession` UI work (`deferUiUpdate`, suppress per-session toasts and workflow persist), and route hold start/end through `Qt::QueuedConnection` (`MainWindow`).
 
 ## [0.8.309] - 2026-07-24
 

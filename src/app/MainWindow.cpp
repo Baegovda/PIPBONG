@@ -1690,12 +1690,12 @@ void MainWindow::connectSignals() {
             &HotkeyManager::hotkeyHoldStarted,
             this,
             &MainWindow::onHotkeyHoldStarted,
-            Qt::DirectConnection);
+            Qt::QueuedConnection);
     connect(m_hotkeyManager,
             &HotkeyManager::hotkeyHoldEnded,
             this,
             &MainWindow::onHotkeyHoldEnded,
-            Qt::DirectConnection);
+            Qt::QueuedConnection);
 
     connect(m_workflowEditor, &WorkflowEditorPanel::workflowModified, this, &MainWindow::onProjectModified);
     connect(m_workflowEditor, &WorkflowEditorPanel::featureRunRequested, this, &MainWindow::onFeatureRunRequested);
@@ -3116,17 +3116,36 @@ void MainWindow::connectSessionEngine(FeatureRunSession& session) {
 }
 
 void MainWindow::updateRunUiState(bool immediate) {
-    const bool debounce = !immediate && m_runSessions.size() >= 2;
-    if (debounce) {
-        if (!m_runUiDebounceTimer->isActive()) {
-            m_runUiDebounceTimer->start();
+    if (immediate && shouldCoalesceRunUiUpdates()) {
+        immediate = false;
+    }
+    if (immediate) {
+        if (m_runUiDebounceTimer) {
+            m_runUiDebounceTimer->stop();
         }
+        applyRunUiState();
         return;
     }
-    if (m_runUiDebounceTimer) {
-        m_runUiDebounceTimer->stop();
+    if (!m_runUiDebounceTimer) {
+        applyRunUiState();
+        return;
     }
-    applyRunUiState();
+    int intervalMs = 50;
+    if (concurrentActiveRepeatSessionCount() >= 4) {
+        intervalMs = 160;
+    } else if (concurrentActiveRepeatSessionCount() >= 2) {
+        intervalMs = 100;
+    } else if (m_runSessions.size() >= 2) {
+        intervalMs = 80;
+    }
+    m_runUiDebounceTimer->setInterval(intervalMs);
+    if (!m_runUiDebounceTimer->isActive()) {
+        m_runUiDebounceTimer->start();
+    }
+}
+
+bool MainWindow::shouldCoalesceRunUiUpdates() const {
+    return m_runSessions.size() > 1 || concurrentActiveRepeatSessionCount() >= 2;
 }
 
 int MainWindow::concurrentActiveRepeatSessionCount() const {
@@ -3332,12 +3351,13 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
         appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
         abandonSessionEngine(*session);
         reconcileMouseLocksFromRunningSessions();
-        updateRunUiState(true);
+        updateRunUiState(false);
         schedulePruneAbandonedEngines();
         return;
     }
 
-    finishRunSession(featureId, session->lastLoopSuccess, QString());
+    finishRunSession(featureId, session->lastLoopSuccess, QString(), shouldCoalesceRunUiUpdates());
+    updateRunUiState(false);
 }
 
 void MainWindow::stopRunningSessionsForUpdate() {
@@ -5552,18 +5572,28 @@ void MainWindow::finalizeDeferredStopSessions() {
 
     for (const std::string& featureId : featureIdsToFinalize) {
         const FeatureRunSession* session = sessionFor(featureId);
-        finishRunSession(featureId, session ? session->lastLoopSuccess : true, QString());
+        finishRunSession(featureId,
+                         session ? session->lastLoopSuccess : true,
+                         QString(),
+                         featureIdsToFinalize.size() > 1);
+    }
+    if (featureIdsToFinalize.size() > 1) {
+        updateRunUiState(false);
     }
 }
 
-void MainWindow::finishRunSession(const std::string& featureId, bool success, const QString& message) {
+void MainWindow::finishRunSession(const std::string& featureId,
+                                  bool success,
+                                  const QString& message,
+                                  bool deferUiUpdate) {
     FeatureRunSession* session = sessionFor(featureId);
-    if (session && isDisplayedRunningFeature(session)) {
+    const bool coalesceUi = deferUiUpdate || shouldCoalesceRunUiUpdates();
+    if (session && isDisplayedRunningFeature(session) && !coalesceUi) {
         m_workflowEditor->clearExecutionHighlight();
         m_workflowEditor->persistRunFeedbackForCurrentFeature();
     }
 
-    if (session) {
+    if (session && !coalesceUi) {
         showTransientStatus(tr("[%1] %2")
                                 .arg(featureDisplayName(featureId), success ? tr("완료") : tr("실패")),
                             3000);
@@ -5612,7 +5642,9 @@ void MainWindow::finishRunSession(const std::string& featureId, bool success, co
         WorkflowMatchFeedbackOverlay::dismissAll();
         WorkflowRoiFlashOverlay::dismissAll();
     }
-    updateRunUiState();
+    if (!deferUiUpdate) {
+        updateRunUiState(false);
+    }
     Q_UNUSED(message);
 }
 
@@ -5804,13 +5836,13 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     if (session->engine && session->engine->isRunning()) {
         session->userStopRequested = true;
         session->engine->stop();
-        updateRunUiState(true);
+        updateRunUiState(false);
         return;
     }
 
     session->userStopRequested = false;
-    finishRunSession(id, true, QString());
-    updateRunUiState(true);
+    finishRunSession(id, true, QString(), shouldCoalesceRunUiUpdates());
+    updateRunUiState(false);
 }
 
 bool MainWindow::shouldSuppressFeatureHotkeyExecution(const Feature* feature) const {
@@ -6295,7 +6327,9 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
     }
 
     if (session->userStopRequested) {
-        finishRunSession(session->featureId, success, message);
+        const bool deferUi = m_runSessions.size() > 1;
+        finishRunSession(session->featureId, success, message, deferUi);
+        updateRunUiState(false);
         return;
     }
 

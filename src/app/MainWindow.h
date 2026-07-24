@@ -195,6 +195,7 @@ private:
     void setupUiState();
     void connectSignals();
     void updateRunUiState(bool immediate = false);
+    bool shouldCoalesceRunUiUpdates() const;
     void applyRunUiState();
     void scheduleWorkerFastRepeatUiFlush();
     void flushAllPendingWorkerFastRepeatUi();
@@ -301,7 +302,10 @@ private:
     bool shouldLogRunDetails(const FeatureRunSession& session) const;
     void continueRepeatSession(FeatureRunSession& session, Feature* feature, bool success, const QString& message);
     bool shouldContinueRunSession(const FeatureRunSession& session, Feature* feature) const;
-    void finishRunSession(const std::string& featureId, bool success, const QString& message);
+    void finishRunSession(const std::string& featureId,
+                          bool success,
+                          const QString& message,
+                          bool deferUiUpdate = false);
     void finalizeDeferredStopSessions();
     void scheduleRepeatIteration(FeatureRunSession& session,
                                  Feature* feature,
