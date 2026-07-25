@@ -2867,6 +2867,7 @@ void MainWindow::onExportProfilePackage() {
 }
 
 void MainWindow::refreshWorkflowEditor() {
+    AppStutterOperationScope stutterScope("workflow.refresh", tr("workflow editor"));
     QString workflowProfileName;
     if (m_libraryPreviewFeature && !m_libraryPreviewEntryId.isEmpty()) {
         workflowProfileName = tr("라이브러리");
@@ -4422,6 +4423,9 @@ void MainWindow::selectRunningFeatureForDisplay(Feature* feature) {
 }
 
 void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTargetActivationOnStart) {
+    AppStutterOperationScope stutterScope(
+        "run.start",
+        feature ? QString::fromStdString(feature->name()) : QStringLiteral("(null)"));
     if (!feature) {
         return;
     }
@@ -5603,6 +5607,9 @@ void MainWindow::ensureTriggerMonitorEnginesRunning() {
 }
 
 void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* feature, bool firstSessionStart) {
+    AppStutterOperationScope stutterScope(
+        "trigger.monitor",
+        feature ? QString::fromStdString(feature->name()) : QStringLiteral("(null)"));
     if (!feature || !session.engine || session.engine->isRunning()) {
         return;
     }
@@ -5701,6 +5708,9 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
 }
 
 void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* feature) {
+    AppStutterOperationScope stutterScope(
+        "trigger.action",
+        feature ? QString::fromStdString(feature->name()) : QStringLiteral("(null)"));
     if (!feature || !session.engine || session.engine->isRunning()) {
         return;
     }
@@ -6304,6 +6314,7 @@ void MainWindow::notifyFeatureHotkeySuppressed() {
 }
 
 void MainWindow::syncHotkeys() {
+    AppStutterOperationScope stutterScope("hotkey.sync", QStringLiteral("project sync"));
     if (!m_hotkeyManager || !m_project) {
         return;
     }
@@ -7298,6 +7309,9 @@ void MainWindow::abortProfileSwitchPipeline(bool resyncSelection) {
 }
 
 void MainWindow::completeProfileSwitchPipeline(bool automatic) {
+    AppStutterOperationScope stutterScope(
+        "profile.switch.complete",
+        automatic ? QStringLiteral("auto") : QStringLiteral("manual"));
     scheduleRunWarmup();
 
     if (!automatic) {
@@ -7339,6 +7353,9 @@ void MainWindow::completeProfileSwitchPipeline(bool automatic) {
 }
 
 bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) {
+    AppStutterOperationScope stutterScope(
+        "profile.switch",
+        QStringLiteral("%1%2").arg(profileId, automatic ? QStringLiteral(" auto") : QString()));
     if (!m_profileManager || profileId.isEmpty()
         || profileId == m_profileManager->activeProfileId()) {
         return false;

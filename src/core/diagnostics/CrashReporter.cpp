@@ -3,11 +3,15 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <crtdbg.h>
+#include <shlobj.h>
 #include <windows.h>
 #endif
 
+#include <csignal>
+
 #include "core/diagnostics/CrashReporter.h"
 #include "core/diagnostics/CrashManifestBuilder.h"
+#include "core/diagnostics/AppStutterProfiler.h"
 
 #include "PipbongVersion.h"
 #include "core/diagnostics/CrashReportSystemInfo.h"
@@ -69,6 +73,7 @@ std::atomic<qint64> g_lastContextRefreshMs{0};
 std::atomic<bool> g_guiHangReported{false};
 std::atomic<bool> g_guiHangWatchdogStop{false};
 std::atomic<unsigned long> g_mainThreadId{0};
+PVOID g_vectoredExceptionHandle = nullptr;
 
 std::mutex g_contextMutex;
 CrashContextProvider g_contextProvider;
@@ -181,7 +186,61 @@ CrashArtifacts writeCrashArtifacts(CrashReportKind kind,
                                    CONTEXT* fallbackContext,
                                    bool hangReport);
 void presentCrashReport(const CrashArtifacts& artifacts, bool allowInProcessUi);
-#endif
+
+bool isFatalNativeExceptionCode(DWORD code) {
+    switch (code) {
+    case static_cast<DWORD>(0xC0000409): // STATUS_STACK_BUFFER_OVERRUN / fast-fail
+    case static_cast<DWORD>(0xC0000005): // STATUS_ACCESS_VIOLATION
+    case static_cast<DWORD>(0xC00000FD): // STATUS_STACK_OVERFLOW
+    case static_cast<DWORD>(0xC000001D): // STATUS_ILLEGAL_INSTRUCTION
+    case static_cast<DWORD>(0xC0000094): // STATUS_INTEGER_DIVIDE_BY_ZERO
+    case static_cast<DWORD>(0xC0000096): // STATUS_PRIVILEGED_INSTRUCTION
+        return true;
+    default:
+        return false;
+    }
+}
+
+void captureCrashFromNativeFault(const QString& reason,
+                                 EXCEPTION_POINTERS* exceptionInfo,
+                                 CONTEXT* fallbackContext) {
+    AppStutterProfiler::flushOnCrash();
+    const CrashArtifacts artifacts =
+        writeCrashArtifacts(CrashReportKind::Crash, reason, exceptionInfo, fallbackContext, false);
+    const bool allowInProcessUi =
+        QCoreApplication::instance() != nullptr
+        && QThread::currentThread() == QCoreApplication::instance()->thread();
+    presentCrashReport(artifacts, allowInProcessUi);
+}
+
+LONG CALLBACK vectoredExceptionHandler(EXCEPTION_POINTERS* exceptionInfo) {
+    if (!exceptionInfo || !exceptionInfo->ExceptionRecord) {
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+    const DWORD code = exceptionInfo->ExceptionRecord->ExceptionCode;
+    if (!isFatalNativeExceptionCode(code)) {
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+    if (g_writingCrashReport.exchange(true)) {
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+    const QString reason =
+        QStringLiteral("vectored exception 0x%1").arg(code, 8, 16, QLatin1Char('0'));
+    captureCrashFromNativeFault(reason, exceptionInfo, nullptr);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+void sigabrtHandler(int) {
+    if (!g_writingCrashReport.exchange(true)) {
+        CONTEXT context{};
+        RtlCaptureContext(&context);
+        captureCrashFromNativeFault(QStringLiteral("SIGABRT"), nullptr, &context);
+    }
+    std::signal(SIGABRT, SIG_DFL);
+    std::raise(SIGABRT);
+}
+
+#endif // early forward decl block — definitions below
 
 void qtMessageHandler(QtMsgType type, const QMessageLogContext& context, const QString& message) {
     const QString timestamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh:mm:ss.zzz"));
@@ -203,6 +262,7 @@ void qtMessageHandler(QtMsgType type, const QMessageLogContext& context, const Q
     if (type == QtFatalMsg) {
 #ifdef _WIN32
         if (!g_writingCrashReport.exchange(true)) {
+            AppStutterProfiler::flushOnCrash();
             CONTEXT contextRecord{};
             RtlCaptureContext(&contextRecord);
             const QString reason =
@@ -220,7 +280,16 @@ void qtMessageHandler(QtMsgType type, const QMessageLogContext& context, const Q
 }
 
 QString crashRootDirectoryPath() {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (base.isEmpty()) {
+        wchar_t localAppData[MAX_PATH]{};
+        if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, localAppData))) {
+            base = QDir(QString::fromWCharArray(localAppData)).filePath(QStringLiteral("PIPBONG/PIPBONG"));
+        }
+    }
+    if (base.isEmpty()) {
+        base = QStringLiteral("PIPBONG");
+    }
     const QString path = QDir(base).filePath(QStringLiteral("crash"));
     QDir().mkpath(path);
     return path;
@@ -345,6 +414,7 @@ void reportGuiThreadHang(qint64 silentMs) {
     if (g_guiHangReported.exchange(true) || g_writingCrashReport.exchange(true)) {
         return;
     }
+    AppStutterProfiler::flushReport(QStringLiteral("hang"));
 
     g_lastHangSilentMs = silentMs;
     refreshContextCacheFromProvider();
@@ -764,6 +834,7 @@ LONG WINAPI unhandledExceptionFilter(EXCEPTION_POINTERS* exceptionInfo) {
     if (g_writingCrashReport.exchange(true)) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
+    AppStutterProfiler::flushOnCrash();
     const CrashArtifacts artifacts =
         writeCrashArtifacts(CrashReportKind::Crash,
                             QStringLiteral("unhandled SEH exception"),
@@ -779,6 +850,7 @@ void terminateHandler() {
         std::abort();
     }
 
+    AppStutterProfiler::flushOnCrash();
     CONTEXT context{};
     RtlCaptureContext(&context);
     const CrashArtifacts artifacts =
@@ -789,6 +861,7 @@ void terminateHandler() {
 
 void purecallHandler() {
     if (!g_writingCrashReport.exchange(true)) {
+        AppStutterProfiler::flushOnCrash();
         CONTEXT context{};
         RtlCaptureContext(&context);
         const CrashArtifacts artifacts =
@@ -800,6 +873,7 @@ void purecallHandler() {
 
 void invalidParameterHandler(const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, uintptr_t) {
     if (!g_writingCrashReport.exchange(true)) {
+        AppStutterProfiler::flushOnCrash();
         CONTEXT context{};
         RtlCaptureContext(&context);
         const CrashArtifacts artifacts = writeCrashArtifacts(CrashReportKind::Crash,
@@ -857,6 +931,10 @@ bool CrashReporter::runViewerModeIfRequested() {
 void CrashReporter::install() {
 #ifdef _WIN32
     Win32StackWalker::initialize();
+    if (!g_vectoredExceptionHandle) {
+        g_vectoredExceptionHandle = AddVectoredExceptionHandler(1, vectoredExceptionHandler);
+    }
+    std::signal(SIGABRT, sigabrtHandler);
     SetUnhandledExceptionFilter(unhandledExceptionFilter);
     std::set_terminate(terminateHandler);
     _set_purecall_handler(purecallHandler);

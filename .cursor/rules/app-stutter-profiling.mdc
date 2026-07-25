@@ -16,7 +16,9 @@ alwaysApply: true
 | Session context | `MainWindow::applyRunUiState` → `setActiveFeatureSessionCount` / `setPipbongFeatureBurstActive` |
 | Enable | `program/appStutterProfiling` (**default OFF**) or env `PIPBONG_APP_STUTTER_PROFILE=1`; legacy `program/appSpikeProfiling` / `program/cursorStutterProfiling` read once if new key missing |
 | Output | **Repo** `app-stutter/latest.md` + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/app-stutter/latest.md`** fallback |
-| Flush | App shutdown only (`MainWindow::prepareForShutdown`) |
+| Flush | App shutdown (`prepareForShutdown`), crash/hang (`CrashReporter` → `flushOnCrash` / `flushReport`), critical GUI stall (≥1000 ms) |
+| Operations | `AppStutterOperationScope` RAII on profile switch, trigger monitor/action, run start, hotkey sync, workflow refresh, `WorkflowEngine` worker (`profile.switch`, `trigger.*`, `run.start`, `workflow.*`, …) |
+| Report v2 | `format_version: 2` — operation summary table + recent `DiagnosticHub` breadcrumbs |
 | Analysis | `scripts/analyze-app-stutter.ps1` |
 
 **User → AI workflow:** Enable **앱 스터터 진단** only while reproducing → run PIPBONG → reproduce lag/stutter → exit → read **`app-stutter/latest.md`** — **Auto diagnosis** first (do **not** ask user for workflow blocks).

@@ -3,6 +3,7 @@
 #include "core/input/InputSimulator.h"
 #include "core/diagnostics/CrashReporter.h"
 #include "core/diagnostics/DiagnosticHub.h"
+#include "core/diagnostics/AppStutterProfiler.h"
 #include "core/workflow/Block.h"
 #include "core/workflow/Block.h"
 #include "core/workflow/ExecutionContext.h"
@@ -118,6 +119,10 @@ protected:
             }
 
             emit m_engine->started();
+            AppStutterOperationScope engineScope(
+                "workflow.engine",
+                QStringLiteral("blocks=%1").arg(workflow->blocks().size()),
+                "worker");
             context->resetStop();
             context->setLogCallback([this, context](const std::string& message) {
                 if (context->suppressRepeatUi()) {

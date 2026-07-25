@@ -19,7 +19,9 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #ifdef _WIN32
@@ -38,12 +40,16 @@ constexpr int kGuiStallMildMs = 80;
 constexpr int kGuiStallModerateMs = 150;
 constexpr int kGuiStallSevereMs = 300;
 constexpr int kGuiStallCriticalMs = 1000;
+constexpr int kOperationSlowMs = 80;
+constexpr int kOperationModerateMs = 150;
 constexpr int kCpuSampleIntervalMs = 500;
 constexpr int kCpuTopN = 8;
 constexpr int kMaxEvents = 8000;
 constexpr int kReportEventTail = 1500;
+constexpr int kReportOperationRows = 32;
 
 bool g_enabled = false;
+bool g_sessionHadProfiling = false;
 std::mutex g_mutex;
 qint64 g_sessionStartUs = 0;
 qint64 g_lastGuiPulseMs = 0;
@@ -80,6 +86,17 @@ struct EventRow {
 };
 
 std::vector<EventRow> g_events;
+
+struct OperationStats {
+    qint64 count = 0;
+    qint64 totalUs = 0;
+    qint64 maxUs = 0;
+    qint64 slowCount = 0;
+};
+
+std::unordered_map<std::string, OperationStats> g_operationStats;
+
+bool writeReportFiles(const QString& reason);
 
 qint64 steadyUs() {
     return std::chrono::duration_cast<std::chrono::microseconds>(
@@ -151,6 +168,21 @@ QString appendSessionContext(const QString& detail) {
                                                                            : QStringLiteral("no"));
     line += QStringLiteral(" ") + g_cachedForegroundDetail;
     return line;
+}
+
+void recordOperationStatsLocked(const char* category, qint64 durationUs) {
+    if (!category || category[0] == '\0') {
+        return;
+    }
+    OperationStats& stats = g_operationStats[category];
+    ++stats.count;
+    stats.totalUs += durationUs;
+    if (durationUs > stats.maxUs) {
+        stats.maxUs = durationUs;
+    }
+    if (durationUs >= static_cast<qint64>(kOperationModerateMs) * 1000) {
+        ++stats.slowCount;
+    }
 }
 
 void pushEventLocked(const char* kind,
@@ -248,6 +280,10 @@ void recordGuiStallLocked(qint64 gapMs) {
         detail += QStringLiteral(" crumbs=") + parts.join(QStringLiteral(" | "));
     }
     pushEventLocked(severity, detail, gapMs * 1000);
+
+    if (gapMs >= kGuiStallCriticalMs) {
+        writeReportFiles(QStringLiteral("critical_stall"));
+    }
 }
 
 void cpuMonitorLoop() {
@@ -375,12 +411,12 @@ QString buildMarkdownReport(const QString& reason) {
     QStringList lines;
     lines << QStringLiteral("---");
     lines << QStringLiteral("format: pipbong-app-stutter");
-    lines << QStringLiteral("format_version: 1");
+    lines << QStringLiteral("format_version: 2");
     lines << QStringLiteral("end_reason: %1").arg(reason);
     lines << QStringLiteral("session_end: %1")
                  .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs));
-    lines << QStringLiteral("profiling_enabled: %1").arg(g_enabled ? QStringLiteral("yes")
-                                                                   : QStringLiteral("no"));
+    lines << QStringLiteral("profiling_enabled: %1")
+                 .arg(g_sessionHadProfiling ? QStringLiteral("yes") : QStringLiteral("no"));
     lines << QStringLiteral("session_seconds: %1").arg(sessionSec, 0, 'f', 1);
     lines << QStringLiteral("gui_pulse_interval_ms: %1").arg(kGuiPulseIntervalMs);
     lines << QStringLiteral("cpu_sample_interval_ms: %1").arg(kCpuSampleIntervalMs);
@@ -462,6 +498,55 @@ QString buildMarkdownReport(const QString& reason) {
     lines << QStringLiteral("| peak_pipbong_cpu_percent | %1 |").arg(g_peakPipbongCpu, 0, 'f', 1);
     lines << QStringLiteral("| foreground_focus_changes | %1 |").arg(g_foregroundChangeCount);
     lines << QString();
+
+    if (!g_operationStats.empty()) {
+        lines << QStringLiteral("## Operation summary (scoped phases)");
+        lines << QString();
+        lines << QStringLiteral("| category | count | max_ms | avg_ms | slow (>=%1 ms) |")
+                     .arg(kOperationModerateMs);
+        lines << QStringLiteral("| --- | ---: | ---: | ---: | ---: |");
+
+        struct RankedOp {
+            std::string category;
+            OperationStats stats;
+        };
+        std::vector<RankedOp> ranked;
+        ranked.reserve(g_operationStats.size());
+        for (const auto& entry : g_operationStats) {
+            ranked.push_back({entry.first, entry.second});
+        }
+        std::sort(ranked.begin(), ranked.end(), [](const RankedOp& a, const RankedOp& b) {
+            return a.stats.maxUs > b.stats.maxUs;
+        });
+        const int rows = std::min<int>(kReportOperationRows, static_cast<int>(ranked.size()));
+        for (int i = 0; i < rows; ++i) {
+            const OperationStats& stats = ranked[static_cast<size_t>(i)].stats;
+            const double avgMs =
+                stats.count > 0 ? (stats.totalUs / 1000.0) / static_cast<double>(stats.count) : 0.0;
+            lines << QStringLiteral("| %1 | %2 | %3 | %4 | %5 |")
+                         .arg(QString::fromUtf8(ranked[static_cast<size_t>(i)].category.c_str()))
+                         .arg(stats.count)
+                         .arg(stats.maxUs / 1000.0, 0, 'f', 1)
+                         .arg(avgMs, 0, 'f', 1)
+                         .arg(stats.slowCount);
+        }
+        lines << QString();
+        lines << QStringLiteral(
+            "Categories: `profile.switch`, `trigger.monitor`, `trigger.action`, `run.start`, "
+            "`workflow.engine`, `hotkey.sync`, `workflow.refresh`, …");
+        lines << QString();
+    }
+
+    const auto recentCrumbs = DiagnosticHub::snapshotBreadcrumbs(24);
+    if (!recentCrumbs.empty()) {
+        lines << QStringLiteral("## Recent breadcrumbs (DiagnosticHub)");
+        lines << QString();
+        for (const auto& crumb : recentCrumbs) {
+            lines << QStringLiteral("- [%1] %2").arg(crumb.category, crumb.message);
+        }
+        lines << QString();
+    }
+
     lines << QStringLiteral("## Event log (tsv)");
     lines << QString();
     lines << QStringLiteral("```tsv");
@@ -526,9 +611,12 @@ void AppStutterProfiler::reloadFromSettings() {
         return;
     }
 
+    g_sessionHadProfiling = true;
+
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         g_events.clear();
+        g_operationStats.clear();
         g_guiPulseCount = 0;
         g_guiStallMild = 0;
         g_guiStallModerate = 0;
@@ -571,7 +659,16 @@ QStringList AppStutterProfiler::allReportPaths() {
     return paths;
 }
 
+void AppStutterProfiler::flushOnCrash() {
+    writeReportFiles(QStringLiteral("crash"));
+}
+
 void AppStutterProfiler::flushReport(const QString& reason) {
+    if (reason == QStringLiteral("crash") || reason == QStringLiteral("critical_stall")
+        || reason == QStringLiteral("hang")) {
+        writeReportFiles(reason);
+        return;
+    }
     if (!g_enabled && g_events.empty() && g_sessionStartUs <= 0) {
         return;
     }
@@ -608,4 +705,48 @@ void AppStutterProfiler::setActiveFeatureSessionCount(int count) {
 
 void AppStutterProfiler::setPipbongFeatureBurstActive(bool active) {
     g_pipbongFeatureBurst.store(active, std::memory_order_relaxed);
+}
+
+AppStutterOperationScope::AppStutterOperationScope(const char* category,
+                                                     const QString& label,
+                                                     const char* threadTag)
+    : m_category(category)
+    , m_label(label)
+    , m_threadTag(threadTag ? threadTag : "main")
+    , m_startUs(steadyUs())
+    , m_active(g_enabled && category && category[0] != '\0') {
+    if (!m_active) {
+        return;
+    }
+    pushEventLocked("op_start",
+                    appendSessionContext(QStringLiteral("%1.%2").arg(QString::fromUtf8(category), label)),
+                    -1,
+                    m_threadTag);
+}
+
+void AppStutterOperationScope::setDetail(const QString& extra) {
+    if (!extra.isEmpty()) {
+        m_label = extra;
+    }
+}
+
+AppStutterOperationScope::~AppStutterOperationScope() {
+    if (!m_active || !m_category) {
+        return;
+    }
+    const qint64 durationUs = steadyUs() - m_startUs;
+    const QString detail =
+        appendSessionContext(QStringLiteral("%1.%2").arg(QString::fromUtf8(m_category), m_label));
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        recordOperationStatsLocked(m_category, durationUs);
+    }
+    pushEventLocked("op_end", detail, durationUs, m_threadTag);
+
+    const qint64 durationMs = durationUs / 1000;
+    if (durationMs >= kOperationModerateMs) {
+        DiagnosticHub::noteBreadcrumb(
+            QStringLiteral("stutter"),
+            QStringLiteral("%1 %2 ms").arg(QString::fromUtf8(m_category)).arg(durationMs));
+    }
 }

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.328` (from `project(PIPBONG VERSION 0.8.328)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.329` (from `project(PIPBONG VERSION 0.8.329)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1151,8 +1151,9 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 | Session context | `MainWindow::applyRunUiState` → `setActiveFeatureSessionCount` / `setPipbongFeatureBurstActive` |
 | Enable | `program/appStutterProfiling` (**default OFF**) or env `PIPBONG_APP_STUTTER_PROFILE=1`; legacy `program/appSpikeProfiling` / `program/cursorStutterProfiling` read once if new key missing |
 | Output | **Repo** `app-stutter/latest.md` + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/app-stutter/latest.md`** fallback |
-| Flush | App shutdown only (`MainWindow::prepareForShutdown`) |
-| Analysis | `scripts/analyze-app-stutter.ps1` |
+| Flush | App shutdown (`prepareForShutdown`), crash/hang (`CrashReporter`), critical GUI stall (≥1000 ms) |
+| Operations | `AppStutterOperationScope` on profile switch, trigger, run, hotkey sync, workflow refresh/engine |
+| Report | `format_version: 2` — operation summary + breadcrumbs section |
 
 **User → AI workflow:** Enable **앱 스터터 진단** only while reproducing → run PIPBONG → reproduce lag/stutter → exit → read **`app-stutter/latest.md`** — **Auto diagnosis** first (do **not** ask user for workflow blocks).
 
@@ -1504,6 +1505,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.329] - 2026-07-25
+
+### Added
+
+- **`AppStutterOperationScope`**: RAII operation phases (`profile.switch`, `trigger.monitor`, `trigger.action`, `run.start`, `hotkey.sync`, `workflow.refresh`, `workflow.engine`) with per-category timing stats in stutter report v2 (`AppStutterProfiler`, `MainWindow`, `WorkflowEngine`).
+
+### Changed
+
+- **`AppStutterProfiler`** report `format_version: 2` — operation summary table, recent `DiagnosticHub` breadcrumbs, flush on crash/hang/critical stall (≥1000 ms); `profiling_enabled` reflects session opt-in (`AppStutterProfiler`).
+- **`CrashReporter`**: vectored exception handler + `SIGABRT` for fast-fail / `0xC0000409` buffer-overrun crashes; `%LOCALAPPDATA%` fallback when Qt AppData path unavailable; flushes stutter report before writing crash artifacts (`CrashReporter`).
+
+### Fixed
+
+- Unexpected process exit (`0xC0000409` / BEX64) no longer skipped crash report folder creation when SEH filter alone missed the fault (`CrashReporter` vectored handler).
 
 ## [0.8.328] - 2026-07-25
 

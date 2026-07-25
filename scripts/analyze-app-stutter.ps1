@@ -58,6 +58,12 @@ if ($content -match '(?ms)## Auto diagnosis\s*\r?\n(.*?)(?:\r?\n## |\z)') {
     Write-Host ""
 }
 
+if ($content -match '(?ms)## Operation summary.*?\r?\n(.*?)(?:\r?\n## |\z)') {
+    Write-Host "## Operation summary" -ForegroundColor Yellow
+    Write-Host $Matches[1].TrimEnd()
+    Write-Host ""
+}
+
 $summary = Select-String -InputObject $content -Pattern '^\| (gui_pulse_count|max_gui_stall_ms|gui_stall_|cpu_spike|peak_)' -AllMatches
 if ($summary) {
     Write-Host "Summary counters:" -ForegroundColor Yellow
