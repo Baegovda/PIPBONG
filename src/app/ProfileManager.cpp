@@ -687,33 +687,6 @@ bool ProfileManager::updateTriggerArmedFeature(const QString& profileId,
     return saveSettings(profileId, settings, false, false, true);
 }
 
-QString ProfileManager::profileIdForForegroundTitle(const QString& foregroundTitle) const {
-    const QString trimmed = foregroundTitle.trimmed();
-    if (trimmed.isEmpty()) {
-        return m_defaultProfileId;
-    }
-
-    QString bestId;
-    int bestLength = 0;
-    for (const Profile& profile : m_profiles) {
-        if (profile.id == m_defaultProfileId) {
-            continue;
-        }
-        const auto considerBinding = [&](const QString& binding) {
-            if (binding.isEmpty()) {
-                return;
-            }
-            if (trimmed.contains(binding, Qt::CaseInsensitive) && binding.length() > bestLength) {
-                bestLength = binding.length();
-                bestId = profile.id;
-            }
-        };
-        considerBinding(profile.targetWindowTitle);
-        considerBinding(profile.subTargetWindowTitle);
-    }
-    return bestId.isEmpty() ? m_defaultProfileId : bestId;
-}
-
 bool ProfileManager::loadManifest() {
     QFile file(QDir(profilesDirectory()).filePath(QString::fromLatin1(kManifestFileName)));
     if (!file.open(QIODevice::ReadOnly)) {

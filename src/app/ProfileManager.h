@@ -88,10 +88,6 @@ public:
                                    const QString& featureId,
                                    bool armed) const;
 
-    /// Resolves the profile whose linked target-window title best matches the foreground title.
-    /// Returns the default profile when nothing matches or the title is empty.
-    QString profileIdForForegroundTitle(const QString& foregroundTitle) const;
-
     /// Returns a clone of a cached project when the on-disk file mtime is unchanged.
     std::unique_ptr<Project> cloneCachedProject(const QString& id,
                                                 const QString& projectPath,

@@ -2,7 +2,8 @@
 
 #include <algorithm>
 
-#include "app/ProfileForegroundSync.h"
+#include "app/ProfileForegroundResolver.h"
+#include "app/ForegroundWindowMonitor.h"
 #include "app/Application.h"
 #include "app/FeatureHotkeyGate.h"
 #include "app/ProgramSettings.h"
@@ -161,33 +162,16 @@ SessionRunPolicyInput sessionPolicyInputFrom(const FeatureRunSession& session) {
     return input;
 }
 
-MainWindow* g_foregroundSyncMainWindow = nullptr;
-
-void CALLBACK foregroundWindowEventProc(HWINEVENTHOOK,
-                                        DWORD event,
-                                        HWND,
-                                        LONG,
-                                        LONG,
-                                        DWORD,
-                                        DWORD) {
-    if (event != EVENT_SYSTEM_FOREGROUND || !g_foregroundSyncMainWindow) {
-        return;
-    }
-    QMetaObject::invokeMethod(g_foregroundSyncMainWindow,
-                              "onForegroundWindowChanged",
-                              Qt::QueuedConnection);
-}
-
 bool isShellTransientForegroundWindow(HWND hwnd) {
-    return ProfileForegroundSync::isShellTransientWindow(hwnd);
+    return ForegroundWindowMonitor::isShellTransientWindow(hwnd);
 }
 
 bool isAltTabModifierHeld() {
-    return ProfileForegroundSync::isAltTabModifierHeld();
+    return ForegroundWindowMonitor::isAltTabModifierHeld();
 }
 
 bool isPipbongProcessForeground(HWND hwnd) {
-    return ProfileForegroundSync::isPipbongProcessWindow(hwnd);
+    return ForegroundWindowMonitor::isPipbongProcessWindow(hwnd);
 }
 
 bool applyNativeAlwaysOnTop(QWidget* window, bool enabled) {
@@ -238,22 +222,6 @@ bool foregroundHwndMatchesLinkedProcess(HWND hwnd,
         return true;
     }
     return false;
-}
-
-HWND foregroundRootHwnd() {
-    HWND hwnd = GetForegroundWindow();
-    if (!hwnd || !IsWindow(hwnd)) {
-        return nullptr;
-    }
-    hwnd = GetAncestor(hwnd, GA_ROOT);
-    if (!hwnd || !IsWindow(hwnd)) {
-        return nullptr;
-    }
-    return hwnd;
-}
-
-bool isPipbongProcessForeground() {
-    return isPipbongProcessForeground(GetForegroundWindow());
 }
 
 bool foregroundMatchesScopedSubTarget(const QString& foregroundTitle,
@@ -675,6 +643,18 @@ MainWindow::MainWindow(QWidget* parent)
     , m_profileManager(std::make_unique<ProfileManager>(Application::dataDirectory()))
     , m_hotkeyManager(new HotkeyManager(this))
     , m_holdKeyTapMux(new HoldKeyTapMultiplexer(this)) {
+#ifdef _WIN32
+    m_foregroundMonitor = std::make_unique<ForegroundWindowMonitor>(this);
+    connect(m_foregroundMonitor.get(),
+            &ForegroundWindowMonitor::foregroundChanged,
+            this,
+            &MainWindow::onForegroundStateChanged);
+    connect(m_foregroundMonitor.get(),
+            &ForegroundWindowMonitor::altModifierReleased,
+            this,
+            &MainWindow::onForegroundAltModifierReleased);
+    m_foregroundMonitor->start();
+#endif
     m_autoSaveTimer = new QTimer(this);
     m_autoSaveTimer->setSingleShot(true);
     connect(m_autoSaveTimer, &QTimer::timeout, this, [this]() { autoSaveProject(); });
@@ -722,12 +702,6 @@ MainWindow::MainWindow(QWidget* parent)
             &MainWindow::updateTargetWindowDetails);
     m_targetWindowDetailRefreshTimer->start();
 
-    m_profileAutoSwitchTimer = new QTimer(this);
-    m_profileAutoSwitchTimer->setTimerType(Qt::PreciseTimer);
-    m_profileAutoSwitchTimer->setInterval(100);
-    connect(m_profileAutoSwitchTimer, &QTimer::timeout, this, &MainWindow::onForegroundWindowChanged);
-    m_profileAutoSwitchTimer->start();
-
     if (ProgramSettings::pinTargetWindowToScreenCenter()
         || ProgramSettings::pinSubTargetWindowToScreenCenter()) {
         applyTargetWindowCenterPin();
@@ -749,16 +723,6 @@ MainWindow::MainWindow(QWidget* parent)
     scheduleProfilePackageSeal();
 
 #ifdef _WIN32
-    g_foregroundSyncMainWindow = this;
-    m_profileForegroundEventHook =
-        SetWinEventHook(EVENT_SYSTEM_FOREGROUND,
-                        EVENT_SYSTEM_FOREGROUND,
-                        nullptr,
-                        foregroundWindowEventProc,
-                        0,
-                        0,
-                        WINEVENT_OUTOFCONTEXT);
-    syncProfileToForegroundWindow();
     syncEffectiveTargetWindowTitleToCapture();
 #endif
 
@@ -775,12 +739,8 @@ MainWindow::MainWindow(QWidget* parent)
 
 MainWindow::~MainWindow() {
 #ifdef _WIN32
-    if (m_profileForegroundEventHook) {
-        UnhookWinEvent(static_cast<HWINEVENTHOOK>(m_profileForegroundEventHook));
-        m_profileForegroundEventHook = nullptr;
-    }
-    if (g_foregroundSyncMainWindow == this) {
-        g_foregroundSyncMainWindow = nullptr;
+    if (m_foregroundMonitor) {
+        m_foregroundMonitor->stop();
     }
 #endif
     stopAllSessions();
@@ -2428,10 +2388,6 @@ void MainWindow::applyAlwaysOnTop(bool enabled) {
 
 void MainWindow::showEvent(QShowEvent* event) {
     QMainWindow::showEvent(event);
-    if (!m_initialForegroundSyncDone) {
-        m_initialForegroundSyncDone = true;
-        QTimer::singleShot(0, this, &MainWindow::onForegroundWindowChanged);
-    }
     if (!m_initialUpdateCheckDone) {
         m_initialUpdateCheckDone = true;
         QTimer::singleShot(0, this, &MainWindow::runSilentUpdateCheck);
@@ -4461,7 +4417,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
         if (!skipHeavyForegroundSync) {
             switchToForegroundLinkedProfileIfNeeded(true);
             if (!fromHotkey) {
-                syncProfileToForegroundWindow();
+                applyProfileSwitchFromForegroundState(m_foregroundMonitor->currentState());
             }
             syncEffectiveTargetWindowTitleToCapture();
             if (fromHotkey) {
@@ -6278,13 +6234,9 @@ bool MainWindow::shouldSuppressFeatureHotkeyExecution(const Feature* feature) co
         }
     }
 
-    const HWND foreground = GetForegroundWindow();
-    if (foreground && IsWindow(foreground)) {
-        DWORD pid = 0;
-        GetWindowThreadProcessId(foreground, &pid);
-        if (pid == GetCurrentProcessId()) {
-            return true;
-        }
+    const HWND foreground = m_foregroundMonitor ? m_foregroundMonitor->currentRootHwnd() : nullptr;
+    if (foreground && IsWindow(foreground) && isPipbongProcessForeground(foreground)) {
+        return true;
     }
 #endif
     return false;
@@ -6302,13 +6254,9 @@ void MainWindow::notifyFeatureHotkeySuppressed() {
         return;
     }
 
-    const HWND foreground = GetForegroundWindow();
-    if (foreground && IsWindow(foreground)) {
-        DWORD pid = 0;
-        GetWindowThreadProcessId(foreground, &pid);
-        if (pid == GetCurrentProcessId()) {
-            showTransientStatus(tr("타겟을 활성화한 뒤 단축키를 누르세요."), 2500);
-        }
+    const HWND foreground = m_foregroundMonitor ? m_foregroundMonitor->currentRootHwnd() : nullptr;
+    if (foreground && IsWindow(foreground) && isPipbongProcessForeground(foreground)) {
+        showTransientStatus(tr("타겟을 활성화한 뒤 단축키를 누르세요."), 2500);
     }
 #endif
 }
@@ -7117,6 +7065,7 @@ void MainWindow::loadActiveProfile(bool quiet, bool scheduleTriggerRestore) {
         if (scheduleTriggerRestore) {
             scheduleRestorePersistedTriggerSessions();
         }
+        onForegroundStateChanged(m_foregroundMonitor->currentState());
         return;
     }
 
@@ -7144,6 +7093,7 @@ void MainWindow::loadActiveProfile(bool quiet, bool scheduleTriggerRestore) {
     if (scheduleTriggerRestore) {
         scheduleRestorePersistedTriggerSessions();
     }
+    onForegroundStateChanged(m_foregroundMonitor->currentState());
 }
 
 void MainWindow::refreshProfileList() {
@@ -7283,7 +7233,7 @@ void MainWindow::schedulePostProfileSwitchForegroundReconcile() {
     m_postSwitchForegroundReconcileScheduled = true;
     QTimer::singleShot(0, this, [this]() {
         m_postSwitchForegroundReconcileScheduled = false;
-        syncProfileToForegroundWindow();
+        applyProfileSwitchFromForegroundState(m_foregroundMonitor->currentState());
         finishForegroundSessionGate();
     });
 }
@@ -7445,55 +7395,44 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
         return false;
     }
     if (automatic) {
-        syncProfileToForegroundWindow();
+        applyProfileSwitchFromForegroundState(m_foregroundMonitor->currentState());
         return m_profileManager->activeProfileId() == profileId;
     }
     return executeProfileSwitch(profileId, false);
 }
 
-void MainWindow::onForegroundWindowChanged() {
+void MainWindow::onForegroundAltModifierReleased() {
 #ifdef _WIN32
-    const bool altHeld = ProfileForegroundSync::isAltTabModifierHeld();
-    if (m_altTabModifierWasHeld && !altHeld) {
-        flushDeferredProfileSwitchIfIdle();
-        if (m_hotkeyManager) {
-            m_hotkeyManager->resetHookLatchState();
-        }
+    flushDeferredProfileSwitchIfIdle();
+    if (m_hotkeyManager) {
+        m_hotkeyManager->resetHookLatchState();
     }
-    m_altTabModifierWasHeld = altHeld;
-
-    HWND foregroundHwnd = GetForegroundWindow();
-    if (foregroundHwnd && IsWindow(foregroundHwnd) && m_profileManager && !m_switchingProfile
-        && !m_profileSwitchPipelineActive) {
-        const ProfileForegroundSync::Snapshot snap =
-            ProfileForegroundSync::snapshotFrom(foregroundHwnd);
-        if (snap.rootHwnd && snap.rootHwnd == m_lastForegroundSyncHwnd
-            && m_deferredProfileSwitchId.isEmpty()) {
-            const ProfileForegroundSync::ResolveResult resolved =
-                ProfileForegroundSync::resolve(*m_profileManager, snap);
-            if (resolved.profileId == m_profileManager->activeProfileId()) {
-                if (!snap.pipbong) {
-                    applyForegroundCaptureHints(snap.rootHwnd, snap.title);
-                }
-                if (!m_switchingProfile && !m_profileSwitchPipelineActive) {
-                    finishForegroundSessionGate();
-                }
-                return;
-            }
-        }
-        if (snap.rootHwnd) {
-            m_lastForegroundSyncHwnd = snap.rootHwnd;
-        }
-    }
-
+#else
+    Q_UNUSED(this);
 #endif
-    syncProfileToForegroundWindow();
+}
+
+void MainWindow::onForegroundStateChanged(const ForegroundWindowState& state) {
 #ifdef _WIN32
-    if (!isPipbongProcessForeground()) {
+    if (m_profileManager && !m_switchingProfile && !m_profileSwitchPipelineActive && state.rootHwnd
+        && !state.pipbong && !state.shellTransient && m_deferredProfileSwitchId.isEmpty()) {
+        const ProfileForegroundResolver::ResolveResult resolved =
+            ProfileForegroundResolver::resolve(*m_profileManager, state);
+        if (resolved.profileId == m_profileManager->activeProfileId()) {
+            applyForegroundCaptureHints(state.rootHwnd, state.title);
+            finishForegroundSessionGate();
+            return;
+        }
+    }
+#endif
+
+    applyProfileSwitchFromForegroundState(state);
+#ifdef _WIN32
+    if (!state.pipbong) {
         if (!adoptForegroundLinkedCaptureIfMatched()) {
             syncEffectiveTargetWindowTitleToCapture();
         }
-        maybeResetHotkeyLatchForForeground(foregroundRootHwnd());
+        maybeResetHotkeyLatchForForeground(state.rootHwnd);
     } else {
         m_lastHotkeyLatchResetForegroundHwnd = nullptr;
     }
@@ -7502,6 +7441,7 @@ void MainWindow::onForegroundWindowChanged() {
     }
 #else
     syncEffectiveTargetWindowTitleToCapture();
+    Q_UNUSED(state);
 #endif
 }
 
@@ -7539,38 +7479,31 @@ void MainWindow::handlePipbongForegroundFocus() {
 #endif
 }
 
-void MainWindow::syncProfileToForegroundWindow() {
+void MainWindow::applyProfileSwitchFromForegroundState(const ForegroundWindowState& state) {
     if (!m_profileManager || m_switchingProfile || m_profileSwitchPipelineActive) {
         return;
     }
     schedulePruneAbandonedEngines();
 #ifdef _WIN32
-    HWND foregroundHwnd = GetForegroundWindow();
-    if (!foregroundHwnd || !IsWindow(foregroundHwnd)) {
-        return;
-    }
-
-    const ProfileForegroundSync::Snapshot snap =
-        ProfileForegroundSync::snapshotFrom(foregroundHwnd);
-    if (snap.pipbong) {
+    if (state.pipbong) {
         handlePipbongForegroundFocus();
         return;
     }
-    if (!snap.rootHwnd || snap.shellTransient) {
+    if (!state.rootHwnd || state.shellTransient) {
         return;
     }
 
-    const ProfileForegroundSync::ResolveResult resolved =
-        ProfileForegroundSync::resolve(*m_profileManager, snap);
+    const ProfileForegroundResolver::ResolveResult resolved =
+        ProfileForegroundResolver::resolve(*m_profileManager, state);
 
-    applyForegroundCaptureHints(snap.rootHwnd, snap.title);
+    applyForegroundCaptureHints(state.rootHwnd, state.title);
 
     if (resolved.profileId.isEmpty()
         || resolved.profileId == m_profileManager->activeProfileId()) {
         return;
     }
 
-    if (ProfileForegroundSync::isAltTabModifierHeld()) {
+    if (ForegroundWindowMonitor::isAltTabModifierHeld()) {
         if (!m_profileManager->isDefaultProfile(resolved.profileId)) {
             m_deferredProfileSwitchId = resolved.profileId;
         }
@@ -7605,7 +7538,7 @@ void MainWindow::syncProfileToForegroundWindow() {
                                   QStringLiteral("switch %1").arg(resolved.profileId));
     executeProfileSwitch(resolved.profileId, true);
 #else
-    Q_UNUSED(this);
+    Q_UNUSED(state);
 #endif
 }
 
@@ -7657,7 +7590,7 @@ void MainWindow::ensureForegroundReadyForFeatureHotkey() {
     if (!adoptForegroundLinkedCaptureIfMatched()) {
         syncEffectiveTargetWindowTitleToCapture();
     }
-    maybeResetHotkeyLatchForForeground(foregroundRootHwnd());
+    maybeResetHotkeyLatchForForeground(m_foregroundMonitor->currentRootHwnd());
 #else
     Q_UNUSED(this);
 #endif
@@ -7807,17 +7740,11 @@ std::wstring MainWindow::resolveEffectiveTargetTitleW() const {
     }
 
 #ifdef _WIN32
-    HWND hwnd = GetForegroundWindow();
-    if (!hwnd || !IsWindow(hwnd)) {
+    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
+    if (!fg.rootHwnd) {
         return mainTitle;
     }
-    hwnd = GetAncestor(hwnd, GA_ROOT);
-    if (!hwnd || !IsWindow(hwnd)) {
-        return mainTitle;
-    }
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(hwnd, titleBuffer, 512);
-    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+    const QString& foregroundTitle = fg.title;
     if (foregroundTitle.isEmpty()) {
         return mainTitle;
     }
@@ -7879,26 +7806,20 @@ std::wstring MainWindow::resolveAutoRunCaptureTargetTitleW() const {
         return {};
     }
     QString foregroundTitle;
-    HWND hwnd = GetForegroundWindow();
-    if (hwnd && IsWindow(hwnd)) {
-        hwnd = GetAncestor(hwnd, GA_ROOT);
-        if (hwnd && IsWindow(hwnd)) {
-            wchar_t titleBuffer[512]{};
-            GetWindowTextW(hwnd, titleBuffer, 512);
-            foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
-            const QString mainProcess = m_profileManager->linkedTargetProcessPath(profileId);
-            const QString subProcess = m_profileManager->subLinkedTargetProcessPath(profileId);
-            ScreenCapture::TargetWindowInfo info;
-            if (ScreenCapture::queryWindowInfo(hwnd, info) && !info.processPath.empty()) {
-                const QString proc = QString::fromStdWString(info.processPath);
-                if (!mainProcess.isEmpty()
-                    && proc.compare(mainProcess, Qt::CaseInsensitive) == 0) {
-                    return mainTitle;
-                }
-                if (!subProcess.isEmpty()
-                    && proc.compare(subProcess, Qt::CaseInsensitive) == 0) {
-                    return subBinding.toStdWString();
-                }
+    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
+    if (fg.rootHwnd) {
+        foregroundTitle = fg.title;
+        const QString mainProcess = m_profileManager->linkedTargetProcessPath(profileId);
+        const QString subProcess = m_profileManager->subLinkedTargetProcessPath(profileId);
+        if (!fg.processPath.isEmpty()) {
+            const QString& proc = fg.processPath;
+            if (!mainProcess.isEmpty()
+                && proc.compare(mainProcess, Qt::CaseInsensitive) == 0) {
+                return mainTitle;
+            }
+            if (!subProcess.isEmpty()
+                && proc.compare(subProcess, Qt::CaseInsensitive) == 0) {
+                return subBinding.toStdWString();
             }
         }
     }
@@ -7977,9 +7898,9 @@ bool MainWindow::adoptForegroundLinkedCaptureIfMatched() {
         return false;
     }
 
-    HWND hwnd = foregroundRootHwnd();
-    if (!hwnd || !IsWindow(hwnd) || isPipbongProcessForeground(hwnd)
-        || isShellTransientForegroundWindow(hwnd)) {
+    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
+    HWND hwnd = fg.rootHwnd;
+    if (!hwnd || !IsWindow(hwnd) || fg.pipbong || fg.shellTransient) {
         return false;
     }
 
@@ -7989,9 +7910,7 @@ bool MainWindow::adoptForegroundLinkedCaptureIfMatched() {
     const QString mainProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
     const QString subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
 
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(hwnd, titleBuffer, 512);
-    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+    const QString foregroundTitle = fg.title;
 
     ScreenCapture::TargetWindowInfo info;
     if (!ScreenCapture::queryWindowInfo(hwnd, info)) {
@@ -8097,15 +8016,16 @@ MainWindow::TargetDetailHwndResolve MainWindow::resolveTargetDetailDisplayHwnd(
         result.isSubTarget = isSub;
     };
 
-    HWND fgHwnd = foregroundRootHwnd();
-    if (fgHwnd && !isPipbongProcessForeground(fgHwnd)) {
+    HWND fgHwnd = m_foregroundMonitor->currentRootHwnd();
+    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
+    if (fgHwnd && !fg.pipbong) {
         if (const std::optional<bool> role = classifyHwnd(fgHwnd)) {
             applyHwnd(fgHwnd, *role);
             return result;
         }
     }
 
-    if (fgHwnd && isPipbongProcessForeground(fgHwnd) && m_lastProfileLinkedForegroundHwnd
+    if (fgHwnd && fg.pipbong && m_lastProfileLinkedForegroundHwnd
         && IsWindow(m_lastProfileLinkedForegroundHwnd)) {
         applyHwnd(m_lastProfileLinkedForegroundHwnd, m_lastProfileLinkedForegroundIsSub);
         return result;
@@ -8172,45 +8092,16 @@ HWND MainWindow::findLinkedTargetHwndForDisplay(const QString& mainBinding,
 
 QString MainWindow::foregroundProfileIdForActiveWindow() const {
 #ifdef _WIN32
-    const HWND foregroundHwnd = foregroundRootHwnd();
-    if (!foregroundHwnd || !m_profileManager) {
-        return {};
-    }
-    const ProfileForegroundSync::Snapshot snap =
-        ProfileForegroundSync::snapshotFrom(foregroundHwnd);
-    if (snap.pipbong || snap.shellTransient || !snap.rootHwnd) {
-        return {};
-    }
-    return ProfileForegroundSync::resolve(*m_profileManager, snap).profileId;
-#else
-    return {};
-#endif
-}
-
-QString MainWindow::resolveProfileIdForForeground(HWND hwnd,
-                                                  const QString& foregroundTitle) const {
     if (!m_profileManager) {
         return {};
     }
-#ifdef _WIN32
-    ProfileForegroundSync::Snapshot snap;
-    if (hwnd && IsWindow(hwnd)) {
-        snap.rootHwnd = GetAncestor(hwnd, GA_ROOT);
-        if (!snap.rootHwnd || !IsWindow(snap.rootHwnd)) {
-            snap.rootHwnd = nullptr;
-        }
+    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
+    if (fg.pipbong || fg.shellTransient || !fg.rootHwnd) {
+        return {};
     }
-    snap.title = foregroundTitle.trimmed();
-    if (snap.rootHwnd) {
-        ScreenCapture::TargetWindowInfo info;
-        if (ScreenCapture::queryWindowInfo(snap.rootHwnd, info) && !info.processPath.empty()) {
-            snap.processPath = QString::fromStdWString(info.processPath);
-        }
-    }
-    return ProfileForegroundSync::resolve(*m_profileManager, snap).profileId;
+    return ProfileForegroundResolver::resolve(*m_profileManager, fg).profileId;
 #else
-    Q_UNUSED(hwnd);
-    return m_profileManager->profileIdForForegroundTitle(foregroundTitle);
+    return {};
 #endif
 }
 
@@ -8223,7 +8114,7 @@ QString MainWindow::profileIdForForegroundHwnd(HWND hwnd) const {
     if (!ScreenCapture::queryWindowInfo(hwnd, info) || info.processPath.empty()) {
         return {};
     }
-    return ProfileForegroundSync::profileIdForProcessPath(
+    return ProfileForegroundResolver::profileIdForProcessPath(
         *m_profileManager, QString::fromStdWString(info.processPath));
 #else
     Q_UNUSED(hwnd);
@@ -8237,13 +8128,12 @@ bool MainWindow::activeProfileForegroundBindingMatches() const {
         return false;
     }
 
-    const HWND foregroundHwnd = foregroundRootHwnd();
+    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
+    const HWND foregroundHwnd = fg.rootHwnd;
     if (!foregroundHwnd) {
         return false;
     }
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(foregroundHwnd, titleBuffer, 512);
-    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+    const QString foregroundTitle = fg.title;
 
     const QString profileId = m_profileManager->activeProfileId();
     const QString mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
@@ -8330,7 +8220,7 @@ bool MainWindow::switchToForegroundLinkedProfileIfNeeded(bool forceImmediate) {
         return false;
     }
     const QString before = m_profileManager->activeProfileId();
-    syncProfileToForegroundWindow();
+    applyProfileSwitchFromForegroundState(m_foregroundMonitor->currentState());
     return m_profileManager->activeProfileId() != before || activeProfileForegroundBindingMatches();
 #else
     Q_UNUSED(forceImmediate);
@@ -8340,13 +8230,12 @@ bool MainWindow::switchToForegroundLinkedProfileIfNeeded(bool forceImmediate) {
 
 bool MainWindow::profileMainOrSubForegroundActive() const {
 #ifdef _WIN32
-    const HWND foregroundHwnd = foregroundRootHwnd();
+    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
+    const HWND foregroundHwnd = fg.rootHwnd;
     if (!foregroundHwnd) {
         return false;
     }
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(foregroundHwnd, titleBuffer, 512);
-    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+    const QString foregroundTitle = fg.title;
 
     const QString mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
     QString subBinding;
@@ -8485,22 +8374,12 @@ bool MainWindow::scopedTargetForegroundActive(const Feature* feature) const {
     }
 
 #ifdef _WIN32
-    HWND hwnd = GetForegroundWindow();
-    if (!hwnd || !IsWindow(hwnd)) {
+    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
+    HWND hwnd = fg.rootHwnd;
+    if (!hwnd || fg.pipbong) {
         return false;
     }
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    if (pid == GetCurrentProcessId()) {
-        return false;
-    }
-    hwnd = GetAncestor(hwnd, GA_ROOT);
-    if (!hwnd || !IsWindow(hwnd)) {
-        return false;
-    }
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(hwnd, titleBuffer, 512);
-    const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
+    const QString foregroundTitle = fg.title;
 
     const QString mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
     QString subBinding;
@@ -8768,19 +8647,15 @@ void MainWindow::syncEffectiveTargetWindowTitleToCapture() {
         ScreenCapture::setTargetWindow(hwnd);
         ScreenCapture::setForegroundHintWindow(hwnd);
     } else {
-        HWND foregroundHwnd = GetForegroundWindow();
+        const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
+        HWND foregroundHwnd = fg.rootHwnd;
         if (foregroundHwnd && IsWindow(foregroundHwnd)) {
-            foregroundHwnd = GetAncestor(foregroundHwnd, GA_ROOT);
-            if (foregroundHwnd && IsWindow(foregroundHwnd)) {
-                wchar_t titleBuffer[512]{};
-                GetWindowTextW(foregroundHwnd, titleBuffer, 512);
-                const QString foregroundTitle = QString::fromWCharArray(titleBuffer).trimmed();
-                const QString binding = QString::fromStdWString(title).trimmed();
-                if (!binding.isEmpty()
-                    && foregroundTitle.contains(binding, Qt::CaseInsensitive)) {
-                    ScreenCapture::setTargetWindow(foregroundHwnd);
-                    ScreenCapture::setForegroundHintWindow(foregroundHwnd);
-                }
+            const QString foregroundTitle = fg.title;
+            const QString binding = QString::fromStdWString(title).trimmed();
+            if (!binding.isEmpty()
+                && foregroundTitle.contains(binding, Qt::CaseInsensitive)) {
+                ScreenCapture::setTargetWindow(foregroundHwnd);
+                ScreenCapture::setForegroundHintWindow(foregroundHwnd);
             }
         }
     }

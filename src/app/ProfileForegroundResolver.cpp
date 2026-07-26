@@ -1,82 +1,8 @@
-#include "ProfileForegroundSync.h"
+#include "ProfileForegroundResolver.h"
 
 #include "ProfileManager.h"
-#include "core/capture/ScreenCapture.h"
 
-#ifdef _WIN32
-#    include <windows.h>
-#endif
-
-namespace ProfileForegroundSync {
-
-#ifdef _WIN32
-bool isShellTransientWindow(HWND hwnd) {
-    if (!hwnd || !IsWindow(hwnd)) {
-        return true;
-    }
-    wchar_t className[256]{};
-    if (GetClassNameW(hwnd, className, 256) <= 0) {
-        return false;
-    }
-    static const wchar_t* kIgnoredClasses[] = {
-        L"#32771",
-        L"ForegroundStaging",
-        L"MultitaskingViewFrame",
-        L"XamlExplorerHostIslandWindow",
-        L"TaskSwitcherWnd",
-        L"Xaml_Window",
-        L"Windows.UI.Core.CoreWindow",
-        L"Shell_TrayWnd",
-        L"Shell_SecondaryTrayWnd",
-        L"NotifyIconOverflowWindow",
-        L"WorkerW",
-        L"Progman",
-    };
-    for (const wchar_t* ignored : kIgnoredClasses) {
-        if (_wcsicmp(className, ignored) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool isAltTabModifierHeld() {
-    return (GetAsyncKeyState(VK_MENU) & 0x8000) != 0 || (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0
-           || (GetAsyncKeyState(VK_RMENU) & 0x8000) != 0;
-}
-
-bool isPipbongProcessWindow(HWND hwnd) {
-    if (!hwnd || !IsWindow(hwnd)) {
-        return false;
-    }
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    return pid == GetCurrentProcessId();
-}
-
-Snapshot snapshotFrom(HWND foregroundHwnd) {
-    Snapshot snap;
-    if (!foregroundHwnd || !IsWindow(foregroundHwnd)) {
-        return snap;
-    }
-    snap.pipbong = isPipbongProcessWindow(foregroundHwnd);
-    snap.rootHwnd = GetAncestor(foregroundHwnd, GA_ROOT);
-    if (!snap.rootHwnd || !IsWindow(snap.rootHwnd)) {
-        snap.rootHwnd = nullptr;
-        return snap;
-    }
-    snap.shellTransient = isShellTransientWindow(snap.rootHwnd);
-    wchar_t titleBuffer[512]{};
-    GetWindowTextW(snap.rootHwnd, titleBuffer, 512);
-    snap.title = QString::fromWCharArray(titleBuffer).trimmed();
-
-    ScreenCapture::TargetWindowInfo info;
-    if (ScreenCapture::queryWindowInfo(snap.rootHwnd, info) && !info.processPath.empty()) {
-        snap.processPath = QString::fromStdWString(info.processPath);
-    }
-    return snap;
-}
-#endif
+namespace ProfileForegroundResolver {
 
 QString profileIdForProcessPath(const ProfileManager& profileManager, const QString& processPath) {
     if (processPath.isEmpty()) {
@@ -106,9 +32,11 @@ QString profileIdForProcessPath(const ProfileManager& profileManager, const QStr
     return bestId;
 }
 
+namespace {
+
 QString profileIdForTitleBinding(const ProfileManager& profileManager,
-                                 const QString& foregroundTitle,
-                                 const QString& processPath) {
+                                   const QString& foregroundTitle,
+                                   const QString& processPath) {
     const QString trimmed = foregroundTitle.trimmed();
     if (trimmed.isEmpty()) {
         return {};
@@ -143,32 +71,33 @@ QString profileIdForTitleBinding(const ProfileManager& profileManager,
     return bestId;
 }
 
-ResolveResult resolve(const ProfileManager& profileManager, const Snapshot& snapshot) {
+} // namespace
+
+ResolveResult resolve(const ProfileManager& profileManager, const ForegroundWindowState& state) {
     ResolveResult result;
     result.profileId = profileManager.defaultProfileId();
     result.matchKind = MatchKind::DefaultFallback;
 
 #ifdef _WIN32
-    if (!snapshot.rootHwnd || snapshot.pipbong || snapshot.shellTransient) {
+    if (!state.rootHwnd || state.pipbong || state.shellTransient) {
         return result;
     }
 
-    const QString byProcess = profileIdForProcessPath(profileManager, snapshot.processPath);
+    const QString byProcess = profileIdForProcessPath(profileManager, state.processPath);
     if (!byProcess.isEmpty() && !profileManager.isDefaultProfile(byProcess)) {
         result.profileId = byProcess;
         result.matchKind = MatchKind::ProcessPath;
         return result;
     }
 
-    const QString byTitle =
-        profileIdForTitleBinding(profileManager, snapshot.title, snapshot.processPath);
+    const QString byTitle = profileIdForTitleBinding(profileManager, state.title, state.processPath);
     if (!byTitle.isEmpty() && !profileManager.isDefaultProfile(byTitle)) {
         result.profileId = byTitle;
         result.matchKind = MatchKind::TitleBinding;
         return result;
     }
 #else
-    Q_UNUSED(snapshot);
+    Q_UNUSED(state);
 #endif
 
     if (result.profileId.isEmpty()) {
@@ -177,4 +106,4 @@ ResolveResult resolve(const ProfileManager& profileManager, const Snapshot& snap
     return result;
 }
 
-} // namespace ProfileForegroundSync
+} // namespace ProfileForegroundResolver

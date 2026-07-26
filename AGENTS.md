@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.329` (from `project(PIPBONG VERSION 0.8.329)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.330` (from `project(PIPBONG VERSION 0.8.330)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -514,7 +514,7 @@ Sbm1.0/                        # repo root (local workspace)
 
 ### 5.6 UI
 
-- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked **주 대상 창** and optional **서브 대상 창** (e.g. launcher) per profile; **foreground-window auto-switch** uses Win32 `EVENT_SYSTEM_FOREGROUND` (primary) plus a 100 ms poll fallback: foreground HWND → `ProfileForegroundSync::resolve` (process path, then title binding) → immediate `executeProfileSwitch` when the resolved profile differs; Alt+Tab defers linked switches until Alt is released; PIPBONG foreground and shell transient windows are ignored (`MainWindow::syncProfileToForegroundWindow`, `ProfileForegroundSync`). Feature runs pick the effective capture target from the focused window (sub title when it matches, otherwise main) via `MainWindow::resolveEffectiveTargetTitleW`.
+- **Profile list:** Unlimited profiles; manual select, drag reorder, edit linked **주 대상 창** and optional **서브 대상 창** (e.g. launcher) per profile; **foreground-window auto-switch** uses a single **`ForegroundWindowMonitor`** (`EVENT_SYSTEM_FOREGROUND` WinEvent only — no poll timer): `ForegroundWindowState` → `ProfileForegroundResolver::resolve` (process path, then title binding) → `MainWindow::applyProfileSwitchFromForegroundState` / `executeProfileSwitch` when the resolved profile differs; Alt+Tab defers linked switches until Alt is released; PIPBONG foreground and shell transient windows are ignored. Feature runs pick the effective capture target from the focused window (sub title when it matches, otherwise main) via `MainWindow::resolveEffectiveTargetTitleW`.
 - **Feature list:** Create/delete/rename features; hotkey binding (button, double-click, context menu).
 - **Workflow editor:** Block list with drag-and-drop reorder; per-type **블록 추가** buttons (템플릿 매칭, 마우스, 키보드, 딜레이); template thumbnails (48×48); block editors in `BlockEditorDialog`.
 - **ImageFind editor:** ROI preview, match test, screen capture overlay, `CaptureConfirmDialog`.
@@ -1165,20 +1165,21 @@ Cursor rule: `.cursor/rules/app-stutter-profiling.mdc`.
 
 ### 8.17 Profile auto-switch (mandatory — do not regress)
 
-**Status:** Rewritten 2026-07-25 (v0.8.327). Single linear path — no stability timer queue.
+**Status:** Rewritten 2026-07-27 (v0.8.330). Single **`ForegroundWindowMonitor`** input path — no 100 ms poll, no scattered `GetForegroundWindow` in `MainWindow.cpp`.
 
 | Layer | Rule |
 | ----- | ---- |
-| Entry | **`syncProfileToForegroundWindow`** only — WinEvent `onForegroundWindowChanged` + 100 ms poll fallback |
-| Resolve | `ProfileForegroundSync::snapshotFrom` → `resolve` (process path → title binding → default fallback) |
-| Switch | When resolved profile ≠ active → **`executeProfileSwitch`** immediately (80 ms min-interval ping-pong guard only) |
-| Defer | Alt held (linked targets only), list drag active, or switch pipeline in progress → `m_deferredProfileSwitchId` + `flushDeferredProfileSwitchIfIdle` |
-| Skip | PIPBONG foreground, shell transient HWNDs, profile switch pipeline active |
-| Pipeline | `executeProfileSwitch`: sync stop/save/`setActiveProfile` → `singleShot(0)` `loadActiveProfile` → `restorePersistedTriggerSessions` + `finishForegroundSessionGate` |
+| **Detect** | **`ForegroundWindowMonitor`** only — WinEvent `EVENT_SYSTEM_FOREGROUND` → GUI-thread `foregroundChanged` / `altModifierReleased`; `start()` before profile load captures initial `GetForegroundWindow()` once |
+| **Entry** | **`MainWindow::onForegroundStateChanged`** → **`applyProfileSwitchFromForegroundState(state)`** — never re-query Win32 foreground inside coordinator |
+| **Resolve** | `ProfileForegroundResolver::resolve(ProfileManager, ForegroundWindowState)` — process path → title binding → default fallback |
+| **Switch** | When resolved profile ≠ active → **`executeProfileSwitch`** immediately (80 ms min-interval ping-pong guard only) |
+| **Defer** | Alt held (linked targets only), list drag active, or switch pipeline in progress → `m_deferredProfileSwitchId` + `flushDeferredProfileSwitchIfIdle` |
+| **Skip** | PIPBONG foreground, shell transient HWNDs, profile switch pipeline active; block-editor open defers **switch** only (monitor keeps updating) |
+| **Pipeline** | `executeProfileSwitch`: sync stop/save/`setActiveProfile` → `singleShot(0)` `loadActiveProfile` → `onForegroundStateChanged(currentState())` → `restorePersistedTriggerSessions` + `finishForegroundSessionGate` |
 
-**Manual verify:** Focus linked game/launcher → profile switches immediately; Alt+Tab picker does not flip profiles mid-picker; PIPBONG focus does not spuriously switch to default; unrelated window → default profile.
+**Manual verify:** App start reflects current focus; game↔browser profile switch is immediate; Alt+Tab picker does not flip profiles mid-picker; Alt release commits deferred switch; PIPBONG focus does not spuriously switch to default; unrelated window → default profile; empty-title game (LOL) matches by process path.
 
-Key files: `ProfileForegroundSync.*`, `MainWindow.cpp` (`syncProfileToForegroundWindow`, `executeProfileSwitch`, `flushDeferredProfileSwitchIfIdle`).
+Key files: `ForegroundWindowMonitor.*`, `ForegroundWindowState.*`, `ProfileForegroundResolver.*`, `MainWindow.cpp` (`onForegroundStateChanged`, `applyProfileSwitchFromForegroundState`, `executeProfileSwitch`, `flushDeferredProfileSwitchIfIdle`).
 
 ### 8.13 Settings and edit dialogs (mandatory — grouped + tooltips)
 
@@ -1240,7 +1241,7 @@ This is **not** the same bug as user-held Shift release on workflow end ([§8.6]
 
 | Layer | Mechanism | Wrong diagnosis (오답) |
 | ----- | --------- | ------------------------ |
-| **Foreground delivery / binding** (v0.8.293) | `PostMessageW` alone did not reliably run UI-thread foreground sync; empty-caption games (LOL) need **process path** not title; `FeatureHotkeyGate` must **not** block `syncProfileToForegroundWindow` | “Only fix `ScreenCapture` HWND” or “user must focus PIPBONG once to heal” |
+| **Foreground delivery / binding** (v0.8.293, v0.8.330) | `ForegroundWindowMonitor` queues WinEvent on GUI thread; empty-caption games need **process path** not title; `FeatureHotkeyGate` must **not** block `applyProfileSwitchFromForegroundState` | “Only fix `ScreenCapture` HWND” or “user must focus PIPBONG once to heal” |
 | **Hook latch stuck** (v0.8.294 — primary for Alt+Tab) | `WH_KEYBOARD_LL` / `WH_MOUSE_LL` may **miss KEYUP / button UP** during Alt+Tab shell transit → internal latch diverges from physical state | “Toggle `armed` / mouse `buttonDown` will self-heal” |
 
 **Toggle latch failure mode** (`HotkeyManager::handleKeyboardHookEvent`):
@@ -1257,14 +1258,14 @@ This is **not** the same bug as user-held Shift release on workflow end ([§8.6]
 
 | Layer | Responsibility |
 | ----- | -------------- |
-| **WinEvent → UI thread** | `foregroundWindowEventProc` calls `QMetaObject::invokeMethod(..., "onForegroundWindowChanged", Qt::QueuedConnection)` — **not** `PostMessageW` alone (`MainWindow.cpp`) |
-| **`onForegroundWindowChanged`** | Central coordinator: Alt-release edge → flush deferred profile + `resetHookLatchState`; then profile sync, capture adopt, `maybeResetHotkeyLatchForForeground`, `finishForegroundSessionGate` |
+| **`ForegroundWindowMonitor`** | Sole Win32 foreground detector: `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` → `QMetaObject::invokeMethod` → `onWinEvent` → coalesced `foregroundChanged(ForegroundWindowState)`; `altModifierReleased` on Alt edge; `currentState()` for gates — **no** `MainWindow` poll timer |
+| **`onForegroundStateChanged`** | Central coordinator: profile switch via `applyProfileSwitchFromForegroundState`; capture adopt; `maybeResetHotkeyLatchForForeground`; `finishForegroundSessionGate` |
+| **`onForegroundAltModifierReleased`** | `flushDeferredProfileSwitchIfIdle()` + `resetHookLatchState()` |
 | **`HotkeyManager::resetHookLatchState`** | `hold keyDown=false`, `toggle armed=true`, `mouse buttonDown=false`; **does not** emit `hotkeyHoldEnded` (safe recovery from missed UP) |
 | **`maybeResetHotkeyLatchForForeground(HWND)`** | Reset latch **once per new** linked-target foreground root HWND (`m_lastHotkeyLatchResetForegroundHwnd`); skip PIPBONG/shell transient; skip when foreground is not profile main/sub |
-| **`ensureForegroundReadyForFeatureHotkey`** | Called from `onHotkeyTriggered` / `onHotkeyHoldStarted` **before** run: linked profile switch, deferred flush, `syncProfileToForegroundWindow`, force `switchToProfile` if mismatch, capture adopt/sync, latch reset, session gate reconcile |
+| **`ensureForegroundReadyForFeatureHotkey`** | Called from `onHotkeyTriggered` / `onHotkeyHoldStarted` **before** run: linked profile switch, deferred flush, capture adopt/sync, latch reset, session gate reconcile — **no** redundant full foreground poll |
 | **`finishForegroundSessionGate`** | After HWND/profile/capture refresh: flush deferred switch (when Alt not held), `reconcileRunSessionsWithForegroundGate`, resume scoped-target waits, trigger monitor engines |
-| **Empty title games** | `profileIdForForegroundHwnd`, `healLinkedTargetProcessPathFromForeground`, `adoptForegroundLinkedCaptureIfMatched` — match by **exe path** when `GetWindowTextW` is empty |
-| **50 ms poll** | `syncProfileToForegroundWindow` remains fallback; WinEvent is primary |
+| **Empty title games** | `profileIdForForegroundHwnd`, `healLinkedTargetProcessPathFromForeground`, `adoptForegroundLinkedCaptureIfMatched` — match by **exe path** when window title is empty |
 
 #### Code reference (canonical — v0.8.294)
 
@@ -1284,13 +1285,14 @@ void HotkeyManager::resetHookLatchState() {
 }
 ```
 
-**Foreground coordinator** (`MainWindow::onForegroundWindowChanged`):
+**Foreground coordinator** (`MainWindow::onForegroundStateChanged`):
 
-1. Alt was held, now released → `flushDeferredProfileSwitchIfIdle()` + `m_hotkeyManager->resetHookLatchState()`.
-2. `switchToForegroundLinkedProfileIfNeeded(true)`.
-3. `syncProfileToForegroundWindow()`.
-4. If not PIPBONG foreground → `adoptForegroundLinkedCaptureIfMatched()` or `syncEffectiveTargetWindowTitleToCapture()` → `maybeResetHotkeyLatchForForeground(foregroundRootHwnd())`.
-5. `finishForegroundSessionGate()`.
+1. Early-out when active profile already matches resolved foreground → `applyForegroundCaptureHints` + `finishForegroundSessionGate`.
+2. `applyProfileSwitchFromForegroundState(state)` (profile auto-switch).
+3. If not PIPBONG foreground → `adoptForegroundLinkedCaptureIfMatched()` or `syncEffectiveTargetWindowTitleToCapture()` → `maybeResetHotkeyLatchForForeground(state.rootHwnd)`.
+4. `finishForegroundSessionGate()`.
+
+**Alt release** (`onForegroundAltModifierReleased`): `flushDeferredProfileSwitchIfIdle()` + `resetHookLatchState()`.
 
 **Per-HWND latch reset** (`maybeResetHotkeyLatchForForeground`): only when `profileMainOrSubForegroundActive()` or `foregroundProfileMatchesActive()`; dedupe with `m_lastHotkeyLatchResetForegroundHwnd`.
 
@@ -1302,8 +1304,8 @@ void HotkeyManager::resetHookLatchState() {
 | ------ | --- |
 | Rely on capture HWND sync only (v0.8.289–0.8.292) | Alt+Tab back can leave toggle `armed=false` or mouse `buttonDown=true` — hooks still swallow hotkeys |
 | `PostMessageW` as sole foreground sync delivery (pre-0.8.293) | UI handler may not run; profile/capture stay stale until PIPBONG focused |
-| Gate `syncProfileToForegroundWindow` on `FeatureHotkeyGate` | Edit dialogs block hotkeys correctly, but foreground auto-switch must still run |
-| Call `resetHookLatchState` on every 50 ms poll tick | Resets hold `keyDown` mid-physical-hold; use Alt-release edge + once-per-HWND on linked target return |
+| Gate `applyProfileSwitchFromForegroundState` on `FeatureHotkeyGate` | Edit dialogs block hotkeys correctly, but foreground auto-switch must still run |
+| Call `resetHookLatchState` on every foreground poll tick | Resets hold `keyDown` mid-physical-hold; use Alt-release edge + once-per-HWND on linked target return |
 | Emit `hotkeyHoldEnded` from latch reset | Would stop hold sessions when recovering from missed UP during Alt+Tab |
 | Require user to focus PIPBONG after Alt+Tab | Documented user-facing failure mode — not acceptable UX |
 
@@ -1318,11 +1320,12 @@ void HotkeyManager::resetHookLatchState() {
 
 #### Key files
 
-- `src/app/HotkeyManager.h` / `.cpp` — `resetHookLatchState`, toggle `armed` / mouse `buttonDown` in `handleKeyboardHookEvent` / `handleMouseButtonEvent`
-- `src/app/MainWindow.h` / `.cpp` — `onForegroundWindowChanged`, `maybeResetHotkeyLatchForForeground`, `ensureForegroundReadyForFeatureHotkey`, `finishForegroundSessionGate`, `syncProfileToForegroundWindow`, `foregroundWindowEventProc`
+- `src/app/ForegroundWindowMonitor.h` / `.cpp` — WinEvent hook, `ForegroundWindowState`, `foregroundChanged` / `altModifierReleased`
+- `src/app/ProfileForegroundResolver.h` / `.cpp` — `resolve`, `profileIdForProcessPath`
+- `src/app/MainWindow.h` / `.cpp` — `onForegroundStateChanged`, `onForegroundAltModifierReleased`, `applyProfileSwitchFromForegroundState`, `maybeResetHotkeyLatchForForeground`, `ensureForegroundReadyForFeatureHotkey`, `finishForegroundSessionGate`
 - `src/app/FeatureHotkeyGate.cpp` — blocks hotkey **execution** in edit dialogs only; must not block foreground sync
 - `src/core/capture/ScreenCapture.cpp` — foreground HWND hint TTL, `healLinkedTargetProcessPathFromForeground`
-- `src/app/ProfileManager.cpp` — `profileIdForForegroundHwnd`, `profileIdForForegroundTitle`
+- `src/app/ProfileManager.cpp` — `profileIdForForegroundHwnd`
 
 Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§9.6](#96-regression-mistake-log-오답노트--agents-only).
 
@@ -1505,6 +1508,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.330] - 2026-07-27
+
+### Added
+
+- **`ForegroundWindowMonitor`**: single Win32 `EVENT_SYSTEM_FOREGROUND` foreground tracker — `start()`/`stop()`, coalesced `foregroundChanged(ForegroundWindowState)`, `altModifierReleased`, `currentState()` / `currentRootHwnd()` (`ForegroundWindowMonitor`, `ForegroundWindowState`).
+- **`ProfileForegroundResolver`**: renamed from `ProfileForegroundSync`; `resolve(ProfileManager, ForegroundWindowState)` — process path → title binding → default fallback (`ProfileForegroundResolver`).
+
+### Changed
+
+- Profile foreground auto-switch and run/capture/hotkey gates read **`ForegroundWindowMonitor::currentState()`** only — **`MainWindow.cpp` has zero `GetForegroundWindow`** (`onForegroundStateChanged`, `applyProfileSwitchFromForegroundState`, gate helpers).
+- `loadActiveProfile` ends with `onForegroundStateChanged(currentState())` for startup binding.
+
+### Removed
+
+- `MainWindow` 100 ms `m_profileAutoSwitchTimer` poll, global `foregroundWindowEventProc` / `g_foregroundSyncMainWindow`, `onForegroundWindowChanged`, `syncProfileToForegroundWindow`, `resolveProfileIdForForeground`, `ProfileManager::profileIdForForegroundTitle`, `ProfileForegroundSync` (`ProfileForegroundSync.*`).
 
 ## [0.8.329] - 2026-07-25
 

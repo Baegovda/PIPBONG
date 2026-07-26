@@ -2,7 +2,7 @@
 
 #include "app/FeatureRunSession.h"
 #include "app/PointerFeedbackSettings.h"
-#include "app/ProfileForegroundSync.h"
+#include "app/ForegroundWindowState.h"
 #include "app/ProfileManager.h"
 #include "core/workflow/ExecutionContext.h"
 #include "model/UserInputInterruptMode.h"
@@ -28,6 +28,7 @@
 #endif
 
 class Feature;
+class ForegroundWindowMonitor;
 
 enum class FeatureRunVisualKind;
 
@@ -131,7 +132,8 @@ private slots:
     void onShowSubTargetWindow();
     void onPinTargetWindowCenterToggled(bool checked);
     void onPinSubTargetWindowCenterToggled(bool checked);
-    void onForegroundWindowChanged();
+    void onForegroundStateChanged(const ForegroundWindowState& state);
+    void onForegroundAltModifierReleased();
     void onProfileSelectionChanged();
     void onAddProfile();
     void onRenameProfile();
@@ -289,7 +291,7 @@ private:
     void saveActiveProfileSettings();
     bool profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
                               const ProgramSettings::ProfileSettings& b) const;
-    void syncProfileToForegroundWindow();
+    void applyProfileSwitchFromForegroundState(const ForegroundWindowState& state);
 #ifdef _WIN32
     void applyForegroundCaptureHints(HWND hwnd, const QString& foregroundTitle);
     void handlePipbongForegroundFocus();
@@ -410,7 +412,6 @@ private:
     /// Bind ScreenCapture to the desktop foreground HWND when its process path matches the active profile's linked main/sub exe (authoritative over title heuristics).
     bool adoptForegroundLinkedCaptureIfMatched();
     QString profileIdForForegroundHwnd(HWND hwnd) const;
-    QString resolveProfileIdForForeground(HWND hwnd, const QString& foregroundTitle) const;
     HWND findMainTargetHwndForCenterPin() const;
     HWND findSubTargetHwndForCenterPin() const;
     HWND findLinkedTargetHwndForDisplay(const QString& mainBinding,
@@ -516,12 +517,9 @@ private:
     QTimer* m_targetWindowDetailRefreshTimer = nullptr;
     int m_lastWorkflowScaleClientWidth = 0;
     int m_lastWorkflowScaleClientHeight = 0;
-    QTimer* m_profileAutoSwitchTimer = nullptr;
-    void* m_profileForegroundEventHook = nullptr;
+    std::unique_ptr<ForegroundWindowMonitor> m_foregroundMonitor;
     UpdateChecker* m_updateChecker = nullptr;
     bool m_initialUpdateCheckDone = false;
-
-    bool m_initialForegroundSyncDone = false;
     bool m_lastUpdateCheckWasSilent = false;
     bool m_autoUpdateDeferred = false;
     bool m_autoUpdateInstallStarted = false;
@@ -551,9 +549,6 @@ private:
     std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
     QString m_deferredProfileSwitchId;
-#ifdef _WIN32
-    HWND m_lastForegroundSyncHwnd = nullptr;
-#endif
     QElapsedTimer m_lastAutomaticProfileSwitchTimer;
     std::vector<std::unique_ptr<WorkflowEngine>> m_abandonedEngines;
     std::unordered_map<const WorkflowEngine*, std::string> m_abandonedEngineFeatureIds;
@@ -563,9 +558,7 @@ private:
     HWND m_lastProfileLinkedForegroundHwnd = nullptr;
     bool m_lastProfileLinkedForegroundIsSub = false;
     HWND m_lastHotkeyLatchResetForegroundHwnd = nullptr;
-    bool m_altTabModifierWasHeld = false;
 #endif
-    QString m_lastProfiledForegroundTitle;
     bool m_scopedTargetForegroundResumePending = false;
     bool m_ensureTriggerMonitorPending = false;
     bool m_pruneAbandonedEnginesPending = false;
