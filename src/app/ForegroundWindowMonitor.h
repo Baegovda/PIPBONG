@@ -21,7 +21,8 @@ public:
     void stop();
 
     /// Refresh cached state from GetForegroundWindow (required when PIPBONG is focused — WinEvent skips own process).
-    void syncFromDesktopForeground();
+    /// Returns true when cached state changed (may have emitted foregroundChanged).
+    bool syncFromDesktopForeground();
 
     const ForegroundWindowState& currentState() const { return m_state; }
 

@@ -122,6 +122,8 @@ void ProfileSwitchCoordinator::applyFromForegroundState(const ForegroundWindowSt
         return;
     }
 
+    ProfileForegroundResolver::healProfileBindingsFromForeground(*m_profileManager, live);
+
     const ProfileForegroundResolver::ResolveResult resolved =
         ProfileForegroundResolver::resolve(*m_profileManager, live);
 

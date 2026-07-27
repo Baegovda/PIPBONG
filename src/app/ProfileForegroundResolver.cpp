@@ -100,6 +100,40 @@ QString profileIdForTitleBinding(const ProfileManager& profileManager,
 
 } // namespace
 
+void healProfileBindingsFromForeground(ProfileManager& profileManager,
+                                       const ForegroundWindowState& state) {
+#ifdef _WIN32
+    if (!state.rootHwnd || state.pipbong || state.shellTransient || state.processPath.isEmpty()) {
+        return;
+    }
+    const QString fgPath = state.processPath;
+    const QString fgTitle = state.title;
+    for (const ProfileManager::Profile& profile : profileManager.profiles()) {
+        if (profileManager.isDefaultProfile(profile.id)) {
+            continue;
+        }
+        const QString mainTitle = profile.targetWindowTitle.trimmed();
+        const QString subTitle = profile.subTargetWindowTitle.trimmed();
+        if (!mainTitle.isEmpty() && fgTitle.contains(mainTitle, Qt::CaseInsensitive)) {
+            const QString stored = profileManager.linkedTargetProcessPath(profile.id);
+            if (stored.compare(fgPath, Qt::CaseInsensitive) != 0) {
+                profileManager.updateProfileTargetBinding(profile.id, mainTitle, fgPath);
+            }
+            continue;
+        }
+        if (!subTitle.isEmpty() && fgTitle.contains(subTitle, Qt::CaseInsensitive)) {
+            const QString stored = profileManager.subLinkedTargetProcessPath(profile.id);
+            if (stored.compare(fgPath, Qt::CaseInsensitive) != 0) {
+                profileManager.updateProfileSubTargetBinding(profile.id, subTitle, fgPath);
+            }
+        }
+    }
+#else
+    Q_UNUSED(profileManager);
+    Q_UNUSED(state);
+#endif
+}
+
 ResolveResult resolve(const ProfileManager& profileManager, const ForegroundWindowState& state) {
     ResolveResult result;
     result.profileId = profileManager.defaultProfileId();

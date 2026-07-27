@@ -54,12 +54,16 @@ void ForegroundWindowMonitor::start() {
 #endif
 }
 
-void ForegroundWindowMonitor::syncFromDesktopForeground() {
+bool ForegroundWindowMonitor::syncFromDesktopForeground() {
 #ifdef _WIN32
     if (!m_started) {
-        return;
+        return false;
     }
+    const ForegroundWindowState before = m_state;
     refreshFromForegroundHwnd(GetForegroundWindow(), false);
+    return !before.isEquivalentTo(m_state);
+#else
+    return false;
 #endif
 }
 

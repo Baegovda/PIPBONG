@@ -538,7 +538,6 @@ MainWindow::MainWindow(QWidget* parent)
             &ForegroundWindowMonitor::altModifierReleased,
             this,
             &MainWindow::onForegroundAltModifierReleased);
-    m_foregroundMonitor->start();
     m_profileSwitchCoordinator.setProfileManager(m_profileManager.get());
     m_profileSwitchCoordinator.setForegroundMonitor(m_foregroundMonitor.get());
     ProfileSwitchCoordinator::HostCallbacks profileSwitchHost;
@@ -653,6 +652,9 @@ MainWindow::MainWindow(QWidget* parent)
         m_profileManager->loadSettings(m_profileManager->activeProfileId()));
     refreshProfileList();
     loadActiveProfile();
+#ifdef _WIN32
+    m_foregroundMonitor->start();
+#endif
     syncMemoDialogProfile();
     refreshFeatureLibraryPanel();
     scheduleProfilePackageSeal();
@@ -2348,6 +2350,7 @@ void MainWindow::changeEvent(QEvent* event) {
     QMainWindow::changeEvent(event);
     if (event->type() == QEvent::ActivationChange && isActiveWindow() && m_foregroundMonitor) {
         m_foregroundMonitor->syncFromDesktopForeground();
+        onForegroundStateChanged(m_foregroundMonitor->currentState());
     }
 }
 
