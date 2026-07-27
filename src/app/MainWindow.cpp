@@ -567,10 +567,14 @@ MainWindow::MainWindow(QWidget* parent)
     m_runSessionController.setRunSessions(&m_runSessions);
     RunSessionController::HostCallbacks runHost;
     runHost.shouldSkipForegroundGateReconcile = [this]() {
-        return ProgramSettings::runWithoutTargetWindow() || isActiveDefaultProfile();
+        return m_profileSwitchPipelineActive || m_switchingProfile
+               || ProgramSettings::runWithoutTargetWindow() || isActiveDefaultProfile();
     };
     runHost.runForegroundGateActive = [this](Feature* feature) {
         return runForegroundGateActive(feature);
+    };
+    runHost.runForegroundGateActiveForSession = [this](FeatureRunSession& session, Feature* feature) {
+        return runForegroundGateActiveForSession(session, feature);
     };
     runHost.updateRunUiState = [this]() { updateRunUiState(); };
     runHost.stopSessionEngine = [this](FeatureRunSession& session) {
@@ -586,6 +590,9 @@ MainWindow::MainWindow(QWidget* parent)
     };
     runHost.isHoldBindingDown = [this](const std::string& id) {
         return m_hotkeyManager && m_hotkeyManager->isHoldBindingDown(id);
+    };
+    runHost.featureForSession = [this](FeatureRunSession& session) {
+        return featureForSession(session);
     };
     m_runSessionController.setHostCallbacks(runHost);
 #endif
@@ -2221,6 +2228,8 @@ void MainWindow::onRenameProfile() {
     ProfileEditDialog dialog(profile->name,
                              m_profileManager->targetWindowTitle(id),
                              m_profileManager->subTargetWindowTitle(id),
+                             m_profileManager->linkedTargetProcessPath(id),
+                             m_profileManager->subLinkedTargetProcessPath(id),
                              fixedDefault,
                              fixedDefault,
                              QString::fromStdString(m_project ? m_project->targetWindowTitle() : std::string{}),
@@ -2685,10 +2694,11 @@ void MainWindow::sealActiveProfilePackage(bool synchronous) {
         return;
     }
 
-    QtConcurrent::run([this, profileDirectory, packagePath]() {
+    const QFuture<void> sealFuture = QtConcurrent::run([this, profileDirectory, packagePath]() {
         ProjectPackage::packDirectory(profileDirectory, packagePath);
         QTimer::singleShot(0, this, [this]() { m_profilePackageSealRunning.store(false); });
     });
+    Q_UNUSED(sealFuture);
 }
 
 void MainWindow::onImportProfilePackage() {
@@ -2811,11 +2821,73 @@ void MainWindow::refreshWorkflowEditor() {
 }
 
 bool MainWindow::isDisplayedRunningFeature(const FeatureRunSession* session) const {
-    if (!session || !m_featureList) {
+    if (!session || !m_featureList || !sessionBelongsToActiveProfile(*session)) {
         return false;
     }
     const Feature* selected = m_featureList->selectedFeature();
     return selected && selected->id() == session->featureId;
+}
+
+bool MainWindow::sessionBelongsToActiveProfile(const FeatureRunSession& session) const {
+    if (!m_profileManager) {
+        return true;
+    }
+    if (!session.profileId.isEmpty()) {
+        return session.profileId == m_profileManager->activeProfileId();
+    }
+    return m_project && m_project->featureById(session.featureId) != nullptr;
+}
+
+Feature* MainWindow::featureForSession(FeatureRunSession& session) {
+    return const_cast<Feature*>(static_cast<const MainWindow*>(this)->featureForSession(session));
+}
+
+const Feature* MainWindow::featureForSession(const FeatureRunSession& session) const {
+    if (m_profileManager && !session.profileId.isEmpty()
+        && session.profileId == m_profileManager->activeProfileId() && m_project) {
+        return m_project->featureById(session.featureId);
+    }
+    if (!session.profileId.isEmpty() && m_profileManager) {
+        auto ownedIt = m_sessionOwnerProjects.find(session.profileId);
+        if (ownedIt == m_sessionOwnerProjects.end() || !ownedIt->second) {
+            const QString path = m_profileManager->projectPath(session.profileId);
+            QString projectDirectory;
+            std::shared_ptr<Project> loaded =
+                m_profileManager->cloneCachedProject(session.profileId, path, &projectDirectory);
+            if (!loaded) {
+                loaded = JsonSerializer::loadFromFile(path, &projectDirectory);
+            }
+            if (loaded) {
+                ownedIt = m_sessionOwnerProjects.emplace(session.profileId, std::move(loaded)).first;
+            }
+        }
+        if (ownedIt != m_sessionOwnerProjects.end() && ownedIt->second) {
+            return ownedIt->second->featureById(session.featureId);
+        }
+        return nullptr;
+    }
+    return m_project ? m_project->featureById(session.featureId) : nullptr;
+}
+
+void MainWindow::pruneSessionOwnerProjects() {
+    if (m_sessionOwnerProjects.empty()) {
+        return;
+    }
+    for (auto it = m_sessionOwnerProjects.begin(); it != m_sessionOwnerProjects.end();) {
+        bool stillNeeded = false;
+        for (const auto& entry : m_runSessions) {
+            if (entry.second.profileId == it->first) {
+                stillNeeded = true;
+                break;
+            }
+        }
+        if (!stillNeeded && m_profileManager
+            && it->first != m_profileManager->activeProfileId()) {
+            it = m_sessionOwnerProjects.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void MainWindow::applyRunningBlockVisuals(FeatureRunSession& session,
@@ -2863,12 +2935,12 @@ bool MainWindow::isFeatureSessionActive(const FeatureRunSession& session) const 
 
 bool MainWindow::isFeatureRunning(const std::string& featureId) const {
     const FeatureRunSession* session = sessionFor(featureId);
-    return session && isFeatureSessionActive(*session);
+    return session && isFeatureSessionActive(*session) && sessionBelongsToActiveProfile(*session);
 }
 
 bool MainWindow::isFeatureInActiveWorkflowRun(const std::string& featureId) const {
     const FeatureRunSession* session = sessionFor(featureId);
-    if (!session) {
+    if (!session || !sessionBelongsToActiveProfile(*session)) {
         return false;
     }
     return SessionRunPolicy::isInActiveWorkflowRun(sessionPolicyInputFrom(*session));
@@ -2895,6 +2967,9 @@ bool MainWindow::hasAnyActiveWorkflowEngine() const {
 QSet<QString> MainWindow::activeWorkflowFeatureIds() const {
     QSet<QString> ids;
     for (const auto& entry : m_runSessions) {
+        if (!sessionBelongsToActiveProfile(entry.second)) {
+            continue;
+        }
         if (isFeatureInActiveWorkflowRun(entry.first)) {
             ids.insert(QString::fromStdString(entry.first));
         }
@@ -2905,6 +2980,9 @@ QSet<QString> MainWindow::activeWorkflowFeatureIds() const {
 QSet<QString> MainWindow::runningFeatureIds() const {
     QSet<QString> ids;
     for (const auto& entry : m_runSessions) {
+        if (!sessionBelongsToActiveProfile(entry.second)) {
+            continue;
+        }
         if (isFeatureRunHighlighted(entry.second)) {
             ids.insert(QString::fromStdString(entry.first));
         }
@@ -2925,6 +3003,9 @@ bool MainWindow::isFeatureRunHighlighted(const FeatureRunSession& session) const
 QHash<QString, FeatureRunVisualKind> MainWindow::buildFeatureListRunVisualKinds() const {
     QHash<QString, FeatureRunVisualKind> visualKinds;
     for (const auto& entry : m_runSessions) {
+        if (!sessionBelongsToActiveProfile(entry.second)) {
+            continue;
+        }
         const QString featureId = QString::fromStdString(entry.first);
         const FeatureRunSession& session = entry.second;
 
@@ -3281,6 +3362,9 @@ void MainWindow::applyRunUiState() {
 
         QHash<QString, FeatureTriggerCooldownState> cooldownStates;
         for (const auto& entry : m_runSessions) {
+            if (!sessionBelongsToActiveProfile(entry.second)) {
+                continue;
+            }
             if (entry.second.runningMode != FeatureRunMode::Trigger
                 || entry.second.triggerPhase != TriggerSessionPhase::Cooldown
                 || entry.second.triggerCooldownEndsAtEpochMs <= 0) {
@@ -3491,24 +3575,15 @@ void MainWindow::stopAllSessions() {
     m_suppressTriggerArmedPersist = previousSuppress;
 }
 
-void MainWindow::stopAllSessionsForProfileSwitch() {
+void MainWindow::detachUiForProfileSwitch() {
     schedulePruneAbandonedEngines();
-    UserInputInterruptMonitor::instance().unregisterAll();
-    MouseCenterLock::releaseAll();
-    for (auto& entry : m_runSessions) {
-        if (entry.second.sessionContext) {
-            entry.second.sessionContext->endRunInputSession();
-        }
-        Feature* feature = m_project ? m_project->featureById(entry.first) : nullptr;
-        stopSessionEngineForProfileSwitch(entry.second, feature);
-        restoreRunStartCursorPosition(entry.second);
+    if (m_workflowEditor) {
+        m_workflowEditor->clearExecutionHighlight();
+        m_workflowEditor->clearBlockMatchResults();
+        m_workflowEditor->clearLoopTiming();
     }
-    m_runSessions.clear();
-    if (m_profileSwitchPipelineActive) {
-        QTimer::singleShot(0, this, [this]() { updateRunUiState(); });
-    } else {
-        updateRunUiState();
-    }
+    reconcileMouseLocksFromRunningSessions();
+    QTimer::singleShot(0, this, [this]() { updateRunUiState(); });
     flushDeferredProfileSwitchIfIdle();
 }
 
@@ -4474,6 +4549,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
 
     FeatureRunSession session;
     session.featureId = featureId;
+    session.profileId = m_profileManager ? m_profileManager->activeProfileId() : QString();
     if (!useHoldKeyTapFastPath) {
         session.engine = std::make_unique<WorkflowEngine>(this);
     }
@@ -5445,7 +5521,7 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
             return;
         }
 
-        Feature* current = m_project ? m_project->featureById(featureId) : nullptr;
+        Feature* current = featureForSession(*session);
         if (!current) {
             finishRunSession(featureId, success, message);
             return;
@@ -5466,10 +5542,6 @@ void MainWindow::scheduleEnsureTriggerMonitorEnginesRunning() {
 }
 
 void MainWindow::ensureTriggerMonitorEnginesRunning() {
-    if (!m_project) {
-        return;
-    }
-
     for (auto& entry : m_runSessions) {
         FeatureRunSession& session = entry.second;
         if (session.runningMode != FeatureRunMode::Trigger
@@ -5481,7 +5553,7 @@ void MainWindow::ensureTriggerMonitorEnginesRunning() {
             continue;
         }
 
-        Feature* feature = m_project->featureById(session.featureId);
+        Feature* feature = featureForSession(session);
         if (!feature || !shouldContinueRunSession(session, feature)) {
             continue;
         }
@@ -5761,7 +5833,7 @@ void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* fe
             finishRunSession(featureId, activeSession->lastLoopSuccess, QString());
             return;
         }
-        Feature* current = m_project ? m_project->featureById(featureId) : nullptr;
+        Feature* current = featureForSession(*activeSession);
         if (!current) {
             finishRunSession(featureId, false, tr("기능을 찾을 수 없음"));
             return;
@@ -5867,7 +5939,7 @@ void MainWindow::finishRunSession(const std::string& featureId,
     }
 
     if (session && session->runningMode == FeatureRunMode::Hold) {
-        Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
+        Feature* feature = featureForSession(*session);
         releaseHoldHotkeyInputToTarget(*session, feature);
     }
 
@@ -5886,7 +5958,13 @@ void MainWindow::finishRunSession(const std::string& featureId,
     }
 
     if (session && session->runningMode == FeatureRunMode::Trigger && session->disarmPersistedTrigger) {
-        persistTriggerArmedState(QString::fromStdString(featureId), false);
+        if (m_profileManager && !session->profileId.isEmpty()) {
+            m_profileManager->updateTriggerArmedFeature(session->profileId,
+                                                        QString::fromStdString(featureId),
+                                                        false);
+        } else {
+            persistTriggerArmedState(QString::fromStdString(featureId), false);
+        }
     }
 
     if (session && session->engine) {
@@ -5909,6 +5987,7 @@ void MainWindow::finishRunSession(const std::string& featureId,
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
     m_fastRepeatUiCoalesce.erase(featureId);
     m_runSessions.erase(featureId);
+    pruneSessionOwnerProjects();
     if (!coalesceUi) {
         reconcileMouseLocksFromRunningSessions();
     }
@@ -5973,6 +6052,11 @@ void MainWindow::restorePersistedTriggerSessions() {
             continue;
         }
         keptIds.append(featureId);
+        const FeatureRunSession* existing = sessionFor(featureId.toStdString());
+        if (existing && existing->profileId == profileId
+            && isFeatureSessionActive(*existing)) {
+            continue;
+        }
         if (isFeatureRunning(featureId.toStdString())) {
             continue;
         }
@@ -6641,7 +6725,7 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
         return;
     }
 
-    Feature* feature = m_project ? m_project->featureById(session->featureId) : nullptr;
+    Feature* feature = session ? featureForSession(*session) : nullptr;
 
     if (session->runningMode == FeatureRunMode::Trigger) {
         handleTriggerEngineFinished(*session, feature, success, message);
@@ -6729,7 +6813,7 @@ void MainWindow::onHoldKeyTapLaneFinished(const QString& featureId, bool success
         return;
     }
 
-    Feature* feature = m_project ? m_project->featureById(session->featureId) : nullptr;
+    Feature* feature = session ? featureForSession(*session) : nullptr;
     if (feature && shouldContinueRunSession(*session, feature)) {
         int virtualKey = 0;
         if (holdKeyTapWorkflowVirtualKey(*feature, virtualKey)) {
@@ -7129,6 +7213,7 @@ void MainWindow::refreshProfileList() {
         }
     }
     if (activeRow >= 0) {
+        const QSignalBlocker blocker(m_profileList);
         m_profileList->setCurrentRow(activeRow);
     }
     if (m_deleteProfileButton) {
@@ -7243,8 +7328,10 @@ void MainWindow::completeProfileSwitchPipeline(bool automatic) {
         }
 #endif
         updateTargetWindowDetails();
-        restorePersistedTriggerSessions();
-        schedulePostProfileSwitchForegroundReconcile(automatic);
+        QTimer::singleShot(0, this, [this, automatic]() {
+            restorePersistedTriggerSessions();
+            schedulePostProfileSwitchForegroundReconcile(automatic);
+        });
         onForegroundStateChanged(m_foregroundMonitor->currentState());
 
         if (automatic && !deferredAutoId.isEmpty() && m_profileManager
@@ -7308,7 +7395,7 @@ bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) 
 
     saveActiveProfileSettings();
 
-    stopAllSessionsForProfileSwitch();
+    detachUiForProfileSwitch();
 
     if (!m_profileManager->setActiveProfile(profileId)) {
         abortProfileSwitchPipeline(true);
@@ -7956,28 +8043,32 @@ QString MainWindow::foregroundProfileIdForActiveWindow() const {
 #endif
 }
 
-ForegroundRunGate::ProfileBindings MainWindow::buildForegroundProfileBindings() const {
+ForegroundRunGate::ProfileBindings MainWindow::buildForegroundProfileBindings(
+    const QString& profileIdOverride) const {
     ForegroundRunGate::ProfileBindings bindings;
     if (!m_profileManager) {
         return bindings;
     }
-    bindings.activeProfileId = m_profileManager->activeProfileId();
-    bindings.activeIsDefault = m_profileManager->isDefaultProfile(bindings.activeProfileId);
+    const QString profileId =
+        profileIdOverride.isEmpty() ? m_profileManager->activeProfileId() : profileIdOverride;
+    bindings.activeProfileId = profileId;
+    bindings.activeIsDefault = m_profileManager->isDefaultProfile(profileId);
     if (!bindings.activeIsDefault) {
-        bindings.mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
-        bindings.subBinding =
-            m_profileManager->subTargetWindowTitle(bindings.activeProfileId).trimmed();
-        bindings.mainProcessPath =
-            m_profileManager->linkedTargetProcessPath(bindings.activeProfileId);
-        bindings.subProcessPath =
-            m_profileManager->subLinkedTargetProcessPath(bindings.activeProfileId);
+        bindings.mainBinding = m_profileManager->targetWindowTitle(profileId).trimmed();
+        if (bindings.mainBinding.isEmpty() && profileId == m_profileManager->activeProfileId()) {
+            bindings.mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
+        }
+        bindings.subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
+        bindings.mainProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
+        bindings.subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
     }
     return bindings;
 }
 
-ForegroundRunGate::GateInput MainWindow::buildForegroundGateInput(const Feature* feature) const {
+ForegroundRunGate::GateInput MainWindow::buildForegroundGateInput(const Feature* feature,
+                                                                  const QString& bindingsProfileId) const {
     ForegroundRunGate::GateInput input;
-    input.bindings = buildForegroundProfileBindings();
+    input.bindings = buildForegroundProfileBindings(bindingsProfileId);
     if (m_foregroundMonitor) {
         input.foreground = m_foregroundMonitor->currentState();
     }
@@ -8062,6 +8153,14 @@ bool MainWindow::runForegroundGateActive(const Feature* feature) const {
     return ForegroundRunGate::runForegroundGateActive(input);
 }
 
+bool MainWindow::runForegroundGateActiveForSession(const FeatureRunSession& session,
+                                                    Feature* feature) const {
+    if (!sessionBelongsToActiveProfile(session)) {
+        return true;
+    }
+    return runForegroundGateActive(feature);
+}
+
 std::wstring MainWindow::resolveRunCaptureTargetTitleW(const Feature* feature) const {
     const FeatureCaptureTargetScope scope =
         feature ? feature->captureTargetScope() : FeatureCaptureTargetScope::Auto;
@@ -8109,12 +8208,12 @@ std::wstring MainWindow::sessionCaptureTargetTitleW(FeatureRunSession& session) 
     if (!session.lockedCaptureTargetTitle.empty()) {
         return session.lockedCaptureTargetTitle;
     }
-    Feature* feature = m_project ? m_project->featureById(session.featureId) : nullptr;
+    Feature* feature = featureForSession(session);
     return resolveRunCaptureTargetTitleW(feature);
 }
 
 void MainWindow::refreshSessionCaptureTarget(FeatureRunSession& session) {
-    Feature* feature = m_project ? m_project->featureById(session.featureId) : nullptr;
+    Feature* feature = featureForSession(session);
     if (!feature) {
         return;
     }
@@ -8467,10 +8566,32 @@ void MainWindow::updateTargetWindowDetails() {
     }
 
     if (!hwnd || !IsWindow(hwnd)) {
-        if (m_targetWindowController.lastProfileLinkedForegroundHwnd()
-            && IsWindow(m_targetWindowController.lastProfileLinkedForegroundHwnd())) {
-            hwnd = m_targetWindowController.lastProfileLinkedForegroundHwnd();
-            detailIsSubTarget = m_targetWindowController.lastProfileLinkedForegroundIsSub();
+        const HWND lastHwnd = m_targetWindowController.lastProfileLinkedForegroundHwnd();
+        if (lastHwnd && IsWindow(lastHwnd)) {
+            wchar_t titleBuffer[512]{};
+            GetWindowTextW(lastHwnd, titleBuffer, 512);
+            const QString lastTitle = QString::fromWCharArray(titleBuffer).trimmed();
+            const bool lastIsSub = m_targetWindowController.lastProfileLinkedForegroundIsSub();
+            const bool lastMatchesActiveProfile =
+                lastIsSub
+                    ? (!subBinding.isEmpty()
+                       && foregroundMatchesScopedSubTarget(lastTitle,
+                                                           lastHwnd,
+                                                           savedTitle,
+                                                           subBinding,
+                                                           linkedProcessPath,
+                                                           subProcessPath))
+                    : (!savedTitle.isEmpty()
+                       && foregroundMatchesScopedMainTarget(lastTitle,
+                                                            lastHwnd,
+                                                            savedTitle,
+                                                            subBinding,
+                                                            linkedProcessPath,
+                                                            subProcessPath));
+            if (lastMatchesActiveProfile) {
+                hwnd = lastHwnd;
+                detailIsSubTarget = lastIsSub;
+            }
         }
     }
 
@@ -8559,18 +8680,17 @@ void MainWindow::updateTargetWindowDetails() {
                              || targetWindowTitleMatchesSubTarget(title, savedTitle, subBinding);
     if (m_profileManager && !processPath.isEmpty() && !isActiveDefaultProfile() && !sessionOwnsCapture) {
         const QString profileId = m_profileManager->activeProfileId();
-        if (isSubTarget) {
+        // Only refresh linked exe paths for bindings the user already configured — never
+        // infer a new main/sub title from ambient HWND/title (avoids cross-profile mixing).
+        if (isSubTarget && !subBinding.isEmpty()) {
             const QString storedSubPath = m_profileManager->subLinkedTargetProcessPath(profileId);
             if (storedSubPath.compare(processPath, Qt::CaseInsensitive) != 0) {
-                m_profileManager->updateProfileSubTargetBinding(
-                    profileId, subBinding.isEmpty() ? title : subBinding, processPath);
+                m_profileManager->updateProfileSubTargetBinding(profileId, subBinding, processPath);
             }
-        } else {
+        } else if (!isSubTarget && !savedTitle.isEmpty()) {
             const QString storedPath = m_profileManager->linkedTargetProcessPath(profileId);
             if (storedPath.compare(processPath, Qt::CaseInsensitive) != 0) {
-                m_profileManager->updateProfileTargetBinding(profileId,
-                                                             savedTitle.isEmpty() ? title : savedTitle,
-                                                             processPath);
+                m_profileManager->updateProfileTargetBinding(profileId, savedTitle, processPath);
                 if (!m_deferTargetDetailsProfileRefresh) {
                     refreshProfileList();
                 }

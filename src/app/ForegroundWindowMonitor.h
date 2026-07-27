@@ -30,6 +30,8 @@ public:
     HWND currentRootHwnd() const { return m_state.rootHwnd; }
     static ForegroundWindowState buildStateFromHwnd(HWND foregroundHwnd);
     static bool isShellTransientWindow(HWND hwnd);
+    /// Desktop wallpaper host (Progman / WorkerW) — unmatched foreground → default profile.
+    static bool isDesktopShellHostHwnd(HWND hwnd);
     static bool isAltTabModifierHeld();
     static bool isPipbongProcessWindow(HWND hwnd);
 #endif
@@ -43,9 +45,7 @@ signals:
     void altModifierReleased();
 
 private slots:
-#ifdef _WIN32
     void onWinEvent();
-#endif
 
 private:
 #ifdef _WIN32

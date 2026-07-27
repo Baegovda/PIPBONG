@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.337` (from `project(PIPBONG VERSION 0.8.337)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.345` (from `project(PIPBONG VERSION 0.8.345)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1234,7 +1234,7 @@ Also run policy sim after link: `build/policy-sim-report.txt` + `ProfileForegrou
 
 | Dialog | Groups |
 | ------ | ------ |
-| `ProfileEditDialog` | 프로필, 대상 창 (메인 / 서브) |
+| `ProfileEditDialog` | 프로필, 타겟 창 (메인 / 서브) |
 | `ImageFindEditor` | 매칭 설정, 템플릿, 탐색 ROI, 감지 피드백 |
 | `ClickEditor` | 대상, 좌표, 동작 설정, 기능 실행 |
 | `KeyPressEditor` | 키 입력, 조합키 |
@@ -1528,6 +1528,63 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.345] - 2026-07-28
+
+### Fixed
+
+- Win32 foreground WinEvent delivery: `ForegroundWindowMonitor::onWinEvent` is always registered with Qt MOC (slot was `#ifdef`-gated in the header, so `QMetaObject::invokeMethod("onWinEvent")` failed at runtime); hook now queues via member-pointer `invokeMethod` (`ForegroundWindowMonitor`).
+- Profile / feature list refresh no longer re-enters selection handlers during rebuild (`MainWindow::refreshProfileList` `QSignalBlocker`; `FeatureListPanel::refresh` blocks list signals then emits `selectionChanged` once).
+
+## [0.8.344] - 2026-07-27
+
+### Changed
+
+- **프로필 편집**: group **대상 창** → **타겟 창**; **메인/서브 타겟 창** captions; live detail under each binding (state, HWND, process, frame/client size, monitor, live title; stored title and exe when not running); 800 ms refresh while dialog open (`ProfileEditDialog`, `MainWindow::onRenameProfile` passes linked exe paths).
+
+### Fixed
+
+- `featureForSession` const cache insert compile error (`m_sessionOwnerProjects` `mutable`); `QtConcurrent::run` discard warning (`MainWindow`).
+
+## [0.8.343] - 2026-07-27
+
+### Fixed
+
+- Profile switch no longer freezes the UI when other profiles still have trigger **감시** / **쿨다운** or hold/repeat sessions: background-profile sessions skip active-profile foreground-gate stop/reconcile storms; gate reconcile is skipped during the switch pipeline and deferred one event-loop tick after load (`RunSessionController`, `MainWindow::runForegroundGateActiveForSession`, `completeProfileSwitchPipeline`).
+
+## [0.8.342] - 2026-07-27
+
+### Changed
+
+- Profile switch (manual or foreground auto-switch) no longer stops all feature sessions: each session stores `profileId`, background trigger **쿨다운** / **감시** and hold/repeat workers keep running on a per-profile channel; UI lists only the active profile’s sessions (`FeatureRunSession`, `MainWindow::detachUiForProfileSwitch`, `featureForSession`, `m_sessionOwnerProjects`, `RunSessionController`).
+
+## [0.8.341] - 2026-07-27
+
+### Fixed
+
+- Profile auto-switch returns to the **default** profile when the desktop is focused (Progman/WorkerW): `ProfileSwitchCoordinator` no longer ignores all shell-transient foreground windows — only Alt+Tab picker, taskbar shell, etc. (`ForegroundWindowMonitor::isDesktopShellHostHwnd`, `ProfileSwitchCoordinator`).
+
+## [0.8.340] - 2026-07-27
+
+### Fixed
+
+- Profile main/sub target bindings no longer cross-contaminate: target detail panel only refreshes stored exe paths for bindings already configured on the **active** profile and does not infer new sub/main titles from ambient HWND/title; last-linked foreground HWND is reused only when it matches that profile’s bindings (`MainWindow::updateTargetWindowDetails`).
+
+## [0.8.339] - 2026-07-27
+
+### Fixed
+
+- GUI hang report no longer blocks on watchdog-thread `refreshContextCacheFromProvider` (Qt widget access while main thread is stuck); defers manifest/diagnostic hub files and thread stacks until after user notification (`CrashReporter::reportGuiThreadHang`, `completeHangCrashArtifactHeavy`).
+- Hang detection tightened to 2 s / 250 ms poll; Korean alert uses `MB_SYSTEMMODAL` so it can appear above the Windows “not responding” shell dialog.
+
+## [0.8.338] - 2026-07-27
+
+### Fixed
+
+- GUI hang watchdog: fix `g_guiHangReported` stuck when another crash write was in progress; hang threshold 3 s and poll 500 ms (`CrashReporter::reportGuiThreadHang`).
+- Hang reports notify user and spawn `--crash-report` viewer immediately after minimal `report.txt`; heavy thread stacks run afterward (`completeHangCrashArtifactHeavy`, `writeCrashArtifacts` `hangSkipHeavyCapture`).
+- Native crash SEH path shows Korean save notification when in-process UI is unsafe (`captureCrashFromNativeFault`, `unhandledExceptionFilter`).
+- Startup pending crash dialog no longer dismisses `pending.txt` when `report.txt` is still being written (`CrashReportDialog::showPendingIfAny`).
 
 ## [0.8.337] - 2026-07-27
 

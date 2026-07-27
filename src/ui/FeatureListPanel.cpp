@@ -2217,6 +2217,7 @@ void FeatureListPanel::refresh() {
             m_lastSelectedFeatureId = QString::fromStdString(feature->id());
         }
     }
+    const QSignalBlocker listSignals(m_list);
     m_list->clear();
     if (!m_project) {
         return;
@@ -2239,6 +2240,9 @@ void FeatureListPanel::refresh() {
         m_list->viewport()->update();
     }
     refreshListMutationPolicy();
+    if (m_project) {
+        emit selectionChanged();
+    }
 }
 Feature* FeatureListPanel::selectedFeature() const {
     if (!m_project) {

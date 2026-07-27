@@ -132,6 +132,17 @@ bool ForegroundWindowMonitor::isShellTransientWindow(HWND hwnd) {
     return false;
 }
 
+bool ForegroundWindowMonitor::isDesktopShellHostHwnd(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return false;
+    }
+    wchar_t className[256]{};
+    if (GetClassNameW(hwnd, className, 256) <= 0) {
+        return false;
+    }
+    return _wcsicmp(className, L"Progman") == 0 || _wcsicmp(className, L"WorkerW") == 0;
+}
+
 bool ForegroundWindowMonitor::isAltTabModifierHeld() {
     return (GetAsyncKeyState(VK_MENU) & 0x8000) != 0 || (GetAsyncKeyState(VK_LMENU) & 0x8000) != 0
            || (GetAsyncKeyState(VK_RMENU) & 0x8000) != 0;
@@ -180,17 +191,19 @@ void CALLBACK ForegroundWindowMonitor::winEventProc(HWINEVENTHOOK,
         return;
     }
     QMetaObject::invokeMethod(g_activeForegroundMonitor,
-                              "onWinEvent",
+                              &ForegroundWindowMonitor::onWinEvent,
                               Qt::QueuedConnection);
 }
 
 void ForegroundWindowMonitor::onWinEvent() {
+#ifdef _WIN32
     const bool altHeld = isAltTabModifierHeld();
     if (m_altTabModifierWasHeld && !altHeld) {
         emit altModifierReleased();
     }
     m_altTabModifierWasHeld = altHeld;
     refreshFromForegroundHwnd(GetForegroundWindow(), false);
+#endif
 }
 
 void ForegroundWindowMonitor::refreshFromForegroundHwnd(HWND foregroundHwnd, bool forceEmit) {
