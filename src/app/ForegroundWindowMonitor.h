@@ -20,6 +20,9 @@ public:
     void start();
     void stop();
 
+    /// Refresh cached state from GetForegroundWindow (required when PIPBONG is focused — WinEvent skips own process).
+    void syncFromDesktopForeground();
+
     const ForegroundWindowState& currentState() const { return m_state; }
 
 #ifdef _WIN32

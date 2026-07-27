@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.330` (from `project(PIPBONG VERSION 0.8.330)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.331` (from `project(PIPBONG VERSION 0.8.331)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1508,6 +1508,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.331] - 2026-07-27
+
+### Fixed
+
+- Manual profile selection while PIPBONG is focused no longer immediately auto-switches to another profile: `ForegroundWindowMonitor::syncFromDesktopForeground()` (WinEvent skips own process), activation sync, suppress deferred auto-switch while PIPBONG is foreground, clear deferred on manual switch (`ForegroundWindowMonitor`, `MainWindow`).
 
 ## [0.8.330] - 2026-07-27
 

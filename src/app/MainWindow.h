@@ -90,6 +90,7 @@ protected:
     void closeEvent(QCloseEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    void changeEvent(QEvent* event) override;
 #if defined(Q_OS_WIN)
     bool nativeEvent(const QByteArray& eventType, void* message, qintptr* result) override;
 #endif
@@ -287,7 +288,7 @@ private:
     void completeProfileSwitchPipeline(bool automatic);
     void abortProfileSwitchPipeline(bool resyncSelection = true);
     void setProfileSwitchUiLocked(bool locked);
-    void schedulePostProfileSwitchForegroundReconcile();
+    void schedulePostProfileSwitchForegroundReconcile(bool allowAutoProfileSwitch);
     void saveActiveProfileSettings();
     bool profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
                               const ProgramSettings::ProfileSettings& b) const;

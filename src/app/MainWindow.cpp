@@ -2408,6 +2408,13 @@ void MainWindow::showEvent(QShowEvent* event) {
 #endif
 }
 
+void MainWindow::changeEvent(QEvent* event) {
+    QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::ActivationChange && isActiveWindow() && m_foregroundMonitor) {
+        m_foregroundMonitor->syncFromDesktopForeground();
+    }
+}
+
 #if defined(Q_OS_WIN)
 bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result) {
     if (isWindowsNativeMessage(eventType)) {
@@ -3618,6 +3625,15 @@ void MainWindow::flushDeferredProfileSwitchIfIdle() {
         || !m_profileManager) {
         return;
     }
+#ifdef _WIN32
+    if (m_foregroundMonitor) {
+        m_foregroundMonitor->syncFromDesktopForeground();
+        if (m_foregroundMonitor->isPipbongForeground()) {
+            m_deferredProfileSwitchId.clear();
+            return;
+        }
+    }
+#endif
     const QString profileId = m_deferredProfileSwitchId;
     if (profileId == m_profileManager->activeProfileId()) {
         m_deferredProfileSwitchId.clear();
@@ -7226,14 +7242,18 @@ void MainWindow::setProfileSwitchUiLocked(bool locked) {
     }
 }
 
-void MainWindow::schedulePostProfileSwitchForegroundReconcile() {
+void MainWindow::schedulePostProfileSwitchForegroundReconcile(bool allowAutoProfileSwitch) {
     if (m_postSwitchForegroundReconcileScheduled) {
         return;
     }
     m_postSwitchForegroundReconcileScheduled = true;
-    QTimer::singleShot(0, this, [this]() {
+    QTimer::singleShot(0, this, [this, allowAutoProfileSwitch]() {
         m_postSwitchForegroundReconcileScheduled = false;
-        applyProfileSwitchFromForegroundState(m_foregroundMonitor->currentState());
+        if (allowAutoProfileSwitch) {
+            applyProfileSwitchFromForegroundState(m_foregroundMonitor->currentState());
+        } else if (m_foregroundMonitor) {
+            m_foregroundMonitor->syncFromDesktopForeground();
+        }
         finishForegroundSessionGate();
     });
 }
@@ -7288,17 +7308,21 @@ void MainWindow::completeProfileSwitchPipeline(bool automatic) {
 
     restorePersistedTriggerSessions();
 
-    schedulePostProfileSwitchForegroundReconcile();
+    schedulePostProfileSwitchForegroundReconcile(automatic);
 
-    const QString deferred = m_deferredProfileSwitchId;
-    if (!deferred.isEmpty()) {
+    if (automatic) {
+        const QString deferred = m_deferredProfileSwitchId;
+        if (!deferred.isEmpty()) {
+            m_deferredProfileSwitchId.clear();
+            QTimer::singleShot(0, this, [this, deferred]() {
+                if (!m_profileManager || deferred == m_profileManager->activeProfileId()) {
+                    return;
+                }
+                executeProfileSwitch(deferred, true);
+            });
+        }
+    } else {
         m_deferredProfileSwitchId.clear();
-        QTimer::singleShot(0, this, [this, deferred]() {
-            if (!m_profileManager || deferred == m_profileManager->activeProfileId()) {
-                return;
-            }
-            executeProfileSwitch(deferred, true);
-        });
     }
 }
 
@@ -7318,6 +7342,10 @@ bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) 
         m_deferredProfileSwitchId = profileId;
         QTimer::singleShot(50, this, &MainWindow::flushDeferredProfileSwitchIfIdle);
         return false;
+    }
+
+    if (!automatic) {
+        m_deferredProfileSwitchId.clear();
     }
 
     ReorderableListWidget::cancelActiveListDrags();
@@ -7485,18 +7513,23 @@ void MainWindow::applyProfileSwitchFromForegroundState(const ForegroundWindowSta
     }
     schedulePruneAbandonedEngines();
 #ifdef _WIN32
-    if (state.pipbong) {
+    if (m_foregroundMonitor) {
+        m_foregroundMonitor->syncFromDesktopForeground();
+    }
+    const ForegroundWindowState& live = m_foregroundMonitor ? m_foregroundMonitor->currentState()
+                                                            : state;
+    if (live.pipbong) {
         handlePipbongForegroundFocus();
         return;
     }
-    if (!state.rootHwnd || state.shellTransient) {
+    if (!live.rootHwnd || live.shellTransient) {
         return;
     }
 
     const ProfileForegroundResolver::ResolveResult resolved =
-        ProfileForegroundResolver::resolve(*m_profileManager, state);
+        ProfileForegroundResolver::resolve(*m_profileManager, live);
 
-    applyForegroundCaptureHints(state.rootHwnd, state.title);
+    applyForegroundCaptureHints(live.rootHwnd, live.title);
 
     if (resolved.profileId.isEmpty()
         || resolved.profileId == m_profileManager->activeProfileId()) {

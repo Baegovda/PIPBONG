@@ -54,6 +54,15 @@ void ForegroundWindowMonitor::start() {
 #endif
 }
 
+void ForegroundWindowMonitor::syncFromDesktopForeground() {
+#ifdef _WIN32
+    if (!m_started) {
+        return;
+    }
+    refreshFromForegroundHwnd(GetForegroundWindow(), false);
+#endif
+}
+
 void ForegroundWindowMonitor::stop() {
 #ifdef _WIN32
     if (!m_started) {
