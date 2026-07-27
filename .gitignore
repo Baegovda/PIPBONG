@@ -1,6 +1,8 @@
 build/
 app-stutter/*
 !app-stutter/.gitkeep
+live-session/*
+!live-session/.gitkeep
 build-static/
 dist/
 out/

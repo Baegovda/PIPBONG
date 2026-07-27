@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.345` (from `project(PIPBONG VERSION 0.8.345)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.346` (from `project(PIPBONG VERSION 0.8.346)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -416,6 +416,7 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── run-policy-sim.ps1     # build PIPBONGPolicySim only + run (manual)
 │   ├── run-policy-sim-postbuild.ps1  # POST_BUILD hook: run sim after PIPBONG link
 │   ├── analyze-app-stutter.ps1  # summarize app-stutter/latest.md
+│   ├── analyze-live-session.ps1 # tail live-session/latest.log
 │   ├── recover-ide-build.ps1  # IDE recovery (local default; optional -KillGlobalBuildProcesses)
 │   ├── ensure-dev-isolation.ps1  # dual-Cursor setup: settings check, F5 fix, deploy-qt if needed
 │   ├── fix-pipbong-cursor-f5.ps1  # workspace-gated F5 -> Build and Run (config.pipbong.f5BuildAndRun)
@@ -1163,6 +1164,24 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 Cursor rule: `.cursor/rules/app-stutter-profiling.mdc`.
 
+### 8.18 Live session log (mandatory — 응답없음 / force-kill diagnosis)
+
+**Status:** Added 2026-07-28 (v0.8.346). **Always-on** append-only log — does not depend on crash/hang UI or detached `--crash-report` viewer.
+
+| Layer | Role |
+| ----- | ---- |
+| `LiveSessionLog` | Session `latest.log` — Qt log lines (via `CrashReporter` recent log), `DiagnosticHub` app log + breadcrumbs, hang snapshot block |
+| Output | **Repo** `live-session/latest.log` (when dev tree writable) + **`%LOCALAPPDATA%/PIPBONG/PIPBONG/live-session/latest.log`** (primary) |
+| Flush | ~400 ms batch; immediate on hang marker; `aboutToQuit` session end line |
+| Hang | `CrashReporter::reportGuiThreadHang` calls `flushHangSnapshot` **before** heavy crash folder work |
+| Install | `CrashReporter::install()` → `LiveSessionLog::install()` (new file each process start) |
+
+**User → AI workflow:** User reports **응답없음** / force-kill / no error dialog → read **`live-session/latest.log`** (repo mirror or AppData path in file header) — **auto diagnosis from log tail first** (do **not** require `crash/` folder). Optional: `scripts/analyze-live-session.ps1`.
+
+**Complements** §8.14 `AppStutterProfiler` (opt-in stalls) and §5.11 crash/hang artifacts — use live log when those paths fail.
+
+Cursor rule: `.cursor/rules/live-session-log.mdc`.
+
 ### 8.17 Profile auto-switch (mandatory — do not regress)
 
 **Status:** Rewritten 2026-07-27 (v0.8.330). Single **`ForegroundWindowMonitor`** input path — no 100 ms poll, no scattered `GetForegroundWindow` in `MainWindow.cpp`.
@@ -1407,6 +1426,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 - **2026-07-24:** On **problem reports** (bug, lag, crash, regression): agent must **investigate first**, then explain **증상 / 원인 추정 / 해결 방향 / 다음 조치** in beginner-friendly Korean **before** starting code or build fixes; always-applied `.cursor/rules/explain-before-fix.mdc`.
 - **2026-07-24:** Profile **foreground auto-switch** should feel snappy: prefer **process path** when title-only match would wrongly pick default; shorter stability/min-interval for definitive exe match (0 ms / 150 ms).
 - **2026-07-25:** All PIPBONG lag/stutter diagnosis uses **one** opt-in profiler — **`AppStutterProfiler`** → `app-stutter/latest.md` (§8.14); do **not** add per-subsystem profiler classes; extend `AppStutterProfiler` event kinds or `DiagnosticHub` breadcrumbs instead.
+- **2026-07-28:** **응답없음** / force-kill when crash/hang UI missing: prefer always-on **`live-session/latest.log`** (§8.18); user says 응답없음 in chat → read that log first for AI diagnosis (complements opt-in `app-stutter`).
 - **2026-07-21:** Prefers the agent to **execute end-to-end** — scripts, rules, handover included — not hand the user a checklist of “copy this file / paste step 3”.
 - **2026-07-21:** When asking for **prompts or policy packs** for other projects, wants **one single copy block** (통째 복붙) — not split instructions where the user must paste multiple follow-up pieces.
 - **2026-07-21:** For prompt-only requests, deliver **the prompt block only** — avoid wrapping meta-explanation unless asked.
@@ -1528,6 +1548,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.346] - 2026-07-28
+
+### Added
+
+- **`LiveSessionLog`**: always-on real-time session log to **`live-session/latest.log`** (repo mirror + `%LOCALAPPDATA%/PIPBONG/PIPBONG/live-session/latest.log`); captures Qt log lines, `DiagnosticHub` app log and breadcrumbs; hang watchdog writes `GUI_HANG_DETECTED` snapshot before heavy crash artifacts (`LiveSessionLog`, `DiagnosticHub`, `CrashReporter`, `scripts/analyze-live-session.ps1`, AGENTS.md §8.18, `.cursor/rules/live-session-log.mdc`).
 
 ## [0.8.345] - 2026-07-28
 
@@ -5994,6 +6020,13 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 - **Mandatory** for PIPBONG app lag / UI stall diagnosis — **`app-stutter/latest.md`** only (single unified profiler).
 - Full rules in [§8.14](#814-app-stutter-profiling-mandatory--pipbong-lag--ui-stall-diagnosis).
+
+### `live-session-log.mdc`
+
+- **응답없음** / force-kill when crash UI missing: read **`live-session/latest.log`** first (always-on log).
+- Full rules in [§8.18](#818-live-session-log-mandatory--응답없음--force-kill-diagnosis).
+
+### `brief-korean-replies.mdc`
 
 - **Mandatory** default chat style: plain Korean, minimal length, no jargon — especially log/diagnosis readouts.
 - Full preference: [§9.5](#95-user-preference-profile-cumulative--agents-only).

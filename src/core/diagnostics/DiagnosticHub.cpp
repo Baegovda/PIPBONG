@@ -1,5 +1,6 @@
 #include "core/diagnostics/DiagnosticHub.h"
 
+#include "core/diagnostics/LiveSessionLog.h"
 #include "PipbongVersion.h"
 
 #include <opencv2/core/version.hpp>
@@ -94,11 +95,16 @@ void DiagnosticHub::noteBreadcrumb(const QString& category, const QString& messa
     entry.category = trimmedCategory.isEmpty() ? QStringLiteral("app") : trimmedCategory;
     entry.message = trimmedMessage;
 
+    const QString crumbLine =
+        QStringLiteral("[breadcrumb] %1 | %2").arg(entry.category, entry.message);
+
     std::lock_guard<std::mutex> lock(g_breadcrumbMutex);
     g_breadcrumbs.push_back(std::move(entry));
     while (g_breadcrumbs.size() > kMaxBreadcrumbLines) {
         g_breadcrumbs.pop_front();
     }
+
+    LiveSessionLog::appendLine(crumbLine);
 }
 
 void DiagnosticHub::appendAppLog(const QString& levelTag, const QString& text) {
@@ -111,6 +117,7 @@ void DiagnosticHub::appendAppLog(const QString& levelTag, const QString& text) {
     while (g_appLogLines.size() > kMaxAppLogLines) {
         g_appLogLines.pop_front();
     }
+    LiveSessionLog::appendLine(line);
 }
 
 void DiagnosticHub::appendAppLogSession(const QString& featureName,
@@ -125,6 +132,7 @@ void DiagnosticHub::appendAppLogSession(const QString& featureName,
     while (g_appLogLines.size() > kMaxAppLogLines) {
         g_appLogLines.pop_front();
     }
+    LiveSessionLog::appendLine(line);
 }
 
 void DiagnosticHub::setWorkerLabel(const QString& label) {

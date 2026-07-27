@@ -1,0 +1,20 @@
+---
+description: Always-on live-session/latest.log for 응답없음 / force-kill diagnosis
+alwaysApply: true
+---
+
+# Live session log (mandatory — 응답없음 diagnosis)
+
+**Status:** Added 2026-07-28 (v0.8.346).
+
+## Purpose
+
+When Windows shows **응답 없음** or the user force-kills PIPBONG, the crash/hang report dialog may not appear. **`LiveSessionLog`** always appends to **`live-session/latest.log`** so agents can diagnose from the file.
+
+## User → AI
+
+1. User reports 응답없음 / Not Responding / no error report → read **`live-session/latest.log`** first (repo `live-session/` or `%LOCALAPPDATA%/PIPBONG/PIPBONG/live-session/latest.log`).
+2. Optional: `.\scripts\analyze-live-session.ps1`
+3. Do **not** require workflow block lists for first-pass diagnosis.
+
+Full handover: [AGENTS.md](../../AGENTS.md) — **§8.18 Live session log**.
