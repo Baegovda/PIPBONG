@@ -3501,7 +3501,11 @@ void MainWindow::stopAllSessionsForProfileSwitch() {
         restoreRunStartCursorPosition(entry.second);
     }
     m_runSessions.clear();
-    updateRunUiState();
+    if (m_profileSwitchPipelineActive) {
+        QTimer::singleShot(0, this, [this]() { updateRunUiState(); });
+    } else {
+        updateRunUiState();
+    }
     flushDeferredProfileSwitchIfIdle();
 }
 
@@ -6994,7 +6998,9 @@ void MainWindow::loadActiveProfile(bool quiet, bool scheduleTriggerRestore) {
         if (scheduleTriggerRestore) {
             scheduleRestorePersistedTriggerSessions();
         }
-        onForegroundStateChanged(m_foregroundMonitor->currentState());
+        if (!m_profileSwitchPipelineActive) {
+            onForegroundStateChanged(m_foregroundMonitor->currentState());
+        }
         return;
     }
 
@@ -7022,7 +7028,9 @@ void MainWindow::loadActiveProfile(bool quiet, bool scheduleTriggerRestore) {
     if (scheduleTriggerRestore) {
         scheduleRestorePersistedTriggerSessions();
     }
-    onForegroundStateChanged(m_foregroundMonitor->currentState());
+    if (!m_profileSwitchPipelineActive) {
+        onForegroundStateChanged(m_foregroundMonitor->currentState());
+    }
 }
 
 void MainWindow::refreshProfileList() {
@@ -7203,14 +7211,6 @@ void MainWindow::completeProfileSwitchPipeline(bool automatic) {
             profile ? (m_profileManager->isDefaultProfile(profile->id) ? tr("기본") : profile->name)
                     : QString();
         showTransientStatus(tr("프로필 전환: %1").arg(name), 1200);
-#ifdef _WIN32
-        if (ProgramSettings::focusTargetWindowOnProfileSelect() && !isActiveDefaultProfile()) {
-            syncTargetWindowTitleToCapture();
-            if (ScreenCapture::findTargetWindow()) {
-                ScreenCapture::activateTargetWindow();
-            }
-        }
-#endif
     }
 
     m_profileSwitchCoordinator.markAutomaticProfileSwitchCommitted();
@@ -7219,24 +7219,38 @@ void MainWindow::completeProfileSwitchPipeline(bool automatic) {
     m_deferTargetDetailsProfileRefresh = false;
     setProfileSwitchUiLocked(false);
 
-    restorePersistedTriggerSessions();
-
-    schedulePostProfileSwitchForegroundReconcile(automatic);
-
+    QString deferredAutoId;
     if (automatic) {
-        const QString deferred = m_profileSwitchCoordinator.deferredProfileSwitchId();
-        if (!deferred.isEmpty()) {
+        deferredAutoId = m_profileSwitchCoordinator.deferredProfileSwitchId();
+        if (!deferredAutoId.isEmpty()) {
             m_profileSwitchCoordinator.clearDeferredProfileSwitchId();
-            QTimer::singleShot(0, this, [this, deferred]() {
-                if (!m_profileManager || deferred == m_profileManager->activeProfileId()) {
-                    return;
-                }
-                executeProfileSwitch(deferred, true);
-            });
         }
     } else {
         m_profileSwitchCoordinator.clearDeferredProfileSwitchId();
     }
+
+    QTimer::singleShot(0, this, [this, automatic, deferredAutoId]() {
+#ifdef _WIN32
+        if (!automatic && ProgramSettings::focusTargetWindowOnProfileSelect()
+            && !isActiveDefaultProfile()) {
+            syncTargetWindowTitleToCapture();
+            if (ScreenCapture::findTargetWindow()) {
+                ScreenCapture::activateTargetWindow();
+            }
+        }
+#endif
+        updateTargetWindowDetails();
+        restorePersistedTriggerSessions();
+        schedulePostProfileSwitchForegroundReconcile(automatic);
+        onForegroundStateChanged(m_foregroundMonitor->currentState());
+
+        if (automatic && !deferredAutoId.isEmpty() && m_profileManager
+            && deferredAutoId != m_profileManager->activeProfileId()) {
+            QTimer::singleShot(0, this, [this, deferredAutoId]() {
+                executeProfileSwitch(deferredAutoId, true);
+            });
+        }
+    });
 }
 
 bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) {
@@ -7265,7 +7279,7 @@ bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) 
 
     m_switchingProfile = true;
     m_profileSwitchPipelineActive = true;
-    m_deferTargetDetailsProfileRefresh = automatic;
+    m_deferTargetDetailsProfileRefresh = true;
 
     CrashReporter::noteBreadcrumb(QStringLiteral("profile"),
                                   QStringLiteral("switch committed %1%2")
@@ -7514,11 +7528,24 @@ void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
         m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
     }
     restoreSelectedFeaturePreference();
-    refreshWorkflowEditor();
+    if (m_profileSwitchPipelineActive) {
+        QTimer::singleShot(0, this, [this]() {
+            if (!m_project) {
+                return;
+            }
+            refreshWorkflowEditor();
+        });
+    } else {
+        refreshWorkflowEditor();
+    }
 
     m_modified = false;
     updateWindowTitle();
-    syncHotkeys();
+    if (m_profileSwitchPipelineActive) {
+        QTimer::singleShot(0, this, [this]() { syncHotkeys(); });
+    } else {
+        syncHotkeys();
+    }
     if (m_deferTargetDetailsProfileRefresh) {
         QTimer::singleShot(0, this, &MainWindow::updateTargetWindowDetails);
     } else {

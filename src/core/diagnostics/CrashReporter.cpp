@@ -943,6 +943,7 @@ void CrashReporter::install() {
     if (!g_previousQtHandler) {
         g_previousQtHandler = qInstallMessageHandler(qtMessageHandler);
     }
+    crashRootDirectoryPath();
 }
 
 void CrashReporter::installGuiHangWatchdog() {

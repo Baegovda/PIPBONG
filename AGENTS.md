@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.333` (from `project(PIPBONG VERSION 0.8.333)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.334` (from `project(PIPBONG VERSION 0.8.334)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1528,6 +1528,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.334] - 2026-07-27
+
+### Fixed
+
+- Manual profile switch no longer runs heavy workflow refresh, hotkey sync, target-detail EnumWindows, trigger restore, and foreground reconcile synchronously on the GUI thread — deferred to the next event-loop tick after the switch pipeline unlocks (`MainWindow::executeProfileSwitch`, `completeProfileSwitchPipeline`, `loadProjectFromFile`, `loadActiveProfile`, `stopAllSessionsForProfileSwitch`).
+- Crash report folder is created at `CrashReporter::install()` so hang/crash artifacts can be written even on first failure (`CrashReporter`).
 
 ## [0.8.333] - 2026-07-27
 
