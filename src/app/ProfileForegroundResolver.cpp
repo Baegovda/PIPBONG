@@ -34,6 +34,28 @@ QString profileIdForProcessPath(const ProfileManager& profileManager, const QStr
 
 namespace {
 
+bool linkedProcessPathOwnedByOtherProfile(const ProfileManager& profileManager,
+                                          const QString& processPath,
+                                          const QString& skipProfileId) {
+    if (processPath.isEmpty()) {
+        return false;
+    }
+    for (const ProfileManager::Profile& profile : profileManager.profiles()) {
+        if (profileManager.isDefaultProfile(profile.id) || profile.id == skipProfileId) {
+            continue;
+        }
+        const QString mainProc = profileManager.linkedTargetProcessPath(profile.id);
+        const QString subProc = profileManager.subLinkedTargetProcessPath(profile.id);
+        if (!mainProc.isEmpty() && processPath.compare(mainProc, Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+        if (!subProc.isEmpty() && processPath.compare(subProc, Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 QString profileIdForTitleBinding(const ProfileManager& profileManager,
                                    const QString& foregroundTitle,
                                    const QString& processPath) {
@@ -58,9 +80,14 @@ QString profileIdForTitleBinding(const ProfileManager& profileManager,
             if (!trimmed.contains(binding, Qt::CaseInsensitive) || binding.length() <= bestLength) {
                 return;
             }
-            if (!linkedProc.isEmpty() && !processPath.isEmpty()
-                && processPath.compare(linkedProc, Qt::CaseInsensitive) != 0) {
-                return;
+            if (!processPath.isEmpty()) {
+                if (!linkedProc.isEmpty()) {
+                    if (processPath.compare(linkedProc, Qt::CaseInsensitive) != 0) {
+                        return;
+                    }
+                } else if (linkedProcessPathOwnedByOtherProfile(profileManager, processPath, profile.id)) {
+                    return;
+                }
             }
             bestLength = binding.length();
             bestId = profile.id;

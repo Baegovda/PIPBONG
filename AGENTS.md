@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.332` (from `project(PIPBONG VERSION 0.8.332)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.333` (from `project(PIPBONG VERSION 0.8.333)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1171,7 +1171,7 @@ Cursor rule: `.cursor/rules/app-stutter-profiling.mdc`.
 | ----- | ---- |
 | **Detect** | **`ForegroundWindowMonitor`** only — WinEvent `EVENT_SYSTEM_FOREGROUND` → GUI-thread `foregroundChanged` / `altModifierReleased`; `start()` before profile load captures initial `GetForegroundWindow()` once |
 | **Entry** | **`MainWindow::onForegroundStateChanged`** → **`applyProfileSwitchFromForegroundState(state)`** — never re-query Win32 foreground inside coordinator |
-| **Resolve** | `ProfileForegroundResolver::resolve(ProfileManager, ForegroundWindowState)` — process path → title binding → default fallback |
+| **Resolve** | `ProfileForegroundResolver::resolve` — **1)** foreground exe path vs profile main/sub `linkedTargetProcessPath` (longest title binding wins on tie); **2)** title substring only when exe path empty, or stored exe matches foreground, or no other profile owns that exe; **3)** default profile |
 | **Switch** | When resolved profile ≠ active → **`executeProfileSwitch`** immediately (80 ms min-interval ping-pong guard only) |
 | **Defer** | Alt held (linked targets only), list drag active, or switch pipeline in progress → `m_deferredProfileSwitchId` + `flushDeferredProfileSwitchIfIdle` |
 | **Skip** | PIPBONG foreground, shell transient HWNDs, profile switch pipeline active; block-editor open defers **switch** only (monitor keeps updating) |
@@ -1197,6 +1197,7 @@ Key files: `ForegroundWindowMonitor.*`, `ForegroundWindowState.*`, `ProfileForeg
 | 8 | Trigger **감시** + scoped **메인/서브만** foreground gate | Poll count idle when wrong window focused; resumes on correct focus |
 | 9 | Block editor open | Hotkeys blocked; foreground auto-switch may defer; close editor → Alt+Tab scenario still passes |
 | 10 | Empty window title game (process path binding) | Profile + capture bind; hotkeys work when game foreground |
+| 11 | Browser foreground with game-like title substring | Default (or correct browser profile) — not a game profile whose exe is another app |
 
 Also run policy sim after link: `build/policy-sim-report.txt` + `ProfileForegroundPolicySim` when present.
 
@@ -1527,6 +1528,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.333] - 2026-07-27
+
+### Changed
+
+- Profile foreground resolve: title binding no longer matches when foreground exe belongs to another profile’s stored main/sub path but the candidate profile has no stored path (avoids browser/unrelated apps matching game title substrings); stored exe must still match when configured (`ProfileForegroundResolver::profileIdForTitleBinding`).
 
 ## [0.8.332] - 2026-07-27
 
