@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.331 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.332 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -45,6 +45,11 @@ set(PIPBONG_SOURCES
     src/app/ForegroundWindowMonitor.cpp
     src/app/ForegroundWindowState.cpp
     src/app/ProfileForegroundResolver.cpp
+    src/app/ForegroundRunGate.cpp
+    src/app/ForegroundRunGateWin32.cpp
+    src/app/ProfileSwitchCoordinator.cpp
+    src/app/TargetWindowController.cpp
+    src/app/RunSessionController.cpp
     src/app/WindowsLaunchAtStartup.cpp
     src/app/WindowsRunAsAdmin.cpp
     src/app/PointerFeedbackSettings.cpp
@@ -247,9 +252,13 @@ add_executable(PIPBONGPolicySim
     src/tools/SessionRunPolicySim.cpp
     src/app/SessionRunPolicy.cpp
     src/app/SessionRunPolicyInvariants.cpp
+    src/app/ForegroundRunGate.cpp
+    src/tools/ForegroundRunGateSimStubs.cpp
+    src/model/FeatureRunMode.cpp
+    src/model/FeatureCaptureTargetScope.cpp
 )
 target_include_directories(PIPBONGPolicySim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(PIPBONGPolicySim PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(PIPBONGPolicySim PRIVATE Qt6::Core nlohmann_json::nlohmann_json)
 if(MSVC)
     target_compile_options(PIPBONGPolicySim PRIVATE /utf-8)
 endif()

@@ -19,6 +19,7 @@ Main target focused → hotkeys work → Alt+Tab away → Alt+Tab back → hotke
 | ----- | ------ |
 | Foreground sync (v0.8.293, v0.8.330) | `ForegroundWindowMonitor` must deliver `foregroundChanged` on GUI thread; empty-caption games need process-path profile/capture match; `FeatureHotkeyGate` must **not** block `applyProfileSwitchFromForegroundState` |
 | Hook latch (v0.8.294) | Missed KEYUP / mouse UP during Alt+Tab → toggle `armed=false` or mouse `buttonDown=true` → hook swallows next hotkey without firing |
+| Run gate (v0.8.332) | Foreground/profile/scoped allow checks live in **`ForegroundRunGate`** — do not reintroduce parallel `MainWindow` gate bools (AGENTS.md §8.17) |
 
 ## Required architecture
 

@@ -3,7 +3,11 @@
 #include "app/FeatureRunSession.h"
 #include "app/PointerFeedbackSettings.h"
 #include "app/ForegroundWindowState.h"
+#include "app/ForegroundRunGate.h"
 #include "app/ProfileManager.h"
+#include "app/ProfileSwitchCoordinator.h"
+#include "app/RunSessionController.h"
+#include "app/TargetWindowController.h"
 #include "core/workflow/ExecutionContext.h"
 #include "model/UserInputInterruptMode.h"
 #include "ui/BlockListWidget.h"
@@ -384,10 +388,10 @@ private:
     bool foregroundProfileMatchesActive() const;
     bool switchToForegroundLinkedProfileIfNeeded(bool forceImmediate);
     QString foregroundProfileIdForActiveWindow() const;
-    bool activeProfileForegroundBindingMatches() const;
+    ForegroundRunGate::GateInput buildForegroundGateInput(const Feature* feature = nullptr) const;
+    ForegroundRunGate::ProfileBindings buildForegroundProfileBindings() const;
     bool profileMainOrSubForegroundActive() const;
     bool deferRunUntilScopedTargetForeground(FeatureRunSession& session, Feature* feature);
-    void scheduleScopedTargetForegroundResumePoll();
     void resumeWaitingScopedTargetForegroundSessions();
     void reconcileRunSessionsWithForegroundGate();
     /// After foreground HWND/profile/capture binding is updated, resume gated sessions and hotkey context.
@@ -519,6 +523,9 @@ private:
     int m_lastWorkflowScaleClientWidth = 0;
     int m_lastWorkflowScaleClientHeight = 0;
     std::unique_ptr<ForegroundWindowMonitor> m_foregroundMonitor;
+    ProfileSwitchCoordinator m_profileSwitchCoordinator;
+    TargetWindowController m_targetWindowController;
+    RunSessionController m_runSessionController;
     UpdateChecker* m_updateChecker = nullptr;
     bool m_initialUpdateCheckDone = false;
     bool m_lastUpdateCheckWasSilent = false;
@@ -549,18 +556,11 @@ private:
     bool m_restoreTriggerSessionsScheduled = false;
     std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
     std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
-    QString m_deferredProfileSwitchId;
-    QElapsedTimer m_lastAutomaticProfileSwitchTimer;
     std::vector<std::unique_ptr<WorkflowEngine>> m_abandonedEngines;
     std::unordered_map<const WorkflowEngine*, std::string> m_abandonedEngineFeatureIds;
-    QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;
-    QString m_lastLinkedForegroundProfileId;
 #ifdef _WIN32
-    HWND m_lastProfileLinkedForegroundHwnd = nullptr;
-    bool m_lastProfileLinkedForegroundIsSub = false;
     HWND m_lastHotkeyLatchResetForegroundHwnd = nullptr;
 #endif
-    bool m_scopedTargetForegroundResumePending = false;
     bool m_ensureTriggerMonitorPending = false;
     bool m_pruneAbandonedEnginesPending = false;
     int m_holdBurstDepth = 0;

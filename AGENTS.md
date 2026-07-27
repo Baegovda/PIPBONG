@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.331` (from `project(PIPBONG VERSION 0.8.331)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.332` (from `project(PIPBONG VERSION 0.8.332)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1179,7 +1179,26 @@ Cursor rule: `.cursor/rules/app-stutter-profiling.mdc`.
 
 **Manual verify:** App start reflects current focus; game↔browser profile switch is immediate; Alt+Tab picker does not flip profiles mid-picker; Alt release commits deferred switch; PIPBONG focus does not spuriously switch to default; unrelated window → default profile; empty-title game (LOL) matches by process path.
 
-Key files: `ForegroundWindowMonitor.*`, `ForegroundWindowState.*`, `ProfileForegroundResolver.*`, `MainWindow.cpp` (`onForegroundStateChanged`, `applyProfileSwitchFromForegroundState`, `executeProfileSwitch`, `flushDeferredProfileSwitchIfIdle`).
+Key files: `ForegroundWindowMonitor.*`, `ForegroundWindowState.*`, `ProfileForegroundResolver.*`, `ProfileSwitchCoordinator.*`, `ForegroundRunGate.*`, `TargetWindowController.*`, `RunSessionController.*`, `MainWindow.cpp` (shell wiring, `executeProfileSwitch`, session map).
+
+#### MainWindow refactor manual regression (agents — run after each refactor phase)
+
+**Status:** Added 2026-07-27 (MainWindow split). **Not** user-facing. Run on Windows before closing any phase that touches foreground/profile/run gates.
+
+| # | Scenario | Expected |
+| --- | --- | --- |
+| 1 | App start with linked game/browser already foreground | Active profile matches focus; hotkeys work without focusing PIPBONG |
+| 2 | Game ↔ browser linked-profile switch | Immediate profile switch (no multi-second lag) |
+| 3 | Alt+Tab picker (Alt held) | No profile flip mid-picker; switch after Alt release |
+| 4 | Alt+Tab away/back to linked target **without** focusing PIPBONG | Feature hotkeys work (keyboard + mouse side button); repeat 5× |
+| 5 | **PIPBONG focused** → manual profile pick in list | Stays on chosen profile (no auto-switch fight — v0.8.331) |
+| 6 | PIPBONG focus after auto default switch within ~2.5 s | Optional restore to last linked profile when applicable |
+| 7 | Hold **Shift** + click-only workflow → release hotkey | Shift stays held in target app ([§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress)) |
+| 8 | Trigger **감시** + scoped **메인/서브만** foreground gate | Poll count idle when wrong window focused; resumes on correct focus |
+| 9 | Block editor open | Hotkeys blocked; foreground auto-switch may defer; close editor → Alt+Tab scenario still passes |
+| 10 | Empty window title game (process path binding) | Profile + capture bind; hotkeys work when game foreground |
+
+Also run policy sim after link: `build/policy-sim-report.txt` + `ProfileForegroundPolicySim` when present.
 
 ### 8.13 Settings and edit dialogs (mandatory — grouped + tooltips)
 
@@ -1508,6 +1527,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.332] - 2026-07-27
+
+### Added
+
+- **`ForegroundRunGate`**: unified foreground/profile run gate (`runForegroundGateActive`, `foregroundProfileMatchesActive`, scoped main/sub match); Win32 helpers in `ForegroundRunGateWin32.cpp`; policy sim scenarios + `ForegroundRunGateSimStubs.cpp` for headless link.
+- **`ProfileSwitchCoordinator`**: deferred auto-switch, Alt+Tab deferral, PIPBONG-focus linked-profile restore, manual switch clears deferred state (`ProfileSwitchCoordinator`, `MainWindow` wiring).
+- **`TargetWindowController`**: foreground capture hints, linked exe-path heal, last linked HWND cache for target detail panel (`TargetWindowController`).
+- **`RunSessionController`**: foreground gate reconcile, scoped-target defer/resume poll, `finishForegroundSessionGate` orchestration (`RunSessionController`).
+
+### Changed
+
+- **MainWindow** delegates foreground gates to `ForegroundRunGate`, profile auto-switch coordination to `ProfileSwitchCoordinator`, capture hint/heal to `TargetWindowController`, and scoped foreground session reconcile to `RunSessionController` (behavior preserved; §8.17 manual regression sheet).
 
 ## [0.8.331] - 2026-07-27
 
@@ -5888,4 +5920,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-25. Current application version: 0.8.328._
+_Last consolidated: 2026-07-27. Current application version: 0.8.332._

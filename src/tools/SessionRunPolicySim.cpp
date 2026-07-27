@@ -1,5 +1,8 @@
 #include "app/SessionRunPolicy.h"
 #include "app/SessionRunPolicyInvariants.h"
+#include "app/ForegroundRunGate.h"
+#include "model/FeatureRunMode.h"
+#include "model/FeatureCaptureTargetScope.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -176,6 +179,47 @@ void runManualScenarios() {
                    u8"트리거 무장 해제 시 비활성");
 }
 
+void runForegroundGateScenarios() {
+    logLine("== ForegroundRunGate scenarios ==");
+
+    ForegroundRunGate::GateInput input;
+    input.runWithoutTargetWindow = true;
+    expectScenario(ForegroundRunGate::runForegroundGateActive(input),
+                   "gate_run_without_target",
+                   u8"타겟 없이 실행 시 포그라운드 게이트 통과");
+
+    input.runWithoutTargetWindow = false;
+    input.bindings.activeIsDefault = true;
+    input.foregroundResolvedProfileId = QStringLiteral("default");
+    input.foregroundResolvedIsDefault = true;
+    expectScenario(ForegroundRunGate::foregroundProfileMatchesActive(input),
+                   "gate_default_profile_match",
+                   u8"기본 프로필 + 포그라운드 기본 매칭");
+
+    input.bindings.activeIsDefault = false;
+    input.bindings.activeProfileId = QStringLiteral("linked");
+    input.foregroundResolvedProfileId = QStringLiteral("linked");
+    input.foregroundResolvedIsDefault = false;
+    expectScenario(ForegroundRunGate::foregroundProfileMatchesActive(input),
+                   "gate_linked_profile_id_match",
+                   u8"연동 프로필 ID 일치 시 매칭");
+
+    ForegroundRunGate::FeatureGateOptions triggerOpts;
+    triggerOpts.runMode = FeatureRunMode::Trigger;
+    triggerOpts.triggerRunWithoutTargetForeground = true;
+    input.feature = &triggerOpts;
+    input.triggerBackgroundVisible = true;
+    expectScenario(ForegroundRunGate::runForegroundGateActive(input),
+                   "gate_trigger_background_visible",
+                   u8"트리거 타겟 비포커스 감시 시 게이트 통과");
+
+    input.feature = nullptr;
+    input.foreground.rootHwnd = nullptr;
+    expectScenario(!ForegroundRunGate::activeProfileForegroundBindingMatches(input),
+                   "gate_no_hwnd_no_binding_match",
+                   u8"포그라운드 HWND 없을 때 바인딩 불일치");
+}
+
 bool runInvariantSweeps() {
     logLine("== Invariant exhaustive sweep ==");
     const SessionRunPolicySweepResult exhaustive = runSessionRunPolicyExhaustiveSweep();
@@ -230,6 +274,7 @@ int main(int argc, char** argv) {
 
     logLine("PIPBONG SessionRunPolicySim");
     runManualScenarios();
+    runForegroundGateScenarios();
     const bool invariantsOk = runInvariantSweeps();
 
     const int totalFailures = gScenarioFailures + (invariantsOk ? 0 : 1);
