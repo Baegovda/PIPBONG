@@ -251,7 +251,7 @@ private:
     void stopFeatureRun(const std::string& featureId);
     void stopAllSessions();
     void stopRunningSessionsForUpdate();
-    void stopAllSessionsForProfileSwitch();
+    void detachUiForProfileSwitch();
     void stopSessionEngineForProfileSwitch(FeatureRunSession& session, Feature* feature);
     void abandonSessionEngine(FeatureRunSession& session);
     void pruneAbandonedEngines();
@@ -342,6 +342,9 @@ private:
                                  bool success,
                                  const QString& message);
     void launchTriggerMonitor(FeatureRunSession& session, Feature* feature, bool firstSessionStart);
+    void scheduleDeferredTriggerMonitorRestart(FeatureRunSession& session,
+                                             Feature* feature,
+                                             int delayMs);
     void scheduleEnsureTriggerMonitorEnginesRunning();
     void ensureTriggerMonitorEnginesRunning();
     void launchTriggerActionRun(FeatureRunSession& session, Feature* feature);
@@ -361,6 +364,10 @@ private:
     void prunePersistedTriggerArmedFeatures();
     void runFeature(Feature* feature);
     bool isDisplayedRunningFeature(const FeatureRunSession* session) const;
+    bool sessionBelongsToActiveProfile(const FeatureRunSession& session) const;
+    Feature* featureForSession(FeatureRunSession& session);
+    const Feature* featureForSession(const FeatureRunSession& session) const;
+    void pruneSessionOwnerProjects();
     void applyRunningBlockVisuals(FeatureRunSession& session,
                                   int index,
                                   BlockListWidget::ExecutionHighlight highlight);
@@ -384,12 +391,17 @@ private:
     std::wstring linkedTargetLookupTitleW() const;
     bool scopedTargetForegroundActive(const Feature* feature) const;
     bool runForegroundGateActive(const Feature* feature) const;
+    bool runForegroundGateActiveForSession(const FeatureRunSession& session,
+                                           Feature* feature) const;
     bool triggerBackgroundRunGateActive(const Feature* feature) const;
     bool foregroundProfileMatchesActive() const;
     bool switchToForegroundLinkedProfileIfNeeded(bool forceImmediate);
     QString foregroundProfileIdForActiveWindow() const;
-    ForegroundRunGate::GateInput buildForegroundGateInput(const Feature* feature = nullptr) const;
-    ForegroundRunGate::ProfileBindings buildForegroundProfileBindings() const;
+    ForegroundRunGate::GateInput buildForegroundGateInput(const Feature* feature = nullptr,
+                                                          const QString& bindingsProfileId =
+                                                              QString()) const;
+    ForegroundRunGate::ProfileBindings buildForegroundProfileBindings(
+        const QString& profileId = QString()) const;
     bool profileMainOrSubForegroundActive() const;
     bool deferRunUntilScopedTargetForeground(FeatureRunSession& session, Feature* feature);
     void resumeWaitingScopedTargetForegroundSessions();
@@ -534,6 +546,8 @@ private:
     QString m_persistentStatusMessage;
     QString m_transientStatusMessage;
     std::map<std::string, FeatureRunSession> m_runSessions;
+    /// Project snapshots for sessions running on non-active profiles after a profile switch.
+    mutable std::unordered_map<QString, std::shared_ptr<Project>> m_sessionOwnerProjects;
     std::map<std::string, std::unique_ptr<WorkerFastRepeatUiCoalesce>> m_fastRepeatUiCoalesce;
     QPointer<CalculatorDialog> m_calculatorDialog;
     QPointer<SpikeWatchDialog> m_spikeWatchDialog;

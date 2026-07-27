@@ -7,6 +7,7 @@
 #include "ui/BlockListWidget.h"
 
 #include <QElapsedTimer>
+#include <QString>
 
 #include <memory>
 #include <string>
@@ -19,6 +20,8 @@ struct TriggerPreemptedSession {
 
 struct FeatureRunSession {
     std::string featureId;
+    /// Profile that started this session; background sessions keep running after profile switch.
+    QString profileId;
     std::unique_ptr<WorkflowEngine> engine;
     bool usesHoldKeyTapFastPath = false;
     bool holdKeyTapLaneActive = false;
@@ -71,6 +74,7 @@ struct FeatureRunSession {
     TriggerSessionPhase triggerPhase = TriggerSessionPhase::None;
     int triggerBlockIndex = -1;
     quint64 triggerCooldownGeneration = 0;
+    quint64 triggerMonitorRestartGeneration = 0;
     /// Epoch ms when the current trigger cooldown ends; 0 when not in cooldown.
     qint64 triggerCooldownEndsAtEpochMs = 0;
     int triggerCooldownTotalMs = 0;

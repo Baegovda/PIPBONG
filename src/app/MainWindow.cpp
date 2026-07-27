@@ -3090,7 +3090,8 @@ void MainWindow::connectSessionEngine(FeatureRunSession& session) {
     connect(engine, &WorkflowEngine::logMessage, this, &MainWindow::onEngineLog);
     connect(engine, &WorkflowEngine::sessionPrepared, this, &MainWindow::onEngineSessionPrepared);
     connect(engine, &WorkflowEngine::started, this, &MainWindow::onEngineStarted);
-    connect(engine, &WorkflowEngine::finished, this, &MainWindow::onEngineFinished);
+    connect(engine, &WorkflowEngine::finished, this, &MainWindow::onEngineFinished,
+            Qt::QueuedConnection);
     connect(engine, &WorkflowEngine::blockStarted, this, &MainWindow::onBlockStarted);
     connect(engine, &WorkflowEngine::blockFinished, this, &MainWindow::onBlockFinished);
     connect(engine, &WorkflowEngine::blockProgress, this, &MainWindow::onBlockProgress);
@@ -3509,6 +3510,7 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     session->waitingForScopedTargetForeground = false;
     ++session->holdRepeatGeneration;
     ++session->triggerCooldownGeneration;
+    ++session->triggerMonitorRestartGeneration;
 
     if (session->runningMode == FeatureRunMode::Trigger) {
         session->disarmPersistedTrigger = !m_suppressTriggerArmedPersist;
@@ -5530,6 +5532,17 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
     });
 }
 
+namespace {
+
+bool isTriggerMonitorPermanentFailure(const QString& message) {
+    return message.contains(QStringLiteral("템플릿 파일을 찾을 수 없음"))
+        || message.contains(QStringLiteral("템플릿이 없습니다"))
+        || message.contains(QStringLiteral("템플릿을 찾을 수 없음"))
+        || message.contains(QStringLiteral("템플릿을 먼저 지정"));
+}
+
+} // namespace
+
 void MainWindow::scheduleEnsureTriggerMonitorEnginesRunning() {
     if (m_ensureTriggerMonitorPending) {
         return;
@@ -5568,6 +5581,36 @@ void MainWindow::ensureTriggerMonitorEnginesRunning() {
 
         launchTriggerMonitor(session, feature, false);
     }
+}
+
+void MainWindow::scheduleDeferredTriggerMonitorRestart(FeatureRunSession& session,
+                                                       Feature* feature,
+                                                       int delayMs) {
+    if (!feature || !session.repeatSession || session.userStopRequested) {
+        return;
+    }
+    const int boundedDelayMs = qBound(200, delayMs, 60000);
+    const std::string featureId = session.featureId;
+    const quint64 generation = ++session.triggerMonitorRestartGeneration;
+    QTimer::singleShot(boundedDelayMs, this, [this, featureId, generation]() {
+        FeatureRunSession* activeSession = sessionFor(featureId);
+        if (!activeSession || generation != activeSession->triggerMonitorRestartGeneration) {
+            return;
+        }
+        if (activeSession->userStopRequested || !activeSession->repeatSession
+            || activeSession->triggerPhase != TriggerSessionPhase::Monitoring) {
+            return;
+        }
+        Feature* current = featureForSession(*activeSession);
+        if (!current || !shouldContinueRunSession(*activeSession, current)) {
+            finishRunSession(featureId, activeSession->lastLoopSuccess, QString());
+            return;
+        }
+        if (activeSession->engine && activeSession->engine->isRunning()) {
+            return;
+        }
+        launchTriggerMonitor(*activeSession, current, false);
+    });
 }
 
 void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* feature, bool firstSessionStart) {
@@ -5859,10 +5902,17 @@ void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
             if (!message.isEmpty()) {
                 appendSessionLog(session, message, LogLineKind::Warning);
             }
+            if (isTriggerMonitorPermanentFailure(message)) {
+                appendSessionLog(session,
+                                 tr("템플릿 설정 오류 — 트리거 감시를 중지합니다"),
+                                 LogLineKind::Warning);
+                finishRunSession(session.featureId, false, message);
+                return;
+            }
             if (!session.userStopRequested && session.repeatSession
                 && shouldContinueRunSession(session, feature)) {
                 appendSessionLog(session, tr("감시를 다시 시작합니다"), LogLineKind::Accent);
-                launchTriggerMonitor(session, feature, false);
+                scheduleDeferredTriggerMonitorRestart(session, feature, 500);
                 return;
             }
             appendSessionLog(session, tr("트리거 감시가 종료되었습니다"), LogLineKind::Warning);
@@ -5881,7 +5931,7 @@ void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
             return;
         }
         appendSessionLog(session, tr("실행 실패 — 감시를 다시 시작합니다"), LogLineKind::Warning);
-        launchTriggerMonitor(session, feature, false);
+        scheduleDeferredTriggerMonitorRestart(session, feature, 500);
     }
 }
 
@@ -5953,6 +6003,7 @@ void MainWindow::finishRunSession(const std::string& featureId,
 
     if (session) {
         ++session->triggerCooldownGeneration;
+        ++session->triggerMonitorRestartGeneration;
         ++session->holdRepeatGeneration;
         restoreRunStartCursorPosition(*session);
     }

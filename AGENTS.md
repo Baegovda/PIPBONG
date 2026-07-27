@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.346` (from `project(PIPBONG VERSION 0.8.346)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.347` (from `project(PIPBONG VERSION 0.8.347)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1548,6 +1548,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.347] - 2026-07-28
+
+### Fixed
+
+- Trigger **감시** no longer spins hundreds of monitor restarts per second when the ImageFind template file is missing or misconfigured: permanent template errors end the trigger session with a clear log line; transient monitor failures defer relaunch by at least 200 ms (`MainWindow::handleTriggerEngineFinished`, `scheduleDeferredTriggerMonitorRestart`, `WorkflowEngine::finished` → `Qt::QueuedConnection`).
 
 ## [0.8.346] - 2026-07-28
 
