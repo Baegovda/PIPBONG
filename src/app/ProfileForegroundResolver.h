@@ -9,6 +9,7 @@ class ProfileManager;
 namespace ProfileForegroundResolver {
 
 enum class MatchKind {
+    ForegroundHwnd,
     ProcessPath,
     TitleBinding,
     DefaultFallback,

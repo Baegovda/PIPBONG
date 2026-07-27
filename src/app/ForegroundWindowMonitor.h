@@ -62,6 +62,7 @@ private:
     bool m_altTabModifierWasHeld = false;
     bool m_pendingEmit = false;
     QTimer* m_coalesceTimer = nullptr;
+    QTimer* m_pollTimer = nullptr;
 #endif
     bool m_started = false;
     ForegroundWindowState m_state;

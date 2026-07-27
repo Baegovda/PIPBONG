@@ -1,6 +1,11 @@
 #include "ProfileForegroundResolver.h"
 
+#include "core/capture/ScreenCapture.h"
 #include "ProfileManager.h"
+
+#ifdef _WIN32
+#    include <windows.h>
+#endif
 
 namespace ProfileForegroundResolver {
 
@@ -33,6 +38,54 @@ QString profileIdForProcessPath(const ProfileManager& profileManager, const QStr
 }
 
 namespace {
+
+#ifdef _WIN32
+HWND rootHwndOf(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return nullptr;
+    }
+    HWND root = GetAncestor(hwnd, GA_ROOT);
+    return root && IsWindow(root) ? root : hwnd;
+}
+
+QString profileIdForForegroundHwnd(const ProfileManager& profileManager, HWND foregroundRootHwnd) {
+    if (!foregroundRootHwnd || !IsWindow(foregroundRootHwnd)) {
+        return {};
+    }
+    QString bestId;
+    int bestScore = 0;
+    for (const ProfileManager::Profile& profile : profileManager.profiles()) {
+        if (profileManager.isDefaultProfile(profile.id)) {
+            continue;
+        }
+        const QString mainProc = profileManager.linkedTargetProcessPath(profile.id);
+        const QString subProc = profileManager.subLinkedTargetProcessPath(profile.id);
+        const auto scoreIfMatches = [&](const QString& binding, const QString& proc) -> int {
+            if (binding.isEmpty()) {
+                return 0;
+            }
+            const HWND hwnd =
+                ScreenCapture::findVisibleWindowMatchingTitle(binding.toStdWString(),
+                                                              proc.toStdWString());
+            if (!hwnd) {
+                return 0;
+            }
+            if (rootHwndOf(hwnd) != foregroundRootHwnd) {
+                return 0;
+            }
+            return static_cast<int>(binding.trimmed().length());
+        };
+        const int score =
+            qMax(scoreIfMatches(profile.targetWindowTitle, mainProc),
+                 scoreIfMatches(profile.subTargetWindowTitle, subProc));
+        if (score > bestScore) {
+            bestScore = score;
+            bestId = profile.id;
+        }
+    }
+    return bestId;
+}
+#endif
 
 bool linkedProcessPathOwnedByOtherProfile(const ProfileManager& profileManager,
                                           const QString& processPath,
@@ -141,6 +194,13 @@ ResolveResult resolve(const ProfileManager& profileManager, const ForegroundWind
 
 #ifdef _WIN32
     if (!state.rootHwnd || state.pipbong || state.shellTransient) {
+        return result;
+    }
+
+    const QString byHwnd = profileIdForForegroundHwnd(profileManager, state.rootHwnd);
+    if (!byHwnd.isEmpty() && !profileManager.isDefaultProfile(byHwnd)) {
+        result.profileId = byHwnd;
+        result.matchKind = MatchKind::ForegroundHwnd;
         return result;
     }
 

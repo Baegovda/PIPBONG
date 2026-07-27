@@ -28,6 +28,11 @@ ForegroundWindowMonitor::ForegroundWindowMonitor(QObject* parent)
         m_pendingEmit = false;
         emit foregroundChanged(m_state);
     });
+    m_pollTimer = new QTimer(this);
+    m_pollTimer->setInterval(250);
+    connect(m_pollTimer, &QTimer::timeout, this, [this]() {
+        refreshFromForegroundHwnd(GetForegroundWindow(), false);
+    });
 #endif
 }
 
@@ -50,6 +55,12 @@ void ForegroundWindowMonitor::start() {
                              0,
                              0,
                              WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+    if (!m_hook) {
+        qWarning("ForegroundWindowMonitor: SetWinEventHook failed — poll fallback only");
+    }
+    if (m_pollTimer) {
+        m_pollTimer->start();
+    }
     refreshFromForegroundHwnd(GetForegroundWindow(), true);
 #endif
 }
@@ -82,6 +93,9 @@ void ForegroundWindowMonitor::stop() {
     }
     if (m_coalesceTimer) {
         m_coalesceTimer->stop();
+    }
+    if (m_pollTimer) {
+        m_pollTimer->stop();
     }
     m_pendingEmit = false;
 #endif
