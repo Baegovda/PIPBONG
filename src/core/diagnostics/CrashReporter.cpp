@@ -26,6 +26,7 @@
 #include <QFile>
 #include <QMetaObject>
 #include <QProcess>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QThread>
@@ -53,7 +54,8 @@ constexpr int kMaxRetainedCrashFolders = 10;
 constexpr int kGuiHeartbeatIntervalMs = 400;
 constexpr int kGuiContextRefreshIntervalMs = 2000;
 constexpr int kGuiHangWatchdogPollMs = 1000;
-constexpr int kGuiHangThresholdMs = 6000;
+constexpr int kGuiHangThresholdMs = 4500;
+constexpr int kGuiHangRecoverMs = 2500;
 constexpr int kWorkerStaleThresholdMs = 15000;
 constexpr wchar_t kPendingFileName[] = L"pending.txt";
 constexpr wchar_t kCrashReportViewerArg[] = L"--crash-report";
@@ -318,11 +320,23 @@ QString currentExecutablePath() {
 
 void notifyCrashReportSaved(const QString& folderPath, bool immediateHang) {
     const QString message =
-        folderPath.isEmpty()
-            ? QStringLiteral("PIPBONG: An error report was saved under %LOCALAPPDATA%\\PIPBONG\\PIPBONG\\crash\\")
-            : QStringLiteral("PIPBONG: An error report was saved.\n\n%1").arg(folderPath);
-    const QString title = immediateHang ? QStringLiteral("PIPBONG - Not Responding")
-                                        : QStringLiteral("PIPBONG - Error Report");
+        immediateHang
+            ? (folderPath.isEmpty()
+                   ? QStringLiteral(
+                         "응답 없음이 감지되어 오류 보고서를 저장했습니다.\n\n"
+                         "별도 창으로 보고서를 열었습니다. 창이 보이지 않으면 PIPBONG을 다시 실행하면 "
+                         "'이전 실행 오류 보고서'가 표시됩니다.\n\n저장 위치: "
+                         "%LOCALAPPDATA%\\PIPBONG\\PIPBONG\\crash\\")
+                   : QStringLiteral(
+                         "응답 없음이 감지되어 오류 보고서를 저장했습니다.\n\n"
+                         "별도 창으로 보고서를 열었습니다. 창이 보이지 않으면 PIPBONG을 다시 실행하면 "
+                         "'이전 실행 오류 보고서'가 표시됩니다.\n\n저장 위치:\n%1")
+                         .arg(folderPath))
+            : (folderPath.isEmpty()
+                   ? QStringLiteral("PIPBONG: An error report was saved under %LOCALAPPDATA%\\PIPBONG\\PIPBONG\\crash\\")
+                   : QStringLiteral("PIPBONG: An error report was saved.\n\n%1").arg(folderPath));
+    const QString title =
+        immediateHang ? QStringLiteral("PIPBONG - 응답 없음") : QStringLiteral("PIPBONG - Error Report");
     MessageBoxW(nullptr,
                 reinterpret_cast<LPCWSTR>(message.utf16()),
                 reinterpret_cast<LPCWSTR>(title.utf16()),
@@ -354,7 +368,13 @@ void launchDetachedCrashReportViewer(const QString& folderPath) {
                                         &startupInfo,
                                         &processInfo);
     if (!created) {
-        notifyCrashReportSaved(folderPath, true);
+        const bool detached =
+            QProcess::startDetached(executablePath,
+                                    {QString::fromWCharArray(kCrashReportViewerArg), folderPath},
+                                    QFileInfo(executablePath).absolutePath());
+        if (!detached) {
+            notifyCrashReportSaved(folderPath, true);
+        }
         return;
     }
     CloseHandle(processInfo.hThread);
@@ -366,6 +386,10 @@ void showCrashReportDialogOnGuiThread(const QString& reportText,
                                        CrashReportKind kind) {
     CrashReportDialog dialog(reportText, folderPath, nullptr, true, kind);
     dialog.exec();
+    if (!folderPath.isEmpty()) {
+        QSettings settings(QStringLiteral("PIPBONG"), QStringLiteral("PIPBONG"));
+        settings.setValue(QStringLiteral("crash/lastDismissedReportFolder"), folderPath);
+    }
     CrashReporter::dismissPendingReport();
 }
 
@@ -422,17 +446,23 @@ void reportGuiThreadHang(qint64 silentMs) {
         QStringLiteral("GUI thread not responding (hang) - no heartbeat for %1 ms").arg(silentMs);
     const CrashArtifacts artifacts =
         writeCrashArtifacts(CrashReportKind::Hang, reason, nullptr, nullptr, true);
+    if (artifacts.reportText.trimmed().isEmpty()) {
+        g_guiHangReported.store(false);
+        g_writingCrashReport.store(false);
+        return;
+    }
     presentCrashReport(artifacts, false);
+    notifyCrashReportSaved(artifacts.folderPath, true);
+    g_writingCrashReport.store(false);
 }
 
 void guiHangWatchdogThreadMain() {
     g_watchdogThreadId = GetCurrentThreadId();
     while (!g_guiHangWatchdogStop.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(kGuiHangWatchdogPollMs));
-        if (g_guiHangWatchdogStop.load() || g_guiHangReported.load()) {
+        if (g_guiHangWatchdogStop.load()) {
             continue;
         }
-
         const qint64 lastBeat = g_lastGuiHeartbeatMs.load();
         if (lastBeat <= 0) {
             continue;
@@ -440,6 +470,12 @@ void guiHangWatchdogThreadMain() {
 
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         const qint64 silentMs = now - lastBeat;
+        if (g_guiHangReported.load()) {
+            if (silentMs < kGuiHangRecoverMs) {
+                g_guiHangReported.store(false);
+            }
+            continue;
+        }
         if (silentMs >= kGuiHangThresholdMs) {
             reportGuiThreadHang(silentMs);
         }
@@ -737,6 +773,7 @@ CrashArtifacts writeCrashArtifacts(CrashReportKind kind,
     const QString root = crashRootDirectoryPath();
     artifacts.folderPath = QDir(root).filePath(makeCrashFolderName());
     QDir().mkpath(artifacts.folderPath);
+    writeTextFile(pendingMarkerPath(), artifacts.folderPath + QLatin1Char('\n'));
 
     const QString reportPath = QDir(artifacts.folderPath).filePath(QStringLiteral("report.txt"));
     const QString dumpPath = QDir(artifacts.folderPath).filePath(QStringLiteral("crash.dmp"));
@@ -821,7 +858,11 @@ CrashArtifacts writeCrashArtifacts(CrashReportKind kind,
         writeTextFile(logPath, logLines.join(QLatin1Char('\n')));
     }
 
-    if (!writeMiniDump(dumpPath, exceptionInfo, hangReport)) {
+    if (!hangReport) {
+        if (!writeMiniDump(dumpPath, exceptionInfo, hangReport)) {
+            QFile(dumpPath).remove();
+        }
+    } else {
         QFile(dumpPath).remove();
     }
 
@@ -998,6 +1039,51 @@ void CrashReporter::noteBreadcrumb(const QString& category, const QString& messa
 
 bool CrashReporter::hasPendingReport() {
     return QFile::exists(pendingMarkerPath());
+}
+
+CrashReportSummary CrashReporter::startupReportSummary() {
+    if (hasPendingReport()) {
+        return pendingReport();
+    }
+
+    const QString latest = latestReportDirectory();
+    if (latest.isEmpty()) {
+        return {};
+    }
+
+    QSettings settings(QStringLiteral("PIPBONG"), QStringLiteral("PIPBONG"));
+    if (settings.value(QStringLiteral("crash/lastDismissedReportFolder")).toString() == latest) {
+        return {};
+    }
+
+    const QFileInfo folderInfo(latest);
+    if (!folderInfo.exists() || !folderInfo.isDir()) {
+        return {};
+    }
+    if (folderInfo.lastModified().secsTo(QDateTime::currentDateTime()) > 72 * 3600) {
+        return {};
+    }
+
+    CrashReportSummary summary;
+    summary.folderPath = latest;
+    summary.reportFilePath = QDir(latest).filePath(QStringLiteral("report.txt"));
+    summary.dumpFilePath = QDir(latest).filePath(QStringLiteral("crash.dmp"));
+
+    bool kindRead = false;
+    QFile kindFile(QDir(latest).filePath(QStringLiteral("kind.txt")));
+    if (kindFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        summary.kind = kindFromString(QString::fromUtf8(kindFile.readAll()).trimmed());
+        kindRead = true;
+    }
+
+    QFile reportFile(summary.reportFilePath);
+    if (reportFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        summary.reportText = QString::fromUtf8(reportFile.readAll());
+        if (!kindRead) {
+            summary.kind = kindFromReportText(summary.reportText);
+        }
+    }
+    return summary;
 }
 
 CrashReportSummary CrashReporter::pendingReport() {

@@ -14,6 +14,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTextEdit>
+#include <QSettings>
 #include <QVBoxLayout>
 
 namespace {
@@ -49,17 +50,20 @@ QString headlineForKind(CrashReportKind kind, bool immediateCrash) {
 } // namespace
 
 void CrashReportDialog::showPendingIfAny(QWidget* parent) {
-    if (!CrashReporter::hasPendingReport()) {
-        return;
-    }
-    const CrashReportSummary summary = CrashReporter::pendingReport();
+    const CrashReportSummary summary = CrashReporter::startupReportSummary();
     if (summary.reportText.trimmed().isEmpty()) {
-        CrashReporter::dismissPendingReport();
+        if (CrashReporter::hasPendingReport()) {
+            CrashReporter::dismissPendingReport();
+        }
         return;
     }
 
     CrashReportDialog dialog(summary.reportText, summary.folderPath, parent, false, summary.kind);
     dialog.exec();
+    QSettings settings(QStringLiteral("PIPBONG"), QStringLiteral("PIPBONG"));
+    if (!summary.folderPath.isEmpty()) {
+        settings.setValue(QStringLiteral("crash/lastDismissedReportFolder"), summary.folderPath);
+    }
     CrashReporter::dismissPendingReport();
 }
 

@@ -46,6 +46,9 @@ public:
     static bool hasPendingReport();
     static CrashReportSummary pendingReport();
 
+    /// Pending marker first; otherwise the latest recent crash folder not yet dismissed at startup.
+    static CrashReportSummary startupReportSummary();
+
     /// Clears the pending marker after the user dismisses the startup dialog.
     static void dismissPendingReport();
 
