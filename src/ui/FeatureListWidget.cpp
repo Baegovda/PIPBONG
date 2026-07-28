@@ -3,6 +3,9 @@
 #include "ui/FeatureDragMime.h"
 #include "ui/FeatureListItemRoles.h"
 
+#include <QDragEnterEvent>
+#include <QDragLeaveEvent>
+#include <QDragMoveEvent>
 #include <QDropEvent>
 #include <QKeyEvent>
 #include <QListWidgetItem>
@@ -76,6 +79,8 @@ bool FeatureListWidget::canStartDragFromRow(int row) const {
 }
 
 void FeatureListWidget::dropEvent(QDropEvent* event) {
+    updateGroupDropHover(-1);
+    notifyListDragChromeActive(false);
     QListWidgetItem* hit = itemAt(event->position().toPoint());
     if (hit && m_groupDropHandler) {
         const int listRow = this->row(hit);
@@ -106,7 +111,79 @@ void FeatureListWidget::setGroupDragPrepare(std::function<void(int row)> prepare
     m_groupDragPrepare = std::move(prepare);
 }
 
+void FeatureListWidget::setListDragChromeCallback(std::function<void(bool active)> callback) {
+    m_listDragChromeCallback = std::move(callback);
+}
+
+void FeatureListWidget::notifyListDragChromeActive(bool active) {
+    if (m_listDragChromeCallback) {
+        m_listDragChromeCallback(active);
+    }
+}
+
+int FeatureListWidget::groupRowForDropAt(const QPoint& pos) const {
+    QListWidgetItem* hit = itemAt(pos);
+    if (!hit) {
+        return -1;
+    }
+    const int listRow = row(hit);
+    if (!isGroupListRow(listRow)) {
+        return -1;
+    }
+    if (dragSourceRow() >= 0 && isGroupListRow(dragSourceRow())) {
+        return -1;
+    }
+    return listRow;
+}
+
+bool FeatureListWidget::canAssignToGroupViaDrag(const QMimeData* mime) const {
+    if (!m_groupDropHandler || !FeatureDragMime::accepts(mime)) {
+        return false;
+    }
+    const FeatureDragMime::Payload payload = FeatureDragMime::parse(mime);
+    return payload.isValid() && payload.source == FeatureDragMime::Source::Profile
+           && payload.profileId == m_activeProfileId;
+}
+
+void FeatureListWidget::updateGroupDropHover(int row) {
+    if (m_groupDropHoverRow == row) {
+        return;
+    }
+    m_groupDropHoverRow = row;
+    if (viewport()) {
+        viewport()->update();
+    }
+}
+
+void FeatureListWidget::dragEnterEvent(QDragEnterEvent* event) {
+    m_groupDropHoverRow = -1;
+    ReorderableListWidget::dragEnterEvent(event);
+    if (event->isAccepted()) {
+        notifyListDragChromeActive(true);
+    }
+}
+
+void FeatureListWidget::dragMoveEvent(QDragMoveEvent* event) {
+    const int groupRow = groupRowForDropAt(event->position().toPoint());
+    if (groupRow >= 0 && canAssignToGroupViaDrag(event->mimeData())) {
+        hideDropInsertionIndicator();
+        updateGroupDropHover(groupRow);
+        continueDragMoveAutoScroll(event);
+        event->acceptProposedAction();
+        return;
+    }
+    updateGroupDropHover(-1);
+    ReorderableListWidget::dragMoveEvent(event);
+}
+
+void FeatureListWidget::dragLeaveEvent(QDragLeaveEvent* event) {
+    updateGroupDropHover(-1);
+    ReorderableListWidget::dragLeaveEvent(event);
+    notifyListDragChromeActive(false);
+}
+
 void FeatureListWidget::startDrag(Qt::DropActions supportedActions) {
+    notifyListDragChromeActive(true);
     const int row = currentRow();
     if (row >= 0 && isGroupListRow(row) && m_groupDragPrepare) {
         m_groupDragPrepare(row);

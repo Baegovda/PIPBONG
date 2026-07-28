@@ -674,6 +674,8 @@ void paintFeatureListGroupRow(QPainter* painter,
                               bool selected,
                               bool hovered,
                               bool collapsed,
+                              bool dropTarget,
+                              int animationPhase,
                               const QString& groupName,
                               int memberCount,
                               const QPalette& palette) {
@@ -689,7 +691,22 @@ void paintFeatureListGroupRow(QPainter* painter,
     } else if (hovered) {
         rowBg = UiHoverFeedback::blendListRowHover(palette);
     }
+    if (dropTarget) {
+        const double pulse = 0.55 + 0.45 * std::sin(animationPhase * 0.22);
+        QColor glow = palette.color(QPalette::Highlight);
+        glow.setAlpha(static_cast<int>(pulse * 100.0));
+        painter->fillRect(rect, glow);
+    }
     painter->fillRect(rect, rowBg);
+
+    if (dropTarget) {
+        const double pulse = 0.55 + 0.45 * std::sin(animationPhase * 0.22);
+        QColor border = palette.color(QPalette::Highlight);
+        border.setAlpha(static_cast<int>(pulse * 230.0));
+        painter->setPen(QPen(border, 2));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(rect.adjusted(1, 1, -1, -1), 6, 6);
+    }
 
     const QColor accent = palette.color(QPalette::Highlight);
     if (selected) {
@@ -738,9 +755,11 @@ void paintFeatureListGroupRow(QPainter* painter,
     painter->setFont(titleFont);
     painter->setPen(primaryContentTextColor(palette, selected));
     const QString countSuffix =
-        collapsed && memberCount > 0
-            ? QStringLiteral(" · %1 · 접힘").arg(memberCount)
-            : QStringLiteral(" · %1").arg(memberCount);
+        dropTarget
+            ? QStringLiteral("  ← 묶음에 넣기")
+            : (collapsed && memberCount > 0
+                   ? QStringLiteral(" · %1 · 접힘").arg(memberCount)
+                   : QStringLiteral(" · %1").arg(memberCount));
     const QFontMetrics fm(titleFont);
     const QString elidedName =
         fm.elidedText(groupName, Qt::ElideRight, textRect.width() - fm.horizontalAdvance(countSuffix));
@@ -992,8 +1011,10 @@ public:
             const bool collapsed = m_panel->isGroupCollapsed(groupId);
             const FeatureListWidget* listWidget = qobject_cast<const FeatureListWidget*>(opt.widget);
             const bool isDragSource = listWidget && listWidget->dragSourceRow() == index.row();
+            const bool dropTarget =
+                listWidget && listWidget->groupDropHoverRow() == index.row();
             const bool selected = opt.state & QStyle::State_Selected;
-            const bool hovered = (opt.state & QStyle::State_MouseOver) && !selected;
+            const bool hovered = (opt.state & QStyle::State_MouseOver) && !selected && !dropTarget;
 
             painter->save();
             painter->setClipRect(opt.rect);
@@ -1007,6 +1028,8 @@ public:
                                          selected,
                                          hovered,
                                          collapsed,
+                                         dropTarget,
+                                         m_panel->animationPhase(),
                                          groupName,
                                          memberCount,
                                          opt.palette);
@@ -1038,6 +1061,14 @@ public:
         painter->save();
         painter->setClipRect(opt.rect);
         painter->setRenderHint(QPainter::TextAntialiasing, true);
+
+        if (groupIndent > 0) {
+            QColor guide = opt.palette.color(QPalette::Highlight);
+            guide.setAlpha(hovered || selected ? 140 : 90);
+            painter->setPen(QPen(guide, 2));
+            const int guideX = opt.rect.left() + groupIndent / 2;
+            painter->drawLine(guideX, opt.rect.top() + 3, guideX, opt.rect.bottom() - 3);
+        }
 
         if (isDragSource) {
             QColor fill = opt.palette.color(QPalette::Base);
@@ -1285,7 +1316,7 @@ void FeatureListPanel::setupUi() {
     buttonRow->addWidget(m_removeButton);
 
     m_listHintLabel = new QLabel(
-        tr("묶음 줄 클릭 → 펼치기/접기 · 기능 드래그 → 순서 변경 · 묶음 줄에 놓기 → 묶음에 추가"),
+        tr("묶음 줄 클릭 → 펼치기/접기 · 기능 사이 파란 줄 → 순서만 변경 · 묶음 줄이 밝게 깜빡이면 → 그 묶음에 넣기"),
         group);
     m_listHintLabel->setObjectName(QStringLiteral("featureListHint"));
     m_listHintLabel->setWordWrap(true);
@@ -1331,6 +1362,7 @@ void FeatureListPanel::setupUi() {
     m_list->setGroupDropHandler([this](int row, const QMimeData* mime) {
         return handleGroupDrop(row, mime);
     });
+    m_list->setListDragChromeCallback([this](bool active) { ensureListDragAnimation(active); });
     connect(m_list, &FeatureListWidget::featureRowsReordered, this, &FeatureListPanel::onFeatureRowsReordered);
     connect(m_list, &ReorderableListWidget::multiRowsReordered, this, &FeatureListPanel::onFeatureMultiRowsReordered);
     connect(m_list, &FeatureListWidget::featureDropped, this, [this](const QMimeData* mime, int insertListRow) {
@@ -1931,19 +1963,29 @@ void FeatureListPanel::requestRunStateMutationPolicyRefresh() {
     refreshListMutationPolicy();
 }
 
+void FeatureListPanel::ensureListDragAnimation(bool active) {
+    m_listDragChromeActive = active;
+    if (!m_animTimer) {
+        return;
+    }
+    const bool wantTimer =
+        m_listDragChromeActive
+        || (!m_runningFeatureIds.isEmpty() && !m_runAnimationLowCpu);
+    if (wantTimer) {
+        if (!m_animTimer->isActive()) {
+            m_animTimer->start();
+        }
+    } else {
+        m_animTimer->stop();
+    }
+}
+
 void FeatureListPanel::setRunAnimationLowCpu(bool lowCpu) {
     if (m_runAnimationLowCpu == lowCpu) {
         return;
     }
     m_runAnimationLowCpu = lowCpu;
-    if (m_runningFeatureIds.isEmpty() || !m_animTimer) {
-        return;
-    }
-    if (lowCpu) {
-        m_animTimer->stop();
-    } else if (!m_animTimer->isActive()) {
-        m_animTimer->start();
-    }
+    ensureListDragAnimation(m_listDragChromeActive);
 }
 
 void FeatureListPanel::setRunningFeatureIds(const QSet<QString>& featureIds) {
@@ -1951,12 +1993,8 @@ void FeatureListPanel::setRunningFeatureIds(const QSet<QString>& featureIds) {
     if (m_runningFeatureIds.isEmpty()) {
         m_animPhase = 0;
         m_featureRunVisualKinds.clear();
-        if (m_animTimer) {
-            m_animTimer->stop();
-        }
-    } else if (m_animTimer && !m_animTimer->isActive() && !m_runAnimationLowCpu) {
-        m_animTimer->start();
     }
+    ensureListDragAnimation(m_listDragChromeActive);
     updateReorderEnabled();
     requestRunStateMutationPolicyRefresh();
     requestRunStateViewportUpdate();
@@ -2253,14 +2291,21 @@ void FeatureListPanel::onFeatureRowsReordered(int fromRow, int toRow) {
         toIndex = featureInsertIndexForListRow(toRow);
     }
     QString keepId;
+    QString groupToConsolidate;
     if (fromIndex >= 0) {
         if (Feature* feature = m_project->featureAt(fromIndex)) {
             keepId = QString::fromStdString(feature->id());
+            if (!feature->groupId().empty()) {
+                groupToConsolidate = QString::fromStdString(feature->groupId());
+            }
         }
     }
     if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex) {
         emit mutationAboutToCommit(QStringLiteral("feature-reorder"));
         m_project->moveFeature(fromIndex, toIndex);
+        if (!groupToConsolidate.isEmpty()) {
+            consolidateGroupMembers(groupToConsolidate.toStdString());
+        }
         emit projectModified();
     }
     refresh();
@@ -2278,6 +2323,7 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
     }
     std::vector<int> featureIndices;
     QStringList movedIds;
+    QSet<QString> groupsToConsolidate;
     featureIndices.reserve(static_cast<size_t>(selectedRows.size()));
     for (int row : selectedRows) {
         const int index = featureIndexForListRow(row);
@@ -2287,6 +2333,9 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
         featureIndices.push_back(index);
         if (Feature* feature = m_project->featureAt(index)) {
             movedIds.push_back(QString::fromStdString(feature->id()));
+            if (!feature->groupId().empty()) {
+                groupsToConsolidate.insert(QString::fromStdString(feature->groupId()));
+            }
         }
     }
     if (featureIndices.empty()) {
@@ -2296,6 +2345,9 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
     const int insertIndex = featureInsertIndexForListRow(insertListIndex);
     emit mutationAboutToCommit(QStringLiteral("feature-reorder-multi"));
     m_project->moveFeatures(featureIndices, insertIndex);
+    for (const QString& groupId : groupsToConsolidate) {
+        consolidateGroupMembers(groupId.toStdString());
+    }
     emit projectModified();
     refresh();
     if (m_list && !movedIds.isEmpty()) {
@@ -3138,6 +3190,56 @@ void FeatureListPanel::persistCollapsedGroupState() const {
                       QStringList(m_collapsedGroupIds.values()));
 }
 
+FeatureGroup* FeatureListPanel::findFeatureGroupByName(const std::string& name) {
+    if (!m_project || name.empty()) {
+        return nullptr;
+    }
+    for (const FeatureGroup& group : m_project->featureGroups()) {
+        if (group.name() == name) {
+            return m_project->featureGroupById(group.id());
+        }
+    }
+    return nullptr;
+}
+
+void FeatureListPanel::consolidateGroupMembers(const std::string& groupId) {
+    if (!m_project || groupId.empty()) {
+        return;
+    }
+    std::vector<int> indices = featureIndicesInGroup(groupId);
+    if (indices.size() <= 1) {
+        return;
+    }
+    std::sort(indices.begin(), indices.end());
+    bool contiguous = true;
+    for (size_t i = 1; i < indices.size(); ++i) {
+        if (indices[i] != indices[i - 1] + 1) {
+            contiguous = false;
+            break;
+        }
+    }
+    if (contiguous) {
+        return;
+    }
+    m_project->moveFeatures(indices, indices.front());
+}
+
+void FeatureListPanel::pruneEmptyFeatureGroups() {
+    if (!m_project) {
+        return;
+    }
+    std::vector<std::string> emptyIds;
+    for (const FeatureGroup& group : m_project->featureGroups()) {
+        if (countFeaturesInGroup(group.id()) == 0) {
+            emptyIds.push_back(group.id());
+        }
+    }
+    for (const std::string& id : emptyIds) {
+        m_project->removeFeatureGroup(id);
+        m_collapsedGroupIds.remove(QString::fromStdString(id));
+    }
+}
+
 int FeatureListPanel::countFeaturesInGroup(const std::string& groupId) const {
     if (!m_project || groupId.empty()) {
         return 0;
@@ -3242,7 +3344,8 @@ bool FeatureListPanel::handleGroupDrop(int listRow, const QMimeData* mime) {
             feature->setGroupId(groupIdStd);
         }
     }
-    moveFeatureIndicesIntoGroup(indices, groupIdStd);
+    consolidateGroupMembers(groupIdStd);
+    pruneEmptyFeatureGroups();
     setGroupCollapsed(groupId, false);
     emit projectModified();
     refresh();
@@ -3314,6 +3417,10 @@ void FeatureListPanel::assignSelectedFeaturesToGroup(const std::string& groupId)
             feature->setGroupId(groupId);
         }
     }
+    if (!groupId.empty()) {
+        consolidateGroupMembers(groupId);
+    }
+    pruneEmptyFeatureGroups();
 }
 
 void FeatureListPanel::onAddFeatureGroup() {
@@ -3328,7 +3435,10 @@ void FeatureListPanel::onAddFeatureGroup() {
         return;
     }
     emit mutationAboutToCommit(QStringLiteral("feature-group-add"));
-    FeatureGroup* group = m_project->addFeatureGroup(name.toStdString());
+    FeatureGroup* group = findFeatureGroupByName(name.toStdString());
+    if (!group) {
+        group = m_project->addFeatureGroup(name.toStdString());
+    }
     if (!group) {
         return;
     }

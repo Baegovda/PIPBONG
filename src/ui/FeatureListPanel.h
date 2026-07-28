@@ -244,6 +244,9 @@ private:
     void prepareGroupDragSelection(int groupListRow);
     std::vector<int> featureIndicesInGroup(const std::string& groupId) const;
     void moveFeatureIndicesIntoGroup(const std::vector<int>& indices, const std::string& groupId);
+    void consolidateGroupMembers(const std::string& groupId);
+    void pruneEmptyFeatureGroups();
+    FeatureGroup* findFeatureGroupByName(const std::string& name);
 
     bool editFeatureAt(int index);
 
@@ -264,6 +267,8 @@ private:
     void applyColumnLayoutToList();
 
     void updateReorderEnabled();
+
+    void ensureListDragAnimation(bool active);
 
     void updateListItemEditableFlags();
 
@@ -325,6 +330,7 @@ private:
     FeatureListColumnLayout m_headerDragStartLayout;
 
     int m_animPhase = 0;
+    bool m_listDragChromeActive = false;
     bool m_runAnimationLowCpu = false;
     int m_runStateBatchDepth = 0;
     bool m_runStateViewportDirty = false;
