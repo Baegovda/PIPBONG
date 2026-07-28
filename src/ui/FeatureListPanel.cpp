@@ -7,6 +7,7 @@
 #include "ui/HotkeyBindingIcon.h"
 #include "ui/TriggerListAnimationRenderer.h"
 #include "model/Feature.h"
+#include "model/FeatureGroup.h"
 #include "model/FeatureRunMode.h"
 #include "model/Project.h"
 #include "core/input/HotkeyBinding.h"
@@ -42,6 +43,7 @@
 #include <QVariantAnimation>
 #include <QEasingCurve>
 #include <QDialog>
+#include <QInputDialog>
 #include <QEvent>
 #include <QFrame>
 #include <QGroupBox>
@@ -49,9 +51,20 @@
 #include <QAbstractItemView>
 #include <QPlainTextEdit>
 #include <QTextEdit>
+#include <algorithm>
 #include <climits>
 #include <cmath>
 namespace {
+
+enum class FeatureListRowKind {
+    Feature = 0,
+    Group = 1,
+};
+
+constexpr int kListRowKindRole = Qt::UserRole + 20;
+constexpr int kFeatureIndexRole = Qt::UserRole + 21;
+constexpr int kGroupIdRole = Qt::UserRole + 22;
+constexpr int kGroupMemberCountRole = Qt::UserRole + 23;
 constexpr int kRowSeparatorHeight = 1;
 constexpr int kSelectionBarWidth = 3;
 constexpr int kFeatureIdRole = Qt::UserRole;
@@ -658,6 +671,61 @@ void paintFeatureListRowChrome(QPainter* painter,
     painter->fillRect(QRect(rect.left(), rect.bottom(), rect.width(), kRowSeparatorHeight), separator);
 }
 
+void paintFeatureListGroupRow(QPainter* painter,
+                              const QRect& rect,
+                              bool selected,
+                              bool hovered,
+                              bool collapsed,
+                              const QString& groupName,
+                              int memberCount,
+                              const QPalette& palette) {
+    QColor rowBg = palette.color(QPalette::AlternateBase);
+    if (selected) {
+        const QColor highlight = palette.color(QPalette::Highlight);
+        rowBg = QColor(rowBg.red() + (highlight.red() - rowBg.red()) / 5,
+                       rowBg.green() + (highlight.green() - rowBg.green()) / 5,
+                       rowBg.blue() + (highlight.blue() - rowBg.blue()) / 5);
+    } else if (hovered) {
+        rowBg = UiHoverFeedback::blendListRowHover(palette);
+    }
+    painter->fillRect(rect, rowBg);
+
+    if (selected) {
+        painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()),
+                          palette.color(QPalette::Highlight));
+    }
+
+    const QColor muted = featureListMutedTextColor(palette);
+    QColor accent = palette.color(QPalette::Highlight);
+    accent.setAlpha(selected ? 200 : 140);
+    painter->fillRect(QRect(rect.left() + kSelectionBarWidth, rect.top(), 2, rect.height()), accent);
+
+    const int chevronW = 14;
+    const QRect chevronRect(rect.left() + kSelectionBarWidth + 6, rect.top(), chevronW, rect.height());
+    painter->setPen(muted);
+    QFont chevronFont = painter->font();
+    chevronFont.setPixelSize(11);
+    chevronFont.setBold(true);
+    painter->setFont(chevronFont);
+    painter->drawText(chevronRect, Qt::AlignCenter, collapsed ? QStringLiteral("▸") : QStringLiteral("▾"));
+
+    const QRect textRect = rect.adjusted(kSelectionBarWidth + chevronW + 8, 0, -8, 0);
+    QFont titleFont = painter->font();
+    titleFont.setBold(true);
+    painter->setFont(titleFont);
+    painter->setPen(primaryContentTextColor(palette, selected));
+    const QString title =
+        QStringLiteral("%1  (%2)").arg(groupName).arg(memberCount);
+    painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, title);
+
+    QColor separator = palette.color(QPalette::Mid);
+    if (darkThemeFromPalette(palette) && separator.lightness() < 90) {
+        separator = separator.lighter(130);
+    }
+    separator.setAlpha(50);
+    painter->fillRect(QRect(rect.left(), rect.bottom(), rect.width(), kRowSeparatorHeight), separator);
+}
+
 void paintFeatureName(QPainter* painter,
                       const QRect& rect,
                       const QStyleOptionViewItem& option,
@@ -886,6 +954,39 @@ public:
         }
         QStyleOptionViewItem opt = option;
         initStyleOption(&opt, index);
+
+        const bool isGroupRow =
+            index.data(kListRowKindRole).toInt() == static_cast<int>(FeatureListRowKind::Group);
+        if (isGroupRow) {
+            const QString groupId = index.data(kGroupIdRole).toString();
+            const QString groupName = index.data(kFeatureNameRole).toString();
+            const int memberCount = index.data(kGroupMemberCountRole).toInt();
+            const bool collapsed = m_panel->isGroupCollapsed(groupId);
+            const FeatureListWidget* listWidget = qobject_cast<const FeatureListWidget*>(opt.widget);
+            const bool isDragSource = listWidget && listWidget->dragSourceRow() == index.row();
+            const bool selected = opt.state & QStyle::State_Selected;
+            const bool hovered = (opt.state & QStyle::State_MouseOver) && !selected;
+
+            painter->save();
+            painter->setClipRect(opt.rect);
+            if (isDragSource) {
+                QColor fill = opt.palette.color(QPalette::Base);
+                fill.setAlpha(72);
+                painter->fillRect(opt.rect, fill);
+            } else {
+                paintFeatureListGroupRow(painter,
+                                         opt.rect,
+                                         selected,
+                                         hovered,
+                                         collapsed,
+                                         groupName,
+                                         memberCount,
+                                         opt.palette);
+            }
+            painter->restore();
+            return;
+        }
+
         const FeatureListColumnRects cols = featureListColumnRects(opt.rect, m_panel->columnLayout());
         const QString featureId = index.data(kFeatureIdRole).toString();
         const QString featureName = index.data(kFeatureNameRole).toString();
@@ -1135,15 +1236,19 @@ void FeatureListPanel::setupUi() {
     auto* buttonRow = new QHBoxLayout();
     buttonRow->setSpacing(4);
     m_addButton = new QPushButton(tr("추가"), group);
+    m_groupButton = new QPushButton(tr("묶음"), group);
     m_editButton = new QPushButton(tr("편집"), group);
     m_removeButton = new QPushButton(tr("삭제"), group);
     m_addButton->setProperty("class", "featureListToolButton");
+    m_groupButton->setProperty("class", "featureListToolButton");
     m_editButton->setProperty("class", "featureListToolButton");
     m_removeButton->setProperty("class", "featureListToolButton");
     m_addButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_groupButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_editButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_removeButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     buttonRow->addWidget(m_addButton);
+    buttonRow->addWidget(m_groupButton);
     buttonRow->addWidget(m_editButton);
     buttonRow->addWidget(m_removeButton);
 
@@ -1168,10 +1273,12 @@ void FeatureListPanel::setupUi() {
     m_list->setContextMenuPolicy(Qt::CustomContextMenu);
     m_list->setSpacing(0);
     m_list->setItemDelegate(new FeatureListItemDelegate(this));
-    m_list->setRowDragEnabledPredicate([this](int row) { return isFeatureEditableAt(row); });
+    m_list->setRowDragEnabledPredicate([this](int row) { return isFeatureEditableAtListRow(row); });
     connect(m_list, &FeatureListWidget::featureRowsReordered, this, &FeatureListPanel::onFeatureRowsReordered);
     connect(m_list, &ReorderableListWidget::multiRowsReordered, this, &FeatureListPanel::onFeatureMultiRowsReordered);
-    connect(m_list, &FeatureListWidget::featureDropped, this, &FeatureListPanel::featureDropped);
+    connect(m_list, &FeatureListWidget::featureDropped, this, [this](const QMimeData* mime, int insertListRow) {
+        emit featureDropped(mime, featureInsertIndexForListRow(insertListRow));
+    });
     connect(m_list, &FeatureListWidget::deleteRequested, this, &FeatureListPanel::onRemoveFeature);
     connect(m_list, &FeatureListWidget::copyRequested, this, &FeatureListPanel::onCopyFeature);
     connect(m_list, &FeatureListWidget::pasteRequested, this, &FeatureListPanel::onPasteFeature);
@@ -1315,6 +1422,7 @@ void FeatureListPanel::setupUi() {
     connect(m_deferredRunTimer, &QTimer::timeout, this, &FeatureListPanel::onDeferredRunButtonClick);
 
     connect(m_addButton, &QPushButton::clicked, this, &FeatureListPanel::onAddFeature);
+    connect(m_groupButton, &QPushButton::clicked, this, &FeatureListPanel::onAddFeatureGroup);
     connect(m_removeButton, &QPushButton::clicked, this, &FeatureListPanel::onRemoveFeature);
     connect(m_editButton, &QPushButton::clicked, this, &FeatureListPanel::onEditFeature);
     connect(m_list, &QListWidget::itemSelectionChanged, this, &FeatureListPanel::onSelectionChanged);
@@ -1330,11 +1438,17 @@ void FeatureListPanel::setupUi() {
         if (row < 0) {
             return;
         }
+        if (isGroupListRow(row)) {
+            const QString groupId = item->data(kGroupIdRole).toString();
+            setGroupCollapsed(groupId, !isGroupCollapsed(groupId));
+            refresh();
+            return;
+        }
         if (m_list->currentRow() != row) {
             m_list->setCurrentRow(row);
             emit selectionChanged();
         }
-        editFeatureAt(row);
+        editFeatureAt(featureIndexForListRow(row));
     });
     connect(m_list, &QListWidget::customContextMenuRequested, this, &FeatureListPanel::onContextMenu);
     updateReorderEnabled();
@@ -1868,7 +1982,12 @@ void FeatureListPanel::updateListItemEditableFlags() {
         if (!item) {
             continue;
         }
-        if (isFeatureEditableAt(row)) {
+        if (isGroupListRow(row)) {
+            item->setFlags((item->flags() | Qt::ItemIsSelectable) & ~Qt::ItemIsEditable);
+            continue;
+        }
+        const int featureIndex = featureIndexForListRow(row);
+        if (featureIndex >= 0 && isFeatureEditableAt(featureIndex)) {
             item->setFlags(item->flags() | Qt::ItemIsEditable);
         } else {
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
@@ -1882,7 +2001,8 @@ void FeatureListPanel::updateRemoveButtonState() {
     }
     bool anyRemovable = false;
     for (int row : selectedRows()) {
-        if (isFeatureEditableAt(row)) {
+        const int index = featureIndexForListRow(row);
+        if (index >= 0 && isFeatureEditableAt(index)) {
             anyRemovable = true;
             break;
         }
@@ -1926,7 +2046,7 @@ QList<int> FeatureListPanel::selectedRows() const {
 }
 
 bool FeatureListPanel::enableToggleHitTest(int row, const QPoint& viewportPos) const {
-    if (!m_list || row < 0 || row >= m_list->count()) {
+    if (!m_list || row < 0 || row >= m_list->count() || isGroupListRow(row)) {
         return false;
     }
     QListWidgetItem* item = m_list->item(row);
@@ -1939,7 +2059,7 @@ bool FeatureListPanel::enableToggleHitTest(int row, const QPoint& viewportPos) c
 }
 
 bool FeatureListPanel::runButtonHitTest(int row, const QPoint& viewportPos) const {
-    if (!m_list || row < 0 || row >= m_list->count()) {
+    if (!m_list || row < 0 || row >= m_list->count() || isGroupListRow(row)) {
         return false;
     }
     QListWidgetItem* item = m_list->item(row);
@@ -1955,7 +2075,11 @@ void FeatureListPanel::toggleFeatureEnabled(int row) {
     if (!m_list || !m_project || row < 0 || row >= m_list->count()) {
         return;
     }
-    Feature* feature = m_project->featureAt(row);
+    const int featureIndex = featureIndexForListRow(row);
+    if (featureIndex < 0) {
+        return;
+    }
+    Feature* feature = m_project->featureAt(featureIndex);
     if (!feature) {
         return;
     }
@@ -1967,7 +2091,7 @@ void FeatureListPanel::toggleFeatureEnabled(int row) {
     feature->setEnabled(newEnabled);
 
     if (QListWidgetItem* item = m_list->item(row)) {
-        configureListItem(item, *feature);
+        configureListItem(item, *feature, featureIndex);
     }
     if (m_list->viewport()) {
         m_list->viewport()->update();
@@ -2059,52 +2183,71 @@ void FeatureListPanel::onFeatureRowsReordered(int fromRow, int toRow) {
         }
         return;
     }
-    if (fromRow != toRow) {
+    const int fromIndex = featureIndexForListRow(fromRow);
+    int toIndex = featureIndexForListRow(toRow);
+    if (toIndex < 0) {
+        toIndex = featureInsertIndexForListRow(toRow);
+    }
+    QString keepId;
+    if (fromIndex >= 0) {
+        if (Feature* feature = m_project->featureAt(fromIndex)) {
+            keepId = QString::fromStdString(feature->id());
+        }
+    }
+    if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex) {
         emit mutationAboutToCommit(QStringLiteral("feature-reorder"));
-        m_project->moveFeature(fromRow, toRow);
+        m_project->moveFeature(fromIndex, toIndex);
         emit projectModified();
     }
     refresh();
-    if (fromRow != toRow) {
-        m_list->setCurrentRow(toRow);
-    } else if (fromRow >= 0 && fromRow < m_list->count()) {
-        m_list->setCurrentRow(fromRow);
+    if (!keepId.isEmpty()) {
+        selectFeatureById(keepId);
     }
 }
 
-void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRows, int insertIndex) {
+void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRows, int insertListIndex) {
     if (!m_project || selectedRows.isEmpty()) {
         if (m_list) {
             refresh();
         }
         return;
     }
-    std::vector<int> rows;
-    rows.reserve(static_cast<size_t>(selectedRows.size()));
+    std::vector<int> featureIndices;
+    QStringList movedIds;
+    featureIndices.reserve(static_cast<size_t>(selectedRows.size()));
     for (int row : selectedRows) {
-        rows.push_back(row);
+        const int index = featureIndexForListRow(row);
+        if (index < 0) {
+            continue;
+        }
+        featureIndices.push_back(index);
+        if (Feature* feature = m_project->featureAt(index)) {
+            movedIds.push_back(QString::fromStdString(feature->id()));
+        }
     }
+    if (featureIndices.empty()) {
+        refresh();
+        return;
+    }
+    const int insertIndex = featureInsertIndexForListRow(insertListIndex);
     emit mutationAboutToCommit(QStringLiteral("feature-reorder-multi"));
-    m_project->moveFeatures(rows, insertIndex);
+    m_project->moveFeatures(featureIndices, insertIndex);
     emit projectModified();
     refresh();
-    if (m_list) {
+    if (m_list && !movedIds.isEmpty()) {
         m_list->clearSelection();
-        int dest = insertIndex;
-        for (int row : selectedRows) {
-            if (row < insertIndex) {
-                --dest;
+        for (const QString& id : movedIds) {
+            for (int row = 0; row < m_list->count(); ++row) {
+                QListWidgetItem* item = m_list->item(row);
+                if (!item || isGroupListRow(row)) {
+                    continue;
+                }
+                if (item->data(kFeatureIdRole).toString() == id) {
+                    item->setSelected(true);
+                }
             }
         }
-        dest = qBound(0, dest, m_list->count());
-        for (int i = 0; i < selectedRows.size() && dest + i < m_list->count(); ++i) {
-            if (QListWidgetItem* item = m_list->item(dest + i)) {
-                item->setSelected(true);
-            }
-        }
-        if (dest < m_list->count()) {
-            m_list->setCurrentRow(dest);
-        }
+        selectFeatureById(movedIds.first());
     }
 }
 
@@ -2149,6 +2292,8 @@ void FeatureListPanel::onAnimationTick() {
 }
 void FeatureListPanel::setActiveProfileId(const QString& profileId) {
     m_lastSelectedFeatureId.clear();
+    m_activeProfileId = profileId;
+    loadCollapsedGroupState();
     if (m_list) {
         m_list->setActiveProfileId(profileId);
     }
@@ -2169,13 +2314,16 @@ void FeatureListPanel::setProject(Project* project, bool refreshList) {
         refresh();
     }
 }
-void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& feature) {
+void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& feature, int featureIndex) {
     const QString featureName = QString::fromStdString(feature.name());
     const QString modeText = featureRunModeCompact(feature.runMode(), feature.repeatCount());
     const HotkeyBinding& hotkey = feature.hotkey();
     item->setText(featureName);
     item->setTextAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
     item->setSizeHint(QSize(0, m_columnLayout.rowHeight));
+    item->setData(kListRowKindRole, static_cast<int>(FeatureListRowKind::Feature));
+    item->setData(kFeatureIndexRole, featureIndex);
+    item->setData(kGroupIdRole, QString());
     item->setData(kFeatureIdRole, QString::fromStdString(feature.id()));
     item->setData(kFeatureNameRole, featureName);
     item->setData(kRunModeDisplayRole, modeText);
@@ -2211,8 +2359,8 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
     item->setToolTip(tooltip);
 }
 void FeatureListPanel::refresh() {
-    const int previousRow = m_list->currentRow();
-    if (m_lastSelectedFeatureId.isEmpty() && previousRow >= 0) {
+    const int previousListRow = m_list ? m_list->currentRow() : -1;
+    if (m_lastSelectedFeatureId.isEmpty() && previousListRow >= 0) {
         if (Feature* feature = selectedFeature()) {
             m_lastSelectedFeatureId = QString::fromStdString(feature->id());
         }
@@ -2222,19 +2370,43 @@ void FeatureListPanel::refresh() {
     if (!m_project) {
         return;
     }
-    int restoreRow = -1;
-    for (int i = 0; i < static_cast<int>(m_project->features().size()); ++i) {
+
+    const int featureCount = static_cast<int>(m_project->features().size());
+    int restoreListRow = -1;
+    for (int featureIndex = 0; featureIndex < featureCount; ++featureIndex) {
+        const Feature* feature = m_project->featureAt(featureIndex);
+        if (!feature) {
+            continue;
+        }
+        const std::string& groupId = feature->groupId();
+        if (!groupId.empty()) {
+            const bool newGroupSegment =
+                featureIndex == 0
+                || m_project->features()[featureIndex - 1]->groupId() != groupId;
+            if (newGroupSegment) {
+                const FeatureGroup* group = m_project->featureGroupById(groupId);
+                if (group) {
+                    auto* header = new QListWidgetItem(m_list);
+                    configureGroupListItem(header, *group, countFeaturesInGroup(groupId));
+                }
+            }
+            if (isGroupCollapsed(QString::fromStdString(groupId))) {
+                continue;
+            }
+        }
+
         auto* item = new QListWidgetItem(m_list);
-        configureListItem(item, *m_project->features()[i]);
-        if (restoreRow < 0 && !m_lastSelectedFeatureId.isEmpty()
+        configureListItem(item, *feature, featureIndex);
+        if (restoreListRow < 0 && !m_lastSelectedFeatureId.isEmpty()
             && item->data(kFeatureIdRole).toString() == m_lastSelectedFeatureId) {
-            restoreRow = i;
+            restoreListRow = m_list->count() - 1;
         }
     }
-    if (restoreRow >= 0) {
-        m_list->setCurrentRow(restoreRow);
-    } else if (previousRow >= 0 && previousRow < m_list->count()) {
-        m_list->setCurrentRow(previousRow);
+
+    if (restoreListRow >= 0) {
+        m_list->setCurrentRow(restoreListRow);
+    } else if (previousListRow >= 0 && previousListRow < m_list->count()) {
+        m_list->setCurrentRow(previousListRow);
     }
     if (!m_runningFeatureIds.isEmpty() && m_list->viewport()) {
         m_list->viewport()->update();
@@ -2251,7 +2423,7 @@ Feature* FeatureListPanel::selectedFeature() const {
     return m_project->featureAt(selectedIndex());
 }
 int FeatureListPanel::selectedIndex() const {
-    return m_list->currentRow();
+    return featureIndexForListRow(m_list ? m_list->currentRow() : -1);
 }
 QString FeatureListPanel::selectedFeatureId() const {
     if (!m_list || m_list->currentRow() < 0) {
@@ -2269,12 +2441,14 @@ void FeatureListPanel::selectFeatureById(const QString& featureId) {
     }
     for (int row = 0; row < m_list->count(); ++row) {
         QListWidgetItem* item = m_list->item(row);
-        if (!item || item->data(kFeatureIdRole).toString() != featureId) {
+        if (!item || isGroupListRow(row)) {
             continue;
         }
-        m_lastSelectedFeatureId = featureId;
-        m_list->setCurrentRow(row);
-        return;
+        if (item->data(kFeatureIdRole).toString() == featureId) {
+            m_lastSelectedFeatureId = featureId;
+            m_list->setCurrentRow(row);
+            return;
+        }
     }
 }
 void FeatureListPanel::onAddFeature() {
@@ -2285,7 +2459,7 @@ void FeatureListPanel::onAddFeature() {
     m_project->addFeature(std::string{});
     refresh();
     const int index = static_cast<int>(m_project->features().size()) - 1;
-    m_list->setCurrentRow(index);
+    selectFeatureById(QString::fromStdString(m_project->features()[index]->id()));
     if (!editFeatureAt(index)) {
         m_project->removeFeature(index);
         refresh();
@@ -2297,14 +2471,14 @@ void FeatureListPanel::onCopyFeature() {
     if (!m_project) {
         return;
     }
-    const QList<int> rows = selectedRows();
-    if (rows.isEmpty()) {
+    const QList<int> indices = selectedFeatureIndices();
+    if (indices.isEmpty()) {
         return;
     }
     m_clipboardFeatures.clear();
-    m_clipboardFeatures.reserve(static_cast<size_t>(rows.size()));
-    for (int row : rows) {
-        const Feature* feature = m_project->featureAt(row);
+    m_clipboardFeatures.reserve(static_cast<size_t>(indices.size()));
+    for (int index : indices) {
+        const Feature* feature = m_project->featureAt(index);
         if (!feature) {
             continue;
         }
@@ -2334,7 +2508,9 @@ void FeatureListPanel::onPasteFeature() {
     }
 
     refresh();
-    m_list->setCurrentRow(lastInserted);
+    if (lastInserted >= 0 && lastInserted < static_cast<int>(m_project->features().size())) {
+        selectFeatureById(QString::fromStdString(m_project->features()[lastInserted]->id()));
+    }
     emit selectionChanged();
     emit projectModified();
 }
@@ -2342,37 +2518,39 @@ void FeatureListPanel::onRemoveFeature() {
     if (!m_project || !m_list) {
         return;
     }
-    QList<int> rows = selectedRows();
-    if (rows.isEmpty()) {
-        return;
-    }
-    QList<int> removable;
-    removable.reserve(rows.size());
-    for (int row : rows) {
-        if (isFeatureEditableAt(row)) {
-            removable.append(row);
+    QList<int> removableIndices;
+    for (int row : selectedRows()) {
+        const int index = featureIndexForListRow(row);
+        if (index >= 0 && isFeatureEditableAt(index)) {
+            removableIndices.append(index);
         }
     }
-    if (removable.isEmpty()) {
+    if (removableIndices.isEmpty()) {
         return;
     }
-    for (int row : removable) {
-        if (Feature* feature = m_project->featureAt(row)) {
+    std::sort(removableIndices.begin(), removableIndices.end());
+    for (int index : removableIndices) {
+        if (Feature* feature = m_project->featureAt(index)) {
             const QString featureId = QString::fromStdString(feature->id());
             if (isFeatureRunning(featureId)) {
                 emit featureRunRequested(featureId);
             }
         }
     }
-    const int restoreRow = qMax(0, removable.front() - 1);
+    const int restoreIndex = qMax(0, removableIndices.front() - 1);
     emit mutationAboutToCommit(QStringLiteral("feature-remove"));
-    for (auto it = removable.crbegin(); it != removable.crend(); ++it) {
+    for (auto it = removableIndices.crbegin(); it != removableIndices.crend(); ++it) {
         m_project->removeFeature(*it);
     }
     refresh();
-    if (m_list && m_list->count() > 0) {
-        m_list->setCurrentRow(qMin(restoreRow, m_list->count() - 1));
+    if (m_project->features().empty()) {
+        emit selectionChanged();
+        emit projectModified();
+        emit hotkeysChanged();
+        return;
     }
+    const int pickIndex = qMin(restoreIndex, static_cast<int>(m_project->features().size()) - 1);
+    selectFeatureById(QString::fromStdString(m_project->features()[pickIndex]->id()));
     emit selectionChanged();
     emit projectModified();
     emit hotkeysChanged();
@@ -2555,7 +2733,7 @@ bool FeatureListPanel::canInlineRenameFromShortcut() const {
         return false;
     }
     const int row = m_list->row(item);
-    return isFeatureEditableAt(row) && (item->flags() & Qt::ItemIsEditable);
+    return isFeatureEditableAtListRow(row) && (item->flags() & Qt::ItemIsEditable);
 }
 
 void FeatureListPanel::requestInlineRename() {
@@ -2580,7 +2758,11 @@ void FeatureListPanel::applyInlineRename(int row, const QString& name) {
     if (!m_project || row < 0 || name.isEmpty()) {
         return;
     }
-    Feature* feature = m_project->featureAt(row);
+    const int featureIndex = featureIndexForListRow(row);
+    if (featureIndex < 0) {
+        return;
+    }
+    Feature* feature = m_project->featureAt(featureIndex);
     if (!feature) {
         return;
     }
@@ -2592,7 +2774,7 @@ void FeatureListPanel::applyInlineRename(int row, const QString& name) {
     feature->setName(name.toStdString());
     if (QListWidgetItem* item = m_list->item(row)) {
         const QSignalBlocker blocker(m_list);
-        configureListItem(item, *feature);
+        configureListItem(item, *feature, featureIndex);
     }
     emit projectModified();
 }
@@ -2604,6 +2786,11 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
     }
     if (!item->isSelected()) {
         m_list->setCurrentItem(item, QItemSelectionModel::ClearAndSelect);
+    }
+    const int row = m_list->row(item);
+    if (isGroupListRow(row)) {
+        showGroupContextMenu(item, m_list->mapToGlobal(pos));
+        return;
     }
     const QString featureId = item->data(kFeatureIdRole).toString();
     Feature* feature =
@@ -2642,16 +2829,35 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
     menu.addAction(tr("라이브러리에서 가져오기"), this, [this]() {
         emit importFeatureFromLibraryRequested();
     });
+    if (m_project && !m_project->featureGroups().empty()) {
+        QMenu* groupMenu = menu.addMenu(tr("묶음에 넣기"));
+        for (const FeatureGroup& group : m_project->featureGroups()) {
+            const QString groupId = QString::fromStdString(group.id());
+            const QString groupName = QString::fromStdString(group.name());
+            groupMenu->addAction(groupName, this, [this, groupId]() {
+                emit mutationAboutToCommit(QStringLiteral("feature-assign-group"));
+                assignSelectedFeaturesToGroup(groupId.toStdString());
+                emit projectModified();
+                refresh();
+            });
+        }
+        menu.addAction(tr("묶음에서 빼기"), this, [this]() {
+            emit mutationAboutToCommit(QStringLiteral("feature-clear-group"));
+            assignSelectedFeaturesToGroup({});
+            emit projectModified();
+            refresh();
+        })->setEnabled(!selectedFeatureIndices().isEmpty());
+    }
     menu.addAction(tr("이름 바꾸기"), this, &FeatureListPanel::onInlineRenameRequested)
-        ->setEnabled(isFeatureEditableAt(m_list->row(item)));
+        ->setEnabled(isFeatureEditableAtListRow(row));
     menu.addAction(tr("편집"), this, &FeatureListPanel::onEditFeature)
-        ->setEnabled(isFeatureEditableAt(m_list->row(item)));
+        ->setEnabled(isFeatureEditableAtListRow(row));
     menu.addAction(tr("복사"), this, &FeatureListPanel::onCopyFeature)
-        ->setEnabled(!selectedRows().isEmpty());
+        ->setEnabled(!selectedFeatureIndices().isEmpty());
     menu.addAction(tr("붙여넣기"), this, &FeatureListPanel::onPasteFeature)
         ->setEnabled(!m_clipboardFeatures.empty());
     menu.addAction(tr("삭제"), this, &FeatureListPanel::onRemoveFeature)
-        ->setEnabled(isFeatureEditableAt(m_list->row(item)));
+        ->setEnabled(isFeatureEditableAtListRow(row));
     menu.exec(m_list->mapToGlobal(pos));
 }
 
@@ -2771,4 +2977,209 @@ void FeatureListPanel::onSelectionChanged() {
     updateFeatureEditButtonState();
     updateRemoveButtonState();
     emit selectionChanged();
+}
+
+QList<int> FeatureListPanel::selectedFeatureIndices() const {
+    QList<int> indices;
+    for (int row : selectedRows()) {
+        const int featureIndex = featureIndexForListRow(row);
+        if (featureIndex >= 0) {
+            indices.push_back(featureIndex);
+        }
+    }
+    std::sort(indices.begin(), indices.end());
+    indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+    return indices;
+}
+
+int FeatureListPanel::featureIndexForListRow(int listRow) const {
+    if (!m_list || listRow < 0 || listRow >= m_list->count()) {
+        return -1;
+    }
+    QListWidgetItem* item = m_list->item(listRow);
+    if (!item) {
+        return -1;
+    }
+    if (item->data(kListRowKindRole).toInt() != static_cast<int>(FeatureListRowKind::Feature)) {
+        return -1;
+    }
+    return item->data(kFeatureIndexRole).toInt();
+}
+
+int FeatureListPanel::featureInsertIndexForListRow(int listRow) const {
+    if (!m_list) {
+        return 0;
+    }
+    const int clampedRow = std::clamp(listRow, 0, m_list->count());
+    int count = 0;
+    for (int row = 0; row < clampedRow; ++row) {
+        if (featureIndexForListRow(row) >= 0) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool FeatureListPanel::isGroupListRow(int listRow) const {
+    if (!m_list || listRow < 0 || listRow >= m_list->count()) {
+        return false;
+    }
+    QListWidgetItem* item = m_list->item(listRow);
+    return item && item->data(kListRowKindRole).toInt() == static_cast<int>(FeatureListRowKind::Group);
+}
+
+bool FeatureListPanel::isFeatureEditableAtListRow(int listRow) const {
+    const int featureIndex = featureIndexForListRow(listRow);
+    return featureIndex >= 0 && isFeatureEditableAt(featureIndex);
+}
+
+bool FeatureListPanel::isGroupCollapsed(const QString& groupId) const {
+    return !groupId.isEmpty() && m_collapsedGroupIds.contains(groupId);
+}
+
+void FeatureListPanel::setGroupCollapsed(const QString& groupId, bool collapsed) {
+    if (groupId.isEmpty()) {
+        return;
+    }
+    if (collapsed) {
+        m_collapsedGroupIds.insert(groupId);
+    } else {
+        m_collapsedGroupIds.remove(groupId);
+    }
+    persistCollapsedGroupState();
+}
+
+void FeatureListPanel::loadCollapsedGroupState() {
+    m_collapsedGroupIds.clear();
+    if (m_activeProfileId.isEmpty()) {
+        return;
+    }
+    QSettings settings;
+    const QStringList ids =
+        settings.value(QStringLiteral("featureList/collapsedGroups/%1").arg(m_activeProfileId))
+            .toStringList();
+    for (const QString& id : ids) {
+        if (!id.isEmpty()) {
+            m_collapsedGroupIds.insert(id);
+        }
+    }
+}
+
+void FeatureListPanel::persistCollapsedGroupState() const {
+    if (m_activeProfileId.isEmpty()) {
+        return;
+    }
+    QSettings settings;
+    settings.setValue(QStringLiteral("featureList/collapsedGroups/%1").arg(m_activeProfileId),
+                      QStringList(m_collapsedGroupIds.values()));
+}
+
+int FeatureListPanel::countFeaturesInGroup(const std::string& groupId) const {
+    if (!m_project || groupId.empty()) {
+        return 0;
+    }
+    int count = 0;
+    for (const auto& feature : m_project->features()) {
+        if (feature && feature->groupId() == groupId) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+void FeatureListPanel::configureGroupListItem(QListWidgetItem* item,
+                                              const FeatureGroup& group,
+                                              int memberCount) {
+    const QString groupName = QString::fromStdString(group.name());
+    item->setText(groupName);
+    item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    item->setSizeHint(QSize(0, m_columnLayout.rowHeight));
+    item->setData(kListRowKindRole, static_cast<int>(FeatureListRowKind::Group));
+    item->setData(kGroupIdRole, QString::fromStdString(group.id()));
+    item->setData(kFeatureNameRole, groupName);
+    item->setData(kGroupMemberCountRole, memberCount);
+    item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+    item->setToolTip(tr("묶음: %1 (%2개 기능)\n더블클릭 또는 클릭으로 접기/펼치기").arg(groupName).arg(memberCount));
+}
+
+void FeatureListPanel::assignSelectedFeaturesToGroup(const std::string& groupId) {
+    if (!m_project) {
+        return;
+    }
+    const QList<int> indices = selectedFeatureIndices();
+    if (indices.isEmpty()) {
+        return;
+    }
+    for (int index : indices) {
+        Feature* feature = m_project->featureAt(index);
+        if (feature) {
+            feature->setGroupId(groupId);
+        }
+    }
+}
+
+void FeatureListPanel::onAddFeatureGroup() {
+    if (!m_project) {
+        return;
+    }
+    const QString defaultName = tr("새 묶음");
+    const QString name =
+        QInputDialog::getText(this, tr("새 묶음"), tr("묶음 이름:"), QLineEdit::Normal, defaultName)
+            .trimmed();
+    if (name.isEmpty()) {
+        return;
+    }
+    emit mutationAboutToCommit(QStringLiteral("feature-group-add"));
+    FeatureGroup* group = m_project->addFeatureGroup(name.toStdString());
+    if (!group) {
+        return;
+    }
+    assignSelectedFeaturesToGroup(group->id());
+    emit projectModified();
+    refresh();
+}
+
+void FeatureListPanel::showGroupContextMenu(QListWidgetItem* item, const QPoint& globalPos) {
+    if (!m_project || !item) {
+        return;
+    }
+    const QString groupId = item->data(kGroupIdRole).toString();
+    FeatureGroup* group = m_project->featureGroupById(groupId.toStdString());
+    if (!group) {
+        return;
+    }
+    QMenu menu(this);
+    if (isGroupCollapsed(groupId)) {
+        menu.addAction(tr("펼치기"), this, [this, groupId]() {
+            setGroupCollapsed(groupId, false);
+            refresh();
+        });
+    } else {
+        menu.addAction(tr("접기"), this, [this, groupId]() {
+            setGroupCollapsed(groupId, true);
+            refresh();
+        });
+    }
+    menu.addAction(tr("이름 바꾸기"), this, [this, group]() {
+        const QString current = QString::fromStdString(group->name());
+        const QString name =
+            QInputDialog::getText(this, tr("묶음 이름"), tr("묶음 이름:"), QLineEdit::Normal, current)
+                .trimmed();
+        if (name.isEmpty() || name == current) {
+            return;
+        }
+        emit mutationAboutToCommit(QStringLiteral("feature-group-rename"));
+        group->setName(name.toStdString());
+        emit projectModified();
+        refresh();
+    });
+    menu.addAction(tr("묶음 삭제"), this, [this, groupId]() {
+        emit mutationAboutToCommit(QStringLiteral("feature-group-remove"));
+        m_project->removeFeatureGroup(groupId.toStdString());
+        m_collapsedGroupIds.remove(groupId);
+        persistCollapsedGroupState();
+        emit projectModified();
+        refresh();
+    });
+    menu.exec(globalPos);
 }

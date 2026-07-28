@@ -116,12 +116,54 @@ void Project::moveFeatures(const std::vector<int>& selectedRowsSorted, int inser
 
 void Project::clear() {
     m_features.clear();
+    m_featureGroups.clear();
+}
+
+FeatureGroup* Project::featureGroupById(const std::string& id) {
+    for (FeatureGroup& group : m_featureGroups) {
+        if (group.id() == id) {
+            return &group;
+        }
+    }
+    return nullptr;
+}
+
+const FeatureGroup* Project::featureGroupById(const std::string& id) const {
+    for (const FeatureGroup& group : m_featureGroups) {
+        if (group.id() == id) {
+            return &group;
+        }
+    }
+    return nullptr;
+}
+
+FeatureGroup* Project::addFeatureGroup(const std::string& name) {
+    m_featureGroups.emplace_back(name);
+    return &m_featureGroups.back();
+}
+
+void Project::removeFeatureGroup(const std::string& id) {
+    m_featureGroups.erase(
+        std::remove_if(m_featureGroups.begin(),
+                       m_featureGroups.end(),
+                       [&](const FeatureGroup& g) { return g.id() == id; }),
+        m_featureGroups.end());
+    clearGroupIdFromFeatures(id);
+}
+
+void Project::clearGroupIdFromFeatures(const std::string& groupId) {
+    for (auto& feature : m_features) {
+        if (feature && feature->groupId() == groupId) {
+            feature->setGroupId({});
+        }
+    }
 }
 
 std::unique_ptr<Project> Project::clone() const {
     auto copy = std::make_unique<Project>();
     copy->m_version = m_version;
     copy->m_targetWindowTitle = m_targetWindowTitle;
+    copy->m_featureGroups = m_featureGroups;
     for (const auto& feature : m_features) {
         auto cloned = feature->clone();
         copy->m_features.push_back(std::move(cloned));

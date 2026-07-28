@@ -1,6 +1,7 @@
 #pragma once
 
 #include "model/Feature.h"
+#include "model/FeatureGroup.h"
 
 #include <memory>
 #include <string>
@@ -17,6 +18,15 @@ public:
 
     const std::vector<std::unique_ptr<Feature>>& features() const { return m_features; }
     std::vector<std::unique_ptr<Feature>>& features() { return m_features; }
+
+    const std::vector<FeatureGroup>& featureGroups() const { return m_featureGroups; }
+    std::vector<FeatureGroup>& featureGroups() { return m_featureGroups; }
+
+    FeatureGroup* featureGroupById(const std::string& id);
+    const FeatureGroup* featureGroupById(const std::string& id) const;
+    FeatureGroup* addFeatureGroup(const std::string& name);
+    void removeFeatureGroup(const std::string& id);
+    void clearGroupIdFromFeatures(const std::string& groupId);
 
     Feature* featureAt(int index);
     const Feature* featureAt(int index) const;
@@ -36,5 +46,6 @@ public:
 private:
     int m_version = 1;
     std::string m_targetWindowTitle;
+    std::vector<FeatureGroup> m_featureGroups;
     std::vector<std::unique_ptr<Feature>> m_features;
 };

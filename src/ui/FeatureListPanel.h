@@ -18,6 +18,7 @@ class QTimer;
 class QSplitter;
 class Project;
 class Feature;
+class FeatureGroup;
 class FeatureListWidget;
 class FeatureLibraryListWidget;
 class FeatureHotkeyGateScope;
@@ -120,7 +121,7 @@ public:
 
     const Feature* projectFeatureById(const QString& featureId) const;
 
-
+    bool isGroupCollapsed(const QString& groupId) const;
 
     const FeatureListColumnLayout& columnLayout() const { return m_columnLayout; }
 
@@ -212,6 +213,7 @@ private slots:
 
     void onFeatureRowsReordered(int fromRow, int toRow);
     void onFeatureMultiRowsReordered(const QList<int>& selectedRows, int insertIndex);
+    void onAddFeatureGroup();
     void onLibraryRowsReordered(int fromRow, int toRow);
     void onLibraryMultiRowsReordered(const QList<int>& selectedRows, int insertIndex);
 
@@ -221,8 +223,21 @@ private:
 
     void setupUi();
 
-    void configureListItem(QListWidgetItem* item, const Feature& feature);
+    void configureListItem(QListWidgetItem* item, const Feature& feature, int featureIndex);
+    void configureGroupListItem(QListWidgetItem* item, const FeatureGroup& group, int memberCount);
     QList<int> selectedRows() const;
+    QList<int> selectedFeatureIndices() const;
+
+    int featureIndexForListRow(int listRow) const;
+    int featureInsertIndexForListRow(int listRow) const;
+    bool isGroupListRow(int listRow) const;
+    bool isFeatureEditableAtListRow(int listRow) const;
+    void setGroupCollapsed(const QString& groupId, bool collapsed);
+    void loadCollapsedGroupState();
+    void persistCollapsedGroupState() const;
+    int countFeaturesInGroup(const std::string& groupId) const;
+    void assignSelectedFeaturesToGroup(const std::string& groupId);
+    void showGroupContextMenu(QListWidgetItem* item, const QPoint& globalPos);
 
     bool editFeatureAt(int index);
 
@@ -271,6 +286,8 @@ private:
 
     QPushButton* m_addButton = nullptr;
 
+    QPushButton* m_groupButton = nullptr;
+
     QPushButton* m_removeButton = nullptr;
 
     QPushButton* m_editButton = nullptr;
@@ -292,6 +309,10 @@ private:
     QHash<QString, FeatureTriggerCooldownState> m_triggerCooldownStates;
 
     QString m_lastSelectedFeatureId;
+
+    QString m_activeProfileId;
+
+    QSet<QString> m_collapsedGroupIds;
 
     FeatureListColumnLayout m_columnLayout;
     FeatureListColumnLayout m_headerDragStartLayout;

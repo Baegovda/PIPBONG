@@ -7,6 +7,7 @@
 #include "model/FeatureRunMode.h"
 #include "model/UserInputInterruptMode.h"
 #include "model/Feature.h"
+#include "model/FeatureGroup.h"
 #include "model/TriggerListAnimationSettings.h"
 
 #include <QDir>
@@ -96,6 +97,9 @@ nlohmann::json featureToJsonImpl(const Feature& feature) {
     if (feature.triggerRunWithoutTargetForeground()) {
         json["triggerRunWithoutTargetForeground"] = true;
     }
+    if (!feature.groupId().empty()) {
+        json["groupId"] = feature.groupId();
+    }
     const nlohmann::json triggerAnimationsJson =
         triggerModeListAnimationsToJson(feature.triggerListAnimations());
     if (!triggerAnimationsJson.empty()) {
@@ -143,6 +147,11 @@ void featureFromJsonImpl(const nlohmann::json& json, Feature& feature) {
     feature.setRequireScopedTargetForeground(json.value("requireScopedTargetForeground", false));
     feature.setTriggerRunWithoutTargetForeground(
         json.value("triggerRunWithoutTargetForeground", false));
+    if (json.contains("groupId")) {
+        feature.setGroupId(json.value("groupId", ""));
+    } else {
+        feature.setGroupId({});
+    }
     if (json.contains("triggerListAnimations")) {
         feature.setTriggerListAnimations(triggerModeListAnimationsFromJson(json["triggerListAnimations"]));
     }
@@ -175,6 +184,14 @@ bool JsonSerializer::saveToFile(const Project& project,
         {"targetWindowTitle", project.targetWindowTitle()},
         {"projectDirectory", projectDirectory.toStdString()},
         {"features", features}};
+
+    if (!project.featureGroups().empty()) {
+        nlohmann::json groups = nlohmann::json::array();
+        for (const FeatureGroup& group : project.featureGroups()) {
+            groups.push_back({{"id", group.id()}, {"name", group.name()}});
+        }
+        root["featureGroups"] = groups;
+    }
 
     QDir().mkpath(QFileInfo(filePath).absolutePath());
     QDir().mkpath(projectDirectory);
@@ -213,6 +230,16 @@ std::unique_ptr<Project> JsonSerializer::loadFromFile(const QString& filePath,
     }
     if (projectDirectoryOut) {
         *projectDirectoryOut = projectDirectory;
+    }
+
+    if (root.contains("featureGroups") && root["featureGroups"].is_array()) {
+        for (const auto& groupJson : root["featureGroups"]) {
+            FeatureGroup group(groupJson.value("name", "묶음"));
+            if (groupJson.contains("id")) {
+                group.setId(groupJson.value("id", group.id()));
+            }
+            project->featureGroups().push_back(std::move(group));
+        }
     }
 
     if (root.contains("features") && root["features"].is_array()) {

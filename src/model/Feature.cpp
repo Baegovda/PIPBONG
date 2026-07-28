@@ -90,6 +90,7 @@ std::unique_ptr<Feature> Feature::clone() const {
     auto copy = std::make_unique<Feature>();
     copy->m_id = m_id;
     copy->m_name = m_name;
+    copy->m_groupId = m_groupId;
     copy->m_enabled = m_enabled;
     copy->m_runMode = m_runMode;
     copy->m_repeatCount = m_repeatCount;
@@ -123,6 +124,7 @@ std::unique_ptr<Feature> Feature::duplicateAsNewInstance(bool preserveHotkey) co
     auto copy = std::make_unique<Feature>();
     copy->m_id = generateId();
     copy->m_name = m_name;
+    copy->m_groupId = m_groupId;
     copy->m_enabled = m_enabled;
     copy->m_runMode = m_runMode;
     copy->m_repeatCount = m_repeatCount;

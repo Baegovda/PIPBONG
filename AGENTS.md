@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.347` (from `project(PIPBONG VERSION 0.8.347)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.348` (from `project(PIPBONG VERSION 0.8.348)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1548,6 +1548,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.348] - 2026-07-28
+
+### Added
+
+- Feature list **묶음** (groups): `FeatureGroup` model, `project.json` `featureGroups` array and per-feature `groupId`; toolbar **묶음** creates a named group and assigns selected features; list shows group header rows with collapse/expand (double-click or context menu), **묶음에 넣기** / **묶음에서 빼기** on features; drag-reorder and copy/paste use project feature indices; collapsed state per profile in `QSettings` `featureList/collapsedGroups/{profileId}` (`FeatureGroup`, `Project`, `Feature`, `JsonSerializer`, `FeatureListPanel`).
 
 ## [0.8.347] - 2026-07-28
 

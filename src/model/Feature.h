@@ -27,6 +27,9 @@ public:
     const std::string& name() const { return m_name; }
     void setName(const std::string& name) { m_name = name; }
 
+    const std::string& groupId() const { return m_groupId; }
+    void setGroupId(const std::string& groupId) { m_groupId = groupId; }
+
     bool enabled() const { return m_enabled; }
     void setEnabled(bool enabled) { m_enabled = enabled; }
 
@@ -135,6 +138,7 @@ private:
 
     std::string m_id;
     std::string m_name;
+    std::string m_groupId;
     bool m_enabled = true;
     FeatureRunMode m_runMode = FeatureRunMode::RepeatCount;
     int m_repeatCount = 1;

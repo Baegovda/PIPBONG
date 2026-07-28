@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.347 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.348 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -57,6 +57,7 @@ set(PIPBONG_SOURCES
     src/app/SessionRunPolicy.cpp
     src/app/UpdateChecker.cpp
     src/model/Feature.cpp
+    src/model/FeatureGroup.cpp
     src/model/TriggerListAnimationSettings.cpp
     src/model/FeatureRunMode.cpp
     src/model/FeatureCaptureTargetScope.cpp
