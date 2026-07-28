@@ -3658,17 +3658,31 @@ void MainWindow::schedulePruneAbandonedEngines() {
 
 void MainWindow::pruneAbandonedEngines() {
     assertMainWindowOnGuiThread("pruneAbandonedEngines");
-    auto tryShutdownIdleEngine = [this](const std::unique_ptr<WorkflowEngine>& engine) {
+    bool boundedWaitUsed = false;
+    bool needsAnotherPrune = false;
+
+    auto tryShutdownIdleEngine = [this, &boundedWaitUsed, &needsAnotherPrune](
+                                     const std::unique_ptr<WorkflowEngine>& engine) {
         if (!engine) {
             return true;
         }
         if (engine->isRunning()) {
             engine->stop();
+            needsAnotherPrune = true;
             return false;
         }
-        engine->stopAndWaitBounded(1);
+        if (engine->hasLiveWorker()) {
+            if (!boundedWaitUsed) {
+                engine->stopAndWaitBounded(1);
+                boundedWaitUsed = true;
+            }
+            if (engine->hasLiveWorker()) {
+                needsAnotherPrune = true;
+                return false;
+            }
+        }
         m_abandonedEngineFeatureIds.erase(engine.get());
-        return !engine->hasLiveWorker();
+        return true;
     };
 
     m_abandonedEngines.erase(std::remove_if(m_abandonedEngines.begin(),
@@ -3678,14 +3692,35 @@ void MainWindow::pruneAbandonedEngines() {
 
     constexpr std::size_t kMaxAbandonedEngines = 4;
     while (m_abandonedEngines.size() > kMaxAbandonedEngines) {
-        if (m_abandonedEngines.front()) {
-            m_abandonedEngines.front()->stopAndWaitBounded(1);
-            m_abandonedEngineFeatureIds.erase(m_abandonedEngines.front().get());
+        std::unique_ptr<WorkflowEngine>& front = m_abandonedEngines.front();
+        if (!front) {
+            m_abandonedEngines.erase(m_abandonedEngines.begin());
+            continue;
         }
+        if (front->isRunning()) {
+            front->stop();
+            needsAnotherPrune = true;
+            break;
+        }
+        if (front->hasLiveWorker()) {
+            if (!boundedWaitUsed) {
+                front->stopAndWaitBounded(1);
+                boundedWaitUsed = true;
+            }
+            if (front->hasLiveWorker()) {
+                needsAnotherPrune = true;
+                break;
+            }
+        }
+        m_abandonedEngineFeatureIds.erase(front.get());
         m_abandonedEngines.erase(m_abandonedEngines.begin());
     }
 
     finalizeDeferredStopSessions();
+
+    if (needsAnotherPrune) {
+        schedulePruneAbandonedEngines();
+    }
 }
 
 void MainWindow::flushDeferredProfileSwitchIfIdle() {

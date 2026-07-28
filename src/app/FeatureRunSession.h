@@ -86,6 +86,7 @@ struct FeatureRunSession {
     QElapsedTimer loopLogPublishTimer;
     int loopsSinceLastLogPublish = 0;
     /// Capture target title locked at session start (main vs sub); reused for trigger relaunches.
+    /// Worker polls use ExecutionContext::setTargetWindowTitleForWorker — not global ScreenCapture per poll.
     std::wstring lockedCaptureTargetTitle;
     bool waitingForScopedTargetForeground = false;
     bool triggerMonitorUiInitialized = false;
