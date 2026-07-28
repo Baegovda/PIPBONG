@@ -44,6 +44,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QVariantAnimation>
+#include <unordered_map>
 #include <QEasingCurve>
 #include <QDialog>
 #include <QInputDialog>
@@ -2471,6 +2472,14 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
     item->setToolTip(tooltip);
 }
 void FeatureListPanel::refresh() {
+    bool repairedGroups = false;
+    if (m_project) {
+        repairedGroups = mergeDuplicateFeatureGroupsByName();
+        if (consolidateAllFeatureGroups()) {
+            repairedGroups = true;
+        }
+    }
+
     const int previousListRow = m_list ? m_list->currentRow() : -1;
     if (m_lastSelectedFeatureId.isEmpty() && previousListRow >= 0) {
         if (Feature* feature = selectedFeature()) {
@@ -2526,6 +2535,9 @@ void FeatureListPanel::refresh() {
     refreshListMutationPolicy();
     if (m_project) {
         emit selectionChanged();
+    }
+    if (repairedGroups) {
+        emit projectModified();
     }
 }
 Feature* FeatureListPanel::selectedFeature() const {
@@ -3198,13 +3210,58 @@ FeatureGroup* FeatureListPanel::findFeatureGroupByName(const std::string& name) 
     return nullptr;
 }
 
-void FeatureListPanel::consolidateGroupMembers(const std::string& groupId) {
+bool FeatureListPanel::mergeDuplicateFeatureGroupsByName() {
+    if (!m_project) {
+        return false;
+    }
+    std::unordered_map<std::string, std::string> canonicalIdByName;
+    std::vector<std::string> duplicateGroupIds;
+    for (const FeatureGroup& group : m_project->featureGroups()) {
+        const std::string& name = group.name();
+        if (name.empty()) {
+            continue;
+        }
+        const auto found = canonicalIdByName.find(name);
+        if (found == canonicalIdByName.end()) {
+            canonicalIdByName.emplace(name, group.id());
+            continue;
+        }
+        const std::string& canonicalId = found->second;
+        for (int i = 0; i < static_cast<int>(m_project->features().size()); ++i) {
+            Feature* feature = m_project->featureAt(i);
+            if (feature && feature->groupId() == group.id()) {
+                feature->setGroupId(canonicalId);
+            }
+        }
+        duplicateGroupIds.push_back(group.id());
+    }
+    for (const std::string& id : duplicateGroupIds) {
+        m_project->removeFeatureGroup(id);
+        m_collapsedGroupIds.remove(QString::fromStdString(id));
+    }
+    return !duplicateGroupIds.empty();
+}
+
+bool FeatureListPanel::consolidateAllFeatureGroups() {
+    if (!m_project) {
+        return false;
+    }
+    bool changed = false;
+    for (const FeatureGroup& group : m_project->featureGroups()) {
+        if (consolidateGroupMembers(group.id())) {
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+bool FeatureListPanel::consolidateGroupMembers(const std::string& groupId) {
     if (!m_project || groupId.empty()) {
-        return;
+        return false;
     }
     std::vector<int> indices = featureIndicesInGroup(groupId);
     if (indices.size() <= 1) {
-        return;
+        return false;
     }
     std::sort(indices.begin(), indices.end());
     bool contiguous = true;
@@ -3215,9 +3272,10 @@ void FeatureListPanel::consolidateGroupMembers(const std::string& groupId) {
         }
     }
     if (contiguous) {
-        return;
+        return false;
     }
     m_project->moveFeatures(indices, indices.front());
+    return true;
 }
 
 void FeatureListPanel::pruneEmptyFeatureGroups() {
@@ -3338,7 +3396,9 @@ bool FeatureListPanel::handleGroupDrop(int listRow, const QMimeData* mime) {
             feature->setGroupId(groupIdStd);
         }
     }
+    mergeDuplicateFeatureGroupsByName();
     consolidateGroupMembers(groupIdStd);
+    consolidateAllFeatureGroups();
     pruneEmptyFeatureGroups();
     setGroupCollapsed(groupId, false);
     emit projectModified();
@@ -3411,9 +3471,11 @@ void FeatureListPanel::assignSelectedFeaturesToGroup(const std::string& groupId)
             feature->setGroupId(groupId);
         }
     }
+    mergeDuplicateFeatureGroupsByName();
     if (!groupId.empty()) {
         consolidateGroupMembers(groupId);
     }
+    consolidateAllFeatureGroups();
     pruneEmptyFeatureGroups();
 }
 

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.353` (from `project(PIPBONG VERSION 0.8.353)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`) (from `project(PIPBONG VERSION 0.8.352)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.354` (from `project(PIPBONG VERSION 0.8.354)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1548,6 +1548,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.354] - 2026-07-28
+
+### Fixed
+
+- Feature list **그룹** no longer shows two headers for one logical group (e.g. Q/E and W/R under duplicate same-name group records): merge duplicate `FeatureGroup` rows by name on refresh and after group assign/drop; consolidate non-contiguous members into one contiguous block (`FeatureListPanel::mergeDuplicateFeatureGroupsByName`, `consolidateAllFeatureGroups`, `consolidateGroupMembers` returns bool); repaired state emits `projectModified` for auto-save.
 
 ## [0.8.353] - 2026-07-28
 
