@@ -2290,6 +2290,9 @@ void FeatureListPanel::onFeatureRowsReordered(int fromRow, int toRow) {
     if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex) {
         emit mutationAboutToCommit(QStringLiteral("feature-reorder"));
         m_project->moveFeature(fromIndex, toIndex);
+        if (!keepId.isEmpty()) {
+            clearGroupMembershipIfIsolated(QStringList{keepId});
+        }
         if (!groupToConsolidate.isEmpty()) {
             consolidateGroupMembers(groupToConsolidate.toStdString());
         }
@@ -2332,6 +2335,7 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
     const int insertIndex = featureInsertIndexForListRow(insertListIndex);
     emit mutationAboutToCommit(QStringLiteral("feature-reorder-multi"));
     m_project->moveFeatures(featureIndices, insertIndex);
+    clearGroupMembershipIfIsolated(movedIds);
     for (const QString& groupId : groupsToConsolidate) {
         consolidateGroupMembers(groupId.toStdString());
     }
@@ -2946,6 +2950,16 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
     menu.addAction(tr("라이브러리에서 가져오기"), this, [this]() {
         emit importFeatureFromLibraryRequested();
     });
+    const QList<int> menuFeatureIndices = selectedFeatureIndices();
+    bool anySelectedInGroup = false;
+    for (int index : menuFeatureIndices) {
+        if (Feature* grouped = m_project ? m_project->featureAt(index) : nullptr) {
+            if (!grouped->groupId().empty()) {
+                anySelectedInGroup = true;
+                break;
+            }
+        }
+    }
     if (m_project && !m_project->featureGroups().empty()) {
         QMenu* groupMenu = menu.addMenu(tr("그룹에 넣기"));
         for (const FeatureGroup& group : m_project->featureGroups()) {
@@ -2958,12 +2972,14 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
                 refresh();
             });
         }
+    }
+    if (m_project && (anySelectedInGroup || !m_project->featureGroups().empty())) {
         menu.addAction(tr("그룹에서 빼기"), this, [this]() {
             emit mutationAboutToCommit(QStringLiteral("feature-clear-group"));
             assignSelectedFeaturesToGroup({});
             emit projectModified();
             refresh();
-        })->setEnabled(!selectedFeatureIndices().isEmpty());
+        })->setEnabled(anySelectedInGroup);
     }
     menu.addAction(tr("이름 바꾸기"), this, &FeatureListPanel::onInlineRenameRequested)
         ->setEnabled(isFeatureEditableAtListRow(row));
@@ -3266,6 +3282,52 @@ bool FeatureListPanel::consolidateAllFeatureGroups() {
         }
     }
     return changed;
+}
+
+void FeatureListPanel::clearGroupMembershipIfIsolated(int featureIndex) {
+    if (!m_project || featureIndex < 0
+        || featureIndex >= static_cast<int>(m_project->features().size())) {
+        return;
+    }
+    Feature* feature = m_project->featureAt(featureIndex);
+    if (!feature || feature->groupId().empty()) {
+        return;
+    }
+    const std::string& groupId = feature->groupId();
+    bool adjacentSibling = false;
+    if (featureIndex > 0) {
+        Feature* prev = m_project->featureAt(featureIndex - 1);
+        if (prev && prev->groupId() == groupId) {
+            adjacentSibling = true;
+        }
+    }
+    if (!adjacentSibling && featureIndex + 1 < static_cast<int>(m_project->features().size())) {
+        Feature* next = m_project->featureAt(featureIndex + 1);
+        if (next && next->groupId() == groupId) {
+            adjacentSibling = true;
+        }
+    }
+    if (!adjacentSibling) {
+        feature->setGroupId({});
+    }
+}
+
+void FeatureListPanel::clearGroupMembershipIfIsolated(const QStringList& featureIds) {
+    if (!m_project || featureIds.isEmpty()) {
+        return;
+    }
+    for (const QString& id : featureIds) {
+        Feature* feature = m_project->featureById(id.toStdString());
+        if (!feature) {
+            continue;
+        }
+        for (int i = 0; i < static_cast<int>(m_project->features().size()); ++i) {
+            if (m_project->featureAt(i) == feature) {
+                clearGroupMembershipIfIsolated(i);
+                break;
+            }
+        }
+    }
 }
 
 bool FeatureListPanel::consolidateGroupMembers(const std::string& groupId) {

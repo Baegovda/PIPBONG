@@ -249,6 +249,8 @@ private:
     bool mergeDuplicateFeatureGroupsByName();
     bool consolidateAllFeatureGroups();
     void pruneEmptyFeatureGroups();
+    void clearGroupMembershipIfIsolated(int featureIndex);
+    void clearGroupMembershipIfIsolated(const QStringList& featureIds);
     FeatureGroup* findFeatureGroupByName(const std::string& name);
 
     bool editFeatureAt(int index);

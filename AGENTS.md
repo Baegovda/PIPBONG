@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.355` (from `project(PIPBONG VERSION 0.8.354)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.356` (from `project(PIPBONG VERSION 0.8.356)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1548,6 +1548,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.356] - 2026-07-28
+
+### Fixed
+
+- Feature list **그룹에서 빼기** and drag-out: reorder no longer snaps isolated members back into the group (`consolidateGroupMembers` after move only when siblings remain adjacent); context **그룹에서 빼기** enabled when selected features belong to a group (`FeatureListPanel::clearGroupMembershipIfIsolated`).
 
 ## [0.8.355] - 2026-07-28
 
