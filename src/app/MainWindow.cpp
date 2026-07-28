@@ -5240,7 +5240,11 @@ void MainWindow::continueRepeatSession(FeatureRunSession& session,
         return;
     }
     if (session.holdKeyTapLaneActive) {
-        return;
+        if (m_holdKeyTapMux && !m_holdKeyTapMux->isLaneActive(session.featureId)) {
+            session.holdKeyTapLaneActive = false;
+        } else {
+            return;
+        }
     }
     if (session.engine && session.engine->isRunning()) {
         return;

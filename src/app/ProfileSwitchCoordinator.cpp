@@ -118,7 +118,11 @@ void ProfileSwitchCoordinator::applyFromForegroundState(const ForegroundWindowSt
         }
         return;
     }
-    if (!live.rootHwnd || live.shellTransient) {
+    if (!live.rootHwnd) {
+        // No HWND — treat as unmatched → default profile via resolve().
+    } else if (live.shellTransient
+               && !ForegroundWindowMonitor::isDesktopShellHostHwnd(live.rootHwnd)) {
+        // Alt+Tab picker, taskbar shell, etc. — do not auto-switch profile.
         return;
     }
 

@@ -179,6 +179,37 @@ void runManualScenarios() {
                    u8"트리거 무장 해제 시 비활성");
 }
 
+void runHoldBurstScenarios() {
+    logLine("== Hold / burst scenarios (v0.8.359) ==");
+
+    SessionRunPolicyInput holdEngine = holdActive(true);
+    expectScenario(SessionRunPolicy::isCapturingWorkflowBurst(holdEngine),
+                   "hold_engine_capturing_burst",
+                   u8"홀드 엔진 실행 중은 캡처 버스트");
+    expectScenario(SessionRunPolicy::isInActiveWorkflowRun(holdEngine),
+                   "hold_engine_active_workflow",
+                   u8"홀드 엔진 실행 중 워크플로 활성");
+
+    SessionRunPolicyInput holdIdle = holdActive(false);
+    expectScenario(!SessionRunPolicy::isCapturingWorkflowBurst(holdIdle),
+                   "hold_idle_not_capturing_burst",
+                   u8"홀드 루프 간격 idle은 캡처 버스트 아님");
+
+    const std::vector<SessionRunPolicyInput> multiHold = {holdEngine, holdIdle};
+    expectScenario(SessionRunPolicy::hasAnyCapturingWorkflowBurst(multiHold),
+                   "multi_hold_any_burst",
+                   u8"다중 홀드 중 하나라도 엔진 실행 시 버스트");
+
+    SessionRunPolicyInput holdReleased;
+    holdReleased.runningMode = FeatureRunMode::Hold;
+    holdReleased.holdRunActive = false;
+    holdReleased.repeatSession = false;
+    holdReleased.engineRunning = false;
+    expectScenario(!SessionRunPolicy::isSessionActive(holdReleased),
+                   "hold_latch_released_inactive",
+                   u8"홀드 latch 해제 후 비활성 세션");
+}
+
 void runForegroundGateScenarios() {
     logLine("== ForegroundRunGate scenarios ==");
 
@@ -274,6 +305,7 @@ int main(int argc, char** argv) {
 
     logLine("PIPBONG SessionRunPolicySim");
     runManualScenarios();
+    runHoldBurstScenarios();
     runForegroundGateScenarios();
     const bool invariantsOk = runInvariantSweeps();
 

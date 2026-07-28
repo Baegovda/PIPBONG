@@ -429,6 +429,22 @@ void ReorderableListWidget::clearActiveDropChrome() {
     m_dragAutoScroll->releaseEdgeScroll();
 }
 
+void ReorderableListWidget::hideDropInsertionIndicator() {
+    clearDropIndicator();
+}
+
+void ReorderableListWidget::continueDragMoveAutoScroll(QDragMoveEvent* event) {
+    if (!m_reorderEnabled || !m_dragAutoScroll) {
+        event->ignore();
+        return;
+    }
+    if (!m_dragAutoScroll->isActive()) {
+        m_dragAutoScroll->begin();
+    }
+    m_dragAutoScroll->updateFromGlobalCursor();
+    event->acceptProposedAction();
+}
+
 void ReorderableListWidget::dropEvent(QDropEvent* event) {
     if (m_reorderEnabled && acceptsExternalMime(event->mimeData()) && event->source() != this) {
         const bool useInsertIndex = m_externalDropHover && m_dropInsertionIndex >= 0;

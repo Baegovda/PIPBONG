@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.358` (from `project(PIPBONG VERSION 0.8.358)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.359` (from `project(PIPBONG VERSION 0.8.359)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1220,6 +1220,24 @@ Key files: `ForegroundWindowMonitor.*`, `ForegroundWindowState.*`, `ProfileForeg
 
 Also run policy sim after link: `build/policy-sim-report.txt` + `ProfileForegroundPolicySim` when present.
 
+### 8.19 Feature list groups (mandatory — do not regress)
+
+**Status:** Rewritten 2026-07-28 (v0.8.359). UI columns/headers unchanged; group **model + mutations** replaced fragile refresh-time repair.
+
+| Layer | Rule |
+| ----- | ---- |
+| **Mutations** | `FeatureGroupMutation::*` only — `assignToGroup` sets `groupId` **and** `moveFeatures` into one contiguous block |
+| **Display** | `FeatureListViewModel::buildRows` — panel `refresh()` builds rows from ViewModel; no consolidate on refresh |
+| **Load** | `JsonSerializer` → `repairOnLoad` once (orphan ids, contiguous, prune empty) — **no** name merge |
+| **Runs** | `groupMutationSkipFeatureIds()` = active workflow burst feature ids; consolidate may still move **other** features |
+| **Sim** | `FeatureGroupLayoutSim` POST_BUILD with `PIPBONGPolicySim`; `scripts/run-policy-sim-postbuild.ps1` |
+
+**Anti-patterns:** `repairFeatureGroupLayout` on refresh; `mergeDuplicateFeatureGroupsByName` hot path; set `groupId` without position move (v0.8.354–0.8.356).
+
+Key files: `src/model/FeatureGroupMutation.*`, `src/ui/FeatureListViewModel.*`, `FeatureListPanel.cpp`, `JsonSerializer.cpp`, `src/tools/FeatureGroupLayoutSim.cpp`.
+
+Cursor rule: `.cursor/rules/feature-list-groups.mdc`. Mistake log: [§9.6](#96-regression-mistake-log-오답노트--agents-only).
+
 ### 8.13 Settings and edit dialogs (mandatory — grouped + tooltips)
 
 **Status:** Verified working on Windows (2026-07). Extended 2026-07-24 (v0.8.308) to **all** settings and edit dialogs — not only **프로그램 설정**.
@@ -1483,6 +1501,19 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 | **Shipped fix** | **v0.8.293:** `onForegroundWindowChanged`, `profileIdForForegroundHwnd`, `healLinkedTargetProcessPathFromForeground`, `finishForegroundSessionGate`. **v0.8.294:** `HotkeyManager::resetHookLatchState()`; Alt-release edge + `maybeResetHotkeyLatchForForeground` (once per linked HWND); `ensureForegroundReadyForFeatureHotkey()` in `onHotkeyTriggered` / `onHotkeyHoldStarted`. |
 | **Key symbols** | `resetHookLatchState`, `onForegroundWindowChanged`, `maybeResetHotkeyLatchForForeground`, `m_lastHotkeyLatchResetForegroundHwnd`, `m_altTabModifierWasHeld`, `ensureForegroundReadyForFeatureHotkey`, `finishForegroundSessionGate` |
 
+#### Feature groups — duplicate headers / assign appears to fail during runs
+
+**Date:** 2026-07-28 · **Shipped:** v0.8.359 · **Pattern:** [§8.19](#819-feature-list-groups-mandatory--do-not-regress)
+
+| | |
+| - | - |
+| **Symptom** | Group assign/drop looks broken; same group header twice; members outside header; hold/hotkeys flaky after group UI edits |
+| **Misdiagnosis** | More consolidate on refresh; merge groups by duplicate name; skip all consolidate while any session exists |
+| **Failed approaches (do not retry)** | **v0.8.354–0.8.356:** `repairFeatureGroupLayout` + `mergeDuplicateFeatureGroupsByName` on every `refresh()`; skip `consolidateAll` when any run highlight — members stay non-contiguous → duplicate headers |
+| **Root cause** | `groupId` set without `moveFeatures`; repair deferred when runs active left scattered members; name-merge destroyed user intent |
+| **Shipped fix** | **v0.8.359:** `FeatureGroupMutation` (assign moves + consolidate); `FeatureListViewModel`; load-only `repairOnLoad`; `FeatureGroupLayoutSim`; consolidate skips only active **workflow burst** feature ids |
+| **Key symbols** | `FeatureGroupMutation::assignToGroup`, `FeatureListViewModel::buildRows`, `groupMutationSkipFeatureIds`, `repairOnLoad` |
+
 ---
 
 ## 10. Versioning Policy
@@ -1548,6 +1579,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.359] - 2026-07-28
+
+### Added
+
+- **`FeatureGroupMutation`**: explicit project-level group assign/remove/create/delete/rename/consolidate; `repairOnLoad` on JSON load only (`FeatureGroupMutation`, `JsonSerializer`).
+- **`FeatureListViewModel`**: `buildRows` for group headers + features (`FeatureListViewModel`, `FeatureListPanel::refresh`).
+- **`FeatureGroupLayoutSim`**: headless layout invariant scenarios; POST_BUILD via `run-policy-sim-postbuild.ps1` (`FeatureGroupLayoutSim`, `CMakeLists.txt`).
+- **SessionRunPolicySim** hold/burst scenarios (`SessionRunPolicySim::runHoldBurstScenarios`).
+- AGENTS.md §8.19 feature list groups; `.cursor/rules/feature-list-groups.mdc`; §9.6 mistake log for refresh-time repair failures.
+
+### Changed
+
+- Feature list group UI rewired to mutation API — no `repairFeatureGroupLayout` or name-based merge on refresh (`FeatureListPanel`).
+- `consolidateAll` skips only features in active workflow burst, not all runs (`groupMutationSkipFeatureIds`).
+
+### Fixed
+
+- Hold repeat: clear stale `holdKeyTapLaneActive` when mux lane no longer active (`MainWindow::continueRepeatSession`).
+- Hold latch reconcile skipped during fast-repeat engine run (`reconcileHoldLatchForActiveHoldSessions` + `suppressRepeatUi`).
 
 ## [0.8.358] - 2026-07-28
 
@@ -6104,6 +6155,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **응답없음** / force-kill when crash UI missing: read **`live-session/latest.log`** first (always-on log).
 - Full rules in [§8.18](#818-live-session-log-mandatory--응답없음--force-kill-diagnosis).
 
+### `feature-list-groups.mdc`
+
+- Feature list **그룹**: `FeatureGroupMutation` + `FeatureListViewModel` — no refresh-time repair or name merge.
+- Full rules in [§8.19](#819-feature-list-groups-mandatory--do-not-regress).
+
 ### `brief-korean-replies.mdc`
 
 - **Mandatory** default chat style: plain Korean, minimal length, no jargon — especially log/diagnosis readouts.
@@ -6122,4 +6178,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-27. Current application version: 0.8.332._
+_Last consolidated: 2026-07-28. Current application version: 0.8.359._

@@ -2,6 +2,7 @@
 #include "ui/FeatureDragMime.h"
 #include "ui/FeatureListItemRoles.h"
 #include "ui/FeatureListWidget.h"
+#include "ui/FeatureListViewModel.h"
 #include "ui/FeatureLibraryListWidget.h"
 #include "ui/widgets/ReorderableListWidget.h"
 #include "ui/widgets/ListColumnHeaderWidget.h"
@@ -10,6 +11,7 @@
 #include "ui/TriggerListAnimationRenderer.h"
 #include "model/Feature.h"
 #include "model/FeatureGroup.h"
+#include "model/FeatureGroupMutation.h"
 #include "model/FeatureRunMode.h"
 #include "model/Project.h"
 #include "core/input/HotkeyBinding.h"
@@ -45,6 +47,7 @@
 #include <QVBoxLayout>
 #include <QVariantAnimation>
 #include <unordered_map>
+#include <set>
 #include <QEasingCurve>
 #include <QDialog>
 #include <QInputDialog>
@@ -1499,7 +1502,24 @@ void FeatureListPanel::setupUi() {
     connect(m_deferredRunTimer, &QTimer::timeout, this, &FeatureListPanel::onDeferredRunButtonClick);
 
     connect(m_addButton, &QPushButton::clicked, this, &FeatureListPanel::onAddFeature);
-    connect(m_groupButton, &QPushButton::clicked, this, &FeatureListPanel::onAddFeatureGroup);
+    auto* groupMenu = new QMenu(group);
+    groupMenu->addAction(tr("새 그룹"), this, &FeatureListPanel::onAddFeatureGroup);
+    groupMenu->addAction(tr("모두 펼치기"), this, [this]() {
+        m_collapsedGroupIds.clear();
+        persistCollapsedGroupState();
+        refresh();
+    });
+    groupMenu->addAction(tr("모두 접기"), this, [this]() {
+        if (!m_project) {
+            return;
+        }
+        for (const FeatureGroup& g : m_project->featureGroups()) {
+            m_collapsedGroupIds.insert(QString::fromStdString(g.id()));
+        }
+        persistCollapsedGroupState();
+        refresh();
+    });
+    m_groupButton->setMenu(groupMenu);
     connect(m_removeButton, &QPushButton::clicked, this, &FeatureListPanel::onRemoveFeature);
     connect(m_editButton, &QPushButton::clicked, this, &FeatureListPanel::onEditFeature);
     connect(m_list, &QListWidget::itemSelectionChanged, this, &FeatureListPanel::onSelectionChanged);
@@ -2291,10 +2311,12 @@ void FeatureListPanel::onFeatureRowsReordered(int fromRow, int toRow) {
         emit mutationAboutToCommit(QStringLiteral("feature-reorder"));
         m_project->moveFeature(fromIndex, toIndex);
         if (!keepId.isEmpty()) {
-            clearGroupMembershipIfIsolated(QStringList{keepId});
+            FeatureGroupMutation::clearIsolatedMembership(*m_project, {fromIndex});
         }
         if (!groupToConsolidate.isEmpty()) {
-            consolidateGroupMembers(groupToConsolidate.toStdString());
+            FeatureGroupMutation::consolidateGroup(*m_project,
+                                                   groupToConsolidate.toStdString(),
+                                                   groupMutationSkipFeatureIds());
         }
         emit projectModified();
     }
@@ -2335,9 +2357,11 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
     const int insertIndex = featureInsertIndexForListRow(insertListIndex);
     emit mutationAboutToCommit(QStringLiteral("feature-reorder-multi"));
     m_project->moveFeatures(featureIndices, insertIndex);
-    clearGroupMembershipIfIsolated(movedIds);
+    FeatureGroupMutation::clearIsolatedMembership(*m_project, featureIndices);
     for (const QString& groupId : groupsToConsolidate) {
-        consolidateGroupMembers(groupId.toStdString());
+        FeatureGroupMutation::consolidateGroup(*m_project,
+                                               groupId.toStdString(),
+                                               groupMutationSkipFeatureIds());
     }
     emit projectModified();
     refresh();
@@ -2427,12 +2451,8 @@ void FeatureListPanel::setListDragEnabled(bool enabled) {
 
 void FeatureListPanel::setProject(Project* project, bool refreshList) {
     m_project = project;
-    const bool repairedGroups = repairFeatureGroupLayout();
     if (refreshList) {
         refresh();
-    }
-    if (repairedGroups) {
-        emit projectModified();
     }
 }
 void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& feature, int featureIndex) {
@@ -2494,30 +2514,27 @@ void FeatureListPanel::refresh() {
 
     const int featureCount = static_cast<int>(m_project->features().size());
     int restoreListRow = -1;
-    for (int featureIndex = 0; featureIndex < featureCount; ++featureIndex) {
-        const Feature* feature = m_project->featureAt(featureIndex);
+    const std::vector<FeatureListViewRow> viewRows =
+        FeatureListViewModel::buildRows(*m_project, m_collapsedGroupIds);
+    for (const FeatureListViewRow& viewRow : viewRows) {
+        if (viewRow.kind == FeatureListRowKind::Group) {
+            const FeatureGroup* group = m_project->featureGroupById(viewRow.groupId.toStdString());
+            if (!group) {
+                continue;
+            }
+            auto* header = new QListWidgetItem(m_list);
+            configureGroupListItem(header, *group, viewRow.groupMemberCount);
+            continue;
+        }
+        if (viewRow.featureIndex < 0 || viewRow.featureIndex >= featureCount) {
+            continue;
+        }
+        const Feature* feature = m_project->featureAt(viewRow.featureIndex);
         if (!feature) {
             continue;
         }
-        const std::string& groupId = feature->groupId();
-        if (!groupId.empty()) {
-            const bool newGroupSegment =
-                featureIndex == 0
-                || m_project->features()[featureIndex - 1]->groupId() != groupId;
-            if (newGroupSegment) {
-                const FeatureGroup* group = m_project->featureGroupById(groupId);
-                if (group) {
-                    auto* header = new QListWidgetItem(m_list);
-                    configureGroupListItem(header, *group, countFeaturesInGroup(groupId));
-                }
-            }
-            if (isGroupCollapsed(QString::fromStdString(groupId))) {
-                continue;
-            }
-        }
-
         auto* item = new QListWidgetItem(m_list);
-        configureListItem(item, *feature, featureIndex);
+        configureListItem(item, *feature, viewRow.featureIndex);
         if (restoreListRow < 0 && !m_lastSelectedFeatureId.isEmpty()
             && item->data(kFeatureIdRole).toString() == m_lastSelectedFeatureId) {
             restoreListRow = m_list->count() - 1;
@@ -3207,166 +3224,15 @@ void FeatureListPanel::persistCollapsedGroupState() const {
                       QStringList(m_collapsedGroupIds.values()));
 }
 
-FeatureGroup* FeatureListPanel::findFeatureGroupByName(const std::string& name) {
-    if (!m_project || name.empty()) {
-        return nullptr;
+std::set<std::string> FeatureListPanel::groupMutationSkipFeatureIds() const {
+    std::set<std::string> skip;
+    for (const QString& id : m_runningFeatureIds) {
+        skip.insert(id.toStdString());
     }
-    for (const FeatureGroup& group : m_project->featureGroups()) {
-        if (group.name() == name) {
-            return m_project->featureGroupById(group.id());
-        }
+    for (const QString& id : m_activeWorkflowFeatureIds) {
+        skip.insert(id.toStdString());
     }
-    return nullptr;
-}
-
-bool FeatureListPanel::repairFeatureGroupLayout() {
-    if (!m_project) {
-        return false;
-    }
-    bool changed = mergeDuplicateFeatureGroupsByName();
-    if (m_runningFeatureIds.isEmpty()) {
-        if (consolidateAllFeatureGroups()) {
-            changed = true;
-        }
-    }
-    return changed;
-}
-
-bool FeatureListPanel::mergeDuplicateFeatureGroupsByName() {
-    if (!m_project) {
-        return false;
-    }
-    std::unordered_map<std::string, std::string> canonicalIdByName;
-    std::vector<std::string> duplicateGroupIds;
-    for (const FeatureGroup& group : m_project->featureGroups()) {
-        const std::string& name = group.name();
-        if (name.empty()) {
-            continue;
-        }
-        const auto found = canonicalIdByName.find(name);
-        if (found == canonicalIdByName.end()) {
-            canonicalIdByName.emplace(name, group.id());
-            continue;
-        }
-        const std::string& canonicalId = found->second;
-        for (int i = 0; i < static_cast<int>(m_project->features().size()); ++i) {
-            Feature* feature = m_project->featureAt(i);
-            if (feature && feature->groupId() == group.id()) {
-                feature->setGroupId(canonicalId);
-            }
-        }
-        duplicateGroupIds.push_back(group.id());
-    }
-    for (const std::string& id : duplicateGroupIds) {
-        m_project->removeFeatureGroup(id);
-        m_collapsedGroupIds.remove(QString::fromStdString(id));
-    }
-    return !duplicateGroupIds.empty();
-}
-
-bool FeatureListPanel::consolidateAllFeatureGroups() {
-    if (!m_project) {
-        return false;
-    }
-    bool changed = false;
-    for (int pass = 0; pass < 8; ++pass) {
-        bool passChanged = false;
-        for (const FeatureGroup& group : m_project->featureGroups()) {
-            if (consolidateGroupMembers(group.id())) {
-                passChanged = true;
-                changed = true;
-            }
-        }
-        if (!passChanged) {
-            break;
-        }
-    }
-    return changed;
-}
-
-void FeatureListPanel::clearGroupMembershipIfIsolated(int featureIndex) {
-    if (!m_project || featureIndex < 0
-        || featureIndex >= static_cast<int>(m_project->features().size())) {
-        return;
-    }
-    Feature* feature = m_project->featureAt(featureIndex);
-    if (!feature || feature->groupId().empty()) {
-        return;
-    }
-    const std::string& groupId = feature->groupId();
-    bool adjacentSibling = false;
-    if (featureIndex > 0) {
-        Feature* prev = m_project->featureAt(featureIndex - 1);
-        if (prev && prev->groupId() == groupId) {
-            adjacentSibling = true;
-        }
-    }
-    if (!adjacentSibling && featureIndex + 1 < static_cast<int>(m_project->features().size())) {
-        Feature* next = m_project->featureAt(featureIndex + 1);
-        if (next && next->groupId() == groupId) {
-            adjacentSibling = true;
-        }
-    }
-    if (!adjacentSibling) {
-        feature->setGroupId({});
-    }
-}
-
-void FeatureListPanel::clearGroupMembershipIfIsolated(const QStringList& featureIds) {
-    if (!m_project || featureIds.isEmpty()) {
-        return;
-    }
-    for (const QString& id : featureIds) {
-        Feature* feature = m_project->featureById(id.toStdString());
-        if (!feature) {
-            continue;
-        }
-        for (int i = 0; i < static_cast<int>(m_project->features().size()); ++i) {
-            if (m_project->featureAt(i) == feature) {
-                clearGroupMembershipIfIsolated(i);
-                break;
-            }
-        }
-    }
-}
-
-bool FeatureListPanel::consolidateGroupMembers(const std::string& groupId) {
-    if (!m_project || groupId.empty()) {
-        return false;
-    }
-    std::vector<int> indices = featureIndicesInGroup(groupId);
-    if (indices.size() <= 1) {
-        return false;
-    }
-    std::sort(indices.begin(), indices.end());
-    bool contiguous = true;
-    for (size_t i = 1; i < indices.size(); ++i) {
-        if (indices[i] != indices[i - 1] + 1) {
-            contiguous = false;
-            break;
-        }
-    }
-    if (contiguous) {
-        return false;
-    }
-    m_project->moveFeatures(indices, indices.front());
-    return true;
-}
-
-void FeatureListPanel::pruneEmptyFeatureGroups() {
-    if (!m_project) {
-        return;
-    }
-    std::vector<std::string> emptyIds;
-    for (const FeatureGroup& group : m_project->featureGroups()) {
-        if (countFeaturesInGroup(group.id()) == 0) {
-            emptyIds.push_back(group.id());
-        }
-    }
-    for (const std::string& id : emptyIds) {
-        m_project->removeFeatureGroup(id);
-        m_collapsedGroupIds.remove(QString::fromStdString(id));
-    }
+    return skip;
 }
 
 int FeatureListPanel::countFeaturesInGroup(const std::string& groupId) const {
@@ -3411,21 +3277,6 @@ std::vector<int> FeatureListPanel::featureIndicesInGroup(const std::string& grou
     return indices;
 }
 
-void FeatureListPanel::moveFeatureIndicesIntoGroup(const std::vector<int>& indices,
-                                                   const std::string& groupId) {
-    if (!m_project || groupId.empty() || indices.empty()) {
-        return;
-    }
-    int insertAt = 0;
-    for (int i = 0; i < static_cast<int>(m_project->features().size()); ++i) {
-        Feature* feature = m_project->featureAt(i);
-        if (feature && feature->groupId() == groupId) {
-            insertAt = i + 1;
-        }
-    }
-    m_project->moveFeatures(indices, insertAt);
-}
-
 bool FeatureListPanel::handleGroupDrop(int listRow, const QMimeData* mime) {
     if (!m_project || !isGroupListRow(listRow) || !FeatureDragMime::accepts(mime)) {
         return false;
@@ -3466,13 +3317,7 @@ bool FeatureListPanel::handleGroupDrop(int listRow, const QMimeData* mime) {
     indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
 
     emit mutationAboutToCommit(QStringLiteral("feature-group-assign-drop"));
-    for (int index : indices) {
-        if (Feature* feature = m_project->featureAt(index)) {
-            feature->setGroupId(groupIdStd);
-        }
-    }
-    repairFeatureGroupLayout();
-    pruneEmptyFeatureGroups();
+    FeatureGroupMutation::assignToGroup(*m_project, indices, groupIdStd);
     setGroupCollapsed(groupId, false);
     emit projectModified();
     refresh();
@@ -3534,18 +3379,18 @@ void FeatureListPanel::assignSelectedFeaturesToGroup(const std::string& groupId)
     if (!m_project) {
         return;
     }
-    const QList<int> indices = selectedFeatureIndices();
-    if (indices.isEmpty()) {
+    std::vector<int> indices;
+    for (int index : selectedFeatureIndices()) {
+        indices.push_back(index);
+    }
+    if (indices.empty()) {
         return;
     }
-    for (int index : indices) {
-        Feature* feature = m_project->featureAt(index);
-        if (feature) {
-            feature->setGroupId(groupId);
-        }
+    if (groupId.empty()) {
+        FeatureGroupMutation::removeFromGroup(*m_project, indices);
+    } else {
+        FeatureGroupMutation::assignToGroup(*m_project, indices, groupId);
     }
-    repairFeatureGroupLayout();
-    pruneEmptyFeatureGroups();
 }
 
 void FeatureListPanel::onAddFeatureGroup() {
@@ -3560,14 +3405,16 @@ void FeatureListPanel::onAddFeatureGroup() {
         return;
     }
     emit mutationAboutToCommit(QStringLiteral("feature-group-add"));
-    FeatureGroup* group = findFeatureGroupByName(name.toStdString());
-    if (!group) {
-        group = m_project->addFeatureGroup(name.toStdString());
+    std::vector<int> memberIndices;
+    for (int index : selectedFeatureIndices()) {
+        memberIndices.push_back(index);
     }
-    if (!group) {
+    const std::string newGroupId =
+        FeatureGroupMutation::createGroup(*m_project, name.toStdString(), memberIndices);
+    if (newGroupId.empty()) {
         return;
     }
-    assignSelectedFeaturesToGroup(group->id());
+    setGroupCollapsed(QString::fromStdString(newGroupId), false);
     emit projectModified();
     refresh();
 }
@@ -3593,6 +3440,21 @@ void FeatureListPanel::showGroupContextMenu(QListWidgetItem* item, const QPoint&
             refresh();
         });
     }
+    menu.addAction(tr("모두 펼치기"), this, [this]() {
+        m_collapsedGroupIds.clear();
+        persistCollapsedGroupState();
+        refresh();
+    });
+    menu.addAction(tr("모두 접기"), this, [this]() {
+        if (!m_project) {
+            return;
+        }
+        for (const FeatureGroup& g : m_project->featureGroups()) {
+            m_collapsedGroupIds.insert(QString::fromStdString(g.id()));
+        }
+        persistCollapsedGroupState();
+        refresh();
+    });
     menu.addAction(tr("이름 바꾸기"), this, [this, group]() {
         const QString current = QString::fromStdString(group->name());
         const QString name =
@@ -3602,13 +3464,13 @@ void FeatureListPanel::showGroupContextMenu(QListWidgetItem* item, const QPoint&
             return;
         }
         emit mutationAboutToCommit(QStringLiteral("feature-group-rename"));
-        group->setName(name.toStdString());
+        FeatureGroupMutation::renameGroup(*m_project, group->id(), name.toStdString());
         emit projectModified();
         refresh();
     });
     menu.addAction(tr("그룹 삭제"), this, [this, groupId]() {
         emit mutationAboutToCommit(QStringLiteral("feature-group-remove"));
-        m_project->removeFeatureGroup(groupId.toStdString());
+        FeatureGroupMutation::deleteGroup(*m_project, groupId.toStdString());
         m_collapsedGroupIds.remove(groupId);
         persistCollapsedGroupState();
         emit projectModified();

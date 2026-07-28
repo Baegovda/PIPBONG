@@ -22,18 +22,39 @@
 
 #include <optional>
 
+#include <QFileInfo>
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
 
+namespace {
+
+void applySecondaryDetailStyle(QLabel* label) {
+    if (!label) {
+        return;
+    }
+    label->setWordWrap(true);
+    label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    QPalette pal = label->palette();
+    pal.setColor(QPalette::WindowText, secondaryHintTextColor(pal));
+    label->setPalette(pal);
+}
+
+} // namespace
+
 ProfileEditDialog::ProfileEditDialog(const QString& profileName,
                                      const QString& targetWindowTitle,
                                      const QString& subTargetWindowTitle,
+                                     const QString& linkedTargetProcessPath,
+                                     const QString& subLinkedTargetProcessPath,
                                      bool defaultProfile,
                                      bool fixedDefaultProfile,
                                      const QString& currentTargetWindowTitle,
                                      QWidget* parent)
     : QDialog(parent)
+    , m_linkedTargetProcessPath(linkedTargetProcessPath.trimmed())
+    , m_subLinkedTargetProcessPath(subLinkedTargetProcessPath.trimmed())
     , m_fixedDefaultProfile(fixedDefaultProfile) {
     setWindowTitle(fixedDefaultProfile ? tr("기본 프로필") : tr("프로필 편집"));
     setModal(true);
@@ -54,6 +75,12 @@ ProfileEditDialog::ProfileEditDialog(const QString& profileName,
         m_defaultProfileCheck->setChecked(defaultProfile);
     }
     updateDefaultProfileUi();
+    refreshTargetBindingDetails();
+
+    auto* detailRefreshTimer = new QTimer(this);
+    detailRefreshTimer->setInterval(800);
+    connect(detailRefreshTimer, &QTimer::timeout, this, &ProfileEditDialog::refreshTargetBindingDetails);
+    detailRefreshTimer->start();
 }
 
 ProfileEditDialog::Result ProfileEditDialog::result() const {
@@ -133,13 +160,13 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         connect(m_defaultProfileCheck, &QCheckBox::toggled, this, &ProfileEditDialog::updateDefaultProfileUi);
     }
 
-    m_linkedProgramSection = new QGroupBox(tr("대상 창"), this);
+    m_linkedProgramSection = new QGroupBox(tr("타겟 창"), this);
     m_linkedProgramSection->setToolTip(
-        tr("프로필마다 메인·서브 창 제목을 저장합니다. 포커스에 따라 자동 전환됩니다."));
+        tr("프로필마다 메인·서브 타겟 창 제목을 저장합니다. 포커스에 따라 자동 전환됩니다."));
     auto* linkedLayout = new QVBoxLayout(m_linkedProgramSection);
     linkedLayout->setSpacing(8);
 
-    auto* mainCaption = new QLabel(tr("메인 창"), m_linkedProgramSection);
+    auto* mainCaption = new QLabel(tr("메인 타겟 창"), m_linkedProgramSection);
     mainCaption->setStyleSheet(QStringLiteral("font-weight: 600;"));
     linkedLayout->addWidget(mainCaption);
 
@@ -164,10 +191,19 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     targetButtons->addWidget(clearButton);
     linkedLayout->addLayout(targetButtons);
 
+    m_mainTargetDetailLabel = new QLabel(m_linkedProgramSection);
+    applySecondaryDetailStyle(m_mainTargetDetailLabel);
+    linkedLayout->addWidget(m_mainTargetDetailLabel);
+
+    connect(m_targetWindowTitleEdit, &QLineEdit::textChanged, this, [this]() {
+        refreshTargetBindingDetails();
+    });
+
     connect(useCurrentButton, &QPushButton::clicked, this, [this, currentTargetWindowTitle]() {
         if (m_targetWindowTitleEdit) {
             m_targetWindowTitleEdit->setText(currentTargetWindowTitle);
         }
+        refreshTargetBindingDetails();
     });
     connect(pickTargetButton, &QPushButton::clicked, this, [this]() {
         pickTargetWindowByClick(m_targetWindowTitleEdit, TargetWindowBindingRole::Main);
@@ -179,9 +215,10 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         if (m_targetWindowTitleEdit) {
             m_targetWindowTitleEdit->clear();
         }
+        refreshTargetBindingDetails();
     });
 
-    auto* subCaption = new QLabel(tr("서브 창"), m_linkedProgramSection);
+    auto* subCaption = new QLabel(tr("서브 타겟 창"), m_linkedProgramSection);
     subCaption->setStyleSheet(QStringLiteral("font-weight: 600;"));
     linkedLayout->addWidget(subCaption);
 
@@ -205,6 +242,14 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     subButtons->addStretch(1);
     linkedLayout->addLayout(subButtons);
 
+    m_subTargetDetailLabel = new QLabel(m_linkedProgramSection);
+    applySecondaryDetailStyle(m_subTargetDetailLabel);
+    linkedLayout->addWidget(m_subTargetDetailLabel);
+
+    connect(m_subTargetWindowTitleEdit, &QLineEdit::textChanged, this, [this]() {
+        refreshTargetBindingDetails();
+    });
+
     connect(subPickButton, &QPushButton::clicked, this, [this]() {
         pickTargetWindowByClick(m_subTargetWindowTitleEdit, TargetWindowBindingRole::Sub);
     });
@@ -215,6 +260,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         if (m_subTargetWindowTitleEdit) {
             m_subTargetWindowTitleEdit->clear();
         }
+        refreshTargetBindingDetails();
     });
 
     layout->addWidget(m_linkedProgramSection);
@@ -249,10 +295,22 @@ void ProfileEditDialog::openWindowListPicker(QLineEdit* targetEdit, bool subTarg
     targetEdit->setText(pickResult->title);
     if (pickResult->hwnd && IsWindow(pickResult->hwnd)) {
         const HWND selectedHwnd = pickResult->hwnd;
+        ScreenCapture::TargetWindowInfo info;
+        if (ScreenCapture::queryWindowInfo(selectedHwnd, info)) {
+            const QString processPath = QString::fromStdWString(info.processPath);
+            if (subTarget) {
+                m_subLinkedTargetProcessPath = processPath;
+            } else {
+                m_linkedTargetProcessPath = processPath;
+            }
+        }
         const TargetWindowBindingRole role = options.role;
         QTimer::singleShot(0, this, [this, selectedHwnd, role]() {
             TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd, this, role);
+            refreshTargetBindingDetails();
         });
+    } else {
+        refreshTargetBindingDetails();
     }
 #else
     Q_UNUSED(targetEdit);
@@ -272,7 +330,17 @@ void ProfileEditDialog::pickTargetWindowByClick(QLineEdit* targetEdit, TargetWin
                 return;
             }
             targetEdit->setText(QString::fromStdWString(result.title));
+            ScreenCapture::TargetWindowInfo info;
+            if (ScreenCapture::queryWindowInfo(result.hwnd, info)) {
+                const QString processPath = QString::fromStdWString(info.processPath);
+                if (role == TargetWindowBindingRole::Sub) {
+                    m_subLinkedTargetProcessPath = processPath;
+                } else {
+                    m_linkedTargetProcessPath = processPath;
+                }
+            }
             TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(result.hwnd, this, role);
+            refreshTargetBindingDetails();
         },
         role);
 #else
@@ -307,4 +375,104 @@ void ProfileEditDialog::updateDefaultProfileUi() {
             m_subTargetWindowTitleEdit->clear();
         }
     }
+    refreshTargetBindingDetails();
+}
+
+void ProfileEditDialog::refreshTargetBindingDetails() {
+    if (!m_mainTargetDetailLabel || !m_subTargetDetailLabel) {
+        return;
+    }
+    const QString mainBinding =
+        m_targetWindowTitleEdit ? m_targetWindowTitleEdit->text().trimmed() : QString();
+    const QString subBinding =
+        m_subTargetWindowTitleEdit ? m_subTargetWindowTitleEdit->text().trimmed() : QString();
+    m_mainTargetDetailLabel->setText(bindingDetailText(mainBinding, m_linkedTargetProcessPath, false));
+    m_subTargetDetailLabel->setText(bindingDetailText(subBinding, m_subLinkedTargetProcessPath, true));
+}
+
+QString ProfileEditDialog::bindingDetailText(const QString& binding,
+                                             const QString& storedProcessPath,
+                                             bool subRole) const {
+    if (binding.isEmpty()) {
+        return subRole ? tr("미지정 — 서브 타겟이 연결되지 않았습니다.")
+                       : tr("미지정 — 메인 타겟이 연결되지 않았습니다.");
+    }
+
+#ifdef _WIN32
+    const HWND hwnd =
+        ScreenCapture::findVisibleWindowMatchingTitle(binding.toStdWString(),
+                                                      storedProcessPath.toStdWString());
+    if (!hwnd || !IsWindow(hwnd)) {
+        QString line = tr("● 미실행 (지금 화면에 일치하는 창 없음)");
+        line += QLatin1Char('\n');
+        line += tr("저장 제목: %1").arg(binding);
+        if (!storedProcessPath.isEmpty()) {
+            line += QLatin1Char('\n');
+            line += tr("연결 exe: %1").arg(storedProcessPath);
+        }
+        return line;
+    }
+
+    ScreenCapture::TargetWindowInfo info;
+    if (!ScreenCapture::queryWindowInfo(hwnd, info)) {
+        return tr("실행 중인 창이 있지만 정보를 읽을 수 없습니다.");
+    }
+
+    const QString liveTitle = QString::fromStdWString(info.title);
+    const QString className = QString::fromStdWString(info.className);
+    const QString processPath = QString::fromStdWString(info.processPath);
+    const int slash = processPath.lastIndexOf(QLatin1Char('\\'));
+    const QString processName =
+        slash >= 0 ? processPath.mid(slash + 1)
+                   : (processPath.isEmpty() ? tr("알 수 없음") : processPath);
+
+    QString stateText;
+    if (info.minimized) {
+        stateText = tr("● 최소화");
+    } else if (info.visible) {
+        stateText = tr("● 표시 중");
+    } else {
+        stateText = tr("● 숨김");
+    }
+
+    QString monitorText;
+    if (info.monitorNumber > 0 && info.monitorWidth > 0 && info.monitorHeight > 0) {
+        if (info.monitorDpi > 0) {
+            const int scalePercent = qRound(info.monitorDpi * 100.0 / 96.0);
+            monitorText = tr("모니터 %1번 · %2×%3 · %4%")
+                              .arg(info.monitorNumber)
+                              .arg(info.monitorWidth)
+                              .arg(info.monitorHeight)
+                              .arg(scalePercent);
+        } else {
+            monitorText = tr("모니터 %1번 · %2×%3")
+                              .arg(info.monitorNumber)
+                              .arg(info.monitorWidth)
+                              .arg(info.monitorHeight);
+        }
+    } else {
+        monitorText = tr("모니터: 알 수 없음");
+    }
+
+    QString line1 = stateText + tr(" · HWND 0x%1 · %2").arg(info.hwndValue, 0, 16).arg(processName);
+    QString line2 = tr("클래스 %1 · 창 %2×%3 @ (%4, %5)")
+                        .arg(className.isEmpty() ? tr("(없음)") : className)
+                        .arg(info.width)
+                        .arg(info.height)
+                        .arg(info.x)
+                        .arg(info.y);
+    QString line3 =
+        tr("클라이언트 %1×%2 px · %3").arg(info.clientWidth).arg(info.clientHeight).arg(monitorText);
+    QString line4 =
+        tr("실제 제목: %1")
+            .arg(liveTitle.isEmpty() ? tr("(제목 없음)") : liveTitle);
+    if (!processPath.isEmpty() && processPath != processName) {
+        line4 += QLatin1Char('\n');
+        line4 += tr("경로: %1").arg(processPath);
+    }
+    return line1 + QLatin1Char('\n') + line2 + QLatin1Char('\n') + line3 + QLatin1Char('\n') + line4;
+#else
+    Q_UNUSED(storedProcessPath);
+    return tr("저장 제목: %1").arg(binding);
+#endif
 }

@@ -1,0 +1,41 @@
+---
+description: Feature list groups — mutation API + view model (mandatory — do not regress)
+alwaysApply: true
+---
+
+# Feature List Groups (Mandatory — Do Not Regress)
+
+**Status:** Rewritten 2026-07-28 (v0.8.359). Outlook-style folders — **explicit mutations**, contiguous members in `features[]`, no refresh-time repair.
+
+## Architecture
+
+| Layer | Responsibility |
+| ----- | -------------- |
+| `FeatureGroupMutation` | All assign/remove/create/delete/rename/consolidate; `repairOnLoad` on JSON load only |
+| `FeatureListViewModel` | `buildRows(Project, collapsed)` — group headers + features |
+| `FeatureListPanel` | `refresh()` consumes ViewModel only — **no** `repairFeatureGroupLayout` on refresh |
+| `JsonSerializer` | After load → `FeatureGroupMutation::repairOnLoad` (no name-based auto-merge) |
+
+## Rules
+
+1. **Never** set `groupId` without `assignToGroup` / `createGroup` (moves rows + consolidates).
+2. Same `groupId` members must stay **contiguous** in `features[]` after every user mutation.
+3. **No** `mergeDuplicateFeatureGroupsByName` on refresh — duplicate names allowed (merge only if user adds explicit UI later).
+4. `consolidateAll(skipFeatureIds)` may run after reorder — skip indices tied to **active workflow burst** only; other features may still consolidate while another feature runs.
+5. Undo: keep `mutationAboutToCommit` + `GlobalUiSnapshot` before mutations.
+
+## Anti-patterns (v0.8.354–0.8.355 failures)
+
+| Do not | Why |
+| ------ | --- |
+| `repairFeatureGroupLayout` on every `refresh()` | Reorders during collapse/expand; breaks hold/hotkeys via `projectModified` churn |
+| Skip `consolidateAll` when **any** run active | Members drift → duplicate group headers / members outside group |
+| Name-based auto-merge | User intent collision — multiple groups same name |
+
+## Manual verify
+
+1. Four features → one group: single header; menu/drag assign/remove; reorder inside group.
+2. Hold/trigger on one feature — edit groups on **other** features.
+3. Collapse/expand, Ctrl+Z undo, profile switch preserves groups.
+
+Full handover: [AGENTS.md](../../AGENTS.md) §8.19. Mistake log: §9.6.

@@ -26,4 +26,16 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Policy sim OK (report: $ReportPath)" -ForegroundColor Green
+
+$layoutSim = Join-Path (Split-Path -Parent $SimExe) 'FeatureGroupLayoutSim.exe'
+if (Test-Path -LiteralPath $layoutSim) {
+    Write-Host 'Running FeatureGroupLayoutSim...'
+    & $layoutSim
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'Feature group layout sim failed.' -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+    Write-Host 'FeatureGroupLayoutSim OK' -ForegroundColor Green
+}
+
 exit 0

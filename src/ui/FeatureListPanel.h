@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <vector>
 
 class QListWidgetItem;
@@ -243,15 +244,7 @@ private:
     QMimeData* buildGroupDragMimeData(int listRow) const;
     void prepareGroupDragSelection(int groupListRow);
     std::vector<int> featureIndicesInGroup(const std::string& groupId) const;
-    void moveFeatureIndicesIntoGroup(const std::vector<int>& indices, const std::string& groupId);
-    bool repairFeatureGroupLayout();
-    bool consolidateGroupMembers(const std::string& groupId);
-    bool mergeDuplicateFeatureGroupsByName();
-    bool consolidateAllFeatureGroups();
-    void pruneEmptyFeatureGroups();
-    void clearGroupMembershipIfIsolated(int featureIndex);
-    void clearGroupMembershipIfIsolated(const QStringList& featureIds);
-    FeatureGroup* findFeatureGroupByName(const std::string& name);
+    std::set<std::string> groupMutationSkipFeatureIds() const;
 
     bool editFeatureAt(int index);
 

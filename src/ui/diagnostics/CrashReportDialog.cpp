@@ -50,11 +50,11 @@ QString headlineForKind(CrashReportKind kind, bool immediateCrash) {
 } // namespace
 
 void CrashReportDialog::showPendingIfAny(QWidget* parent) {
-    const CrashReportSummary summary = CrashReporter::startupReportSummary();
+    CrashReportSummary summary = CrashReporter::startupReportSummary();
+    if (summary.reportText.trimmed().isEmpty() && CrashReporter::hasPendingReport()) {
+        summary = CrashReporter::pendingReport();
+    }
     if (summary.reportText.trimmed().isEmpty()) {
-        if (CrashReporter::hasPendingReport()) {
-            CrashReporter::dismissPendingReport();
-        }
         return;
     }
 

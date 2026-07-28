@@ -8,6 +8,7 @@
 #include "model/UserInputInterruptMode.h"
 #include "model/Feature.h"
 #include "model/FeatureGroup.h"
+#include "model/FeatureGroupMutation.h"
 #include "model/TriggerListAnimationSettings.h"
 
 #include <QDir>
@@ -249,6 +250,8 @@ std::unique_ptr<Project> JsonSerializer::loadFromFile(const QString& filePath,
             project->features().push_back(std::move(feature));
         }
     }
+
+    FeatureGroupMutation::repairOnLoad(*project);
 
     return project;
 }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.358 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.359 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -63,6 +63,7 @@ set(PIPBONG_SOURCES
     src/model/FeatureCaptureTargetScope.cpp
     src/model/UserInputInterruptMode.cpp
     src/model/Project.cpp
+    src/model/FeatureGroupMutation.cpp
     src/core/RunWarmup.cpp
     src/core/capture/ScreenCapture.cpp
     src/core/capture/DxgiScreenCapture.cpp
@@ -120,6 +121,7 @@ set(PIPBONG_SOURCES
     src/storage/ProfileMemoStore.cpp
     src/ui/LogPanelWidget.cpp
     src/ui/FeatureListPanel.cpp
+    src/ui/FeatureListViewModel.cpp
     src/ui/FeatureRunModeTheme.cpp
     src/ui/TriggerListAnimationRenderer.cpp
     src/ui/TriggerModeAnimationSettingsDialog.cpp
@@ -265,12 +267,32 @@ if(MSVC)
     target_compile_options(PIPBONGPolicySim PRIVATE /utf-8)
 endif()
 
+add_executable(FeatureGroupLayoutSim
+    src/tools/FeatureGroupLayoutSim.cpp
+    src/tools/FeatureGroupLayoutSimSnap.cpp
+    src/model/FeatureGroupMutation.cpp
+    src/model/Project.cpp
+    src/model/Feature.cpp
+    src/model/FeatureGroup.cpp
+    src/model/FeatureRunMode.cpp
+    src/model/TriggerListAnimationSettings.cpp
+    src/model/UserInputInterruptMode.cpp
+    src/model/FeatureCaptureTargetScope.cpp
+    src/core/workflow/Workflow.cpp
+)
+target_include_directories(FeatureGroupLayoutSim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(FeatureGroupLayoutSim PRIVATE Qt6::Core Qt6::Gui nlohmann_json::nlohmann_json opencv_core)
+if(MSVC)
+    target_compile_options(FeatureGroupLayoutSim PRIVATE /utf-8)
+    target_compile_definitions(FeatureGroupLayoutSim PRIVATE NOMINMAX)
+endif()
+
 option(PIPBONG_RUN_POLICY_SIM_ON_BUILD
        "Run SessionRunPolicySim automatically after every successful PIPBONG link"
        ON)
 
 if(PIPBONG_RUN_POLICY_SIM_ON_BUILD)
-    add_dependencies(PIPBONG PIPBONGPolicySim)
+    add_dependencies(PIPBONG PIPBONGPolicySim FeatureGroupLayoutSim)
     add_custom_command(
         TARGET PIPBONG
         POST_BUILD

@@ -55,6 +55,12 @@ protected:
 
     void clearActiveDropChrome();
 
+    /// Hides the between-row insertion line without tearing down drag auto-scroll.
+    void hideDropInsertionIndicator();
+
+    /// Keeps edge auto-scroll alive during a drag that does not use the insertion line.
+    void continueDragMoveAutoScroll(QDragMoveEvent* event);
+
 private:
     int insertionLineY(int insertionIndex) const;
     void updateDropIndicator();

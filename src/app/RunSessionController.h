@@ -20,6 +20,7 @@ public:
     struct HostCallbacks {
         std::function<bool()> shouldSkipForegroundGateReconcile;
         std::function<bool(Feature* feature)> runForegroundGateActive;
+        std::function<bool(FeatureRunSession& session, Feature* feature)> runForegroundGateActiveForSession;
         std::function<void()> updateRunUiState;
         std::function<void(FeatureRunSession& session)> stopSessionEngine;
         std::function<void(FeatureRunSession& session, Feature* feature, bool firstStartUi)>
@@ -27,6 +28,7 @@ public:
         std::function<void(FeatureRunSession& session, Feature* feature, bool repeatIteration)>
             launchWorkflowRun;
         std::function<bool(const std::string& featureId)> isHoldBindingDown;
+        std::function<Feature*(FeatureRunSession& session)> featureForSession;
     };
 
     explicit RunSessionController(QObject* parent = nullptr);
