@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.368` (from `project(PIPBONG VERSION 0.8.368)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.369` (from `project(PIPBONG VERSION 0.8.369)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1912,6 +1912,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.369] - 2026-07-29
+
+### Added
+
+- Track always-applied `.cursor/rules/hold-mode-latch.mdc` in git (hold continuation latch policy; AGENTS.md §8.20 already referenced the file since v0.8.362).
 
 ## [0.8.368] - 2026-07-29
 

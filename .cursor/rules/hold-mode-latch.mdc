@@ -1,0 +1,21 @@
+---
+description: Hold mode run continuation — poll-safe latch vs reconcile (mandatory)
+alwaysApply: true
+---
+
+# Hold mode latch and run continuation (mandatory — do not regress)
+
+**Status:** User-confirmed fix v0.8.362 (2026-07-29). Full pattern: [AGENTS.md §8.20](../../AGENTS.md#820-hold-mode-latch-and-run-continuation-mandatory--do-not-regress). Mistake log: [§9.6](../../AGENTS.md#96-regression-mistake-log-오답노트--agents-only).
+
+## Rule
+
+| Use | API | Emits `hotkeyHoldEnded`? |
+| --- | --- | --- |
+| **Loop / tap lane “still holding?” polls** | `HotkeyManager::isHoldBindingStillActiveForRun` | **Never** |
+| **Periodic latch heal** (`reconcileHoldLatchForActiveHoldSessions`) | `reconcileHoldBindingDown` | Only via deferred KEYUP recheck (not one-shot `GetAsyncKeyState` miss) |
+
+**Do not** call `reconcileHoldBindingDown` from `shouldContinueRunSession`, worker fast-repeat hold checks, `HoldKeyTapMultiplexer` `shouldContinue`, or `launchHoldKeyTapRun` — it used to emit hold-end on a single async key miss (especially same-key KeyPress Tap pulses).
+
+## Manual verify
+
+Hold Q/W/E/R (tap-only or full workflow) with game foreground: key stays down → repeats; release → stops. Q/W/E/R together without cross-killing sessions.
