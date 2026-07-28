@@ -5774,8 +5774,12 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
     if (!session.sessionContext) {
         session.sessionContext = std::make_shared<ExecutionContext>();
     }
-    applySessionCaptureTarget(sessionCaptureTargetTitleW(session));
-    syncRunSessionContext(session);
+    const bool skipCaptureRefresh =
+        firstSessionStart || !session.lockedCaptureTargetTitle.empty();
+    if (!firstSessionStart && session.lockedCaptureTargetTitle.empty()) {
+        applySessionCaptureTarget(sessionCaptureTargetTitleW(session));
+    }
+    syncRunSessionContext(session, !skipCaptureRefresh);
     applyFeatureRunPoliciesToContext(session, feature);
     session.sessionContext->setTriggerMonitorBlockIndex(session.triggerBlockIndex);
     session.sessionContext->setImageFindPrimedBlockIndex(-1);
@@ -5797,7 +5801,7 @@ void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* featu
 
     ensureRunSessionResources(session, feature, false);
 
-    const std::wstring targetTitle = sessionCaptureTargetTitleW(session);
+    const std::wstring targetTitle = sessionCaptureTargetTitleW(session, !skipCaptureRefresh);
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
     WorkflowEngine* engine = session.engine.get();
 

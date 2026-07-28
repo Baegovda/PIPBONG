@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.372` (from `project(PIPBONG VERSION 0.8.372)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.373` (from `project(PIPBONG VERSION 0.8.373)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1326,7 +1326,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R0** | Roadmap + agent gates | **Done** | 0.8.365 | This section + `.cursor/rules/architecture-stabilization-roadmap.mdc` |
 | **R1** | Policy surface completeness | **Partial** | 0.8.220+ | Expand sim (**R1.3** multi-session scenarios v0.8.371); eliminate parallel MainWindow gate bools |
 | **R2** | GUI / worker boundary | **Partial** | 0.8.366+ | R2.1 audit; Queued signals; worker fast-repeat coalesce; repeat budget on `ExecutionContext`; GUI asserts; **R2.4** prune abandons one bounded `stopAndWaitBounded` per timer tick (v0.8.370) |
-| **R3** | Session-scoped capture contract | **Partial** | 0.8.277+ | Worker context HWND; **R3.3** skip capture refresh on hold/N-repeat loop iterations when locked title set (v0.8.372) |
+| **R3** | Session-scoped capture contract | **Partial** | 0.8.277+ | **R3.3** skip capture refresh on repeat loops (v0.8.372) + trigger monitor relaunch when locked (v0.8.373) |
 | **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.362 | Document ordering; optional `HotkeyLatchController` |
 | **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | Controllers exist; `MainWindow.cpp` still large |
 | **R6** | Automated workflow dry-run | **Not started** | TBD | `PIPBONGWorkflowDryRunSim` ([§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) Stage 2) |
@@ -1912,6 +1912,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.373] - 2026-07-29
+
+### Changed
+
+- Trigger monitor relaunch skips redundant global `ScreenCapture` sync when `lockedCaptureTargetTitle` is already set (first start still applies once; roadmap R3.3) (`MainWindow::launchTriggerMonitor`).
 
 ## [0.8.372] - 2026-07-29
 
