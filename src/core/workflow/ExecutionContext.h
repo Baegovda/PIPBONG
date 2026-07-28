@@ -26,6 +26,13 @@ enum class BlockProgressKind {
     ImageFindSuccess
 };
 
+/// Per-workflow-run state on the worker thread (matches, stop/pause, session ROI cache).
+///
+/// Capture contract (AGENTS.md §8.21 R3): `setTargetWindowTitleForWorker` binds this worker's
+/// HWND/title for polls; global `ScreenCapture` is for idle UI, editors, and pickers.
+/// Main/sub title resolution happens in `MainWindow` before `FeatureRunSession::lockedCaptureTargetTitle`
+/// is set; repeat loops skip `refreshSessionCaptureTarget` when the lock is already populated.
+
 class ExecutionContext {
 public:
     using LogCallback = std::function<void(const std::string& message)>;

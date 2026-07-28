@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.373` (from `project(PIPBONG VERSION 0.8.373)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.374` (from `project(PIPBONG VERSION 0.8.374)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1324,9 +1324,9 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | Phase | Name | Status | Target version (first ship) | Notes |
 | ----- | ---- | ------ | --------------------------- | ----- |
 | **R0** | Roadmap + agent gates | **Done** | 0.8.365 | This section + `.cursor/rules/architecture-stabilization-roadmap.mdc` |
-| **R1** | Policy surface completeness | **Partial** | 0.8.220+ | Expand sim (**R1.3** multi-session scenarios v0.8.371); eliminate parallel MainWindow gate bools |
+| **R1** | Policy surface completeness | **Partial** | 0.8.220+ | **R1.1** inventory table (v0.8.374); **R1.3** sim (v0.8.371); **R1.2** delegate remaining gate math |
 | **R2** | GUI / worker boundary | **Partial** | 0.8.366+ | R2.1 audit; Queued signals; worker fast-repeat coalesce; repeat budget on `ExecutionContext`; GUI asserts; **R2.4** prune abandons one bounded `stopAndWaitBounded` per timer tick (v0.8.370) |
-| **R3** | Session-scoped capture contract | **Partial** | 0.8.277+ | **R3.3** skip capture refresh on repeat loops (v0.8.372) + trigger monitor relaunch when locked (v0.8.373) |
+| **R3** | Session-scoped capture contract | **Partial** | 0.8.277+ | **R3.1** header contract (v0.8.374); **R3.3** repeat/trigger refresh skip (v0.8.372–373) |
 | **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.362 | Document ordering; optional `HotkeyLatchController` |
 | **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | Controllers exist; `MainWindow.cpp` still large |
 | **R6** | Automated workflow dry-run | **Not started** | TBD | `PIPBONGWorkflowDryRunSim` ([§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) Stage 2) |
@@ -1342,12 +1342,25 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
-| **R1.1** Inventory | Grep `MainWindow.cpp` for `runForegroundGate`, `GetForegroundWindow`, `setTargetWindow`, `finishRunSession`, `reconcileRunSessions` — list call sites | Table in PR/commit message or §11 bullet; no undocumented paths |
+| **R1.1** Inventory | Grep `MainWindow.cpp` for `runForegroundGate`, `GetForegroundWindow`, `setTargetWindow`, `finishRunSession`, `reconcileRunSessions` — list call sites | **Done** — inventory table below (v0.8.374) |
 | **R1.2** Delegate | Move any remaining gate math into `SessionRunPolicy` or `ForegroundRunGate` | `MainWindow` calls delegate; no new parallel gates |
-| **R1.3** Sim scenarios | Add `SessionRunPolicySim` cases: multi-hold + trigger monitoring + profile switch deferred + background-profile sessions | POST_BUILD green; Korean violation text for failures |
+| **R1.3** Sim scenarios | Add `SessionRunPolicySim` cases: multi-hold + trigger monitoring + profile switch deferred + background-profile sessions | **Done** — multi-session roadmap scenarios (v0.8.371); deferred/background cases still optional |
 | **R1.4** Docs | When a row in [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) manual sheet changes, update sheet in same task | Sheet matches behavior |
 
 **Out of scope:** OpenCV matching changes, UI redesign.
+
+**R1.1 MainWindow gate/capture inventory (2026-07-29, v0.8.374):**
+
+| Concern | `MainWindow.cpp` | Authority / notes |
+| ------- | ---------------- | ----------------- |
+| `runForegroundGateActive` | ~12 refs; builds `ForegroundRunGate::GateInput` | `ForegroundRunGate` — no parallel gate bools on `MainWindow` |
+| `GetForegroundWindow` | **0** | `ForegroundWindowMonitor::currentState()` only ([§8.17](#817-profile-auto-switch-mandatory--do-not-regress)) |
+| `finishRunSession` | ~22 call sites | Session teardown + UI; ends with `reconcileRunSessionsWithForegroundGate` |
+| `reconcileRunSessionsWithForegroundGate` | 4521, 4524, 6212, impl. 7759 | Scoped-target wait/resume; stop engines when gate closes |
+| `refreshSessionCaptureTarget` | 8393 (`sessionCaptureTargetTitleW` when `refreshCaptureBinding`), 8528/8573 (trigger **감시** migration in `syncEffectiveTargetWindowTitleToCapture`) | **Not** on ImageFind poll UI callback path |
+| `sessionCaptureTargetTitleW(..., refresh)` | `false` on repeat iteration when lock set (v0.8.372); trigger relaunch skips when locked (v0.8.373) | Locks at session start via `applySessionCaptureTarget` / `resolveRunCaptureTargetTitleW` |
+| `ScreenCapture::setTargetWindow*` | Profile switch, `applySessionCaptureTarget`, `refreshSessionCaptureTarget`, `launchWorkflowRun` worker prep | Global capture for idle UI; worker polls use `ExecutionContext` |
+| `SessionRunPolicy` | `sessionPolicyInputFrom`, burst/coalesce/early-lock | POST_BUILD `PIPBONGPolicySim` |
 
 **Key files:** `SessionRunPolicy.*`, `SessionRunPolicySim.cpp`, `ForegroundRunGate.*`, `RunSessionController.*`, `MainWindow.cpp`.
 
@@ -1394,7 +1407,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
-| **R3.1** Contract doc | In `FeatureRunSession` / `ExecutionContext` header comments: locked title, refresh rules, sub/main fallback | Comments + §8.21 cross-ref |
+| **R3.1** Contract doc | In `FeatureRunSession` / `ExecutionContext` header comments: locked title, refresh rules, sub/main fallback | **Done** — header comments + §8.21 cross-ref (v0.8.374) |
 | **R3.2** Remove UI hot-path writes | `onBlockImageFindAttempt` and similar: **no** `ScreenCapture::setTargetWindowTitle` on worker callback path (already partial — verify zero) | Grep clean on poll hot path — **verified 2026-07-29** (`onBlockImageFindAttempt` UI-only; poll uses `ExecutionContext::setTargetWindowTitleForWorker`) |
 | **R3.3** `refreshSessionCaptureTarget` | Only on session start, foreground migration, profile switch — not every ImageFind attempt | Log/throttle proof in dev (optional breadcrumb) |
 | **R3.4** Match test / editor | `ImageFindEditor` match test uses same session rules as run (foreground activate policy documented) | Parity note in §8.5 or ImageFind handover |
@@ -1414,9 +1427,17 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | ------------ | ------- | --------- |
 | **R4.1** Ordering diagram | Maintain ASCII flow in this section (below) when behavior changes | Updated in same task as hook/foreground edits |
 | **R4.2** `ensureForegroundReadyForFeatureHotkey` | Single entry; no duplicate profile/capture sync elsewhere on hotkey path | Grep callers; [§8.15](#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress) manual 5× Alt+Tab |
-| **R4.3** Hold continuation | **Only** `isHoldBindingStillActiveForRun` on continue paths — never `reconcileHoldBindingDown` ([§8.20](#820-hold-mode-latch-and-run-continuation-mandatory--do-not-regress)) | `rg reconcileHoldBindingDown` in `shouldContinue` paths = empty |
+| **R4.3** Hold continuation | **Only** `isHoldBindingStillActiveForRun` on continue paths — never `reconcileHoldBindingDown` ([§8.20](#820-hold-mode-latch-and-run-continuation-mandatory--do-not-regress)) | **Verified 2026-07-29** — see audit below |
 | **R4.4** Optional `HotkeyLatchController` | If `HotkeyManager` + `MainWindow` latch resets still scattered: thin class owning `resetHookLatchState` triggers | Only if R4.2–R4.3 still touch 3+ files per bug |
 | **R4.5** Physical keyboard | No regression on [§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress) | Manual row 7 §8.17 |
+
+**R4.3 hold latch audit (2026-07-29, v0.8.374):**
+
+| Check | Result |
+| ----- | ------ |
+| `shouldContinueRunSession` (Hold) | Uses `HotkeyManager::isHoldBindingStillActiveForRun` only — no `reconcileHoldBindingDown` |
+| `scheduleRepeatIteration` | Explicit comment: no `reconcileHoldBindingDown` (loop-interval / same-key Tap race) |
+| `reconcileHoldBindingDown` | Only `reconcileHoldLatchForActiveHoldSessions` (periodic UI reconcile), not continue paths |
 
 **Hotkey / run start ordering (canonical):**
 
@@ -1912,6 +1933,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.374] - 2026-07-29
+
+### Added
+
+- AGENTS.md §8.21 **R1.1** MainWindow gate/capture inventory table; **R4.3** hold-latch audit (verified `reconcileHoldBindingDown` not on continue paths).
+
+### Changed
+
+- Session-scoped capture contract documented in `FeatureRunSession.h` and `ExecutionContext.h` header comments (roadmap R3.1); §8.21 tracker notes for R1/R3.
 
 ## [0.8.373] - 2026-07-29
 
@@ -6640,4 +6671,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-29. Current application version: 0.8.365._
+_Last consolidated: 2026-07-29. Current application version: 0.8.374._

@@ -12,6 +12,14 @@
 #include <memory>
 #include <string>
 
+/// Per-feature run session (engine, worker context, trigger phase, UI run chrome).
+///
+/// Session-scoped capture (AGENTS.md §8.21 R3): `lockedCaptureTargetTitle` is fixed at
+/// session start (main/sub/auto resolution) and reused for trigger monitor relaunches and
+/// repeat/hold loop iterations when already set. Worker ImageFind polls must update capture
+/// via `ExecutionContext::setTargetWindowTitleForWorker` / `refreshTargetWindowHandle` —
+/// not global `ScreenCapture` writes from poll UI callbacks (`onBlockImageFindAttempt`).
+
 struct TriggerPreemptedSession {
     std::string featureId;
     bool pausedByTrigger = false;
