@@ -4891,11 +4891,12 @@ void MainWindow::ensureRunSessionResources(FeatureRunSession& session,
     syncRunSessionContext(session);
 }
 
-void MainWindow::syncRunSessionContext(FeatureRunSession& session) {
+void MainWindow::syncRunSessionContext(FeatureRunSession& session, bool refreshCaptureBinding) {
     if (!session.sessionContext) {
         return;
     }
-    session.sessionContext->setTargetWindowTitleForWorker(sessionCaptureTargetTitleW(session));
+    session.sessionContext->setTargetWindowTitleForWorker(
+        sessionCaptureTargetTitleW(session, refreshCaptureBinding));
     session.sessionContext->setProjectDirectory(Application::instance()->projectDirectory().toStdString());
 }
 
@@ -5402,10 +5403,13 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         ++session.sessionIteration;
     }
 
+    const bool refreshCaptureBinding =
+        !repeatIteration || session.lockedCaptureTargetTitle.empty();
+
     if (!session.sessionContext) {
         session.sessionContext = std::make_shared<ExecutionContext>();
     }
-    syncRunSessionContext(session);
+    syncRunSessionContext(session, refreshCaptureBinding);
     applyFeatureRunPoliciesToContext(session, feature);
     syncEarlyLoopMouseLock(session);
     if (!repeatIteration && session.sessionContext) {
@@ -5424,7 +5428,7 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
 
     configureWorkerFastRepeat(session, feature);
 
-    const std::wstring targetTitle = sessionCaptureTargetTitleW(session);
+    const std::wstring targetTitle = sessionCaptureTargetTitleW(session, refreshCaptureBinding);
     const std::string projectDir = Application::instance()->projectDirectory().toStdString();
     const bool skipTargetActivation =
         (session.hotkeyLaunchedSession || session.skipTargetActivationOnStart) && !repeatIteration;
@@ -8379,8 +8383,11 @@ void MainWindow::resumeWaitingScopedTargetForegroundSessions() {
     m_runSessionController.resumeWaitingScopedTargetForegroundSessions();
 }
 
-std::wstring MainWindow::sessionCaptureTargetTitleW(FeatureRunSession& session) {
-    refreshSessionCaptureTarget(session);
+std::wstring MainWindow::sessionCaptureTargetTitleW(FeatureRunSession& session,
+                                                    bool refreshCaptureBinding) {
+    if (refreshCaptureBinding) {
+        refreshSessionCaptureTarget(session);
+    }
     if (!session.lockedCaptureTargetTitle.empty()) {
         return session.lockedCaptureTargetTitle;
     }

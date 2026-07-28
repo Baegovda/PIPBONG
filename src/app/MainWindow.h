@@ -328,7 +328,7 @@ private:
                                    Feature* feature,
                                    bool refreshWorkflow = false,
                                    bool deferWorkflowCloneToWorker = false);
-    void syncRunSessionContext(FeatureRunSession& session);
+    void syncRunSessionContext(FeatureRunSession& session, bool refreshCaptureBinding = true);
     void applyFeatureRunPoliciesToContext(FeatureRunSession& session, Feature* feature);
     bool shouldLogRunDetails(const FeatureRunSession& session) const;
     void continueRepeatSession(FeatureRunSession& session, Feature* feature, bool success, const QString& message);
@@ -415,7 +415,8 @@ private:
     void maybeResetHotkeyLatchForForeground(HWND foregroundHwnd);
 #endif
     void refreshSessionCaptureTarget(FeatureRunSession& session);
-    std::wstring sessionCaptureTargetTitleW(FeatureRunSession& session);
+    /// When `refreshCaptureBinding` is false, returns locked title (or resolve) without HWND lookup / global ScreenCapture sync (R3.3 repeat loops).
+    std::wstring sessionCaptureTargetTitleW(FeatureRunSession& session, bool refreshCaptureBinding = true);
     void applySessionCaptureTarget(const std::wstring& title) const;
     void syncTargetWindowTitleToCapture();
 #ifdef _WIN32
