@@ -746,7 +746,7 @@ void paintFeatureListGroupRow(QPainter* painter,
     badgeFont.setBold(true);
     painter->setFont(badgeFont);
     painter->setPen(accent);
-    painter->drawText(badgeRect, Qt::AlignCenter, QStringLiteral("묶음"));
+    painter->drawText(badgeRect, Qt::AlignCenter, QStringLiteral("그룹"));
 
     const QRect textRect = rect.adjusted(badgeRect.right() + 8, 0, -8, 0);
     QFont titleFont = painter->font();
@@ -756,7 +756,7 @@ void paintFeatureListGroupRow(QPainter* painter,
     painter->setPen(primaryContentTextColor(palette, selected));
     const QString countSuffix =
         dropTarget
-            ? QStringLiteral("  ← 묶음에 넣기")
+            ? QStringLiteral("  ← 그룹에 넣기")
             : (collapsed && memberCount > 0
                    ? QStringLiteral(" · %1 · 접힘").arg(memberCount)
                    : QStringLiteral(" · %1").arg(memberCount));
@@ -1299,7 +1299,7 @@ void FeatureListPanel::setupUi() {
     auto* buttonRow = new QHBoxLayout();
     buttonRow->setSpacing(4);
     m_addButton = new QPushButton(tr("추가"), group);
-    m_groupButton = new QPushButton(tr("묶음"), group);
+    m_groupButton = new QPushButton(tr("그룹"), group);
     m_editButton = new QPushButton(tr("편집"), group);
     m_removeButton = new QPushButton(tr("삭제"), group);
     m_addButton->setProperty("class", "featureListToolButton");
@@ -1314,17 +1314,6 @@ void FeatureListPanel::setupUi() {
     buttonRow->addWidget(m_groupButton);
     buttonRow->addWidget(m_editButton);
     buttonRow->addWidget(m_removeButton);
-
-    m_listHintLabel = new QLabel(
-        tr("묶음 줄 클릭 → 펼치기/접기 · 기능 사이 파란 줄 → 순서만 변경 · 묶음 줄이 밝게 깜빡이면 → 그 묶음에 넣기"),
-        group);
-    m_listHintLabel->setObjectName(QStringLiteral("featureListHint"));
-    m_listHintLabel->setWordWrap(true);
-    {
-        QPalette hintPal = m_listHintLabel->palette();
-        hintPal.setColor(QPalette::WindowText, secondaryHintTextColor(hintPal));
-        m_listHintLabel->setPalette(hintPal);
-    }
 
     auto* tableFrame = new QFrame(group);
     tableFrame->setObjectName(QStringLiteral("featureListTableFrame"));
@@ -1347,8 +1336,6 @@ void FeatureListPanel::setupUi() {
     m_list->setContextMenuPolicy(Qt::CustomContextMenu);
     m_list->setSpacing(0);
     m_list->setItemDelegate(new FeatureListItemDelegate(this));
-    m_list->setToolTip(
-        tr("클릭: 묶음 펼치기/접기 · 드래그: 순서 변경 · 묶음 줄에 놓기: 그 묶음에 넣기"));
     m_list->setRowDragEnabledPredicate([this](int row) {
         return isFeatureEditableAtListRow(row) || (isGroupListRow(row) && m_project
                                                    && !featureIndicesInGroup(
@@ -1490,7 +1477,6 @@ void FeatureListPanel::setupUi() {
             &FeatureListPanel::onRemoveLibraryEntries);
 
     groupLayout->addLayout(buttonRow);
-    groupLayout->addWidget(m_listHintLabel);
     groupLayout->addWidget(m_featureLibrarySplitter, 1);
     outerLayout->addWidget(group);
 
@@ -2956,7 +2942,7 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
         emit importFeatureFromLibraryRequested();
     });
     if (m_project && !m_project->featureGroups().empty()) {
-        QMenu* groupMenu = menu.addMenu(tr("묶음에 넣기"));
+        QMenu* groupMenu = menu.addMenu(tr("그룹에 넣기"));
         for (const FeatureGroup& group : m_project->featureGroups()) {
             const QString groupId = QString::fromStdString(group.id());
             const QString groupName = QString::fromStdString(group.name());
@@ -2967,7 +2953,7 @@ void FeatureListPanel::onContextMenu(const QPoint& pos) {
                 refresh();
             });
         }
-        menu.addAction(tr("묶음에서 빼기"), this, [this]() {
+        menu.addAction(tr("그룹에서 빼기"), this, [this]() {
             emit mutationAboutToCommit(QStringLiteral("feature-clear-group"));
             assignSelectedFeaturesToGroup({});
             emit projectModified();
@@ -3275,9 +3261,7 @@ void FeatureListPanel::configureGroupListItem(QListWidgetItem* item,
     item->setData(kFeatureNameRole, groupName);
     item->setData(kGroupMemberCountRole, memberCount);
     item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-    item->setToolTip(tr("묶음 «%1» (%2개)\n클릭: 펼치기/접기 · 기능을 이 줄에 놓으면 묶음에 추가 · 드래그: 묶음 전체 이동")
-                           .arg(groupName)
-                           .arg(memberCount));
+    item->setToolTip(tr("그룹 «%1» (%2개)").arg(groupName).arg(memberCount));
 }
 
 std::vector<int> FeatureListPanel::featureIndicesInGroup(const std::string& groupId) const {
@@ -3437,9 +3421,9 @@ void FeatureListPanel::onAddFeatureGroup() {
     if (!m_project) {
         return;
     }
-    const QString defaultName = tr("새 묶음");
+    const QString defaultName = tr("새 그룹");
     const QString name =
-        QInputDialog::getText(this, tr("새 묶음"), tr("묶음 이름:"), QLineEdit::Normal, defaultName)
+        QInputDialog::getText(this, tr("새 그룹"), tr("그룹 이름:"), QLineEdit::Normal, defaultName)
             .trimmed();
     if (name.isEmpty()) {
         return;
@@ -3481,7 +3465,7 @@ void FeatureListPanel::showGroupContextMenu(QListWidgetItem* item, const QPoint&
     menu.addAction(tr("이름 바꾸기"), this, [this, group]() {
         const QString current = QString::fromStdString(group->name());
         const QString name =
-            QInputDialog::getText(this, tr("묶음 이름"), tr("묶음 이름:"), QLineEdit::Normal, current)
+            QInputDialog::getText(this, tr("그룹 이름"), tr("그룹 이름:"), QLineEdit::Normal, current)
                 .trimmed();
         if (name.isEmpty() || name == current) {
             return;
@@ -3491,7 +3475,7 @@ void FeatureListPanel::showGroupContextMenu(QListWidgetItem* item, const QPoint&
         emit projectModified();
         refresh();
     });
-    menu.addAction(tr("묶음 삭제"), this, [this, groupId]() {
+    menu.addAction(tr("그룹 삭제"), this, [this, groupId]() {
         emit mutationAboutToCommit(QStringLiteral("feature-group-remove"));
         m_project->removeFeatureGroup(groupId.toStdString());
         m_collapsedGroupIds.remove(groupId);

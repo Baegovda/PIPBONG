@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.352` (from `project(PIPBONG VERSION 0.8.352)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.353` (from `project(PIPBONG VERSION 0.8.353)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`) (from `project(PIPBONG VERSION 0.8.352)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1548,6 +1548,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.353] - 2026-07-28
+
+### Changed
+
+- Feature list UI terminology **묶음** → **그룹** (toolbar button, badges, menus, dialogs); removed list hint label and long group-row/list tooltips (`FeatureListPanel`).
+- Default new feature group name **그룹** / **새 그룹** (`FeatureGroup`, `JsonSerializer` load fallback).
 
 ## [0.8.352] - 2026-07-28
 

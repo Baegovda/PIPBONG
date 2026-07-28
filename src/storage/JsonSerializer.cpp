@@ -234,7 +234,7 @@ std::unique_ptr<Project> JsonSerializer::loadFromFile(const QString& filePath,
 
     if (root.contains("featureGroups") && root["featureGroups"].is_array()) {
         for (const auto& groupJson : root["featureGroups"]) {
-            FeatureGroup group(groupJson.value("name", "묶음"));
+            FeatureGroup group(groupJson.value("name", "그룹"));
             if (groupJson.contains("id")) {
                 group.setId(groupJson.value("id", group.id()));
             }

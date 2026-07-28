@@ -298,7 +298,6 @@ private:
     QPushButton* m_addButton = nullptr;
 
     QPushButton* m_groupButton = nullptr;
-    QLabel* m_listHintLabel = nullptr;
 
     QPushButton* m_removeButton = nullptr;
 

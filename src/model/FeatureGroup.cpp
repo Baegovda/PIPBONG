@@ -2,7 +2,7 @@
 
 #include <QUuid>
 
-FeatureGroup::FeatureGroup() : m_id(generateId()), m_name("묶음") {}
+FeatureGroup::FeatureGroup() : m_id(generateId()), m_name("그룹") {}
 
 FeatureGroup::FeatureGroup(std::string name) : m_id(generateId()), m_name(std::move(name)) {}
 
