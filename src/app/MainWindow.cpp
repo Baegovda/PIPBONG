@@ -601,7 +601,7 @@ MainWindow::MainWindow(QWidget* parent)
         launchWorkflowRun(session, feature, repeat);
     };
     runHost.isHoldBindingDown = [this](const std::string& id) {
-        return m_hotkeyManager && m_hotkeyManager->reconcileHoldBindingDown(id);
+        return m_hotkeyManager && m_hotkeyManager->isHoldBindingStillActiveForRun(id);
     };
     runHost.featureForSession = [this](FeatureRunSession& session) {
         return featureForSession(session);
@@ -5150,7 +5150,7 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
             if (!active->repeatSession || !active->holdRunActive || !hotkeyMgr) {
                 return false;
             }
-            return hotkeyMgr->reconcileHoldBindingDown(featureId);
+            return hotkeyMgr->isHoldBindingStillActiveForRun(featureId);
         case FeatureRunMode::RepeatInfinite:
             return active->repeatSession;
         case FeatureRunMode::RepeatCount:
@@ -5464,7 +5464,7 @@ void MainWindow::launchHoldKeyTapRun(FeatureRunSession& session, Feature* featur
                 return false;
             }
             return active->repeatSession && active->holdRunActive && hotkeyMgr
-                   && hotkeyMgr->reconcileHoldBindingDown(featureId);
+                   && hotkeyMgr->isHoldBindingStillActiveForRun(featureId);
         },
         context);
 }
@@ -5505,7 +5505,7 @@ bool MainWindow::shouldContinueRunSession(const FeatureRunSession& session, Feat
         if (!session.repeatSession || !session.holdRunActive || !m_hotkeyManager) {
             return false;
         }
-        return m_hotkeyManager->reconcileHoldBindingDown(session.featureId);
+        return m_hotkeyManager->isHoldBindingStillActiveForRun(session.featureId);
     case FeatureRunMode::RepeatInfinite:
         return session.repeatSession;
     case FeatureRunMode::Trigger:
@@ -6864,7 +6864,7 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
         && !runForegroundGateActive(feature)) {
         const bool holdPaused =
             session->runningMode == FeatureRunMode::Hold && session->holdRunActive && m_hotkeyManager
-            && m_hotkeyManager->reconcileHoldBindingDown(session->featureId);
+            && m_hotkeyManager->isHoldBindingStillActiveForRun(session->featureId);
         const bool repeatPaused =
             session->repeatSession
             && (session->runningMode == FeatureRunMode::RepeatInfinite

@@ -397,35 +397,69 @@ void HotkeyManager::resetHookLatchState() {
 #endif
 }
 
-bool HotkeyManager::reconcileHoldBindingDown(const std::string& featureId) {
-    for (HoldBindingEntry& entry : m_holdBindings) {
+bool HotkeyManager::isHoldBindingStillActiveForRun(const std::string& featureId) const {
+#ifdef _WIN32
+    for (const HoldBindingEntry& entry : m_holdBindings) {
         if (entry.featureId != featureId) {
             continue;
-        }
-        if (!entry.keyDown) {
-            return false;
         }
         if (entry.binding.isPhysicallyDown(entry.allowExtraModifiers)) {
             return true;
         }
-        entry.keyDown = false;
-        emitHotkeyHoldEnded(entry.featureId);
-        return false;
+        return entry.keyDown;
+    }
+    for (const MouseBindingEntry& entry : m_mouseBindings) {
+        if (!entry.holdMode || entry.featureId != featureId) {
+            continue;
+        }
+        if (entry.binding.isPhysicallyDown(entry.allowExtraModifiers)) {
+            return true;
+        }
+        return entry.buttonDown;
+    }
+#else
+    (void)featureId;
+#endif
+    return false;
+}
+
+bool HotkeyManager::reconcileHoldBindingDown(const std::string& featureId) {
+#ifdef _WIN32
+    for (HoldBindingEntry& entry : m_holdBindings) {
+        if (entry.featureId != featureId) {
+            continue;
+        }
+        if (entry.binding.isPhysicallyDown(entry.allowExtraModifiers)) {
+            entry.keyDown = true;
+            return true;
+        }
+        if (!entry.keyDown) {
+            return false;
+        }
+        if (entry.pendingHoldEndGeneration == 0) {
+            scheduleDeferredKeyboardHoldEnd(entry);
+        }
+        return true;
     }
     for (MouseBindingEntry& entry : m_mouseBindings) {
         if (!entry.holdMode || entry.featureId != featureId) {
             continue;
         }
+        if (entry.binding.isPhysicallyDown(entry.allowExtraModifiers)) {
+            entry.buttonDown = true;
+            return true;
+        }
         if (!entry.buttonDown) {
             return false;
         }
-        if (entry.binding.isPhysicallyDown(entry.allowExtraModifiers)) {
-            return true;
+        if (entry.pendingHoldEndGeneration == 0) {
+            scheduleDeferredMouseHoldEnd(entry);
         }
-        entry.buttonDown = false;
-        emitHotkeyHoldEnded(entry.featureId);
-        return false;
+        return true;
     }
+#else
+    (void)featureId;
+#endif
     return false;
 }
 

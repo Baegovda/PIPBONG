@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.361` (from `project(PIPBONG VERSION 0.8.361)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.362` (from `project(PIPBONG VERSION 0.8.362)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1592,6 +1592,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.362] - 2026-07-29
+
+### Fixed
+
+- Hold mode (**홀드**) no longer stops mid-hold when loop/tap polling calls `reconcileHoldBindingDown`: run continuation and hold-key-tap lanes use poll-safe `isHoldBindingStillActiveForRun` (hook latch); latch reconcile defers hold-end via existing deferred KEYUP recheck instead of immediate `hotkeyHoldEnded` on a single `GetAsyncKeyState` miss (`HotkeyManager`, `MainWindow`).
 
 ## [0.8.361] - 2026-07-29
 
