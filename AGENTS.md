@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.354` (from `project(PIPBONG VERSION 0.8.354)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.355` (from `project(PIPBONG VERSION 0.8.354)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1548,6 +1548,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.355] - 2026-07-28
+
+### Fixed
+
+- Hold mode hotkeys regressed after feature **그룹** edits: group merge/consolidate no longer runs on every list `refresh()` (avoids reordering features during collapse/expand and duplicate `projectModified` workflow refresh); consolidation skipped while any feature run highlight is active; profile load repairs groups once via `repairFeatureGroupLayout()` (`FeatureListPanel`).
 
 ## [0.8.354] - 2026-07-28
 

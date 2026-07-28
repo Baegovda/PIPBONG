@@ -244,6 +244,7 @@ private:
     void prepareGroupDragSelection(int groupListRow);
     std::vector<int> featureIndicesInGroup(const std::string& groupId) const;
     void moveFeatureIndicesIntoGroup(const std::vector<int>& indices, const std::string& groupId);
+    bool repairFeatureGroupLayout();
     bool consolidateGroupMembers(const std::string& groupId);
     bool mergeDuplicateFeatureGroupsByName();
     bool consolidateAllFeatureGroups();

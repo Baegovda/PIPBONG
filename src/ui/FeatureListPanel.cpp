@@ -2423,8 +2423,12 @@ void FeatureListPanel::setListDragEnabled(bool enabled) {
 
 void FeatureListPanel::setProject(Project* project, bool refreshList) {
     m_project = project;
+    const bool repairedGroups = repairFeatureGroupLayout();
     if (refreshList) {
         refresh();
+    }
+    if (repairedGroups) {
+        emit projectModified();
     }
 }
 void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& feature, int featureIndex) {
@@ -2472,14 +2476,6 @@ void FeatureListPanel::configureListItem(QListWidgetItem* item, const Feature& f
     item->setToolTip(tooltip);
 }
 void FeatureListPanel::refresh() {
-    bool repairedGroups = false;
-    if (m_project) {
-        repairedGroups = mergeDuplicateFeatureGroupsByName();
-        if (consolidateAllFeatureGroups()) {
-            repairedGroups = true;
-        }
-    }
-
     const int previousListRow = m_list ? m_list->currentRow() : -1;
     if (m_lastSelectedFeatureId.isEmpty() && previousListRow >= 0) {
         if (Feature* feature = selectedFeature()) {
@@ -2535,9 +2531,6 @@ void FeatureListPanel::refresh() {
     refreshListMutationPolicy();
     if (m_project) {
         emit selectionChanged();
-    }
-    if (repairedGroups) {
-        emit projectModified();
     }
 }
 Feature* FeatureListPanel::selectedFeature() const {
@@ -3210,6 +3203,19 @@ FeatureGroup* FeatureListPanel::findFeatureGroupByName(const std::string& name) 
     return nullptr;
 }
 
+bool FeatureListPanel::repairFeatureGroupLayout() {
+    if (!m_project) {
+        return false;
+    }
+    bool changed = mergeDuplicateFeatureGroupsByName();
+    if (m_runningFeatureIds.isEmpty()) {
+        if (consolidateAllFeatureGroups()) {
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 bool FeatureListPanel::mergeDuplicateFeatureGroupsByName() {
     if (!m_project) {
         return false;
@@ -3247,9 +3253,16 @@ bool FeatureListPanel::consolidateAllFeatureGroups() {
         return false;
     }
     bool changed = false;
-    for (const FeatureGroup& group : m_project->featureGroups()) {
-        if (consolidateGroupMembers(group.id())) {
-            changed = true;
+    for (int pass = 0; pass < 8; ++pass) {
+        bool passChanged = false;
+        for (const FeatureGroup& group : m_project->featureGroups()) {
+            if (consolidateGroupMembers(group.id())) {
+                passChanged = true;
+                changed = true;
+            }
+        }
+        if (!passChanged) {
+            break;
         }
     }
     return changed;
@@ -3396,9 +3409,7 @@ bool FeatureListPanel::handleGroupDrop(int listRow, const QMimeData* mime) {
             feature->setGroupId(groupIdStd);
         }
     }
-    mergeDuplicateFeatureGroupsByName();
-    consolidateGroupMembers(groupIdStd);
-    consolidateAllFeatureGroups();
+    repairFeatureGroupLayout();
     pruneEmptyFeatureGroups();
     setGroupCollapsed(groupId, false);
     emit projectModified();
@@ -3471,11 +3482,7 @@ void FeatureListPanel::assignSelectedFeaturesToGroup(const std::string& groupId)
             feature->setGroupId(groupId);
         }
     }
-    mergeDuplicateFeatureGroupsByName();
-    if (!groupId.empty()) {
-        consolidateGroupMembers(groupId);
-    }
-    consolidateAllFeatureGroups();
+    repairFeatureGroupLayout();
     pruneEmptyFeatureGroups();
 }
 
