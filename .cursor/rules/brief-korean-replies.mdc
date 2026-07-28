@@ -18,7 +18,7 @@ alwaysApply: true
 
 **Exception — user reports a bug/lag/crash:** send the **4-block 진단** (증상 → 원인 추정 → 해결 방향 → 다음 조치) **before** editing code or building a fix — see `.cursor/rules/explain-before-fix.mdc`.
 
-**Task close (every completed task):** end with the **5-line 초보자 요약** — **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄** — see `.cursor/rules/task-close-summary.mdc` and AGENTS.md §9.7.
+**Task close (every completed task):** end with the **6-line 초보자 요약** — **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄 / 로드맵** (로드맵 = §8.21 진행 표 한 줄 요약, **항상 마지막**) — see `.cursor/rules/task-close-summary.mdc` and AGENTS.md §9.7.
 
 ## Log / diagnosis reports (`app-stutter`, CI, crash)
 

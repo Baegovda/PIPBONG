@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Task close summary (mandatory — every completed task)
 
-**Status:** User preference 2026-07-29 (§9.5, §9.7); **앞으로 할 일** added 2026-07-29. Complements `.cursor/rules/brief-korean-replies.mdc` and `.cursor/rules/explain-before-fix.mdc`.
+**Status:** User preference 2026-07-29 (§9.5, §9.7); **앞으로 할 일** 2026-07-29; **로드맵** at end 2026-07-29. Complements `.cursor/rules/brief-korean-replies.mdc` and `.cursor/rules/explain-before-fix.mdc`.
 
 ## When
 
@@ -18,15 +18,16 @@ At the **end of every completed user task** — after work is done (or when clos
 - **Korean only**, **초보자 눈높이** — everyday words; no class/file names, JSON keys, or English jargon unless the user asked for technical detail.
 - **Short** — each line is one sentence or a very short phrase; **no long tables**.
 
-## Required block (5 labels — use these labels)
+## Required block (6 labels — use these labels)
 
 | Line | Label | Content |
 | ---- | ----- | ------- |
 | 1 | **원인** | What was wrong or what was requested (1 sentence). Bug: what you felt; feature: what you wanted. |
 | 2 | **해결** | What we changed or decided (1–2 short sentences). Outcome, not implementation detail. |
 | 3 | **이번에 할 일** | What **you** should do **now** — **1–3 bullets max** (e.g. F5로 새 버전 실행, 한 번 재현 확인, 설정 켜기). Say “없음” for pure docs/policy with no immediate user action. |
-| 4 | **앞으로 할 일** | What comes **next** — **1–3 bullets max**: remaining roadmap (e.g. §8.21 R3), manual checks still open, or “다음에 이어서 …” if the user may want a follow-up chat. Say “없음” when the thread is fully closed. |
+| 4 | **앞으로 할 일** | What comes **next** — **1–3 bullets max**: manual checks still open, “다음에 … 해줘” hints. Say “없음” when the thread is fully closed. |
 | 5 | **한줄** | Single-line recap tying cause + result. |
+| 6 | **로드맵** | **Always last.** Read [AGENTS.md §8.21](../../AGENTS.md#821-architecture-stabilization-roadmap-mandatory--ai-execution) **Progress tracker** table at task close; tell the user in **1–2 short Korean sentences** which phases are **완료 / 진행 중 / 미착수** and what the agent would pick next (lowest Partial/Not started). Plain names only (e.g. “GUI·워커 경계”, “캡처 계약”) — no § numbers in user text unless they asked for docs. |
 
 Example shape (content varies):
 
@@ -36,6 +37,7 @@ Example shape (content varies):
 **이번에 할 일** · …
 **앞으로 할 일** · …
 **한줄** …
+**로드맵** · …
 ```
 
 ## Relation to other rules
@@ -43,9 +45,10 @@ Example shape (content varies):
 | Rule | Difference |
 | ---- | ---------- |
 | `explain-before-fix.mdc` | **Before** code/build on **bug reports** — diagnosis only until user saw it. |
-| `task-close-summary.mdc` | **After** task complete — recap, immediate user actions, and next steps. |
-| `app-stutter-profiling.mdc` | Log readouts use 6 bullets; task close still ends with this 5-part block when the task closes. |
+| `task-close-summary.mdc` | **After** task complete — recap, user actions, next steps, **roadmap snapshot**. |
+| `architecture-stabilization-roadmap.mdc` | **During** stability work — full §8.21 plan; task close **로드맵** line is the user-facing snapshot. |
+| `app-stutter-profiling.mdc` | Log readouts use 6 bullets; task close still ends with this 6-part block when the task closes. |
 
 ## Handover
 
-Full policy: [AGENTS.md §9.7](../../AGENTS.md#97-task-close-user-summary-mandatory--agents-only). Preference bullet: [§9.5](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only).
+Full policy: [AGENTS.md §9.7](../../AGENTS.md#97-task-close-user-summary-mandatory--agents-only). Tracker source: [§8.21 Progress tracker](../../AGENTS.md#821-architecture-stabilization-roadmap-mandatory--ai-execution). Preference: [§9.5](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only).

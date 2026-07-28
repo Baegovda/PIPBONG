@@ -29,7 +29,7 @@ Before **any** task that touches:
 | **One bite** | Prefer **one work package (WP)** per user task; update progress tracker when a phase advances |
 | **Policy first** | New gate/rule → `SessionRunPolicy` + sim scenario in the **same task** |
 | **No MainWindow sprawl** | New run logic → controller / `SessionRunPolicy` / `RunLifecycleCoordinator` (Phase R5) |
-| **Close** | POST_BUILD policy sim OK; §8.17 rows when touching foreground/run; §9.7 user summary |
+| **Close** | POST_BUILD policy sim OK; §8.17 rows when touching foreground/run; §9.7 user summary (**로드맵** line = §8.21 tracker snapshot) |
 
 ## Related mandatory patterns
 

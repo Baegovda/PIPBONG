@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.367` (from `project(PIPBONG VERSION 0.8.367)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.368` (from `project(PIPBONG VERSION 0.8.368)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1682,7 +1682,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
 2. **Stability / run / foreground / hotkey tasks:** read [§8.21 Architecture stabilization roadmap](#821-architecture-stabilization-roadmap-mandatory--ai-execution) at task start; update the **Progress tracker** table when a phase advances; implement mapped **work packages** (`.cursor/rules/architecture-stabilization-roadmap.mdc`).
-3. **Final user reply:** include the [§9.7 task-close summary](#97-task-close-user-summary-mandatory--agents-only) (**원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄**) in beginner Korean.
+3. **Final user reply:** include the [§9.7 task-close summary](#97-task-close-user-summary-mandatory--agents-only) (**원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄 / 로드맵**) in beginner Korean.
 4. If the chat surfaced a new user preference signal, append a dated bullet under [§9.5 User preference profile](#95-user-preference-profile-cumulative--agents-only) in the **same task** (append-only; no separate files).
 5. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release).
 6. Keep diffs minimal; match existing C++ / Qt conventions.
@@ -1718,7 +1718,8 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 - **2026-07-21:** Directs work in **Korean chat only**; expects the codebase to stay **100% AI-maintained** (implement, document, changelog via agent).
 - **2026-07-24:** Wants **chat replies in plain Korean, as short as possible** — no jargon, no long tables, no class/file names unless the user asks; diagnosis/log reports default to a **few bullets** (결론 → 언제 → 심각도); full technical detail stays in `AGENTS.md` / rules only.
 - **2026-07-24:** On **problem reports** (bug, lag, crash, regression): agent must **investigate first**, then explain **증상 / 원인 추정 / 해결 방향 / 다음 조치** in beginner-friendly Korean **before** starting code or build fixes; always-applied `.cursor/rules/explain-before-fix.mdc`.
-- **2026-07-29:** At **every completed task**, final reply must include a **초보자용 5줄 요약**: **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄** — always-applied `.cursor/rules/task-close-summary.mdc`, AGENTS.md §9.7.
+- **2026-07-29:** Task-close summary ends with **로드맵** — every completed task reports §8.21 progress tracker status (완료/진행/미착수 + next pick) in beginner Korean (`task-close-summary.mdc`, §9.7).
+- **2026-07-29:** At **every completed task**, final reply must include a **초보자용 6줄 요약**: **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄 / 로드맵** — always-applied `.cursor/rules/task-close-summary.mdc`, AGENTS.md §9.7.
 - **2026-07-29:** Task-close summary must include **앞으로 할 일** (next roadmap / follow-up), not only **이번에 할 일** (immediate user actions).
 - **2026-07-29:** Structural stability work must follow the **detailed AI execution roadmap** in AGENTS.md **§8.21** (phases R0–R7, work packages, progress tracker) — not ad-hoc refactors; `.cursor/rules/architecture-stabilization-roadmap.mdc`.
 - **2026-07-24:** Profile **foreground auto-switch** should feel snappy: prefer **process path** when title-only match would wrongly pick default; shorter stability/min-interval for definitive exe match (0 ms / 150 ms).
@@ -1762,7 +1763,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 
 | When | Action |
 | ---- | ------ |
-| **Task close** | Final reply includes **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄** (see table below) |
+| **Task close** | Final reply includes **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄 / 로드맵** (see table below) |
 | **Mid-task** | Not required unless user asks for summary |
 | **Docs/policy-only task** | Still send the block; **이번에 할 일** / **앞으로 할 일** may be “없음” or “Reload Window” if rules changed |
 
@@ -1773,6 +1774,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 | **이번에 할 일** | User actions **now** — **1–3 bullets max** (e.g. F5, repro once, toggle a setting) |
 | **앞으로 할 일** | **Next** steps — **1–3 bullets max** (roadmap phase, open manual verify, “다음에 … 해줘” hint). “없음” when nothing pending. |
 | **한줄** | One-line wrap-up |
+| **로드맵** | **Last line always.** Snapshot of §8.21 **Progress tracker** (R0–R7): what is done / in progress / not started, and the next phase the agent would work on — **1–2 short Korean sentences**, beginner-friendly phase names (no file paths). Read the table in AGENTS at close; update the table in the **same task** if this task advanced a phase. |
 
 **Language:** Korean, everyday words — same bar as [§9.5](#95-user-preference-profile-cumulative--agents-only) brief replies. No class names, paths, or jargon unless the user asked for technical depth.
 
@@ -1911,6 +1913,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Removed
 
+## [0.8.368] - 2026-07-29
+
+### Changed
+
+- Task-close user summary (§9.7, `task-close-summary.mdc`): mandatory **로드맵** line **always last** — beginner Korean snapshot of AGENTS.md §8.21 Progress tracker (R0–R7) + next phase pick; pointers in `brief-korean-replies.mdc`, `ai-governance.mdc`, `architecture-stabilization-roadmap.mdc`, §9.5.
+
 ## [0.8.367] - 2026-07-29
 
 ### Changed
@@ -1937,7 +1945,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Added
 
-- Mandatory **task-close user summary** for every completed task: beginner Korean **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄** — AGENTS.md §9.7, `.cursor/rules/task-close-summary.mdc`; pointers in `brief-korean-replies.mdc`, `ai-governance.mdc`, §9.5 preference bullet.
+- Mandatory **task-close user summary** for every completed task: beginner Korean **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄 / 로드맵** — AGENTS.md §9.7, `.cursor/rules/task-close-summary.mdc`; pointers in `brief-korean-replies.mdc`, `ai-governance.mdc`, §9.5 preference bullet.
 
 ## [0.8.363] - 2026-07-29
 
@@ -6456,7 +6464,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **100% AI-maintained** codebase.
 - User replies: Korean. Code/docs/changelog: English. UI: Korean. JSON types: English.
 - After every task: append `[Unreleased]` bullets, then **bump version before closing** ([§10](#10-versioning-policy)); minimal diffs.
-- **Task close summary:** final reply **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄** ([§9.7](#97-task-close-user-summary-mandatory--agents-only), `task-close-summary.mdc`).
+- **Task close summary:** final reply **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄 / 로드맵** ([§9.7](#97-task-close-user-summary-mandatory--agents-only), `task-close-summary.mdc`).
 - **User preference profile:** read and append [§9.5](#95-user-preference-profile-cumulative--agents-only) (cumulative; no separate style files).
 - **Regression mistake log (오답노트):** after user-confirmed multi-attempt bug fixes, append [§9.6](#96-regression-mistake-log-오답노트--agents-only) + §8.x pattern in the same task.
 - Primary documentation: **this file (`AGENTS.md`) only**.
@@ -6493,7 +6501,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ### `task-close-summary.mdc`
 
-- **Mandatory** final reply **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄** after every completed task ([§9.7](#97-task-close-user-summary-mandatory--agents-only)).
+- **Mandatory** final reply **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄 / 로드맵** after every completed task ([§9.7](#97-task-close-user-summary-mandatory--agents-only)).
 
 ### `architecture-stabilization-roadmap.mdc`
 
@@ -6583,7 +6591,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ### `task-close-summary.mdc`
 
-- **Mandatory** at every completed task: final reply **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄** (beginner Korean).
+- **Mandatory** at every completed task: final reply **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄 / 로드맵** (beginner Korean; **로드맵** last = §8.21 tracker).
 - Full policy: [§9.7](#97-task-close-user-summary-mandatory--agents-only).
 
 ### `brief-korean-replies.mdc`

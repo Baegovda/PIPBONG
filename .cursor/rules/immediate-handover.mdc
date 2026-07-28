@@ -31,7 +31,7 @@ Do **not** defer handover to a follow-up chat or assume the user will ask “doc
 | Verified multi-attempt bug fix (user-confirmed) | §8.x pattern + [§9.6 Regression mistake log](../../AGENTS.md#96-regression-mistake-log-오답노트--agents-only) (wrong fixes + shipped symbols) |
 | New scripts in `scripts/` that agents must run | §3 or §4 path table |
 | User-facing Korean update log (`UpdateLog/update_log.md`) | §3.7 + changelog step in `changelog-versioning.mdc` |
-| User work style / UI taste / aesthetic / collaboration preference (stated or implied) | [§9.5 User preference profile](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only) — append dated bullet same task; no separate file; task-close **원인/해결/이번에 할 일/앞으로 할 일/한줄** → §9.7 + `.cursor/rules/task-close-summary.mdc` |
+| User work style / UI taste / aesthetic / collaboration preference (stated or implied) | [§9.5 User preference profile](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only) — append dated bullet same task; no separate file; task-close **원인/해결/이번에 할 일/앞으로 할 일/한줄/로드맵** → §9.7 + `.cursor/rules/task-close-summary.mdc` |
 
 ## Same-task checklist (before closing)
 

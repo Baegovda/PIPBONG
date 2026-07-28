@@ -13,7 +13,7 @@ alwaysApply: true
 ## Language
 
 - **User replies**: Korean only — **plain words, as short as possible** (see `.cursor/rules/brief-korean-replies.mdc`).
-- **Task close**: every completed task ends with beginner **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄** (see `.cursor/rules/task-close-summary.mdc`, AGENTS.md §9.7).
+- **Task close**: every completed task ends with beginner **원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄 / 로드맵** (see `.cursor/rules/task-close-summary.mdc`, AGENTS.md §9.7).
 - **Bug/problem reports**: investigate first, then **plain Korean diagnosis before any fix** (see `.cursor/rules/explain-before-fix.mdc`).
 - **Code, comments, docs, rules, changelog, handover**: English only.
 - **In-app UI**: Korean via `tr()` / `QStringLiteral`. Keep JSON block `type` values in English.
@@ -33,7 +33,7 @@ alwaysApply: true
 ## After Every Completed Task
 
 1. Append entries under `[Unreleased]` in **AGENTS.md** section **11. Changelog and Version History** as you implement.
-2. **User-visible close:** send the §9.7 task-close summary (**원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄**) in the final reply.
+2. **User-visible close:** send the §9.7 task-close summary (**원인 / 해결 / 이번에 할 일 / 앞으로 할 일 / 한줄 / 로드맵**) in the final reply.
 3. If this chat surfaced preference signal not yet in §9.5, append it there before close.
 4. **Before closing the task:** bump version per **AGENTS.md** §10 — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per **AGENTS.md** §3.6.
 5. Keep diffs minimal; match existing C++ / Qt conventions in surrounding code.
