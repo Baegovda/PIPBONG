@@ -406,24 +406,34 @@ int ReorderableListWidget::dropTargetRow(const QPoint& pos) const {
     return qBound(0, insertionRow, count() - 1);
 }
 
+void ReorderableListWidget::finishAcceptedExternalDrop(QDropEvent* event,
+                                                     const QMimeData* mime,
+                                                     int insertIndex) {
+    clearActiveDropChrome();
+    emit externalItemDropped(mime, insertIndex);
+    if (insertIndex >= 0 && count() > 0) {
+        const int settleRow = qBound(0, insertIndex, count() - 1);
+        playDropSettleAtRow(settleRow);
+    }
+    event->setDropAction(preferredExternalDropAction(mime));
+    event->accept();
+}
+
+void ReorderableListWidget::clearActiveDropChrome() {
+    clearDropIndicator();
+    m_externalDropHover = false;
+    if (m_externalDragScroll) {
+        m_dragAutoScroll->end();
+        m_externalDragScroll = false;
+    }
+    m_dragAutoScroll->releaseEdgeScroll();
+}
+
 void ReorderableListWidget::dropEvent(QDropEvent* event) {
     if (m_reorderEnabled && acceptsExternalMime(event->mimeData()) && event->source() != this) {
         const bool useInsertIndex = m_externalDropHover && m_dropInsertionIndex >= 0;
         const int insertIndex = useInsertIndex ? m_dropInsertionIndex : -1;
-        clearDropIndicator();
-        m_externalDropHover = false;
-        if (m_externalDragScroll) {
-            m_dragAutoScroll->end();
-            m_externalDragScroll = false;
-        }
-        m_dragAutoScroll->releaseEdgeScroll();
-        emit externalItemDropped(event->mimeData(), insertIndex);
-        if (insertIndex >= 0 && count() > 0) {
-            const int settleRow = qBound(0, insertIndex, count() - 1);
-            playDropSettleAtRow(settleRow);
-        }
-        event->setDropAction(preferredExternalDropAction(event->mimeData()));
-        event->accept();
+        finishAcceptedExternalDrop(event, event->mimeData(), insertIndex);
         return;
     }
 

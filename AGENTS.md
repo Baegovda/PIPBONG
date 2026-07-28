@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.349` (from `project(PIPBONG VERSION 0.8.349)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.350` (from `project(PIPBONG VERSION 0.8.350)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1548,6 +1548,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.350] - 2026-07-28
+
+### Changed
+
+- Feature list **묶음** UX: single-click group header toggles expand/collapse; clearer group row chrome (chevron badge, **묶음** pill, collapsed hint); muted hint line under toolbar; member feature rows indented; drag feature(s) onto a group header to assign and move into the group; drag group header moves all members together (`FeatureListPanel`, `FeatureListWidget`, `FeatureListItemRoles.h`, `ReorderableListWidget::clearActiveDropChrome`).
 
 ## [0.8.349] - 2026-07-28
 

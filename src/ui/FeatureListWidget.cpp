@@ -1,7 +1,9 @@
 #include "ui/FeatureListWidget.h"
 
 #include "ui/FeatureDragMime.h"
+#include "ui/FeatureListItemRoles.h"
 
+#include <QDropEvent>
 #include <QKeyEvent>
 #include <QListWidgetItem>
 #include <QMimeData>
@@ -62,6 +64,9 @@ bool FeatureListWidget::canStartDragFromRow(int row) const {
     if (m_rowDragEnabledPredicate && !m_rowDragEnabledPredicate(row)) {
         return false;
     }
+    if (isGroupListRow(row)) {
+        return m_groupDragMimeBuilder != nullptr;
+    }
     QListWidgetItem* item = this->item(row);
     if (!item) {
         return false;
@@ -70,12 +75,56 @@ bool FeatureListWidget::canStartDragFromRow(int row) const {
     return !featureId.isEmpty() && !m_activeProfileId.isEmpty();
 }
 
+void FeatureListWidget::dropEvent(QDropEvent* event) {
+    QListWidgetItem* hit = itemAt(event->position().toPoint());
+    if (hit && m_groupDropHandler) {
+        const int listRow = this->row(hit);
+        if (m_groupDropHandler(listRow, event->mimeData())) {
+            clearActiveDropChrome();
+            event->setDropAction(preferredExternalDropAction(event->mimeData()));
+            event->accept();
+            return;
+        }
+    }
+    ReorderableListWidget::dropEvent(event);
+}
+
 void FeatureListWidget::setRowDragEnabledPredicate(std::function<bool(int row)> predicate) {
     m_rowDragEnabledPredicate = std::move(predicate);
 }
 
+void FeatureListWidget::setGroupDragMimeBuilder(std::function<QMimeData*(int row)> builder) {
+    m_groupDragMimeBuilder = std::move(builder);
+}
+
+void FeatureListWidget::setGroupDropHandler(
+    std::function<bool(int row, const QMimeData* mime)> handler) {
+    m_groupDropHandler = std::move(handler);
+}
+
+void FeatureListWidget::setGroupDragPrepare(std::function<void(int row)> prepare) {
+    m_groupDragPrepare = std::move(prepare);
+}
+
+void FeatureListWidget::startDrag(Qt::DropActions supportedActions) {
+    const int row = currentRow();
+    if (row >= 0 && isGroupListRow(row) && m_groupDragPrepare) {
+        m_groupDragPrepare(row);
+    }
+    ReorderableListWidget::startDrag(supportedActions);
+}
+
+bool FeatureListWidget::isGroupListRow(int row) const {
+    QListWidgetItem* item = this->item(row);
+    return item
+           && item->data(kFeatureListRowKindRole).toInt()
+                  == static_cast<int>(FeatureListRowKind::Group);
+}
+
 QMimeData* FeatureListWidget::buildDragMimeData(int row) const {
-    Q_UNUSED(row);
+    if (isGroupListRow(row) && m_groupDragMimeBuilder) {
+        return m_groupDragMimeBuilder(row);
+    }
     if (m_activeProfileId.isEmpty()) {
         return nullptr;
     }

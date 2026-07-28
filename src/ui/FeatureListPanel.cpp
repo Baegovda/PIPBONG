@@ -1,4 +1,6 @@
 #include "ui/FeatureListPanel.h"
+#include "ui/FeatureDragMime.h"
+#include "ui/FeatureListItemRoles.h"
 #include "ui/FeatureListWidget.h"
 #include "ui/FeatureLibraryListWidget.h"
 #include "ui/widgets/ReorderableListWidget.h"
@@ -21,7 +23,8 @@
 #include <QCursor>
 #include <QDateTime>
 #include <QElapsedTimer>
-#include <QHBoxLayout>
+#include <QItemSelection>
+#include <QItemSelectionModel>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
@@ -56,15 +59,10 @@
 #include <cmath>
 namespace {
 
-enum class FeatureListRowKind {
-    Feature = 0,
-    Group = 1,
-};
-
-constexpr int kListRowKindRole = Qt::UserRole + 20;
-constexpr int kFeatureIndexRole = Qt::UserRole + 21;
-constexpr int kGroupIdRole = Qt::UserRole + 22;
-constexpr int kGroupMemberCountRole = Qt::UserRole + 23;
+constexpr int kListRowKindRole = kFeatureListRowKindRole;
+constexpr int kFeatureIndexRole = kFeatureListFeatureIndexRole;
+constexpr int kGroupIdRole = kFeatureListGroupIdRole;
+constexpr int kGroupMemberCountRole = kFeatureListGroupMemberCountRole;
 constexpr int kRowSeparatorHeight = 1;
 constexpr int kSelectionBarWidth = 3;
 constexpr int kFeatureIdRole = Qt::UserRole;
@@ -679,50 +677,80 @@ void paintFeatureListGroupRow(QPainter* painter,
                               const QString& groupName,
                               int memberCount,
                               const QPalette& palette) {
-    QColor rowBg = palette.color(QPalette::AlternateBase);
+    QColor rowBg = palette.color(QPalette::Button);
+    if (darkThemeFromPalette(palette)) {
+        rowBg = rowBg.darker(108);
+    }
     if (selected) {
         const QColor highlight = palette.color(QPalette::Highlight);
-        rowBg = QColor(rowBg.red() + (highlight.red() - rowBg.red()) / 5,
-                       rowBg.green() + (highlight.green() - rowBg.green()) / 5,
-                       rowBg.blue() + (highlight.blue() - rowBg.blue()) / 5);
+        rowBg = QColor(rowBg.red() + (highlight.red() - rowBg.red()) / 4,
+                       rowBg.green() + (highlight.green() - rowBg.green()) / 4,
+                       rowBg.blue() + (highlight.blue() - rowBg.blue()) / 4);
     } else if (hovered) {
         rowBg = UiHoverFeedback::blendListRowHover(palette);
     }
     painter->fillRect(rect, rowBg);
 
+    const QColor accent = palette.color(QPalette::Highlight);
     if (selected) {
-        painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()),
-                          palette.color(QPalette::Highlight));
+        painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()), accent);
+    } else {
+        QColor bar = accent;
+        bar.setAlpha(120);
+        painter->fillRect(QRect(rect.left(), rect.top(), kSelectionBarWidth, rect.height()), bar);
     }
 
-    const QColor muted = featureListMutedTextColor(palette);
-    QColor accent = palette.color(QPalette::Highlight);
-    accent.setAlpha(selected ? 200 : 140);
-    painter->fillRect(QRect(rect.left() + kSelectionBarWidth, rect.top(), 2, rect.height()), accent);
-
-    const int chevronW = 14;
-    const QRect chevronRect(rect.left() + kSelectionBarWidth + 6, rect.top(), chevronW, rect.height());
-    painter->setPen(muted);
+    const int chevronW = kFeatureListGroupChevronWidthPx;
+    const QRect chevronRect(rect.left() + kSelectionBarWidth + 4,
+                            rect.top(),
+                            chevronW,
+                            rect.height());
+    QColor chevronFill = accent;
+    chevronFill.setAlpha(hovered || selected ? 200 : 150);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(chevronFill);
+    painter->drawRoundedRect(chevronRect.adjusted(2, 4, -2, -4), 4, 4);
+    painter->setPen(selected ? palette.color(QPalette::HighlightedText) : palette.color(QPalette::ButtonText));
     QFont chevronFont = painter->font();
-    chevronFont.setPixelSize(11);
+    chevronFont.setPixelSize(12);
     chevronFont.setBold(true);
     painter->setFont(chevronFont);
     painter->drawText(chevronRect, Qt::AlignCenter, collapsed ? QStringLiteral("▸") : QStringLiteral("▾"));
 
-    const QRect textRect = rect.adjusted(kSelectionBarWidth + chevronW + 8, 0, -8, 0);
+    const int badgeLeft = chevronRect.right() + 6;
+    const QRect badgeRect(badgeLeft, rect.center().y() - 9, 42, 18);
+    QColor badgeBg = accent;
+    badgeBg.setAlpha(90);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(badgeBg);
+    painter->drawRoundedRect(badgeRect, 4, 4);
+    QFont badgeFont = painter->font();
+    badgeFont.setPixelSize(10);
+    badgeFont.setBold(true);
+    painter->setFont(badgeFont);
+    painter->setPen(accent);
+    painter->drawText(badgeRect, Qt::AlignCenter, QStringLiteral("묶음"));
+
+    const QRect textRect = rect.adjusted(badgeRect.right() + 8, 0, -8, 0);
     QFont titleFont = painter->font();
     titleFont.setBold(true);
+    titleFont.setPixelSize(qMax(11, titleFont.pixelSize()));
     painter->setFont(titleFont);
     painter->setPen(primaryContentTextColor(palette, selected));
-    const QString title =
-        QStringLiteral("%1  (%2)").arg(groupName).arg(memberCount);
-    painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, title);
+    const QString countSuffix =
+        collapsed && memberCount > 0
+            ? QStringLiteral(" · %1 · 접힘").arg(memberCount)
+            : QStringLiteral(" · %1").arg(memberCount);
+    const QFontMetrics fm(titleFont);
+    const QString elidedName =
+        fm.elidedText(groupName, Qt::ElideRight, textRect.width() - fm.horizontalAdvance(countSuffix));
+    painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, elidedName + countSuffix);
 
     QColor separator = palette.color(QPalette::Mid);
     if (darkThemeFromPalette(palette) && separator.lightness() < 90) {
         separator = separator.lighter(130);
     }
-    separator.setAlpha(50);
+    separator.setAlpha(55);
     painter->fillRect(QRect(rect.left(), rect.bottom(), rect.width(), kRowSeparatorHeight), separator);
 }
 
@@ -987,16 +1015,20 @@ public:
             return;
         }
 
-        const FeatureListColumnRects cols = featureListColumnRects(opt.rect, m_panel->columnLayout());
         const QString featureId = index.data(kFeatureIdRole).toString();
         const QString featureName = index.data(kFeatureNameRole).toString();
+        const Feature* feature = m_panel->projectFeatureById(featureId);
+        int groupIndent = 0;
+        if (feature && !feature->groupId().empty()) {
+            groupIndent = kFeatureListGroupIndentPx;
+        }
+        const QRect rowRect = opt.rect.adjusted(groupIndent, 0, 0, 0);
+        const FeatureListColumnRects cols = featureListColumnRects(rowRect, m_panel->columnLayout());
         QString modeText = index.data(kRunModeDisplayRole).toString();
+        const bool featureEnabled = feature ? feature->enabled() : true;
         const HotkeyBinding hotkeyBinding = hotkeyBindingFromIndex(index);
         const bool hasHotkey = !hotkeyBinding.isEmpty();
         const bool isRunning = m_panel->isFeatureRunning(featureId);
-        const Feature* feature =
-            m_panel->projectFeatureById(featureId);
-        const bool featureEnabled = feature ? feature->enabled() : true;
         const FeatureListWidget* listWidget = qobject_cast<const FeatureListWidget*>(opt.widget);
         const bool isDragSource = listWidget && listWidget->dragSourceRow() == index.row();
         const bool selected = opt.state & QStyle::State_Selected;
@@ -1252,6 +1284,17 @@ void FeatureListPanel::setupUi() {
     buttonRow->addWidget(m_editButton);
     buttonRow->addWidget(m_removeButton);
 
+    m_listHintLabel = new QLabel(
+        tr("묶음 줄 클릭 → 펼치기/접기 · 기능 드래그 → 순서 변경 · 묶음 줄에 놓기 → 묶음에 추가"),
+        group);
+    m_listHintLabel->setObjectName(QStringLiteral("featureListHint"));
+    m_listHintLabel->setWordWrap(true);
+    {
+        QPalette hintPal = m_listHintLabel->palette();
+        hintPal.setColor(QPalette::WindowText, secondaryHintTextColor(hintPal));
+        m_listHintLabel->setPalette(hintPal);
+    }
+
     auto* tableFrame = new QFrame(group);
     tableFrame->setObjectName(QStringLiteral("featureListTableFrame"));
     tableFrame->setFrameShape(QFrame::NoFrame);
@@ -1273,7 +1316,21 @@ void FeatureListPanel::setupUi() {
     m_list->setContextMenuPolicy(Qt::CustomContextMenu);
     m_list->setSpacing(0);
     m_list->setItemDelegate(new FeatureListItemDelegate(this));
-    m_list->setRowDragEnabledPredicate([this](int row) { return isFeatureEditableAtListRow(row); });
+    m_list->setToolTip(
+        tr("클릭: 묶음 펼치기/접기 · 드래그: 순서 변경 · 묶음 줄에 놓기: 그 묶음에 넣기"));
+    m_list->setRowDragEnabledPredicate([this](int row) {
+        return isFeatureEditableAtListRow(row) || (isGroupListRow(row) && m_project
+                                                   && !featureIndicesInGroup(
+                                                          m_list->item(row)->data(kGroupIdRole)
+                                                              .toString()
+                                                              .toStdString())
+                                                          .empty());
+    });
+    m_list->setGroupDragMimeBuilder([this](int row) { return buildGroupDragMimeData(row); });
+    m_list->setGroupDragPrepare([this](int row) { prepareGroupDragSelection(row); });
+    m_list->setGroupDropHandler([this](int row, const QMimeData* mime) {
+        return handleGroupDrop(row, mime);
+    });
     connect(m_list, &FeatureListWidget::featureRowsReordered, this, &FeatureListPanel::onFeatureRowsReordered);
     connect(m_list, &ReorderableListWidget::multiRowsReordered, this, &FeatureListPanel::onFeatureMultiRowsReordered);
     connect(m_list, &FeatureListWidget::featureDropped, this, [this](const QMimeData* mime, int insertListRow) {
@@ -1401,6 +1458,7 @@ void FeatureListPanel::setupUi() {
             &FeatureListPanel::onRemoveLibraryEntries);
 
     groupLayout->addLayout(buttonRow);
+    groupLayout->addWidget(m_listHintLabel);
     groupLayout->addWidget(m_featureLibrarySplitter, 1);
     outerLayout->addWidget(group);
 
@@ -2168,6 +2226,12 @@ bool FeatureListPanel::eventFilter(QObject* watched, QEvent* event) {
                     if (m_deferredRunTimer) {
                         m_deferredRunTimer->start();
                     }
+                    return true;
+                }
+                if (isGroupListRow(row) && !ReorderableListWidget::isAnyListDragActive()) {
+                    const QString groupId = item->data(kGroupIdRole).toString();
+                    setGroupCollapsed(groupId, !isGroupCollapsed(groupId));
+                    refresh();
                     return true;
                 }
             }
@@ -3099,7 +3163,141 @@ void FeatureListPanel::configureGroupListItem(QListWidgetItem* item,
     item->setData(kFeatureNameRole, groupName);
     item->setData(kGroupMemberCountRole, memberCount);
     item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-    item->setToolTip(tr("묶음: %1 (%2개 기능)\n더블클릭 또는 클릭으로 접기/펼치기").arg(groupName).arg(memberCount));
+    item->setToolTip(tr("묶음 «%1» (%2개)\n클릭: 펼치기/접기 · 기능을 이 줄에 놓으면 묶음에 추가 · 드래그: 묶음 전체 이동")
+                           .arg(groupName)
+                           .arg(memberCount));
+}
+
+std::vector<int> FeatureListPanel::featureIndicesInGroup(const std::string& groupId) const {
+    std::vector<int> indices;
+    if (!m_project || groupId.empty()) {
+        return indices;
+    }
+    for (int i = 0; i < static_cast<int>(m_project->features().size()); ++i) {
+        Feature* feature = m_project->featureAt(i);
+        if (feature && feature->groupId() == groupId) {
+            indices.push_back(i);
+        }
+    }
+    return indices;
+}
+
+void FeatureListPanel::moveFeatureIndicesIntoGroup(const std::vector<int>& indices,
+                                                   const std::string& groupId) {
+    if (!m_project || groupId.empty() || indices.empty()) {
+        return;
+    }
+    int insertAt = 0;
+    for (int i = 0; i < static_cast<int>(m_project->features().size()); ++i) {
+        Feature* feature = m_project->featureAt(i);
+        if (feature && feature->groupId() == groupId) {
+            insertAt = i + 1;
+        }
+    }
+    m_project->moveFeatures(indices, insertAt);
+}
+
+bool FeatureListPanel::handleGroupDrop(int listRow, const QMimeData* mime) {
+    if (!m_project || !isGroupListRow(listRow) || !FeatureDragMime::accepts(mime)) {
+        return false;
+    }
+    const FeatureDragMime::Payload payload = FeatureDragMime::parse(mime);
+    if (!payload.isValid() || payload.source != FeatureDragMime::Source::Profile) {
+        return false;
+    }
+    if (payload.profileId != m_activeProfileId) {
+        return false;
+    }
+    QListWidgetItem* groupItem = m_list->item(listRow);
+    if (!groupItem) {
+        return false;
+    }
+    const QString groupId = groupItem->data(kGroupIdRole).toString();
+    if (groupId.isEmpty() || !m_project->featureGroupById(groupId.toStdString())) {
+        return false;
+    }
+    const std::string groupIdStd = groupId.toStdString();
+    std::vector<int> indices;
+    for (const QString& id : payload.allIds()) {
+        Feature* feature = m_project->featureById(id.toStdString());
+        if (!feature) {
+            continue;
+        }
+        for (int i = 0; i < static_cast<int>(m_project->features().size()); ++i) {
+            if (m_project->featureAt(i) == feature) {
+                indices.push_back(i);
+                break;
+            }
+        }
+    }
+    if (indices.empty()) {
+        return false;
+    }
+    std::sort(indices.begin(), indices.end());
+    indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+
+    emit mutationAboutToCommit(QStringLiteral("feature-group-assign-drop"));
+    for (int index : indices) {
+        if (Feature* feature = m_project->featureAt(index)) {
+            feature->setGroupId(groupIdStd);
+        }
+    }
+    moveFeatureIndicesIntoGroup(indices, groupIdStd);
+    setGroupCollapsed(groupId, false);
+    emit projectModified();
+    refresh();
+    return true;
+}
+
+QMimeData* FeatureListPanel::buildGroupDragMimeData(int listRow) const {
+    if (!m_list || !m_project || !isGroupListRow(listRow) || m_activeProfileId.isEmpty()) {
+        return nullptr;
+    }
+    const QString groupId = m_list->item(listRow)->data(kGroupIdRole).toString();
+    const std::vector<int> indices = featureIndicesInGroup(groupId.toStdString());
+    if (indices.empty()) {
+        return nullptr;
+    }
+    QStringList ids;
+    for (int index : indices) {
+        if (Feature* feature = m_project->featureAt(index)) {
+            ids.push_back(QString::fromStdString(feature->id()));
+        }
+    }
+    if (ids.isEmpty()) {
+        return nullptr;
+    }
+    FeatureDragMime::Payload payload;
+    payload.source = FeatureDragMime::Source::Profile;
+    payload.ids = ids;
+    payload.id = ids.first();
+    payload.profileId = m_activeProfileId;
+    return FeatureDragMime::createMimeData(payload);
+}
+
+void FeatureListPanel::prepareGroupDragSelection(int groupListRow) {
+    if (!m_list || !m_project || !isGroupListRow(groupListRow)) {
+        return;
+    }
+    const QString groupId = m_list->item(groupListRow)->data(kGroupIdRole).toString();
+    QItemSelection selection;
+    for (int row = 0; row < m_list->count(); ++row) {
+        const int featureIndex = featureIndexForListRow(row);
+        if (featureIndex < 0) {
+            continue;
+        }
+        Feature* feature = m_project->featureAt(featureIndex);
+        if (!feature || QString::fromStdString(feature->groupId()) != groupId) {
+            continue;
+        }
+        const QModelIndex idx = m_list->model()->index(row, 0);
+        selection.select(idx, idx);
+    }
+    if (selection.isEmpty()) {
+        return;
+    }
+    m_list->selectionModel()->select(selection, QItemSelectionModel::ClearAndSelect);
+    m_list->setCurrentRow(groupListRow);
 }
 
 void FeatureListPanel::assignSelectedFeaturesToGroup(const std::string& groupId) {

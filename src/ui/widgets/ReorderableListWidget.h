@@ -50,6 +50,11 @@ protected:
     int dropInsertionIndex(const QPoint& pos) const;
     int dropTargetRow(const QPoint& pos) const;
 
+    /// Clears drop chrome and accepts an external drop (subclass dropEvent shortcuts).
+    void finishAcceptedExternalDrop(QDropEvent* event, const QMimeData* mime, int insertIndex);
+
+    void clearActiveDropChrome();
+
 private:
     int insertionLineY(int insertionIndex) const;
     void updateDropIndicator();

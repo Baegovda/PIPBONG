@@ -10,6 +10,7 @@
 
 class QListWidgetItem;
 class QMimeData;
+class QLabel;
 class QPushButton;
 class QListWidget;
 class QToolButton;
@@ -238,6 +239,11 @@ private:
     int countFeaturesInGroup(const std::string& groupId) const;
     void assignSelectedFeaturesToGroup(const std::string& groupId);
     void showGroupContextMenu(QListWidgetItem* item, const QPoint& globalPos);
+    bool handleGroupDrop(int listRow, const QMimeData* mime);
+    QMimeData* buildGroupDragMimeData(int listRow) const;
+    void prepareGroupDragSelection(int groupListRow);
+    std::vector<int> featureIndicesInGroup(const std::string& groupId) const;
+    void moveFeatureIndicesIntoGroup(const std::vector<int>& indices, const std::string& groupId);
 
     bool editFeatureAt(int index);
 
@@ -287,6 +293,7 @@ private:
     QPushButton* m_addButton = nullptr;
 
     QPushButton* m_groupButton = nullptr;
+    QLabel* m_listHintLabel = nullptr;
 
     QPushButton* m_removeButton = nullptr;
 
