@@ -2298,25 +2298,18 @@ void FeatureListPanel::onFeatureRowsReordered(int fromRow, int toRow) {
         toIndex = featureInsertIndexForListRow(toRow);
     }
     QString keepId;
-    QString groupToConsolidate;
     if (fromIndex >= 0) {
         if (Feature* feature = m_project->featureAt(fromIndex)) {
             keepId = QString::fromStdString(feature->id());
-            if (!feature->groupId().empty()) {
-                groupToConsolidate = QString::fromStdString(feature->groupId());
-            }
         }
     }
     if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex) {
         emit mutationAboutToCommit(QStringLiteral("feature-reorder"));
         m_project->moveFeature(fromIndex, toIndex);
         if (!keepId.isEmpty()) {
-            FeatureGroupMutation::clearIsolatedMembership(*m_project, {fromIndex});
-        }
-        if (!groupToConsolidate.isEmpty()) {
-            FeatureGroupMutation::consolidateGroup(*m_project,
-                                                   groupToConsolidate.toStdString(),
-                                                   groupMutationSkipFeatureIds());
+            FeatureGroupMutation::afterFeaturesReordered(*m_project,
+                                                         {keepId.toStdString()},
+                                                         groupMutationSkipFeatureIds());
         }
         emit projectModified();
     }
@@ -2335,7 +2328,6 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
     }
     std::vector<int> featureIndices;
     QStringList movedIds;
-    QSet<QString> groupsToConsolidate;
     featureIndices.reserve(static_cast<size_t>(selectedRows.size()));
     for (int row : selectedRows) {
         const int index = featureIndexForListRow(row);
@@ -2345,9 +2337,6 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
         featureIndices.push_back(index);
         if (Feature* feature = m_project->featureAt(index)) {
             movedIds.push_back(QString::fromStdString(feature->id()));
-            if (!feature->groupId().empty()) {
-                groupsToConsolidate.insert(QString::fromStdString(feature->groupId()));
-            }
         }
     }
     if (featureIndices.empty()) {
@@ -2357,12 +2346,13 @@ void FeatureListPanel::onFeatureMultiRowsReordered(const QList<int>& selectedRow
     const int insertIndex = featureInsertIndexForListRow(insertListIndex);
     emit mutationAboutToCommit(QStringLiteral("feature-reorder-multi"));
     m_project->moveFeatures(featureIndices, insertIndex);
-    FeatureGroupMutation::clearIsolatedMembership(*m_project, featureIndices);
-    for (const QString& groupId : groupsToConsolidate) {
-        FeatureGroupMutation::consolidateGroup(*m_project,
-                                               groupId.toStdString(),
-                                               groupMutationSkipFeatureIds());
+    std::vector<std::string> movedFeatureIds;
+    for (const QString& id : movedIds) {
+        movedFeatureIds.push_back(id.toStdString());
     }
+    FeatureGroupMutation::afterFeaturesReordered(*m_project,
+                                               movedFeatureIds,
+                                               groupMutationSkipFeatureIds());
     emit projectModified();
     refresh();
     if (m_list && !movedIds.isEmpty()) {

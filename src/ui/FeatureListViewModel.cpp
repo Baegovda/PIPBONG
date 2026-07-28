@@ -1,42 +1,70 @@
-#include "ui/FeatureListViewModel.h"
+#include "FeatureListViewModel.h"
 
-#include "model/FeatureGroupMutation.h"
+#include "model/Feature.h"
+#include "model/FeatureGroup.h"
+#include "model/Project.h"
+
+#include <QSet>
+
+namespace {
+
+const FeatureGroup* findGroup(const Project& project, const std::string& groupId) {
+    if (groupId.empty()) {
+        return nullptr;
+    }
+    for (const FeatureGroup& group : project.featureGroups()) {
+        if (group.id() == groupId) {
+            return &group;
+        }
+    }
+    return nullptr;
+}
+
+int countMembersInGroup(const Project& project, const std::string& groupId) {
+    int count = 0;
+    for (const auto& feature : project.features()) {
+        if (feature && feature->groupId() == groupId) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+} // namespace
 
 std::vector<FeatureListViewRow> FeatureListViewModel::buildRows(const Project& project,
                                                                 const QSet<QString>& collapsedGroupIds) {
     std::vector<FeatureListViewRow> rows;
-    const int featureCount = static_cast<int>(project.features().size());
-    for (int featureIndex = 0; featureIndex < featureCount; ++featureIndex) {
-        const Feature* feature = project.featureAt(featureIndex);
+    if (project.features().empty()) {
+        return rows;
+    }
+    QSet<QString> groupHeaderShown;
+    for (int i = 0; i < static_cast<int>(project.features().size()); ++i) {
+        const Feature* feature = project.featureAt(i);
         if (!feature) {
             continue;
         }
-        const std::string& groupId = feature->groupId();
+        const std::string groupId = feature->groupId();
         if (!groupId.empty()) {
-            const Feature* previousFeature =
-                featureIndex > 0 ? project.featureAt(featureIndex - 1) : nullptr;
-            const bool newGroupSegment =
-                featureIndex == 0 || !previousFeature
-                || previousFeature->groupId() != groupId;
-            if (newGroupSegment) {
-                const FeatureGroup* group = project.featureGroupById(groupId);
-                if (group) {
+            const QString groupIdQString = QString::fromStdString(groupId);
+            if (!groupHeaderShown.contains(groupIdQString)) {
+                if (findGroup(project, groupId)) {
                     FeatureListViewRow header;
                     header.kind = FeatureListRowKind::Group;
-                    header.groupId = QString::fromStdString(groupId);
-                    header.groupMemberCount =
-                        static_cast<int>(FeatureGroupMutation::indicesInGroup(project, groupId).size());
+                    header.groupId = groupIdQString;
+                    header.groupMemberCount = countMembersInGroup(project, groupId);
                     rows.push_back(header);
                 }
+                groupHeaderShown.insert(groupIdQString);
             }
-            if (collapsedGroupIds.contains(QString::fromStdString(groupId))) {
+            if (collapsedGroupIds.contains(groupIdQString)) {
                 continue;
             }
         }
 
         FeatureListViewRow row;
         row.kind = FeatureListRowKind::Feature;
-        row.featureIndex = featureIndex;
+        row.featureIndex = i;
         rows.push_back(row);
     }
     return rows;

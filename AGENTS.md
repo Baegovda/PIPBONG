@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.360` (from `project(PIPBONG VERSION 0.8.360)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.361` (from `project(PIPBONG VERSION 0.8.361)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1592,6 +1592,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.361] - 2026-07-29
+
+### Changed
+
+- Feature list **그룹** layout: `FeatureGroupMutation::afterFeaturesReordered` runs after drag-reorder (feature ids, not stale indices); `consolidateGroup` moves only non-skipped members so workflow-burst locks do not block entire group consolidation (`FeatureGroupMutation`, `FeatureListPanel`).
+- `FeatureListViewModel::buildRows` emits one group header per `groupId` even when members are temporarily non-contiguous during runs (`FeatureListViewModel`).
+
+### Fixed
+
+- Single/multi feature list reorder no longer clears isolated membership or consolidates using pre-move project indices (`FeatureListPanel::onFeatureRowsReordered`, `onFeatureMultiRowsReordered`).
+
+### Added
+
+- `FeatureGroupLayoutSim` scenarios for partial consolidate with skip ids and post-reorder repair (`FeatureGroupLayoutSim`).
 
 ## [0.8.360] - 2026-07-29
 

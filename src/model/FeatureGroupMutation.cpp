@@ -62,16 +62,20 @@ bool consolidateGroup(Project& project,
     if (indices.size() <= 1) {
         return false;
     }
-  for (int index : indices) {
-        if (indexBlocked(project, index, skipFeatureIds)) {
-            return false;
+    std::vector<int> movable;
+    for (int index : indices) {
+        if (!indexBlocked(project, index, skipFeatureIds)) {
+            movable.push_back(index);
         }
     }
-    std::sort(indices.begin(), indices.end());
-    if (isGroupContiguous(project, groupId)) {
+    if (movable.size() <= 1) {
         return false;
     }
-    project.moveFeatures(indices, indices.front());
+    std::sort(movable.begin(), movable.end());
+    if (movable.back() - movable.front() + 1 == static_cast<int>(movable.size())) {
+        return false;
+    }
+    project.moveFeatures(movable, movable.front());
     return true;
 }
 
@@ -196,6 +200,36 @@ bool renameGroup(Project& project, const std::string& groupId, const std::string
     }
     group->setName(newName);
     return true;
+}
+
+void afterFeaturesReordered(Project& project,
+                            const std::vector<std::string>& movedFeatureIds,
+                            const std::set<std::string>& skipFeatureIds) {
+    if (movedFeatureIds.empty()) {
+        return;
+    }
+    std::vector<int> currentIndices;
+    std::set<std::string> touchedGroupIds;
+    for (const std::string& featureId : movedFeatureIds) {
+        for (int i = 0; i < static_cast<int>(project.features().size()); ++i) {
+            Feature* feature = project.featureAt(i);
+            if (!feature || feature->id() != featureId) {
+                continue;
+            }
+            currentIndices.push_back(i);
+            if (!feature->groupId().empty()) {
+                touchedGroupIds.insert(feature->groupId());
+            }
+            break;
+        }
+    }
+    if (currentIndices.empty()) {
+        return;
+    }
+    clearIsolatedMembership(project, currentIndices);
+    for (const std::string& groupId : touchedGroupIds) {
+        consolidateGroup(project, groupId, skipFeatureIds);
+    }
 }
 
 void clearIsolatedMembership(Project& project, const std::vector<int>& featureIndices) {

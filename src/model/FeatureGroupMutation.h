@@ -44,4 +44,9 @@ bool repairOnLoad(Project& project);
 /// Remove groupId when feature has no adjacent sibling in the same group (project index adjacency).
 void clearIsolatedMembership(Project& project, const std::vector<int>& featureIndices);
 
+/// After list reorder: resolve indices by feature id, clear isolated membership, consolidate touched groups.
+void afterFeaturesReordered(Project& project,
+                            const std::vector<std::string>& movedFeatureIds,
+                            const std::set<std::string>& skipFeatureIds = {});
+
 } // namespace FeatureGroupMutation
