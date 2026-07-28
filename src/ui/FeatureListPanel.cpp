@@ -2438,6 +2438,9 @@ void FeatureListPanel::setActiveProfileId(const QString& profileId) {
     if (m_list) {
         m_list->setActiveProfileId(profileId);
     }
+    if (m_project) {
+        refresh();
+    }
 }
 
 void FeatureListPanel::setListDragEnabled(bool enabled) {

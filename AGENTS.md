@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.359` (from `project(PIPBONG VERSION 0.8.359)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.360` (from `project(PIPBONG VERSION 0.8.360)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1514,6 +1514,19 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 | **Shipped fix** | **v0.8.359:** `FeatureGroupMutation` (assign moves + consolidate); `FeatureListViewModel`; load-only `repairOnLoad`; `FeatureGroupLayoutSim`; consolidate skips only active **workflow burst** feature ids |
 | **Key symbols** | `FeatureGroupMutation::assignToGroup`, `FeatureListViewModel::buildRows`, `groupMutationSkipFeatureIds`, `repairOnLoad` |
 
+#### Startup white screen / exit after v0.8.359 groups
+
+**Date:** 2026-07-29 · **Shipped:** v0.8.360 · **Pattern:** [§8.19](#819-feature-list-groups-mandatory--do-not-regress)
+
+| | |
+| - | - |
+| **Symptom** | F5/start → **응답 없음** → white main window → process exits; `live-session/latest.log` has session header only |
+| **Misdiagnosis** | Hang watchdog / crash report dialog alone; stale build without recompile |
+| **Failed approaches (do not retry)** | Assume log will show GUI_HANG without fixing list build path |
+| **Root cause** | `buildRows` used `project.features()[i-1]->groupId()` without null guard — access violation when a prior feature slot is null |
+| **Shipped fix** | **v0.8.360:** `featureAt(i-1)` null check; `setActiveProfileId` refreshes list after collapsed-group settings load |
+| **Key symbols** | `FeatureListViewModel::buildRows`, `FeatureListPanel::setActiveProfileId` |
+
 ---
 
 ## 10. Versioning Policy
@@ -1579,6 +1592,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.360] - 2026-07-29
+
+### Fixed
+
+- Startup crash / white window after v0.8.359 feature groups: `FeatureListViewModel::buildRows` no longer dereferences a null previous feature when deciding group headers (`FeatureListViewModel`).
+- Profile load applies saved collapsed-group state before the feature list is shown (`FeatureListPanel::setActiveProfileId` refresh after `loadCollapsedGroupState`).
 
 ## [0.8.359] - 2026-07-28
 

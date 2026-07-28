@@ -2550,7 +2550,6 @@ void MainWindow::onNewProject() {
     if (m_profileManager) {
         m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
     }
-    m_featureList->refresh();
     onFeatureSelectionChanged();
     m_modified = false;
     updateWindowTitle();

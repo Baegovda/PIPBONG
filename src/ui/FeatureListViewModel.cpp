@@ -13,9 +13,11 @@ std::vector<FeatureListViewRow> FeatureListViewModel::buildRows(const Project& p
         }
         const std::string& groupId = feature->groupId();
         if (!groupId.empty()) {
+            const Feature* previousFeature =
+                featureIndex > 0 ? project.featureAt(featureIndex - 1) : nullptr;
             const bool newGroupSegment =
-                featureIndex == 0
-                || project.features()[featureIndex - 1]->groupId() != groupId;
+                featureIndex == 0 || !previousFeature
+                || previousFeature->groupId() != groupId;
             if (newGroupSegment) {
                 const FeatureGroup* group = project.featureGroupById(groupId);
                 if (group) {
