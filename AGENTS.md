@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.351` (from `project(PIPBONG VERSION 0.8.351)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.352` (from `project(PIPBONG VERSION 0.8.352)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1548,6 +1548,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.352] - 2026-07-28
+
+### Fixed
+
+- False **응답 없음** hang reports during the first ~20 s after launch when the GUI thread is blocked on Win32 DirectWrite / Qt font metrics during initial layout (`CrashReporter::installGuiHangWatchdog` startup grace).
+- Feature list drag **묶음** pulse animation repaints only the hovered group row when no features are running (`FeatureListPanel::onAnimationTick`).
 
 ## [0.8.351] - 2026-07-28
 

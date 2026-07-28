@@ -2402,8 +2402,18 @@ void FeatureListPanel::onLibrarySelectionChanged() {
 
 void FeatureListPanel::onAnimationTick() {
     m_animPhase = (m_animPhase + 1) % 96;
-    if (m_list && m_list->viewport()) {
-        m_list->viewport()->update();
+    if (!m_list || !m_list->viewport()) {
+        return;
+    }
+    QWidget* viewport = m_list->viewport();
+    if (m_listDragChromeActive && m_list->groupDropHoverRow() >= 0) {
+        const int row = m_list->groupDropHoverRow();
+        if (QListWidgetItem* item = m_list->item(row)) {
+            viewport->update(m_list->visualItemRect(item));
+        }
+    }
+    if (!m_runningFeatureIds.isEmpty() && !m_runAnimationLowCpu) {
+        viewport->update();
     }
 }
 void FeatureListPanel::setActiveProfileId(const QString& profileId) {

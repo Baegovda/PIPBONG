@@ -57,6 +57,7 @@ constexpr int kGuiContextRefreshIntervalMs = 2000;
 constexpr int kGuiHangWatchdogPollMs = 250;
 constexpr int kGuiHangThresholdMs = 2000;
 constexpr int kGuiHangRecoverMs = 2500;
+constexpr int kGuiHangStartupGraceMs = 20000;
 constexpr int kWorkerStaleThresholdMs = 15000;
 constexpr wchar_t kPendingFileName[] = L"pending.txt";
 constexpr wchar_t kCrashReportViewerArg[] = L"--crash-report";
@@ -75,6 +76,7 @@ std::atomic<qint64> g_lastGuiHeartbeatMs{0};
 std::atomic<qint64> g_lastContextRefreshMs{0};
 std::atomic<bool> g_guiHangReported{false};
 std::atomic<bool> g_guiHangWatchdogStop{false};
+std::atomic<qint64> g_guiHangGraceUntilMs{0};
 std::atomic<unsigned long> g_mainThreadId{0};
 PVOID g_vectoredExceptionHandle = nullptr;
 
@@ -490,6 +492,9 @@ void guiHangWatchdogThreadMain() {
             continue;
         }
         if (silentMs >= kGuiHangThresholdMs) {
+            if (now < g_guiHangGraceUntilMs.load()) {
+                continue;
+            }
             reportGuiThreadHang(silentMs);
         }
     }
@@ -1098,6 +1103,7 @@ void CrashReporter::installGuiHangWatchdog() {
     }
 
     g_mainThreadId.store(GetCurrentThreadId());
+    g_guiHangGraceUntilMs.store(QDateTime::currentMSecsSinceEpoch() + kGuiHangStartupGraceMs);
     touchGuiHeartbeat();
 
     auto* heartbeatTimer = new QTimer(app);
