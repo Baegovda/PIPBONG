@@ -84,6 +84,7 @@ void ExecutionContext::setWorkerFastRepeatCallbacks(WorkerFastRepeatCallbacks ca
 
 void ExecutionContext::clearWorkerFastRepeatCallbacks() {
     m_workerFastRepeat.reset();
+    m_workerRepeatRemaining.store(0, std::memory_order_relaxed);
 }
 
 bool ExecutionContext::hasWorkerFastRepeat() const {
@@ -114,6 +115,18 @@ int ExecutionContext::workerFastRepeatDelayMs() const {
 
 void ExecutionContext::prepareNextWorkerRepeatIteration() {
     resetStop();
+}
+
+void ExecutionContext::setWorkerRepeatRemaining(int count) {
+    m_workerRepeatRemaining.store(count, std::memory_order_relaxed);
+}
+
+int ExecutionContext::workerRepeatRemaining() const {
+    return m_workerRepeatRemaining.load(std::memory_order_relaxed);
+}
+
+void ExecutionContext::decrementWorkerRepeatRemainingAfterSuccess() {
+    m_workerRepeatRemaining.fetch_sub(1, std::memory_order_relaxed);
 }
 
 void ExecutionContext::requestStop() {

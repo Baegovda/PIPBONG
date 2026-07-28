@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.365` (from `project(PIPBONG VERSION 0.8.365)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.366` (from `project(PIPBONG VERSION 0.8.366)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1325,7 +1325,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | ----- | ---- | ------ | --------------------------- | ----- |
 | **R0** | Roadmap + agent gates | **Done** | 0.8.365 | This section + `.cursor/rules/architecture-stabilization-roadmap.mdc` |
 | **R1** | Policy surface completeness | **Partial** | 0.8.220+ | Expand sim; eliminate parallel MainWindow gate bools |
-| **R2** | GUI / worker boundary | **Partial** | 0.8.363 | Queued UI flush; audit remaining paths |
+| **R2** | GUI / worker boundary | **Partial** | 0.8.366 | R2.1 audit logged below; Queued engine signals; worker fast-repeat coalesce on GUI; repeat budget on `ExecutionContext`; debug GUI-thread asserts |
 | **R3** | Session-scoped capture contract | **Partial** | 0.8.277+ | Worker context HWND; reduce UI `ScreenCapture` mutation |
 | **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.362 | Document ordering; optional `HotkeyLatchController` |
 | **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | Controllers exist; `MainWindow.cpp` still large |
@@ -1364,6 +1364,17 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R2.3** Coalesced run UI | `applyRunUiState`, `updateRunUiState`, `flushWorkerFastRepeatUi`, feature-list hold refresh — single debounce/coalesce when `SessionRunPolicy::shouldCoalesceRunUiUpdates()` | Repro: 4× hold (Q/W/E/R) + trigger watch — no multi-second GUI stall; no `startTimer from another thread` in `live-session/latest.log` |
 | **R2.4** Engine teardown queue | `finishRunSession` / `abandonSessionEngine` / `schedulePruneAbandonedEngines` — never block GUI on `wait()`; bounded stop only ([§9.6](#96-regression-mistake-log-오답노트--agents-only) profile switch) | Profile switch + 4 sessions: UI responsive &lt; 1 s perceived |
 | **R2.5** Static guard (optional) | `Q_ASSERT(qApp->thread() == QThread::currentThread())` in debug builds for `applyRunUiState` entry (or `CrashReporter::noteBreadcrumb` only) | Debug build catches regressions in dev |
+
+**R2.1 signal audit (2026-07-29, v0.8.366):**
+
+| Area | Finding |
+| ---- | ------- |
+| `src` | **No** `Qt::DirectConnection` on cross-thread slots (grep clean). |
+| `MainWindow::connectSessionEngine` | All `WorkflowEngine` → `MainWindow` handlers use `Qt::QueuedConnection`. |
+| `WorkflowEngine` worker | `finished` emitted via `invokeMethod(..., QueuedConnection)`; other engine signals emitted from worker thread rely on queued connections to GUI. |
+| `HotkeyManager` | Hook thread → `emitHotkey*` via `invokeMethod(..., QueuedConnection)`. |
+| `MainWindow::configureWorkerFastRepeat` | `onIterationComplete` and foreground-gate UI updates marshaled to GUI (`QueuedConnection`); `repeatRemaining` decremented with `std::atomic`. |
+| Timers | `QTimer` / `singleShot` on `MainWindow` / `HotkeyManager` only from GUI-thread code paths (not from `WorkflowEngine` worker). |
 
 **Manual verify (required for R2 close):**
 
@@ -1897,6 +1908,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.366] - 2026-07-29
+
+### Changed
+
+- Phase **R2** GUI/worker boundary (AGENTS.md §8.21): worker fast-repeat iteration coalesce runs on GUI thread only; N회 반복 repeat budget on `ExecutionContext` (`m_workerRepeatRemaining`) with GUI sync in `flushWorkerFastRepeatUi`; debug `assertMainWindowOnGuiThread` on run-UI and engine-prune entry points (`MainWindow`, `ExecutionContext`).
+
+### Fixed
+
+- Worker fast-repeat path no longer mutates `m_fastRepeatUiCoalesce` / `sessionFor` from the workflow worker thread (`MainWindow::configureWorkerFastRepeat`).
 
 ## [0.8.365] - 2026-07-29
 

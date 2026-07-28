@@ -112,11 +112,13 @@
 #include <QToolButton>
 #include <QtConcurrent/QtConcurrent>
 #include <QUuid>
+#include <QThread>
 #include <QVector>
 #include <QVBoxLayout>
 
 #include <optional>
 
+#include <atomic>
 #include <memory>
 
 #include "model/FeatureRunMode.h"
@@ -136,6 +138,14 @@ QString diagnosticLogLevelTag(LogLineKind kind) {
     case LogLineKind::Info:
     default:
         return QStringLiteral("INFO");
+    }
+}
+
+void assertMainWindowOnGuiThread(const char* where) {
+    QCoreApplication* app = QCoreApplication::instance();
+    if (app && QThread::currentThread() != app->thread()) {
+        qWarning("MainWindow: %s called off GUI thread", where);
+        Q_ASSERT(false);
     }
 }
 
@@ -3144,6 +3154,7 @@ void MainWindow::updateRunUiState(bool immediate) {
         immediate = false;
     }
     if (immediate) {
+        assertMainWindowOnGuiThread("updateRunUiState(immediate)");
         if (m_runUiDebounceTimer) {
             m_runUiDebounceTimer->stop();
         }
@@ -3379,6 +3390,7 @@ bool MainWindow::shouldPublishFastRepeatLoopLog(const FeatureRunSession& session
 }
 
 void MainWindow::applyRunUiState() {
+    assertMainWindowOnGuiThread("applyRunUiState");
     reconcileHoldLatchForActiveHoldSessions();
     const bool burstUi = isHoldBurstActive() || shouldCoalesceRunUiUpdates();
     if (m_featureList) {
@@ -3645,6 +3657,7 @@ void MainWindow::schedulePruneAbandonedEngines() {
 }
 
 void MainWindow::pruneAbandonedEngines() {
+    assertMainWindowOnGuiThread("pruneAbandonedEngines");
     auto tryShutdownIdleEngine = [this](const std::unique_ptr<WorkflowEngine>& engine) {
         if (!engine) {
             return true;
@@ -4944,6 +4957,7 @@ void MainWindow::accumulateLoopCompletionStats(FeatureRunSession& session,
 }
 
 void MainWindow::scheduleWorkerFastRepeatUiFlush() {
+    assertMainWindowOnGuiThread("scheduleWorkerFastRepeatUiFlush");
     if (!m_workerFastRepeatUiFlushTimer) {
         return;
     }
@@ -4994,6 +5008,7 @@ void MainWindow::flushAllPendingWorkerFastRepeatUi() {
 }
 
 void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
+    assertMainWindowOnGuiThread("flushWorkerFastRepeatUi");
     FeatureRunSession* session = sessionFor(featureId);
     if (!session) {
         return;
@@ -5040,6 +5055,9 @@ void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
 
     if (session->sessionContext) {
         session->sessionContext->setRunLoopNumber(session->sessionIteration + 1);
+        if (session->runningMode == FeatureRunMode::RepeatCount) {
+            session->repeatRemaining = session->sessionContext->workerRepeatRemaining();
+        }
     }
 
     if (session->loopsSinceLastLogPublish > 0) {
@@ -5076,6 +5094,12 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
         return;
     }
 
+    if (session.runningMode == FeatureRunMode::RepeatCount) {
+        session.sessionContext->setWorkerRepeatRemaining(session.repeatRemaining);
+    } else {
+        session.sessionContext->setWorkerRepeatRemaining(0);
+    }
+
     const std::string featureId = session.featureId;
     Feature* featurePtr = feature;
     HotkeyManager* hotkeyMgr = m_hotkeyManager;
@@ -5085,32 +5109,30 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
     callbacks.delayMs = [featurePtr]() { return featurePtr->resolvedLoopIntervalMs(); };
     callbacks.onIterationComplete =
         [this, featureId](bool success, std::int64_t elapsedMs, const std::string& message) {
-            FeatureRunSession* active = sessionFor(featureId);
-            if (!active) {
-                return;
-            }
-            WorkerFastRepeatUiCoalesce& coalesce = fastRepeatUiCoalesceFor(featureId);
             const QString qMessage = QString::fromStdString(message);
-            {
-                QMutexLocker lock(&coalesce.mutex);
-                ++coalesce.pendingIterations;
-                coalesce.pendingTotalElapsedMs += elapsedMs;
-                coalesce.pendingLastSuccess = success;
-                coalesce.pendingLastElapsedMs = elapsedMs;
-                coalesce.pendingLastMessage = qMessage;
-            }
             QMetaObject::invokeMethod(
                 this,
-                [this]() { scheduleWorkerFastRepeatUiFlush(); },
+                [this, featureId, success, elapsedMs, qMessage]() {
+                    if (!sessionFor(featureId)) {
+                        return;
+                    }
+                    WorkerFastRepeatUiCoalesce& coalesce = fastRepeatUiCoalesceFor(featureId);
+                    {
+                        QMutexLocker lock(&coalesce.mutex);
+                        ++coalesce.pendingIterations;
+                        coalesce.pendingTotalElapsedMs += elapsedMs;
+                        coalesce.pendingLastSuccess = success;
+                        coalesce.pendingLastElapsedMs = elapsedMs;
+                        coalesce.pendingLastMessage = qMessage;
+                    }
+                    scheduleWorkerFastRepeatUiFlush();
+                },
                 Qt::QueuedConnection);
         };
     callbacks.shouldContinue = [this, featureId, featurePtr, hotkeyMgr, contextWeak](bool success,
                                                                                      bool detectionFailed) {
-        if (auto context = contextWeak.lock()) {
-            if (context->shouldStop()) {
-                return false;
-            }
-        } else {
+        std::shared_ptr<ExecutionContext> context = contextWeak.lock();
+        if (!context || context->shouldStop()) {
             return false;
         }
         FeatureRunSession* active = sessionFor(featureId);
@@ -5143,7 +5165,7 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
             return false;
         }
         if (success && active->runningMode == FeatureRunMode::RepeatCount && active->repeatSession) {
-            --active->repeatRemaining;
+            context->decrementWorkerRepeatRemainingAfterSuccess();
         }
 
 #ifdef _WIN32
@@ -5173,7 +5195,7 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
         case FeatureRunMode::RepeatInfinite:
             return active->repeatSession;
         case FeatureRunMode::RepeatCount:
-            return active->repeatSession && active->repeatRemaining > 0;
+            return active->repeatSession && context->workerRepeatRemaining() > 0;
         default:
             return false;
         }
@@ -6887,7 +6909,8 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
         const bool repeatPaused =
             session->repeatSession
             && (session->runningMode == FeatureRunMode::RepeatInfinite
-                || (session->runningMode == FeatureRunMode::RepeatCount && session->repeatRemaining > 0));
+                || (session->runningMode == FeatureRunMode::RepeatCount
+                    && session->repeatRemaining > 0));
         if (holdPaused || repeatPaused) {
             session->waitingForScopedTargetForeground = true;
             updateRunUiState();

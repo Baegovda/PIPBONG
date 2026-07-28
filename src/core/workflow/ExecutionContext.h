@@ -62,6 +62,11 @@ public:
     int workerFastRepeatDelayMs() const;
     void prepareNextWorkerRepeatIteration();
 
+    /// Repeat-count fast-repeat budget (worker thread); mirrors session `repeatRemaining` at configure time.
+    void setWorkerRepeatRemaining(int count);
+    int workerRepeatRemaining() const;
+    void decrementWorkerRepeatRemainingAfterSuccess();
+
     void requestStop();
     bool shouldStop() const;
     void resetStop();
@@ -218,6 +223,7 @@ private:
     bool m_pointerVisualFeedback = true;
     bool m_suppressRepeatUi = false;
     std::optional<WorkerFastRepeatCallbacks> m_workerFastRepeat;
+    std::atomic<int> m_workerRepeatRemaining{0};
     std::atomic<bool> m_stopRequested{false};
     std::atomic<bool> m_paused{false};
     int m_imageFindMaxMissAttempts = 0;
