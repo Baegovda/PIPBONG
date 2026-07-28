@@ -86,6 +86,7 @@ private:
         bool allowExtraModifiers = false;
         bool holdMode = false;
         bool buttonDown = false;
+        quint32 pendingHoldEndGeneration = 0;
     };
 
     void handleHotkey(int hotkeyId);
@@ -97,6 +98,11 @@ private:
     void recheckDeferredKeyboardHoldEnd(const std::string& featureId,
                                         quint32 generation,
                                         int attempt);
+    void scheduleDeferredMouseHoldEnd(MouseBindingEntry& entry);
+    void recheckDeferredMouseHoldEnd(const std::string& featureId,
+                                     quint32 generation,
+                                     int attempt);
+    MouseBindingEntry* mouseHoldBindingFor(const std::string& featureId);
 #ifdef _WIN32
     void installKeyboardHook();
     void uninstallKeyboardHook();

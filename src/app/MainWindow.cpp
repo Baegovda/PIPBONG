@@ -589,7 +589,7 @@ MainWindow::MainWindow(QWidget* parent)
         launchWorkflowRun(session, feature, repeat);
     };
     runHost.isHoldBindingDown = [this](const std::string& id) {
-        return m_hotkeyManager && m_hotkeyManager->isHoldBindingDown(id);
+        return m_hotkeyManager && m_hotkeyManager->reconcileHoldBindingDown(id);
     };
     runHost.featureForSession = [this](FeatureRunSession& session) {
         return featureForSession(session);
@@ -3345,6 +3345,7 @@ bool MainWindow::shouldPublishFastRepeatLoopLog(const FeatureRunSession& session
 }
 
 void MainWindow::applyRunUiState() {
+    reconcileHoldLatchForActiveHoldSessions();
     const bool burstUi = isHoldBurstActive() || shouldCoalesceRunUiUpdates();
     if (m_featureList) {
         bool suppressRunAnimation = false;
@@ -5132,8 +5133,10 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
 
         switch (active->runningMode) {
         case FeatureRunMode::Hold:
-            return active->repeatSession && active->holdRunActive && hotkeyMgr
-                   && hotkeyMgr->isHoldBindingDown(featureId);
+            if (!active->repeatSession || !active->holdRunActive || !hotkeyMgr) {
+                return false;
+            }
+            return hotkeyMgr->reconcileHoldBindingDown(featureId);
         case FeatureRunMode::RepeatInfinite:
             return active->repeatSession;
         case FeatureRunMode::RepeatCount:
@@ -5443,7 +5446,7 @@ void MainWindow::launchHoldKeyTapRun(FeatureRunSession& session, Feature* featur
                 return false;
             }
             return active->repeatSession && active->holdRunActive && hotkeyMgr
-                   && hotkeyMgr->isHoldBindingDown(featureId);
+                   && hotkeyMgr->reconcileHoldBindingDown(featureId);
         },
         context);
 }
@@ -5474,15 +5477,17 @@ void MainWindow::deferHoldSessionUiAfterStart(const std::string& featureId) {
     updateRunUiState();
 }
 
-bool MainWindow::shouldContinueRunSession(const FeatureRunSession& session, Feature* feature) const {
+bool MainWindow::shouldContinueRunSession(const FeatureRunSession& session, Feature* feature) {
     if (!feature || session.userStopRequested) {
         return false;
     }
 
     switch (session.runningMode) {
     case FeatureRunMode::Hold:
-        return session.repeatSession && session.holdRunActive && m_hotkeyManager
-               && m_hotkeyManager->isHoldBindingDown(session.featureId);
+        if (!session.repeatSession || !session.holdRunActive || !m_hotkeyManager) {
+            return false;
+        }
+        return m_hotkeyManager->reconcileHoldBindingDown(session.featureId);
     case FeatureRunMode::RepeatInfinite:
         return session.repeatSession;
     case FeatureRunMode::Trigger:
@@ -5491,6 +5496,23 @@ bool MainWindow::shouldContinueRunSession(const FeatureRunSession& session, Feat
         return session.repeatSession && session.repeatRemaining > 0;
     default:
         return false;
+    }
+}
+
+void MainWindow::reconcileHoldLatchForActiveHoldSessions() {
+    if (!m_hotkeyManager) {
+        return;
+    }
+    for (const auto& entry : m_runSessions) {
+        const FeatureRunSession& session = entry.second;
+        if (session.runningMode != FeatureRunMode::Hold || !session.holdRunActive) {
+            continue;
+        }
+        if (session.sessionContext && session.sessionContext->suppressRepeatUi()
+            && session.engine && session.engine->isRunning()) {
+            continue;
+        }
+        m_hotkeyManager->reconcileHoldBindingDown(session.featureId);
     }
 }
 
@@ -6816,7 +6838,7 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
         && !runForegroundGateActive(feature)) {
         const bool holdPaused =
             session->runningMode == FeatureRunMode::Hold && session->holdRunActive && m_hotkeyManager
-            && m_hotkeyManager->isHoldBindingDown(session->featureId);
+            && m_hotkeyManager->reconcileHoldBindingDown(session->featureId);
         const bool repeatPaused =
             session->repeatSession
             && (session->runningMode == FeatureRunMode::RepeatInfinite

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.348` (from `project(PIPBONG VERSION 0.8.348)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.349` (from `project(PIPBONG VERSION 0.8.349)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1548,6 +1548,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.349] - 2026-07-28
+
+### Fixed
+
+- Hold mode no longer keeps looping after the hotkey is released during rapid press/release: keyboard/mouse KEYUP ends hold immediately when the key is already physically up; deferred hold-end recheck forces latch clear and `hotkeyHoldEnded` after max attempts; loop continuation uses `reconcileHoldBindingDown` (physical vs hook latch); periodic reconcile on run UI updates when not in fast-repeat worker (`HotkeyManager`, `MainWindow`).
 
 ## [0.8.348] - 2026-07-28
 

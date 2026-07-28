@@ -546,7 +546,53 @@ void HotkeyManager::recheckDeferredKeyboardHoldEnd(const std::string& featureId,
         });
         return;
     }
+    // Hook already saw KEYUP; do not leave latch stuck when async state lags (rapid press/release).
+    entry->keyDown = false;
     entry->pendingHoldEndGeneration = 0;
+    emitHotkeyHoldEnded(featureId);
+}
+
+HotkeyManager::MouseBindingEntry* HotkeyManager::mouseHoldBindingFor(const std::string& featureId) {
+    for (MouseBindingEntry& entry : m_mouseBindings) {
+        if (entry.holdMode && entry.featureId == featureId) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+void HotkeyManager::scheduleDeferredMouseHoldEnd(MouseBindingEntry& entry) {
+    ++entry.pendingHoldEndGeneration;
+    const quint32 generation = entry.pendingHoldEndGeneration;
+    const std::string featureId = entry.featureId;
+    QTimer::singleShot(32, this, [this, featureId, generation]() {
+        recheckDeferredMouseHoldEnd(featureId, generation, 0);
+    });
+}
+
+void HotkeyManager::recheckDeferredMouseHoldEnd(const std::string& featureId,
+                                               quint32 generation,
+                                               int attempt) {
+    MouseBindingEntry* entry = mouseHoldBindingFor(featureId);
+    if (!entry || entry->pendingHoldEndGeneration != generation || !entry->buttonDown) {
+        return;
+    }
+    constexpr int kMaxAttempts = 8;
+    if (!entry->binding.isPhysicallyDown(entry->allowExtraModifiers)) {
+        entry->buttonDown = false;
+        entry->pendingHoldEndGeneration = 0;
+        emitHotkeyHoldEnded(featureId);
+        return;
+    }
+    if (attempt + 1 < kMaxAttempts) {
+        QTimer::singleShot(32, this, [this, featureId, generation, attempt]() {
+            recheckDeferredMouseHoldEnd(featureId, generation, attempt + 1);
+        });
+        return;
+    }
+    entry->buttonDown = false;
+    entry->pendingHoldEndGeneration = 0;
+    emitHotkeyHoldEnded(featureId);
 }
 
 void HotkeyManager::emitHotkeyHoldEnded(const std::string& featureId) {
@@ -626,6 +672,7 @@ void HotkeyManager::uninstallMouseHook() {
     m_mouseHookInstalled = false;
     for (MouseBindingEntry& entry : m_mouseBindings) {
         entry.buttonDown = false;
+        entry.pendingHoldEndGeneration = 0;
     }
 }
 
@@ -665,7 +712,14 @@ bool HotkeyManager::handleKeyboardHookEvent(int vkCode, bool keyDown) {
                 continue;
             }
             swallow = true;
-            scheduleDeferredKeyboardHoldEnd(entry);
+            if (!entry.binding.isPhysicallyDown(entry.allowExtraModifiers)) {
+                ++entry.pendingHoldEndGeneration;
+                entry.keyDown = false;
+                entry.pendingHoldEndGeneration = 0;
+                emitHotkeyHoldEnded(entry.featureId);
+            } else {
+                scheduleDeferredKeyboardHoldEnd(entry);
+            }
         }
     }
 
@@ -735,8 +789,12 @@ bool HotkeyManager::handleMouseButtonEvent(int vkCode, bool buttonDown) {
                     continue;
                 }
                 swallow = true;
-                entry.buttonDown = false;
-                emitHotkeyHoldEnded(entry.featureId);
+                if (!entry.binding.isPhysicallyDown(entry.allowExtraModifiers)) {
+                    entry.buttonDown = false;
+                    emitHotkeyHoldEnded(entry.featureId);
+                } else {
+                    scheduleDeferredMouseHoldEnd(entry);
+                }
             }
             continue;
         }

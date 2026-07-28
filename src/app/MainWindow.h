@@ -331,7 +331,8 @@ private:
     void applyFeatureRunPoliciesToContext(FeatureRunSession& session, Feature* feature);
     bool shouldLogRunDetails(const FeatureRunSession& session) const;
     void continueRepeatSession(FeatureRunSession& session, Feature* feature, bool success, const QString& message);
-    bool shouldContinueRunSession(const FeatureRunSession& session, Feature* feature) const;
+    bool shouldContinueRunSession(const FeatureRunSession& session, Feature* feature);
+    void reconcileHoldLatchForActiveHoldSessions();
     void finishRunSession(const std::string& featureId,
                           bool success,
                           const QString& message,
