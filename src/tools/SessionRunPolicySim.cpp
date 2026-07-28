@@ -249,6 +249,42 @@ void runMultiSessionRoadmapScenarios() {
                    u8"감시 중 홀드idle+무한idle 워크플로 활성 (감시는 감시만)");
 }
 
+void runShouldContinueScenarios() {
+    logLine("== shouldContinueSession (R1.2) ==");
+
+    SessionRunPolicyInput hold = holdActive(true);
+    hold.holdRunActive = true;
+    expectScenario(SessionRunPolicy::shouldContinueSession(hold, true),
+                   "hold_continue_latch_down",
+                   u8"홀드 latch 유지 시 루프 계속");
+    expectScenario(!SessionRunPolicy::shouldContinueSession(hold, false),
+                   "hold_continue_latch_up",
+                   u8"홀드 latch 해제 시 루프 중단");
+
+    SessionRunPolicyInput repeat = repeatInfinite(false);
+    repeat.repeatSession = true;
+    expectScenario(SessionRunPolicy::shouldContinueSession(repeat, false),
+                   "repeat_infinite_continue",
+                   u8"무한 반복 repeatSession 유지");
+
+    SessionRunPolicyInput trigger = triggerWatch(false);
+    expectScenario(SessionRunPolicy::shouldContinueSession(trigger, false),
+                   "trigger_armed_continue",
+                   u8"트리거 무장 세션 계속");
+
+    SessionRunPolicyInput repeatCount;
+    repeatCount.runningMode = FeatureRunMode::RepeatCount;
+    repeatCount.repeatSession = true;
+    repeatCount.repeatRemaining = 2;
+    expectScenario(SessionRunPolicy::shouldContinueSession(repeatCount, false),
+                   "repeat_count_remaining",
+                   u8"N회 반복 remaining>0");
+    repeatCount.repeatRemaining = 0;
+    expectScenario(!SessionRunPolicy::shouldContinueSession(repeatCount, false),
+                   "repeat_count_exhausted",
+                   u8"N회 반복 remaining=0 중단");
+}
+
 void runForegroundGateScenarios() {
     logLine("== ForegroundRunGate scenarios ==");
 
@@ -346,6 +382,7 @@ int main(int argc, char** argv) {
     runManualScenarios();
     runHoldBurstScenarios();
     runMultiSessionRoadmapScenarios();
+    runShouldContinueScenarios();
     runForegroundGateScenarios();
     const bool invariantsOk = runInvariantSweeps();
 

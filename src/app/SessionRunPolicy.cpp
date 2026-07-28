@@ -102,4 +102,18 @@ std::vector<int> activeWorkflowSessionIndices(const std::vector<SessionRunPolicy
     return indices;
 }
 
+bool shouldContinueSession(const SessionRunPolicyInput& session, bool holdBindingStillActive) {
+    switch (session.runningMode) {
+    case FeatureRunMode::Hold:
+        return session.repeatSession && session.holdRunActive && holdBindingStillActive;
+    case FeatureRunMode::RepeatInfinite:
+    case FeatureRunMode::Trigger:
+        return session.repeatSession;
+    case FeatureRunMode::RepeatCount:
+        return session.repeatSession && session.repeatRemaining > 0;
+    default:
+        return false;
+    }
+}
+
 } // namespace SessionRunPolicy

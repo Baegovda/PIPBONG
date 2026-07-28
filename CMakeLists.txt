@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.374 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.375 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -55,6 +55,7 @@ set(PIPBONG_SOURCES
     src/app/PointerFeedbackSettings.cpp
     src/app/FeatureLibraryManager.cpp
     src/app/SessionRunPolicy.cpp
+    src/app/RunLifecycleCoordinator.cpp
     src/app/UpdateChecker.cpp
     src/model/Feature.cpp
     src/model/FeatureGroup.cpp
@@ -265,6 +266,11 @@ target_include_directories(PIPBONGPolicySim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/
 target_link_libraries(PIPBONGPolicySim PRIVATE Qt6::Core nlohmann_json::nlohmann_json)
 if(MSVC)
     target_compile_options(PIPBONGPolicySim PRIVATE /utf-8)
+endif()
+
+add_executable(PIPBONGWorkflowDryRunSim src/tools/WorkflowDryRunSim.cpp)
+if(MSVC)
+    target_compile_options(PIPBONGWorkflowDryRunSim PRIVATE /utf-8)
 endif()
 
 add_executable(FeatureGroupLayoutSim

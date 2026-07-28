@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.374` (from `project(PIPBONG VERSION 0.8.374)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.375` (from `project(PIPBONG VERSION 0.8.375)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1141,7 +1141,7 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 **When to run `run-policy-sim.ps1` alone:** policy-only edits without relinking PIPBONG, or quick re-check after changing sim scenarios.
 
-**Stage 2 (not yet):** workflow `WorkflowRunner` dry-run with mocks — blocked by OpenCV/UI block dependencies; track as future `PIPBONGWorkflowDryRunSim`.
+**Stage 2 (in progress):** `PIPBONGWorkflowDryRunSim` stub target in CMake (v0.8.375); full `WorkflowRunner` dry-run with mock `ScreenCapture` + stub `ImageMatcher` — see [§8.21 R6.1](#phase-r6--automated-workflow-dry-run-stage-2). Manual: `cmake --build build --config Release --target PIPBONGWorkflowDryRunSim`.
 
 ### 8.14 App stutter profiling (mandatory — PIPBONG lag / UI stall diagnosis)
 
@@ -1324,13 +1324,12 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | Phase | Name | Status | Target version (first ship) | Notes |
 | ----- | ---- | ------ | --------------------------- | ----- |
 | **R0** | Roadmap + agent gates | **Done** | 0.8.365 | This section + `.cursor/rules/architecture-stabilization-roadmap.mdc` |
-| **R1** | Policy surface completeness | **Partial** | 0.8.220+ | **R1.1** inventory table (v0.8.374); **R1.3** sim (v0.8.371); **R1.2** delegate remaining gate math |
-| **R2** | GUI / worker boundary | **Partial** | 0.8.366+ | R2.1 audit; Queued signals; worker fast-repeat coalesce; repeat budget on `ExecutionContext`; GUI asserts; **R2.4** prune abandons one bounded `stopAndWaitBounded` per timer tick (v0.8.370) |
-| **R3** | Session-scoped capture contract | **Partial** | 0.8.277+ | **R3.1** header contract (v0.8.374); **R3.3** repeat/trigger refresh skip (v0.8.372–373) |
-| **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.362 | Document ordering; optional `HotkeyLatchController` |
-| **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | Controllers exist; `MainWindow.cpp` still large |
-| **R6** | Automated workflow dry-run | **Not started** | TBD | `PIPBONGWorkflowDryRunSim` ([§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) Stage 2) |
-| **R7** | Concurrency product policy | **Not started** | TBD | Optional caps + Korean hints in UI |
+| **R1** | Policy surface completeness | **Partial** | 0.8.220+ | **R1.2** `shouldContinueSession` + sim (v0.8.375); **R1.1** inventory (v0.8.374); **R1.3** sim (v0.8.371) |
+| **R2** | GUI / worker boundary | **Partial** | 0.8.366+ | R2.1 audit; code paths done — **manual verify** (Q/W/E/R 10s, trigger 감시) still user |
+| **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.375 | **R4.2** toggle hotkey → `ensureForegroundReadyForFeatureHotkey` (v0.8.375); **R4.3** audit (v0.8.374) |
+| **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | **`RunLifecycleCoordinator`** policy mapping (v0.8.375); `MainWindow.cpp` still large |
+| **R6** | Automated workflow dry-run | **Partial** | 0.8.375 | **R6.1** `PIPBONGWorkflowDryRunSim` stub + design below; scenarios not linked |
+| **R7** | Concurrency product policy | **Partial** | 0.8.375 | **R7.1** matrix below (documentation); no hard caps |
 
 **Agent task pick rule:** On user request for stability/performance/hang/hotkey/capture — complete the **lowest-numbered phase** with status **Partial** or **Not started** unless the user names a specific symptom (then fix symptom **and** land the matching work package below).
 
@@ -1343,7 +1342,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R1.1** Inventory | Grep `MainWindow.cpp` for `runForegroundGate`, `GetForegroundWindow`, `setTargetWindow`, `finishRunSession`, `reconcileRunSessions` — list call sites | **Done** — inventory table below (v0.8.374) |
-| **R1.2** Delegate | Move any remaining gate math into `SessionRunPolicy` or `ForegroundRunGate` | `MainWindow` calls delegate; no new parallel gates |
+| **R1.2** Delegate | Move any remaining gate math into `SessionRunPolicy` or `ForegroundRunGate` | **Partial** — `SessionRunPolicy::shouldContinueSession` + `RunLifecycleCoordinator` (v0.8.375); coalesce UI still on `MainWindow` |
 | **R1.3** Sim scenarios | Add `SessionRunPolicySim` cases: multi-hold + trigger monitoring + profile switch deferred + background-profile sessions | **Done** — multi-session roadmap scenarios (v0.8.371); deferred/background cases still optional |
 | **R1.4** Docs | When a row in [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) manual sheet changes, update sheet in same task | Sheet matches behavior |
 
@@ -1426,7 +1425,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R4.1** Ordering diagram | Maintain ASCII flow in this section (below) when behavior changes | Updated in same task as hook/foreground edits |
-| **R4.2** `ensureForegroundReadyForFeatureHotkey` | Single entry; no duplicate profile/capture sync elsewhere on hotkey path | Grep callers; [§8.15](#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress) manual 5× Alt+Tab |
+| **R4.2** `ensureForegroundReadyForFeatureHotkey` | Single entry; no duplicate profile/capture sync elsewhere on hotkey path | Toggle hotkey calls `ensureForegroundReadyForFeatureHotkey` before `startFeatureRun` (v0.8.375); Hold uses same via `prepareForegroundForHoldBurst`; [§8.15](#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress) manual 5× Alt+Tab |
 | **R4.3** Hold continuation | **Only** `isHoldBindingStillActiveForRun` on continue paths — never `reconcileHoldBindingDown` ([§8.20](#820-hold-mode-latch-and-run-continuation-mandatory--do-not-regress)) | **Verified 2026-07-29** — see audit below |
 | **R4.4** Optional `HotkeyLatchController` | If `HotkeyManager` + `MainWindow` latch resets still scattered: thin class owning `resetHookLatchState` triggers | Only if R4.2–R4.3 still touch 3+ files per bug |
 | **R4.5** Physical keyboard | No regression on [§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress) | Manual row 7 §8.17 |
@@ -1465,7 +1464,7 @@ User hotkey (hook)
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R5.1** Size budget | Track `MainWindow.cpp` line count in §11 when touching — goal **&lt; 2500** lines long-term (informal) | Reported on each R5 task |
-| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | `MainWindow` forwards; policy sim still passes |
+| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | **Partial** — `policyInputFrom` + `shouldContinueSession` delegation (v0.8.375); full session map still on `MainWindow` |
 | **R5.3** UI refresh facade | `RunUiPublisher` or methods on coordinator: feature list run chrome, workflow panel run state — coalesced | R2.3 coalesce lives in one class |
 | **R5.4** No new cross-deps | Controllers (`ProfileSwitchCoordinator`, `RunSessionController`, …) do not call `MainWindow` back — signals only | Grep `MainWindow::` from controllers = wiring only |
 | **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | User or agent documents pass in §11 |
@@ -1480,14 +1479,24 @@ User hotkey (hook)
 
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
-| **R6.1** Design | `PIPBONGWorkflowDryRunSim` target: mock `ScreenCapture` + stub `ImageMatcher` returning scripted peaks | Design subsection here + `CMakeLists.txt` tool target |
+| **R6.1** Design | `PIPBONGWorkflowDryRunSim` target: mock `ScreenCapture` + stub `ImageMatcher` returning scripted peaks | **Partial (v0.8.375)** — stub exe + design below; full mocks not linked |
 | **R6.2** Scenarios | JSON or C++ tables: return-to-previous ImageFind, retry-after-next, trigger monitor→action primed match, loop region exit | Tool runs in POST_BUILD or CI script (policy sim script extended) |
 | **R6.3** Block dependencies | Isolate `WorkflowRunner` from widgets — link only `core/workflow` + mocks | No Qt Widgets in sim exe |
 | **R6.4** Handover | Extend [§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) Stage 2 paragraph with symbols | Agents know when to run `run-workflow-dry-run.ps1` |
 
 **Blocked until:** R2–R3 stable (avoid testing moving contracts). **Can start R6.1 design in parallel.**
 
-**Key files:** `WorkflowRunner.cpp`, `WorkflowEngine.cpp`, new `src/tools/WorkflowDryRunSim.cpp`, `scripts/run-policy-sim-postbuild.ps1`.
+**Key files:** `WorkflowRunner.cpp`, `WorkflowEngine.cpp`, `src/tools/WorkflowDryRunSim.cpp`, `scripts/run-policy-sim-postbuild.ps1`.
+
+**R6.1 design (2026-07-29, v0.8.375):**
+
+| Layer | Role |
+| ----- | ---- |
+| `PIPBONGWorkflowDryRunSim` | Headless exe (stub today); will drive `WorkflowRunner` with injected capture/match |
+| `MockScreenCapture` (planned) | Returns fixed `cv::Mat` haystacks per scenario table — no Win32 |
+| `StubImageMatcher` (planned) | Scriptable peak confidence + center per poll index |
+| Scenarios (planned) | ImageFind return-to-previous, retry-after-next, trigger monitor→action primed handoff, loop-region exit |
+| Build | `cmake --build build --config Release --target PIPBONGWorkflowDryRunSim`; **not** POST_BUILD until scenarios exist |
 
 ---
 
@@ -1497,9 +1506,20 @@ User hotkey (hook)
 
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
-| **R7.1** Matrix | Table: run mode × run mode → supported / best-effort / unsupported | This section + optional `SessionRunPolicy` warnings |
+| **R7.1** Matrix | Table: run mode × run mode → supported / best-effort / unsupported | **Done (doc)** — matrix below (v0.8.375); no runtime warnings yet |
 | **R7.2** UI hints | Korean tooltip when starting 4th simultaneous session (performance) | `FeatureEditDialog` or status bar — only if user asks |
 | **R7.3** Hard caps | Only if data shows hangs — soft queue for `startFeatureRun` | Document in §11; sim scenarios for cap |
+
+**R7.1 concurrency matrix (best-effort, 2026-07-29):**
+
+| Session A | Session B | Support | Notes |
+| --------- | --------- | ------- | ----- |
+| Hold | Hold | **Supported** | Q/W/E/R together; coalesced UI; capture mutex serializes ImageFind |
+| Hold | Trigger **감시** | **Best-effort** | Watch polls yield during other features' capture burst |
+| Hold | Trigger **동작** | **Best-effort** | Trigger action may preempt/pause other sessions |
+| Trigger **감시** | Trigger **감시** | **Supported** | Multiple monitors; serialized capture |
+| N회/무한 반복 | Hold | **Supported** | Independent engines per feature |
+| Same feature twice | — | **Unsupported** | One session per feature id |
 
 ---
 
@@ -1933,6 +1953,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.375] - 2026-07-29
+
+### Added
+
+- **`RunLifecycleCoordinator`**: maps `FeatureRunSession` → `SessionRunPolicyInput` and session continuation policy (`RunLifecycleCoordinator.*`, `SessionRunPolicy::shouldContinueSession`).
+- **`PIPBONGWorkflowDryRunSim`**: Stage 2 stub executable (`WorkflowDryRunSim.cpp`, `CMakeLists.txt`); AGENTS.md §8.21 R6.1 design table.
+- `SessionRunPolicySim` `shouldContinueSession` scenarios (R1.2).
+
+### Changed
+
+- Toggle feature hotkey calls `ensureForegroundReadyForFeatureHotkey` before `startFeatureRun` (roadmap R4.2) (`MainWindow::onHotkeyTriggered`).
+- `MainWindow::shouldContinueRunSession` delegates to `RunLifecycleCoordinator` + `SessionRunPolicy` (Hold latch still from `HotkeyManager` only).
+- AGENTS.md §8.21: R7.1 concurrency matrix; progress tracker R1/R4/R5/R6/R7 notes.
 
 ## [0.8.374] - 2026-07-29
 

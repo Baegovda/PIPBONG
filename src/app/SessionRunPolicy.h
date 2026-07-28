@@ -45,4 +45,7 @@ WorkflowRefreshDecision workflowRefreshOnProjectEdit(const SessionRunPolicyInput
 
 std::vector<int> activeWorkflowSessionIndices(const std::vector<SessionRunPolicyInput>& sessions);
 
+/// Loop / trigger monitor continuation after a workflow iteration (Hold needs physical latch).
+bool shouldContinueSession(const SessionRunPolicyInput& session, bool holdBindingStillActive);
+
 } // namespace SessionRunPolicy

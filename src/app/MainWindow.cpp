@@ -10,6 +10,7 @@
 #include "app/FeatureHotkeyGate.h"
 #include "app/ProgramSettings.h"
 #include "app/SessionRunPolicy.h"
+#include "app/RunLifecycleCoordinator.h"
 #include "app/WindowsRunAsAdmin.h"
 #include "app/MouseCenterLock.h"
 #include "app/TargetWindowCenterPin.h"
@@ -167,22 +168,6 @@ bool holdSessionBlocksNewPhysicalStart(const FeatureRunSession& session,
         return true;
     }
     return false;
-}
-
-SessionRunPolicyInput sessionPolicyInputFrom(const FeatureRunSession& session) {
-    SessionRunPolicyInput input;
-    input.runningMode = session.runningMode;
-    input.triggerPhase = session.triggerPhase;
-    input.repeatSession = session.repeatSession;
-    input.holdRunActive = session.holdRunActive;
-    input.repeatRemaining = session.repeatRemaining;
-    input.engineRunning = (session.engine && session.engine->isRunning())
-                          || session.holdKeyTapLaneActive;
-    input.lockMouseDuringFirstLoopCount = session.lockMouseDuringFirstLoopCount;
-    input.earlyLoopMouseLockReleased = session.earlyLoopMouseLockReleased;
-    input.sessionIteration = session.sessionIteration;
-    input.runLoopNumber = session.sessionContext ? session.sessionContext->runLoopNumber() : 0;
-    return input;
 }
 
 bool isShellTransientForegroundWindow(HWND hwnd) {
@@ -1746,7 +1731,7 @@ void MainWindow::captureFeatureMouseLockPosition(FeatureRunSession& session) {
 }
 
 bool MainWindow::isEarlyLoopMouseLockWindow(const FeatureRunSession& session) const {
-    return SessionRunPolicy::isEarlyLoopMouseLockWindow(sessionPolicyInputFrom(session));
+    return SessionRunPolicy::isEarlyLoopMouseLockWindow(RunLifecycleCoordinator::policyInputFrom(session));
 }
 
 bool MainWindow::engageEarlyLoopMouseLockAtBestPoint(FeatureRunSession& session) {
@@ -2951,7 +2936,7 @@ FeatureRunSession* MainWindow::sessionForEngine(const QObject* sender) {
 }
 
 bool MainWindow::isFeatureSessionActive(const FeatureRunSession& session) const {
-    return SessionRunPolicy::isSessionActive(sessionPolicyInputFrom(session));
+    return SessionRunPolicy::isSessionActive(RunLifecycleCoordinator::policyInputFrom(session));
 }
 
 bool MainWindow::isFeatureRunning(const std::string& featureId) const {
@@ -2964,14 +2949,14 @@ bool MainWindow::isFeatureInActiveWorkflowRun(const std::string& featureId) cons
     if (!session || !sessionBelongsToActiveProfile(*session)) {
         return false;
     }
-    return SessionRunPolicy::isInActiveWorkflowRun(sessionPolicyInputFrom(*session));
+    return SessionRunPolicy::isInActiveWorkflowRun(RunLifecycleCoordinator::policyInputFrom(*session));
 }
 
 bool MainWindow::hasAnyRunningSession() const {
     std::vector<SessionRunPolicyInput> inputs;
     inputs.reserve(m_runSessions.size());
     for (const auto& entry : m_runSessions) {
-        inputs.push_back(sessionPolicyInputFrom(entry.second));
+        inputs.push_back(RunLifecycleCoordinator::policyInputFrom(entry.second));
     }
     return SessionRunPolicy::hasAnyRunningSession(inputs);
 }
@@ -2980,7 +2965,7 @@ bool MainWindow::hasAnyActiveWorkflowEngine() const {
     std::vector<SessionRunPolicyInput> inputs;
     inputs.reserve(m_runSessions.size());
     for (const auto& entry : m_runSessions) {
-        inputs.push_back(sessionPolicyInputFrom(entry.second));
+        inputs.push_back(RunLifecycleCoordinator::policyInputFrom(entry.second));
     }
     return SessionRunPolicy::hasAnyActiveWorkflowEngine(inputs);
 }
@@ -4857,7 +4842,7 @@ void MainWindow::requestSessionWorkflowRefresh(const std::string& featureId) {
     if (!feature) {
         return;
     }
-    switch (SessionRunPolicy::workflowRefreshOnProjectEdit(sessionPolicyInputFrom(*session))) {
+    switch (SessionRunPolicy::workflowRefreshOnProjectEdit(RunLifecycleCoordinator::policyInputFrom(*session))) {
     case WorkflowRefreshDecision::SkipInactive:
         return;
     case WorkflowRefreshDecision::Defer:
@@ -5576,25 +5561,15 @@ void MainWindow::deferHoldSessionUiAfterStart(const std::string& featureId) {
 }
 
 bool MainWindow::shouldContinueRunSession(const FeatureRunSession& session, Feature* feature) {
-    if (!feature || session.userStopRequested) {
+    if (!feature) {
         return false;
     }
-
-    switch (session.runningMode) {
-    case FeatureRunMode::Hold:
-        if (!session.repeatSession || !session.holdRunActive || !m_hotkeyManager) {
-            return false;
-        }
-        return m_hotkeyManager->isHoldBindingStillActiveForRun(session.featureId);
-    case FeatureRunMode::RepeatInfinite:
-        return session.repeatSession;
-    case FeatureRunMode::Trigger:
-        return session.repeatSession;
-    case FeatureRunMode::RepeatCount:
-        return session.repeatSession && session.repeatRemaining > 0;
-    default:
-        return false;
+    bool holdBindingStillActive = false;
+    if (session.runningMode == FeatureRunMode::Hold && m_hotkeyManager) {
+        holdBindingStillActive =
+            m_hotkeyManager->isHoldBindingStillActiveForRun(session.featureId);
     }
+    return RunLifecycleCoordinator::shouldContinueSession(session, holdBindingStillActive);
 }
 
 void MainWindow::reconcileHoldLatchForActiveHoldSessions() {
@@ -6299,6 +6274,9 @@ void MainWindow::onHotkeyTriggered(const QString& featureId) {
         return;
     }
 
+#ifdef _WIN32
+    ensureForegroundReadyForFeatureHotkey();
+#endif
     startFeatureRun(feature, true);
 }
 
@@ -6797,7 +6775,7 @@ bool MainWindow::hasAnyCapturingWorkflowBurstExcept(const std::string& excludeFe
         if (entry.first == excludeFeatureId) {
             continue;
         }
-        inputs.push_back(sessionPolicyInputFrom(entry.second));
+        inputs.push_back(RunLifecycleCoordinator::policyInputFrom(entry.second));
     }
     return SessionRunPolicy::hasAnyCapturingWorkflowBurst(inputs);
 }
