@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.370` (from `project(PIPBONG VERSION 0.8.370)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.371` (from `project(PIPBONG VERSION 0.8.370)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1324,7 +1324,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | Phase | Name | Status | Target version (first ship) | Notes |
 | ----- | ---- | ------ | --------------------------- | ----- |
 | **R0** | Roadmap + agent gates | **Done** | 0.8.365 | This section + `.cursor/rules/architecture-stabilization-roadmap.mdc` |
-| **R1** | Policy surface completeness | **Partial** | 0.8.220+ | Expand sim; eliminate parallel MainWindow gate bools |
+| **R1** | Policy surface completeness | **Partial** | 0.8.220+ | Expand sim (**R1.3** multi-session scenarios v0.8.371); eliminate parallel MainWindow gate bools |
 | **R2** | GUI / worker boundary | **Partial** | 0.8.366+ | R2.1 audit; Queued signals; worker fast-repeat coalesce; repeat budget on `ExecutionContext`; GUI asserts; **R2.4** prune abandons one bounded `stopAndWaitBounded` per timer tick (v0.8.370) |
 | **R3** | Session-scoped capture contract | **Partial** | 0.8.277+ | Worker context HWND; reduce UI `ScreenCapture` mutation; **R3.1** `FeatureRunSession` locked-title comment (v0.8.370) |
 | **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.362 | Document ordering; optional `HotkeyLatchController` |
@@ -1395,7 +1395,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R3.1** Contract doc | In `FeatureRunSession` / `ExecutionContext` header comments: locked title, refresh rules, sub/main fallback | Comments + §8.21 cross-ref |
-| **R3.2** Remove UI hot-path writes | `onBlockImageFindAttempt` and similar: **no** `ScreenCapture::setTargetWindowTitle` on worker callback path (already partial — verify zero) | Grep clean on poll hot path |
+| **R3.2** Remove UI hot-path writes | `onBlockImageFindAttempt` and similar: **no** `ScreenCapture::setTargetWindowTitle` on worker callback path (already partial — verify zero) | Grep clean on poll hot path — **verified 2026-07-29** (`onBlockImageFindAttempt` UI-only; poll uses `ExecutionContext::setTargetWindowTitleForWorker`) |
 | **R3.3** `refreshSessionCaptureTarget` | Only on session start, foreground migration, profile switch — not every ImageFind attempt | Log/throttle proof in dev (optional breadcrumb) |
 | **R3.4** Match test / editor | `ImageFindEditor` match test uses same session rules as run (foreground activate policy documented) | Parity note in §8.5 or ImageFind handover |
 | **R3.5** Sim / policy | `SessionRunPolicy::isCapturingWorkflowBurst` + trigger yield rules stay aligned with `ImageFindBlock` poll | Policy sim includes burst + trigger monitor idle |
@@ -1912,6 +1912,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.371] - 2026-07-29
+
+### Added
+
+- `SessionRunPolicySim` multi-session roadmap scenarios (trigger watch + hold burst, trigger action + watch, background-style session mix) — R1.3 (`SessionRunPolicySim.cpp`).
+
+### Changed
+
+- AGENTS.md §8.21 R3.2 audit note: `onBlockImageFindAttempt` does not mutate global `ScreenCapture` on the poll UI callback path.
 
 ## [0.8.370] - 2026-07-29
 

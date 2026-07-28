@@ -210,6 +210,45 @@ void runHoldBurstScenarios() {
                    u8"홀드 latch 해제 후 비활성 세션");
 }
 
+void runMultiSessionRoadmapScenarios() {
+    logLine("== Multi-session roadmap (R1.3) ==");
+
+    const SessionRunPolicyInput watch = triggerWatch(false);
+    const SessionRunPolicyInput holdEngine = holdActive(true);
+    const std::vector<SessionRunPolicyInput> watchAndHold = {watch, holdEngine};
+    expectScenario(!SessionRunPolicy::isCapturingWorkflowBurst(watch),
+                   "trigger_watch_not_burst",
+                   u8"트리거 감시 폴맼은 캡처 버스트 아님");
+    expectScenario(SessionRunPolicy::hasAnyCapturingWorkflowBurst(watchAndHold),
+                   "watch_plus_hold_burst",
+                   u8"감시+홀드 엔진 시 버스트 존재");
+    expectScenario(SessionRunPolicy::workflowRefreshOnProjectEdit(watch)
+                       == WorkflowRefreshDecision::Immediate,
+                   "watch_idle_refresh_while_hold_runs",
+                   u8"감시 idle 세션은 홀드 실행 중에도 즉시 편집 허용");
+
+    const SessionRunPolicyInput action = triggerAction(true);
+    const std::vector<SessionRunPolicyInput> actionAndWatch = {action, triggerWatch(false)};
+    expectScenario(SessionRunPolicy::hasAnyActiveWorkflowEngine(actionAndWatch),
+                   "action_blocks_update_engine",
+                   u8"트리거 동작 엔진 시 업데이트 차단");
+    expectScenario(SessionRunPolicy::workflowRefreshOnProjectEdit(triggerWatch(false))
+                       == WorkflowRefreshDecision::Immediate,
+                   "watch_idle_refresh_during_action_on_other",
+                   u8"다른 세션 동작 중 감시 idle 편집 즉시");
+
+    const SessionRunPolicyInput repeatIdle = repeatInfinite(false);
+    const SessionRunPolicyInput holdIdle = holdActive(false);
+    const std::vector<SessionRunPolicyInput> three = {watch, holdIdle, repeatIdle};
+    expectScenario(SessionRunPolicy::hasAnyRunningSession(three),
+                   "background_profile_sessions_active",
+                   u8"감시+홀드idle+무한idle 모두 활성 세션");
+    const auto idx = SessionRunPolicy::activeWorkflowSessionIndices(three);
+    expectScenario(idx.size() == 2 && idx[0] == 1 && idx[1] == 2,
+                   "hold_and_repeat_workflow_while_watch_monitors",
+                   u8"감시 중 홀드idle+무한idle 워크플로 활성 (감시는 감시만)");
+}
+
 void runForegroundGateScenarios() {
     logLine("== ForegroundRunGate scenarios ==");
 
@@ -306,6 +345,7 @@ int main(int argc, char** argv) {
     logLine("PIPBONG SessionRunPolicySim");
     runManualScenarios();
     runHoldBurstScenarios();
+    runMultiSessionRoadmapScenarios();
     runForegroundGateScenarios();
     const bool invariantsOk = runInvariantSweeps();
 
