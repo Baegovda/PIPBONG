@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.356` (from `project(PIPBONG VERSION 0.8.356)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.357` (from `project(PIPBONG VERSION 0.8.357)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1548,6 +1548,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.357] - 2026-07-28
+
+### Fixed
+
+- Hold mode hotkey start no longer blocked by stale sessions (trigger watch, tap-lane teardown, or `holdKeyTapLaneActive` flag without a live mux lane): `holdSessionBlocksNewPhysicalStart` gates new physical DOWN; stale sessions are torn down on hold start (`MainWindow::onHotkeyHoldStarted`, `startFeatureRun`).
 
 ## [0.8.356] - 2026-07-28
 

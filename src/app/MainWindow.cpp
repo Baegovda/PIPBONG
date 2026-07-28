@@ -148,6 +148,17 @@ QString diagnosticLogLevelTag(LogLineKind kind) {
 
 namespace {
 
+bool holdSessionBlocksNewPhysicalStart(const FeatureRunSession& session,
+                                       HoldKeyTapMultiplexer* mux) {
+    if (session.engine && session.engine->isRunning()) {
+        return true;
+    }
+    if (mux && session.holdKeyTapLaneActive && mux->isLaneActive(session.featureId)) {
+        return true;
+    }
+    return false;
+}
+
 SessionRunPolicyInput sessionPolicyInputFrom(const FeatureRunSession& session) {
     SessionRunPolicyInput input;
     input.runningMode = session.runningMode;
@@ -4531,7 +4542,9 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
 
     const std::string featureId = feature->id();
     if (FeatureRunSession* existing = sessionFor(featureId)) {
-        if (isFeatureSessionActive(*existing)) {
+        const bool staleHoldStart =
+            holdHotkeyStart && !holdSessionBlocksNewPhysicalStart(*existing, m_holdKeyTapMux);
+        if (!staleHoldStart && isFeatureSessionActive(*existing)) {
             return;
         }
         if (existing->sessionContext) {
@@ -4540,6 +4553,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
         UserInputInterruptMonitor::instance().unregisterSession(featureId);
         if (existing->holdKeyTapLaneActive && m_holdKeyTapMux) {
             m_holdKeyTapMux->stopLane(featureId);
+            existing->holdKeyTapLaneActive = false;
         }
         if (existing->engine) {
             abandonSessionEngine(*existing);
@@ -6243,13 +6257,21 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
             }
             return;
         }
-        if (isFeatureSessionActive(*session)) {
+        if (holdSessionBlocksNewPhysicalStart(*session, m_holdKeyTapMux)) {
             return;
         }
+        const bool hadTapLane = session->holdKeyTapLaneActive;
         if (session->sessionContext) {
             session->sessionContext->endRunInputSession();
         }
         UserInputInterruptMonitor::instance().unregisterSession(id);
+        if (hadTapLane && m_holdKeyTapMux) {
+            m_holdKeyTapMux->stopLane(id);
+        }
+        session->holdKeyTapLaneActive = false;
+        if (session->engine) {
+            abandonSessionEngine(*session);
+        }
         m_runSessions.erase(id);
     }
 
