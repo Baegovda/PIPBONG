@@ -579,7 +579,8 @@ MainWindow::MainWindow(QWidget* parent)
     RunSessionController::HostCallbacks runHost;
     runHost.shouldSkipForegroundGateReconcile = [this]() {
         return m_profileSwitchPipelineActive || m_switchingProfile
-               || ProgramSettings::runWithoutTargetWindow() || isActiveDefaultProfile();
+               || ProgramSettings::runWithoutTargetWindow() || isActiveDefaultProfile()
+               || isHoldBurstActive();
     };
     runHost.runForegroundGateActive = [this](Feature* feature) {
         return runForegroundGateActive(feature);
@@ -4445,11 +4446,11 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
                 applyProfileSwitchFromForegroundState(m_foregroundMonitor->currentState());
             }
             syncEffectiveTargetWindowTitleToCapture();
-            if (fromHotkey) {
+            if (fromHotkey && !holdHotkeyStart) {
                 QTimer::singleShot(0, this, [this]() {
                     reconcileRunSessionsWithForegroundGate();
                 });
-            } else {
+            } else if (!fromHotkey) {
                 reconcileRunSessionsWithForegroundGate();
             }
         }

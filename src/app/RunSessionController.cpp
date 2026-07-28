@@ -22,7 +22,7 @@ void RunSessionController::setHostCallbacks(const HostCallbacks& callbacks) {
 }
 
 void RunSessionController::reconcileWithForegroundGate() {
-    if (!m_project || !m_runSessions || !m_host.runForegroundGateActive) {
+    if (!m_runSessions || !m_host.runForegroundGateActive) {
         return;
     }
     if (m_host.shouldSkipForegroundGateReconcile && m_host.shouldSkipForegroundGateReconcile()) {
@@ -30,34 +30,51 @@ void RunSessionController::reconcileWithForegroundGate() {
     }
 
     bool needResumePoll = false;
+    bool needRunUiRefresh = false;
     for (auto& entry : *m_runSessions) {
         FeatureRunSession& session = entry.second;
         if (session.userStopRequested) {
             continue;
         }
 
-        Feature* feature = m_project->featureById(session.featureId);
+        Feature* feature = nullptr;
+        if (m_host.featureForSession) {
+            feature = m_host.featureForSession(session);
+        } else if (m_project) {
+            feature = m_project->featureById(session.featureId);
+        }
         if (!feature) {
             continue;
         }
 
-        const bool gateActive = m_host.runForegroundGateActive(feature);
+        const bool gateActive =
+            m_host.runForegroundGateActiveForSession
+                ? m_host.runForegroundGateActiveForSession(session, feature)
+                : (m_host.runForegroundGateActive ? m_host.runForegroundGateActive(feature) : true);
         if (!gateActive) {
             if (!session.waitingForScopedTargetForeground) {
                 session.waitingForScopedTargetForeground = true;
-                if (m_host.updateRunUiState) {
-                    m_host.updateRunUiState();
-                }
+                needRunUiRefresh = true;
             }
-    if (session.engine && session.engine->isRunning() && m_host.stopSessionEngine) {
-                m_host.stopSessionEngine(session);
+            if (session.engine && session.engine->isRunning() && m_host.stopSessionEngine) {
+                const bool holdHotkeyFirstLoop =
+                    session.runningMode == FeatureRunMode::Hold && session.holdRunActive
+                    && session.hotkeyLaunchedSession && session.sessionIteration == 0;
+                if (!holdHotkeyFirstLoop) {
+                    m_host.stopSessionEngine(session);
+                }
             }
             needResumePoll = true;
         } else if (session.waitingForScopedTargetForeground) {
+            session.waitingForScopedTargetForeground = false;
             needResumePoll = true;
+            needRunUiRefresh = true;
         }
     }
 
+    if (needRunUiRefresh && m_host.updateRunUiState) {
+        m_host.updateRunUiState();
+    }
     if (needResumePoll) {
         scheduleScopedTargetForegroundResumePoll();
     }
@@ -68,7 +85,11 @@ bool RunSessionController::deferRunUntilScopedTargetForeground(FeatureRunSession
     if (!m_host.runForegroundGateActive) {
         return false;
     }
-    if (m_host.runForegroundGateActive(feature)) {
+    const bool gateActive =
+        m_host.runForegroundGateActiveForSession
+            ? m_host.runForegroundGateActiveForSession(session, feature)
+            : (m_host.runForegroundGateActive ? m_host.runForegroundGateActive(feature) : true);
+    if (gateActive) {
         session.waitingForScopedTargetForeground = false;
         return false;
     }
@@ -89,7 +110,7 @@ void RunSessionController::scheduleScopedTargetForegroundResumePoll() {
 }
 
 void RunSessionController::resumeWaitingScopedTargetForegroundSessions() {
-    if (!m_project || !m_runSessions) {
+    if (!m_runSessions) {
         return;
     }
 
@@ -100,12 +121,21 @@ void RunSessionController::resumeWaitingScopedTargetForegroundSessions() {
             continue;
         }
 
-        Feature* feature = m_project->featureById(session.featureId);
+        Feature* feature = nullptr;
+        if (m_host.featureForSession) {
+            feature = m_host.featureForSession(session);
+        } else if (m_project) {
+            feature = m_project->featureById(session.featureId);
+        }
         if (!feature) {
             session.waitingForScopedTargetForeground = false;
             continue;
         }
-        if (!m_host.runForegroundGateActive || !m_host.runForegroundGateActive(feature)) {
+        const bool gateActive =
+            m_host.runForegroundGateActiveForSession
+                ? m_host.runForegroundGateActiveForSession(session, feature)
+                : (m_host.runForegroundGateActive ? m_host.runForegroundGateActive(feature) : true);
+        if (!gateActive) {
             stillWaiting = true;
             continue;
         }
