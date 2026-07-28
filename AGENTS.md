@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.363` (from `project(PIPBONG VERSION 0.8.363)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.364` (from `project(PIPBONG VERSION 0.8.364)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -25,6 +25,7 @@ This is the **only development document** — AI handover, user quick start, dev
 9. [Development Governance](#9-development-governance)
    - [9.5 User preference profile (cumulative)](#95-user-preference-profile-cumulative--agents-only)
    - [9.6 Regression mistake log (오답노트)](#96-regression-mistake-log-오답노트--agents-only)
+   - [9.7 Task close user summary](#97-task-close-user-summary-mandatory--agents-only)
 10. [Versioning Policy](#10-versioning-policy)
 11. [Changelog and Version History](#11-changelog-and-version-history)
 12. [Risk and Legal Notices](#12-risk-and-legal-notices)
@@ -1443,11 +1444,12 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 ### After every completed task
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
-2. If the chat surfaced a new user preference signal, append a dated bullet under [§9.5 User preference profile](#95-user-preference-profile-cumulative--agents-only) in the **same task** (append-only; no separate files).
-3. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release).
-3. Keep diffs minimal; match existing C++ / Qt conventions.
-4. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
-5. **Do not regress IDE build / F5 workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files, `cmake.enabled: false`, empty `launch.json` configurations, F5 → Build and Run task only (`.cursor/rules/f5-build-and-run.mdc`); never replace F5 with CMake Tools or CodeLLDB.
+2. **Final user reply:** include the [§9.7 task-close summary](#97-task-close-user-summary-mandatory--agents-only) (**원인 / 해결 / 이번에 할 일 / 한줄**) in beginner Korean.
+3. If the chat surfaced a new user preference signal, append a dated bullet under [§9.5 User preference profile](#95-user-preference-profile-cumulative--agents-only) in the **same task** (append-only; no separate files).
+4. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release).
+5. Keep diffs minimal; match existing C++ / Qt conventions.
+6. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
+7. **Do not regress IDE build / F5 workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files, `cmake.enabled: false`, empty `launch.json` configurations, F5 → Build and Run task only (`.cursor/rules/f5-build-and-run.mdc`); never replace F5 with CMake Tools or CodeLLDB.
 
 ### Diff conventions
 
@@ -1478,6 +1480,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 - **2026-07-21:** Directs work in **Korean chat only**; expects the codebase to stay **100% AI-maintained** (implement, document, changelog via agent).
 - **2026-07-24:** Wants **chat replies in plain Korean, as short as possible** — no jargon, no long tables, no class/file names unless the user asks; diagnosis/log reports default to a **few bullets** (결론 → 언제 → 심각도); full technical detail stays in `AGENTS.md` / rules only.
 - **2026-07-24:** On **problem reports** (bug, lag, crash, regression): agent must **investigate first**, then explain **증상 / 원인 추정 / 해결 방향 / 다음 조치** in beginner-friendly Korean **before** starting code or build fixes; always-applied `.cursor/rules/explain-before-fix.mdc`.
+- **2026-07-29:** At **every completed task**, final reply must include a **초보자용 4줄 요약**: **원인 / 해결 / 이번에 할 일 / 한줄** — always-applied `.cursor/rules/task-close-summary.mdc`, AGENTS.md §9.7.
 - **2026-07-24:** Profile **foreground auto-switch** should feel snappy: prefer **process path** when title-only match would wrongly pick default; shorter stability/min-interval for definitive exe match (0 ms / 150 ms).
 - **2026-07-25:** All PIPBONG lag/stutter diagnosis uses **one** opt-in profiler — **`AppStutterProfiler`** → `app-stutter/latest.md` (§8.14); do **not** add per-subsystem profiler classes; extend `AppStutterProfiler` event kinds or `DiagnosticHub` breadcrumbs instead.
 - **2026-07-28:** **응답없음** / force-kill when crash/hang UI missing: prefer always-on **`live-session/latest.log`** (§8.18); user says 응답없음 in chat → read that log first for AI diagnosis (complements opt-in `app-stutter`).
@@ -1508,6 +1511,31 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 - **2026-07-21:** Do **not** “fix” slow IDE by re-enabling CMake Tools configure-on-open or CodeLLDB as daily F5.
 - **2026-07-21:** Do **not** replace verified Win32 overlay / input / keyboard patterns with Qt shortcuts without explicit request and regression plan.
 - **2026-07-24:** After a hard bug is fixed, wants **지침 + 정책 + 오답노트** written in-repo in the **same task** — how it was solved, which code, and which wrong paths were tried — so the next agent does not repeat failed fixes ([§8.15](#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress), [§9.6](#96-regression-mistake-log-오답노트--agents-only)).
+
+### 9.7 Task close user summary (mandatory — agents only)
+
+**Status:** Added 2026-07-29. **Not** a substitute for `explain-before-fix` on bug reports (that runs **before** fixes); this runs **after** the task is complete.
+
+**Purpose:** Every completed user task ends with a **short beginner-level Korean recap** so the director knows what happened and what to do next — without reading `AGENTS.md` or chat technical detail.
+
+#### Agent rule (mandatory)
+
+| When | Action |
+| ---- | ------ |
+| **Task close** | Final reply includes **원인 / 해결 / 이번에 할 일 / 한줄** (see table below) |
+| **Mid-task** | Not required unless user asks for summary |
+| **Docs/policy-only task** | Still send the block; **이번에 할 일** may be “없음” or “Reload Window” if rules changed |
+
+| Label | Content |
+| ----- | ------- |
+| **원인** | What was wrong or what was requested — one plain sentence |
+| **해결** | What we did or decided — one or two short sentences (outcome, not file names) |
+| **이번에 할 일** | User actions now — **1–3 bullets max** (e.g. F5, repro once, toggle a setting) |
+| **한줄** | One-line wrap-up |
+
+**Language:** Korean, everyday words — same bar as [§9.5](#95-user-preference-profile-cumulative--agents-only) brief replies. No class names, paths, or jargon unless the user asked for technical depth.
+
+**Cursor rule:** `.cursor/rules/task-close-summary.mdc` (always applied). Cross-ref: `.cursor/rules/brief-korean-replies.mdc`, `.cursor/rules/explain-before-fix.mdc`.
 
 ### 9.6 Regression mistake log (오답노트 — agents only)
 
@@ -1641,6 +1669,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.364] - 2026-07-29
+
+### Added
+
+- Mandatory **task-close user summary** for every completed task: beginner Korean **원인 / 해결 / 이번에 할 일 / 한줄** — AGENTS.md §9.7, `.cursor/rules/task-close-summary.mdc`; pointers in `brief-korean-replies.mdc`, `ai-governance.mdc`, §9.5 preference bullet.
 
 ## [0.8.363] - 2026-07-29
 
@@ -6159,6 +6193,7 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - **100% AI-maintained** codebase.
 - User replies: Korean. Code/docs/changelog: English. UI: Korean. JSON types: English.
 - After every task: append `[Unreleased]` bullets, then **bump version before closing** ([§10](#10-versioning-policy)); minimal diffs.
+- **Task close summary:** final reply **원인 / 해결 / 이번에 할 일 / 한줄** ([§9.7](#97-task-close-user-summary-mandatory--agents-only), `task-close-summary.mdc`).
 - **User preference profile:** read and append [§9.5](#95-user-preference-profile-cumulative--agents-only) (cumulative; no separate style files).
 - **Regression mistake log (오답노트):** after user-confirmed multi-attempt bug fixes, append [§9.6](#96-regression-mistake-log-오답노트--agents-only) + §8.x pattern in the same task.
 - Primary documentation: **this file (`AGENTS.md`) only**.
@@ -6275,6 +6310,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - On user **problem reports**: investigate, then plain Korean **증상 → 원인 추정 → 해결 방향 → 다음 조치** before code/build fixes.
 - Full preference: [§9.5](#95-user-preference-profile-cumulative--agents-only); exception noted in `brief-korean-replies.mdc`.
 
+### `task-close-summary.mdc`
+
+- **Mandatory** at every completed task: final reply **원인 / 해결 / 이번에 할 일 / 한줄** (beginner Korean).
+- Full policy: [§9.7](#97-task-close-user-summary-mandatory--agents-only).
+
 ### `brief-korean-replies.mdc`
 
 - **`UpdateLog/update_log.md`** — user-facing Korean changelog; linked from `README.md`.
@@ -6283,4 +6323,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-28. Current application version: 0.8.359._
+_Last consolidated: 2026-07-29. Current application version: 0.8.364._

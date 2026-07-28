@@ -1,0 +1,49 @@
+---
+description: Mandatory task-close summary for the user (beginner Korean)
+alwaysApply: true
+---
+
+# Task close summary (mandatory — every completed task)
+
+**Status:** User preference 2026-07-29 (§9.5, §9.7). Complements `.cursor/rules/brief-korean-replies.mdc` and `.cursor/rules/explain-before-fix.mdc`.
+
+## When
+
+At the **end of every completed user task** — after work is done (or when closing a docs/policy-only task). **One block per task**, not every chat message.
+
+**Not required** mid-task unless the user asks “설명만” / “요약해줘”.
+
+## Language and tone
+
+- **Korean only**, **초보자 눈높이** — everyday words; no class/file names, JSON keys, or English jargon unless the user asked for technical detail.
+- **Short** — each line is one sentence or a very short phrase; **no long tables**.
+
+## Required block (4 lines — use these labels)
+
+| Line | Label | Content |
+| ---- | ----- | ------- |
+| 1 | **원인** | What was wrong or what was requested (1 sentence). Bug: what you felt; feature: what you wanted. |
+| 2 | **해결** | What we changed or decided (1–2 short sentences). Outcome, not implementation detail. |
+| 3 | **이번에 할 일** | What **you** should do now — **1–3 bullets max** (e.g. F5로 새 버전 실행, 한 번 재현 확인, 설정 켜기). Skip or say “없음” for pure docs/policy with no user action. |
+| 4 | **한줄** | Single-line recap tying cause + result (optional fourth line if “한줄” fits better as part of 해결 — still **≤4 labeled parts total**). |
+
+Example shape (content varies):
+
+```
+**원인** …
+**해결** …
+**이번에 할 일** · …
+**한줄** …
+```
+
+## Relation to other rules
+
+| Rule | Difference |
+| ---- | ---------- |
+| `explain-before-fix.mdc` | **Before** code/build on **bug reports** — diagnosis only until user saw it. |
+| `task-close-summary.mdc` | **After** task complete — recap + user actions. |
+| `app-stutter-profiling.mdc` | Log readouts use 6 bullets; task close still ends with this 4-part block when the task closes. |
+
+## Handover
+
+Full policy: [AGENTS.md §9.7](../../AGENTS.md#97-task-close-user-summary-mandatory--agents-only). Preference bullet: [§9.5](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only).
