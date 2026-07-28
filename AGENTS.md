@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.364` (from `project(PIPBONG VERSION 0.8.364)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.365` (from `project(PIPBONG VERSION 0.8.365)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -22,6 +22,7 @@ This is the **only development document** — AI handover, user quick start, dev
 6. [UX Flows](#6-ux-flows)
 7. [JSON and Project Format](#7-json-and-project-format)
 8. [Critical Implementation Patterns](#8-critical-implementation-patterns)
+   - [8.21 Architecture stabilization roadmap (AI execution)](#821-architecture-stabilization-roadmap-mandatory--ai-execution)
 9. [Development Governance](#9-development-governance)
    - [9.5 User preference profile (cumulative)](#95-user-preference-profile-cumulative--agents-only)
    - [9.6 Regression mistake log (오답노트)](#96-regression-mistake-log-오답노트--agents-only)
@@ -1275,6 +1276,231 @@ Cursor rule: `.cursor/rules/feature-list-groups.mdc`. Mistake log: [§9.6](#96-r
 
 Cursor rule: `.cursor/rules/hold-mode-latch.mdc`. Mistake log: [§9.6](#96-regression-mistake-log-오답노트--agents-only).
 
+### 8.21 Architecture stabilization roadmap (mandatory — AI execution)
+
+**Status:** Added 2026-07-29 (v0.8.365). **Agents-only** — execution backlog for 100% AI maintenance. **Not** user-facing (`UpdateLog` dev-only line when roadmap-only edits). Complements [§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) (policy sim) and [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) manual regression sheet.
+
+**Cursor rule:** `.cursor/rules/architecture-stabilization-roadmap.mdc` (always applied — read §8.21 before run/session/foreground/hotkey/MainWindow work).
+
+#### Why this roadmap exists (structural weakness)
+
+PIPBONG is not “one bug away” from stable — **several subsystems change together** on every feature run:
+
+| Coupled concern | What goes wrong when it drifts |
+| --------------- | ------------------------------ |
+| Foreground HWND + profile binding | Wrong profile, dead hotkeys, capture on background window ([§8.15](#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress), [§9.6](#96-regression-mistake-log-오답노트--agents-only)) |
+| Global `ScreenCapture` vs per-session target | Stale HWND, wrong game/launcher, UI thread writes during worker poll |
+| `m_runSessions` + N× `WorkflowEngine` | Stutter, GUI hang, timer-on-worker-thread ([§9.6](#96-regression-mistake-log-오답노트--agents-only) v0.8.363) |
+| LL hook latch vs physical keys | Alt+Tab hotkey death, hold ends mid-finger ([§8.20](#820-hold-mode-latch-and-run-continuation-mandatory--do-not-regress)) |
+| GUI-thread heavy work | Profile switch freeze, false **응답 없음** ([§8.18](#818-live-session-log-mandatory--응답없음--force-kill-diagnosis)) |
+
+**Goal:** Reduce **cross-layer coupling** so a single foreground/capture/hotkey change does not require scattered `MainWindow` fixes.
+
+#### North-star principles (every phase)
+
+| # | Principle | Enforcement |
+| - | --------- | ----------- |
+| P1 | **One authority per question** — “may run?”, “which HWND?”, “is hold down?” | `SessionRunPolicy`, `ForegroundRunGate`, `HotkeyManager` latch APIs — not duplicate bools in `MainWindow` |
+| P2 | **Worker does work; GUI does chrome** — capture/match/input on worker; lists/logs/timers on GUI thread only | `Qt::QueuedConnection`, `QMetaObject::invokeMethod(..., QueuedConnection)`; grep audit in Phase R2 |
+| P3 | **Session owns capture title/HWND** for run lifetime | `FeatureRunSession::lockedCaptureTargetTitle`, worker `ExecutionContext` refresh — not UI `ScreenCapture::setTargetWindow` per poll |
+| P4 | **Policy before code** — new session/foreground/hold rule → `SessionRunPolicy` + sim scenario in same task | POST_BUILD `PIPBONGPolicySim` / `FeatureGroupLayoutSim` |
+| P5 | **No drive-by MainWindow growth** — new run logic → controller or `src/app/*Controller*` / `SessionRunPolicy` | Phase R5 decomposition |
+| P6 | **Regressions become §8.x + `.mdc`** when user-confirmed multi-attempt ([§9.6](#96-regression-mistake-log-오답노트--agents-only)) | Same task as fix |
+
+#### Baseline already shipped (do not re-litigate)
+
+| Layer | Symbols / docs | Notes |
+| ----- | -------------- | ----- |
+| Foreground detect | `ForegroundWindowMonitor`, `ProfileForegroundResolver`, `ProfileSwitchCoordinator` | [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) |
+| Run gates | `ForegroundRunGate`, `RunSessionController`, `TargetWindowController` | v0.8.332+ |
+| Session policy | `SessionRunPolicy`, `PIPBONGPolicySim`, POST_BUILD | [§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) |
+| Hold latch | `isHoldBindingStillActiveForRun`, deferred hold-end | [§8.20](#820-hold-mode-latch-and-run-continuation-mandatory--do-not-regress) |
+| Alt+Tab hotkeys | `resetHookLatchState`, `maybeResetHotkeyLatchForForeground` | [§8.15](#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress) |
+| Multi-session | `m_runSessions`, per-profile background sessions | v0.8.342+ |
+| Diagnostics | `LiveSessionLog`, `AppStutterProfiler` | [§8.18](#818-live-session-log-mandatory--응답없음--force-kill-diagnosis), [§8.14](#814-app-stutter-profiling-mandatory--pipbong-lag--ui-stall-diagnosis) |
+
+#### Progress tracker (update this table when closing a roadmap task)
+
+| Phase | Name | Status | Target version (first ship) | Notes |
+| ----- | ---- | ------ | --------------------------- | ----- |
+| **R0** | Roadmap + agent gates | **Done** | 0.8.365 | This section + `.cursor/rules/architecture-stabilization-roadmap.mdc` |
+| **R1** | Policy surface completeness | **Partial** | 0.8.220+ | Expand sim; eliminate parallel MainWindow gate bools |
+| **R2** | GUI / worker boundary | **Partial** | 0.8.363 | Queued UI flush; audit remaining paths |
+| **R3** | Session-scoped capture contract | **Partial** | 0.8.277+ | Worker context HWND; reduce UI `ScreenCapture` mutation |
+| **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.362 | Document ordering; optional `HotkeyLatchController` |
+| **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | Controllers exist; `MainWindow.cpp` still large |
+| **R6** | Automated workflow dry-run | **Not started** | TBD | `PIPBONGWorkflowDryRunSim` ([§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) Stage 2) |
+| **R7** | Concurrency product policy | **Not started** | TBD | Optional caps + Korean hints in UI |
+
+**Agent task pick rule:** On user request for stability/performance/hang/hotkey/capture — complete the **lowest-numbered phase** with status **Partial** or **Not started** unless the user names a specific symptom (then fix symptom **and** land the matching work package below).
+
+---
+
+#### Phase R1 — Policy surface completeness
+
+**Objective:** Every run/foreground/hold/trigger decision is reachable from `SessionRunPolicy` + existing controllers; `MainWindow` only wires signals.
+
+| Work package | Actions | Done when |
+| ------------ | ------- | --------- |
+| **R1.1** Inventory | Grep `MainWindow.cpp` for `runForegroundGate`, `GetForegroundWindow`, `setTargetWindow`, `finishRunSession`, `reconcileRunSessions` — list call sites | Table in PR/commit message or §11 bullet; no undocumented paths |
+| **R1.2** Delegate | Move any remaining gate math into `SessionRunPolicy` or `ForegroundRunGate` | `MainWindow` calls delegate; no new parallel gates |
+| **R1.3** Sim scenarios | Add `SessionRunPolicySim` cases: multi-hold + trigger monitoring + profile switch deferred + background-profile sessions | POST_BUILD green; Korean violation text for failures |
+| **R1.4** Docs | When a row in [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) manual sheet changes, update sheet in same task | Sheet matches behavior |
+
+**Out of scope:** OpenCV matching changes, UI redesign.
+
+**Key files:** `SessionRunPolicy.*`, `SessionRunPolicySim.cpp`, `ForegroundRunGate.*`, `RunSessionController.*`, `MainWindow.cpp`.
+
+---
+
+#### Phase R2 — GUI / worker boundary hardening
+
+**Objective:** Zero worker-thread GUI mutations; coalesced UI under load (multi-session, hold burst, trigger watch).
+
+| Work package | Actions | Done when |
+| ------------ | ------- | --------- |
+| **R2.1** Signal audit | `rg -n "invokeMethod|Qt::DirectConnection|startTimer|QTimer::" src/app/MainWindow.cpp src/core/workflow/WorkflowEngine.cpp src/app/HotkeyManager.cpp` — document each hit | Spreadsheet or §11 list; every worker→GUI path is `QueuedConnection` or `invokeMethod(..., QueuedConnection)` |
+| **R2.2** `WorkflowEngine` connections | All signals to `MainWindow` that touch UI state: **QueuedConnection** only | Grep confirms; no `DirectConnection` on cross-thread slots |
+| **R2.3** Coalesced run UI | `applyRunUiState`, `updateRunUiState`, `flushWorkerFastRepeatUi`, feature-list hold refresh — single debounce/coalesce when `SessionRunPolicy::shouldCoalesceRunUiUpdates()` | Repro: 4× hold (Q/W/E/R) + trigger watch — no multi-second GUI stall; no `startTimer from another thread` in `live-session/latest.log` |
+| **R2.4** Engine teardown queue | `finishRunSession` / `abandonSessionEngine` / `schedulePruneAbandonedEngines` — never block GUI on `wait()`; bounded stop only ([§9.6](#96-regression-mistake-log-오답노트--agents-only) profile switch) | Profile switch + 4 sessions: UI responsive &lt; 1 s perceived |
+| **R2.5** Static guard (optional) | `Q_ASSERT(qApp->thread() == QThread::currentThread())` in debug builds for `applyRunUiState` entry (or `CrashReporter::noteBreadcrumb` only) | Debug build catches regressions in dev |
+
+**Manual verify (required for R2 close):**
+
+1. Hold Q/W/E/R together 10 s → release — no hang dialog; hotkeys work after.
+2. Trigger **감시** + 2 hold features — CPU watch optional; no `GUI_HANG_DETECTED` in `live-session/latest.log`.
+3. §8.17 rows 7–8 (Shift hold + scoped trigger gate).
+
+**Anti-patterns:** `scheduleWorkerFastRepeatUiFlush()` from worker without queue; synchronous `refreshWorkflowEditor` on every loop iteration with 4 sessions.
+
+**Key files:** `MainWindow.cpp`, `WorkflowEngine.cpp`, `FeatureListPanel.cpp`, `LogPanelWidget.cpp`.
+
+---
+
+#### Phase R3 — Session-scoped capture contract
+
+**Objective:** During an active worker poll loop, **only** that session’s `ExecutionContext` changes capture target; global `ScreenCapture` is for idle UI/pickers only.
+
+| Work package | Actions | Done when |
+| ------------ | ------- | --------- |
+| **R3.1** Contract doc | In `FeatureRunSession` / `ExecutionContext` header comments: locked title, refresh rules, sub/main fallback | Comments + §8.21 cross-ref |
+| **R3.2** Remove UI hot-path writes | `onBlockImageFindAttempt` and similar: **no** `ScreenCapture::setTargetWindowTitle` on worker callback path (already partial — verify zero) | Grep clean on poll hot path |
+| **R3.3** `refreshSessionCaptureTarget` | Only on session start, foreground migration, profile switch — not every ImageFind attempt | Log/throttle proof in dev (optional breadcrumb) |
+| **R3.4** Match test / editor | `ImageFindEditor` match test uses same session rules as run (foreground activate policy documented) | Parity note in §8.5 or ImageFind handover |
+| **R3.5** Sim / policy | `SessionRunPolicy::isCapturingWorkflowBurst` + trigger yield rules stay aligned with `ImageFindBlock` poll | Policy sim includes burst + trigger monitor idle |
+
+**Manual verify:** Main window closed → sub launcher focused → in-game client appears — trigger monitor migrates capture without focusing PIPBONG (§8.17 row 10 empty-title/path if applicable).
+
+**Key files:** `ScreenCapture.cpp`, `ExecutionContext.cpp`, `ImageFindBlock.cpp`, `MainWindow.cpp` (`refreshSessionCaptureTarget`, `resolveRunCaptureTargetTitleW`).
+
+---
+
+#### Phase R4 — Hotkey and input state machine
+
+**Objective:** Predictable ordering: foreground sync → latch reset → session gate → run start; no reconcile-with-side-effects on poll paths.
+
+| Work package | Actions | Done when |
+| ------------ | ------- | --------- |
+| **R4.1** Ordering diagram | Maintain ASCII flow in this section (below) when behavior changes | Updated in same task as hook/foreground edits |
+| **R4.2** `ensureForegroundReadyForFeatureHotkey` | Single entry; no duplicate profile/capture sync elsewhere on hotkey path | Grep callers; [§8.15](#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress) manual 5× Alt+Tab |
+| **R4.3** Hold continuation | **Only** `isHoldBindingStillActiveForRun` on continue paths — never `reconcileHoldBindingDown` ([§8.20](#820-hold-mode-latch-and-run-continuation-mandatory--do-not-regress)) | `rg reconcileHoldBindingDown` in `shouldContinue` paths = empty |
+| **R4.4** Optional `HotkeyLatchController` | If `HotkeyManager` + `MainWindow` latch resets still scattered: thin class owning `resetHookLatchState` triggers | Only if R4.2–R4.3 still touch 3+ files per bug |
+| **R4.5** Physical keyboard | No regression on [§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress) | Manual row 7 §8.17 |
+
+**Hotkey / run start ordering (canonical):**
+
+```
+User hotkey (hook)
+  → FeatureHotkeyGate (dialogs only)
+  → ensureForegroundReadyForFeatureHotkey
+       → applyProfileSwitchFromForegroundState (if needed)
+       → adoptForegroundLinkedCaptureIfMatched / sync capture
+       → maybeResetHotkeyLatchForForeground
+  → runForegroundGateActive / scoped gate
+  → startFeatureRun → worker with session clone + locked capture title
+```
+
+**Anti-patterns:** `resetHookLatchState` every foreground tick; `reconcileHoldBindingDown` in `shouldContinueRunSession`; `AttachThreadInput` ([§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress)).
+
+**Key files:** `HotkeyManager.cpp`, `MainWindow.cpp`, `FeatureHotkeyGate.cpp`, `ForegroundWindowMonitor.cpp`.
+
+---
+
+#### Phase R5 — MainWindow decomposition
+
+**Objective:** `MainWindow` = shell (menus, layout, signal wiring); run lifecycle in dedicated coordinator.
+
+| Work package | Actions | Done when |
+| ------------ | ------- | --------- |
+| **R5.1** Size budget | Track `MainWindow.cpp` line count in §11 when touching — goal **&lt; 2500** lines long-term (informal) | Reported on each R5 task |
+| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | `MainWindow` forwards; policy sim still passes |
+| **R5.3** UI refresh facade | `RunUiPublisher` or methods on coordinator: feature list run chrome, workflow panel run state — coalesced | R2.3 coalesce lives in one class |
+| **R5.4** No new cross-deps | Controllers (`ProfileSwitchCoordinator`, `RunSessionController`, …) do not call `MainWindow` back — signals only | Grep `MainWindow::` from controllers = wiring only |
+| **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | User or agent documents pass in §11 |
+
+**Key files:** `MainWindow.cpp`, `RunSessionController.*`, new `RunLifecycleCoordinator.*` (name may vary).
+
+---
+
+#### Phase R6 — Automated workflow dry-run (Stage 2)
+
+**Objective:** Headless `WorkflowRunner` tests without OpenCV UI — block order, loop regions, ImageFind failure branches, trigger handoff.
+
+| Work package | Actions | Done when |
+| ------------ | ------- | --------- |
+| **R6.1** Design | `PIPBONGWorkflowDryRunSim` target: mock `ScreenCapture` + stub `ImageMatcher` returning scripted peaks | Design subsection here + `CMakeLists.txt` tool target |
+| **R6.2** Scenarios | JSON or C++ tables: return-to-previous ImageFind, retry-after-next, trigger monitor→action primed match, loop region exit | Tool runs in POST_BUILD or CI script (policy sim script extended) |
+| **R6.3** Block dependencies | Isolate `WorkflowRunner` from widgets — link only `core/workflow` + mocks | No Qt Widgets in sim exe |
+| **R6.4** Handover | Extend [§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) Stage 2 paragraph with symbols | Agents know when to run `run-workflow-dry-run.ps1` |
+
+**Blocked until:** R2–R3 stable (avoid testing moving contracts). **Can start R6.1 design in parallel.**
+
+**Key files:** `WorkflowRunner.cpp`, `WorkflowEngine.cpp`, new `src/tools/WorkflowDryRunSim.cpp`, `scripts/run-policy-sim-postbuild.ps1`.
+
+---
+
+#### Phase R7 — Concurrency product policy (optional)
+
+**Objective:** Document and optionally enforce **supported** concurrent combinations (e.g. N hold + M trigger watches).
+
+| Work package | Actions | Done when |
+| ------------ | ------- | --------- |
+| **R7.1** Matrix | Table: run mode × run mode → supported / best-effort / unsupported | This section + optional `SessionRunPolicy` warnings |
+| **R7.2** UI hints | Korean tooltip when starting 4th simultaneous session (performance) | `FeatureEditDialog` or status bar — only if user asks |
+| **R7.3** Hard caps | Only if data shows hangs — soft queue for `startFeatureRun` | Document in §11; sim scenarios for cap |
+
+---
+
+#### Agent workflow (every roadmap task)
+
+| Step | Action |
+| ---- | ------ |
+| 1 | Read this section + update **Progress tracker** row when phase advances |
+| 2 | Implement **one work package** (or user-scoped symptom mapped to WP) |
+| 3 | Add `SessionRunPolicySim` / layout sim scenarios when policy changes |
+| 4 | Run `.\scripts\build-release.ps1`; confirm POST_BUILD policy sim OK |
+| 5 | Manual rows from phase “Manual verify” + relevant §8.17 lines |
+| 6 | If multi-attempt user-confirmed bug: [§9.6](#96-regression-mistake-log-오답노트--agents-only) + §8.x/.mdc |
+| 7 | §11 changelog + version bump; user summary [§9.7](#97-task-close-user-summary-mandatory--agents-only) |
+
+#### Grep shortcuts (Windows repo root)
+
+```powershell
+# Worker → GUI risk
+rg -n "invokeMethod|DirectConnection|startTimer" src/app/MainWindow.cpp src/core/workflow/
+
+# Global capture mutation from UI during run
+rg -n "setTargetWindow|setTargetWindowTitle" src/app/MainWindow.cpp
+
+# Hold continue must not reconcile
+rg -n "reconcileHoldBindingDown" src/app/MainWindow.cpp src/app/HotkeyManager.cpp
+
+# Policy bypass
+rg -n "runForegroundGateActive|finishForegroundSessionGate" src/app/MainWindow.cpp
+```
+
+---
+
 ### 8.13 Settings and edit dialogs (mandatory — grouped + tooltips)
 
 **Status:** Verified working on Windows (2026-07). Extended 2026-07-24 (v0.8.308) to **all** settings and edit dialogs — not only **프로그램 설정**.
@@ -1444,12 +1670,13 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 ### After every completed task
 
 1. Append entries under `[Unreleased]` in [§11 Changelog](#11-changelog-and-version-history) (`Added` / `Changed` / `Fixed` / `Removed`) as you implement.
-2. **Final user reply:** include the [§9.7 task-close summary](#97-task-close-user-summary-mandatory--agents-only) (**원인 / 해결 / 이번에 할 일 / 한줄**) in beginner Korean.
-3. If the chat surfaced a new user preference signal, append a dated bullet under [§9.5 User preference profile](#95-user-preference-profile-cumulative--agents-only) in the **same task** (append-only; no separate files).
-4. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release).
-5. Keep diffs minimal; match existing C++ / Qt conventions.
-6. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
-7. **Do not regress IDE build / F5 workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files, `cmake.enabled: false`, empty `launch.json` configurations, F5 → Build and Run task only (`.cursor/rules/f5-build-and-run.mdc`); never replace F5 with CMake Tools or CodeLLDB.
+2. **Stability / run / foreground / hotkey tasks:** read [§8.21 Architecture stabilization roadmap](#821-architecture-stabilization-roadmap-mandatory--ai-execution) at task start; update the **Progress tracker** table when a phase advances; implement mapped **work packages** (`.cursor/rules/architecture-stabilization-roadmap.mdc`).
+3. **Final user reply:** include the [§9.7 task-close summary](#97-task-close-user-summary-mandatory--agents-only) (**원인 / 해결 / 이번에 할 일 / 한줄**) in beginner Korean.
+4. If the chat surfaced a new user preference signal, append a dated bullet under [§9.5 User preference profile](#95-user-preference-profile-cumulative--agents-only) in the **same task** (append-only; no separate files).
+5. **Before closing the task:** bump version per [§10](#10-versioning-policy) — update `CMakeLists.txt`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`, add Korean section to **`UpdateLog/update_log.md`** (§3.7), leave empty `[Unreleased]`. Then run **`.\scripts\build-release.ps1` only** when C++/headers/`CMakeLists.txt` changed; skip build for docs/rules-only. **Then mandatory backup + GitHub release** per [§3.6](#36-github-backup-and-release).
+6. Keep diffs minimal; match existing C++ / Qt conventions.
+7. For overlay/capture/modal UI work: run the [§8.5 template capture checklist](#85-template-capture-and-post-pick-ux-mandatory--manual-verify) on Windows before closing the task.
+8. **Do not regress IDE build / F5 workflow** ([§3.1](#31-ide--cursor-build-workflow-mandatory--do-not-regress)): keep `.vscode/` tracked files, `cmake.enabled: false`, empty `launch.json` configurations, F5 → Build and Run task only (`.cursor/rules/f5-build-and-run.mdc`); never replace F5 with CMake Tools or CodeLLDB.
 
 ### Diff conventions
 
@@ -1481,6 +1708,7 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 - **2026-07-24:** Wants **chat replies in plain Korean, as short as possible** — no jargon, no long tables, no class/file names unless the user asks; diagnosis/log reports default to a **few bullets** (결론 → 언제 → 심각도); full technical detail stays in `AGENTS.md` / rules only.
 - **2026-07-24:** On **problem reports** (bug, lag, crash, regression): agent must **investigate first**, then explain **증상 / 원인 추정 / 해결 방향 / 다음 조치** in beginner-friendly Korean **before** starting code or build fixes; always-applied `.cursor/rules/explain-before-fix.mdc`.
 - **2026-07-29:** At **every completed task**, final reply must include a **초보자용 4줄 요약**: **원인 / 해결 / 이번에 할 일 / 한줄** — always-applied `.cursor/rules/task-close-summary.mdc`, AGENTS.md §9.7.
+- **2026-07-29:** Structural stability work must follow the **detailed AI execution roadmap** in AGENTS.md **§8.21** (phases R0–R7, work packages, progress tracker) — not ad-hoc refactors; `.cursor/rules/architecture-stabilization-roadmap.mdc`.
 - **2026-07-24:** Profile **foreground auto-switch** should feel snappy: prefer **process path** when title-only match would wrongly pick default; shorter stability/min-interval for definitive exe match (0 ms / 150 ms).
 - **2026-07-25:** All PIPBONG lag/stutter diagnosis uses **one** opt-in profiler — **`AppStutterProfiler`** → `app-stutter/latest.md` (§8.14); do **not** add per-subsystem profiler classes; extend `AppStutterProfiler` event kinds or `DiagnosticHub` breadcrumbs instead.
 - **2026-07-28:** **응답없음** / force-kill when crash/hang UI missing: prefer always-on **`live-session/latest.log`** (§8.18); user says 응답없음 in chat → read that log first for AI diagnosis (complements opt-in `app-stutter`).
@@ -1669,6 +1897,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.365] - 2026-07-29
+
+### Added
+
+- **Architecture stabilization roadmap** for 100% AI execution: AGENTS.md §8.21 phases R0–R7 (policy, GUI/worker boundary, session capture contract, hotkey ordering, MainWindow decomposition, workflow dry-run Stage 2, optional concurrency matrix); work packages, grep audits, manual verify, progress tracker; `.cursor/rules/architecture-stabilization-roadmap.mdc`; §9 governance step + §9.5 preference; TOC §8.21 link.
 
 ## [0.8.364] - 2026-07-29
 
@@ -6228,6 +6462,14 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 - User-held modifiers before a feature session must not be released on loop end; PIPBONG-applied keys are restored via tracked `m_pipbongHeldVirtualKeys`.
 - Full rules in [§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress): no `AttachThreadInput`, guarded modifier `SendInput`, session key tracking + `restoreRunKeyboard`, hotkey swallow in hooks, no blind keyboard sync.
 
+### `task-close-summary.mdc`
+
+- **Mandatory** final reply **원인 / 해결 / 이번에 할 일 / 한줄** after every completed task ([§9.7](#97-task-close-user-summary-mandatory--agents-only)).
+
+### `architecture-stabilization-roadmap.mdc`
+
+- **Mandatory** before run/session/foreground/hotkey/MainWindow stability work — execute phases **R0–R7** from [§8.21](#821-architecture-stabilization-roadmap-mandatory--ai-execution); update progress tracker when a phase advances.
+
 ### `hold-mode-latch.mdc`
 
 - **홀드** continuation polls use `isHoldBindingStillActiveForRun` — never `reconcileHoldBindingDown` (no mid-hold `hotkeyHoldEnded`).
@@ -6323,4 +6565,4 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 ---
 
-_Last consolidated: 2026-07-29. Current application version: 0.8.364._
+_Last consolidated: 2026-07-29. Current application version: 0.8.365._

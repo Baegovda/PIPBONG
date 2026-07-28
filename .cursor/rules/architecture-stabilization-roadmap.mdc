@@ -1,0 +1,42 @@
+---
+description: Mandatory AI execution roadmap for run/session/foreground stability — read AGENTS.md §8.21 before implementing
+alwaysApply: true
+---
+
+# Architecture stabilization roadmap (mandatory — AI execution)
+
+**Status:** Added 2026-07-29 (v0.8.365). **100% AI-maintained** — human director does not implement phases; agents pick work packages from the master plan.
+
+## When to read §8.21
+
+Before **any** task that touches:
+
+- `MainWindow` run/stop/session lifecycle
+- `WorkflowEngine` / worker ↔ GUI signals
+- `ForegroundWindowMonitor`, profile auto-switch, `ForegroundRunGate`
+- `ScreenCapture` target HWND during runs
+- `HotkeyManager` hooks, hold/trigger latch
+- `SessionRunPolicy` / `PIPBONGPolicySim` scenarios
+- Hang / stutter / **응답 없음** with active feature sessions
+
+**Full plan:** [AGENTS.md §8.21](../../AGENTS.md#821-architecture-stabilization-roadmap-mandatory--ai-execution) — phases **R0–R7**, work packages, grep audits, manual verify, progress tracker.
+
+## Agent rules
+
+| Rule | Detail |
+| ---- | ------ |
+| **Pick work** | Lowest phase with status **Partial** or **Not started** in §8.21 progress table — unless user names a symptom (map symptom → work package) |
+| **One bite** | Prefer **one work package (WP)** per user task; update progress tracker when a phase advances |
+| **Policy first** | New gate/rule → `SessionRunPolicy` + sim scenario in the **same task** |
+| **No MainWindow sprawl** | New run logic → controller / `SessionRunPolicy` / `RunLifecycleCoordinator` (Phase R5) |
+| **Close** | POST_BUILD policy sim OK; §8.17 rows when touching foreground/run; §9.7 user summary |
+
+## Related mandatory patterns
+
+- Session policy sim: [§8.12](../../AGENTS.md#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link)
+- Profile / foreground: [§8.17](../../AGENTS.md#817-profile-auto-switch-mandatory--do-not-regress)
+- Hold latch: [§8.20](../../AGENTS.md#820-hold-mode-latch-and-run-continuation-mandatory--do-not-regress), `hold-mode-latch.mdc`
+- Alt+Tab hotkeys: [§8.15](../../AGENTS.md#815-alt-tab-foreground-sync-and-feature-hotkey-latch-mandatory--do-not-regress)
+- Live hang log: [§8.18](../../AGENTS.md#818-live-session-log-mandatory--응답없음--force-kill-diagnosis)
+
+Do **not** create `ROADMAP.md` or separate planning files — §8.21 is the only roadmap.

@@ -21,6 +21,7 @@ alwaysApply: true
 ## User preference profile (mandatory — cumulative in AGENTS.md only)
 
 - **Read** [AGENTS.md §9.5](../../AGENTS.md#95-user-preference-profile-cumulative--agents-only) at **task start** before UI, workflow, docs, or architecture choices.
+- **Run/session/foreground/hotkey stability:** read [AGENTS.md §8.21](../../AGENTS.md#821-architecture-stabilization-roadmap-mandatory--ai-execution) and pick work packages per `.cursor/rules/architecture-stabilization-roadmap.mdc`.
 - **Append** dated bullets in §9.5 **same task** when the user states or clearly implies work style, aesthetics, collaboration habits, or anti-preferences — **never** a separate `USER_*.md` file; **never delete** prior §9.5 bullets.
 - If a preference must constrain every future agent, add a **one-line pointer** here or in `immediate-handover.mdc`; full wording stays in §9.5.
 
