@@ -3072,6 +3072,21 @@ void MainWindow::refreshFeatureListHoldVisuals() {
     m_featureList->endRunStateBatch();
 }
 
+void MainWindow::scheduleFeatureListHoldVisualRefresh() {
+    if (m_holdBurstDepth == 0 && !shouldCoalesceRunUiUpdates()) {
+        refreshFeatureListHoldVisuals();
+        return;
+    }
+    if (m_holdVisualRefreshScheduled) {
+        return;
+    }
+    m_holdVisualRefreshScheduled = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_holdVisualRefreshScheduled = false;
+        refreshFeatureListHoldVisuals();
+    });
+}
+
 QString MainWindow::featureDisplayName(const std::string& featureId) const {
     if (!m_project) {
         return QString::fromStdString(featureId);
@@ -3098,22 +3113,30 @@ void MainWindow::connectSessionEngine(FeatureRunSession& session) {
         return;
     }
 
-    connect(engine, &WorkflowEngine::logMessage, this, &MainWindow::onEngineLog);
-    connect(engine, &WorkflowEngine::sessionPrepared, this, &MainWindow::onEngineSessionPrepared);
-    connect(engine, &WorkflowEngine::started, this, &MainWindow::onEngineStarted);
+    connect(engine, &WorkflowEngine::logMessage, this, &MainWindow::onEngineLog,
+            Qt::QueuedConnection);
+    connect(engine, &WorkflowEngine::sessionPrepared, this, &MainWindow::onEngineSessionPrepared,
+            Qt::QueuedConnection);
+    connect(engine, &WorkflowEngine::started, this, &MainWindow::onEngineStarted,
+            Qt::QueuedConnection);
     connect(engine, &WorkflowEngine::finished, this, &MainWindow::onEngineFinished,
             Qt::QueuedConnection);
-    connect(engine, &WorkflowEngine::blockStarted, this, &MainWindow::onBlockStarted);
-    connect(engine, &WorkflowEngine::blockFinished, this, &MainWindow::onBlockFinished);
-    connect(engine, &WorkflowEngine::blockProgress, this, &MainWindow::onBlockProgress);
-    connect(engine, &WorkflowEngine::blockMatchResult, this, &MainWindow::onBlockMatchResult);
-    connect(engine, &WorkflowEngine::blockImageFindAttempt, this, &MainWindow::onBlockImageFindAttempt);
+    connect(engine, &WorkflowEngine::blockStarted, this, &MainWindow::onBlockStarted,
+            Qt::QueuedConnection);
+    connect(engine, &WorkflowEngine::blockFinished, this, &MainWindow::onBlockFinished,
+            Qt::QueuedConnection);
+    connect(engine, &WorkflowEngine::blockProgress, this, &MainWindow::onBlockProgress,
+            Qt::QueuedConnection);
+    connect(engine, &WorkflowEngine::blockMatchResult, this, &MainWindow::onBlockMatchResult,
+            Qt::QueuedConnection);
+    connect(engine, &WorkflowEngine::blockImageFindAttempt, this, &MainWindow::onBlockImageFindAttempt,
+            Qt::QueuedConnection);
     connect(engine, &WorkflowEngine::imageFindFailureHandling, this,
-            &MainWindow::onImageFindFailureHandling);
+            &MainWindow::onImageFindFailureHandling, Qt::QueuedConnection);
     connect(engine, &WorkflowEngine::imageFindReturnToPrevious, this,
-            &MainWindow::onImageFindReturnToPrevious);
+            &MainWindow::onImageFindReturnToPrevious, Qt::QueuedConnection);
     connect(engine, &WorkflowEngine::pointerFeedbackAtClientPoint, this,
-            &MainWindow::onPointerFeedbackAtClientPoint);
+            &MainWindow::onPointerFeedbackAtClientPoint, Qt::QueuedConnection);
 }
 
 void MainWindow::updateRunUiState(bool immediate) {
@@ -3308,7 +3331,7 @@ void MainWindow::flushCoalescedHoldFeatureStarts() {
             startFeatureRun(feature, true);
         }
     }
-    refreshFeatureListHoldVisuals();
+    scheduleFeatureListHoldVisualRefresh();
 }
 
 void MainWindow::scheduleCoalescedHoldFeatureEndFinish(const std::string& featureId) {
@@ -4623,7 +4646,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
     }
     const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
     if (feature->runMode() == FeatureRunMode::Hold) {
-        refreshFeatureListHoldVisuals();
+        scheduleFeatureListHoldVisualRefresh();
     }
     if (!hotkeyHoldStart) {
         selectRunningFeatureForDisplay(feature);
@@ -5076,14 +5099,10 @@ void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* 
                 coalesce.pendingLastElapsedMs = elapsedMs;
                 coalesce.pendingLastMessage = qMessage;
             }
-            if (shouldCoalesceRunUiUpdates()) {
-                scheduleWorkerFastRepeatUiFlush();
-            } else {
-                QMetaObject::invokeMethod(
-                    this,
-                    [this]() { scheduleWorkerFastRepeatUiFlush(); },
-                    Qt::QueuedConnection);
-            }
+            QMetaObject::invokeMethod(
+                this,
+                [this]() { scheduleWorkerFastRepeatUiFlush(); },
+                Qt::QueuedConnection);
         };
     callbacks.shouldContinue = [this, featureId, featurePtr, hotkeyMgr, contextWeak](bool success,
                                                                                      bool detectionFailed) {
@@ -6280,7 +6299,7 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
     }
 
     scheduleCoalescedHoldFeatureStart(id);
-    refreshFeatureListHoldVisuals();
+    scheduleFeatureListHoldVisualRefresh();
 }
 
 void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
@@ -6307,14 +6326,14 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
 
     FeatureRunSession* session = sessionFor(id);
     if (!session || session->runningMode != FeatureRunMode::Hold) {
-        refreshFeatureListHoldVisuals();
+        scheduleFeatureListHoldVisualRefresh();
         return;
     }
 
     ++session->holdRepeatGeneration;
 
     if (!session->holdRunActive) {
-        refreshFeatureListHoldVisuals();
+        scheduleFeatureListHoldVisualRefresh();
         return;
     }
 
@@ -6323,7 +6342,7 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
 
     Feature* feature = m_project ? m_project->featureById(id) : nullptr;
     releaseHoldHotkeyInputToTarget(*session, feature);
-    refreshFeatureListHoldVisuals();
+    scheduleFeatureListHoldVisualRefresh();
 
     if (session->holdKeyTapLaneActive && m_holdKeyTapMux) {
         session->userStopRequested = true;

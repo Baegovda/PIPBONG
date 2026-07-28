@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.362` (from `project(PIPBONG VERSION 0.8.362)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.363` (from `project(PIPBONG VERSION 0.8.363)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1238,6 +1238,42 @@ Key files: `src/model/FeatureGroupMutation.*`, `src/ui/FeatureListViewModel.*`, 
 
 Cursor rule: `.cursor/rules/feature-list-groups.mdc`. Mistake log: [§9.6](#96-regression-mistake-log-오답노트--agents-only).
 
+### 8.20 Hold mode latch and run continuation (mandatory — do not regress)
+
+**Status:** User-confirmed fix v0.8.362 (2026-07-29). **홀드** must keep looping (workflow engine or `HoldKeyTapMultiplexer`) while the hook latch says the binding is down — not stop after one loop/tap because a poll misread `GetAsyncKeyState`.
+
+#### Symptom
+
+- Hold hotkey pressed: one tap or one workflow loop then stops while finger still down.
+- Q/W/E/R simultaneous hold: sessions start/end in a burst (`live-session`: `hold start` → `hold tap` → `hold end` interleaved).
+- Worse with **same-key** hold hotkey + KeyPress **탭** (synthetic KEYUP briefly clears async key state).
+
+#### Root cause (v0.8.349–0.8.361 regression)
+
+`shouldContinueRunSession`, worker fast-repeat hold checks, and hold-tap mux `shouldContinue` called **`reconcileHoldBindingDown`**. That API treated “hook `keyDown` true but `GetAsyncKeyState` false for one sample” as release and **immediately** emitted `hotkeyHoldEnded` — ending the session mid-hold. Earlier fixes (v0.8.294, v0.8.318, v0.8.349) addressed KEYUP timing and latch trust but **reintroduced** reconcile-on-poll in later hold/burst work.
+
+#### Required architecture
+
+| Layer | Rule |
+| ----- | ---- |
+| **Poll-safe read** | `HotkeyManager::isHoldBindingStillActiveForRun(featureId)` — physical down **or** hook latch `keyDown`/`buttonDown`; **no** emit |
+| **Continue hold run** | `MainWindow::shouldContinueRunSession`, `configureWorkerFastRepeat` hold branch, `launchHoldKeyTapRun` mux callback → **`isHoldBindingStillActiveForRun` only** |
+| **Latch reconcile** | `reconcileHoldBindingDown` — if physical down, heal latch; if latch down but physical not (yet), **`scheduleDeferredKeyboardHoldEnd` / `scheduleDeferredMouseHoldEnd`** (do not immediate emit on first miss) |
+| **KEYUP path** | Hook KEYUP + deferred recheck still ends hold when key is truly released (unchanged) |
+
+#### Anti-patterns (do not reintroduce)
+
+- `shouldContinueRunSession` → `reconcileHoldBindingDown` (side effect: `hotkeyHoldEnded` during loop gap or tap pulse).
+- Immediate `emitHotkeyHoldEnded` inside `reconcileHoldBindingDown` on a single `GetAsyncKeyState` failure while `keyDown` is still true.
+- Using only `GetAsyncKeyState` for hold continuation when hook latch is the source of truth during swallowed hold keys.
+
+#### Key files
+
+- `src/app/HotkeyManager.h` / `.cpp` — `isHoldBindingStillActiveForRun`, `reconcileHoldBindingDown`, deferred hold-end
+- `src/app/MainWindow.cpp` — `shouldContinueRunSession`, `reconcileHoldLatchForActiveHoldSessions`, `launchHoldKeyTapRun`, worker fast-repeat callbacks
+
+Cursor rule: `.cursor/rules/hold-mode-latch.mdc`. Mistake log: [§9.6](#96-regression-mistake-log-오답노트--agents-only).
+
 ### 8.13 Settings and edit dialogs (mandatory — grouped + tooltips)
 
 **Status:** Verified working on Windows (2026-07). Extended 2026-07-24 (v0.8.308) to **all** settings and edit dialogs — not only **프로그램 설정**.
@@ -1527,6 +1563,19 @@ Cursor rule: `.cursor/rules/alt-tab-hotkey-foreground.mdc`. Mistake history: [§
 | **Shipped fix** | **v0.8.360:** `featureAt(i-1)` null check; `setActiveProfileId` refreshes list after collapsed-group settings load |
 | **Key symbols** | `FeatureListViewModel::buildRows`, `FeatureListPanel::setActiveProfileId` |
 
+#### Hold mode stops mid-press (one tap / loop then dead) — reconcile on poll
+
+**Date:** 2026-07-29 · **Verified:** v0.8.362 (user confirmed) · **Pattern:** [§8.20](#820-hold-mode-latch-and-run-continuation-mandatory--do-not-regress)
+
+| | |
+| - | - |
+| **Symptom** | **홀드** does not repeat while key held; Q/W/E/R together misbehaves; log shows rapid `hold start` / `hold tap` / `hold end`; same-key hotkey + KeyPress Tap especially bad |
+| **Misdiagnosis** | Stale sessions only (`holdSessionBlocksNewPhysicalStart`); foreground gate; feature **그룹** refresh killing runs; “user must focus PIPBONG” |
+| **Failed approaches (do not retry as sole fix)** | **v0.8.357–0.8.358:** stale session teardown on hold start. **v0.8.355:** group `refresh()` / `projectModified` churn. More `reconcileHoldBindingDown` on UI reconcile without separating poll vs latch heal. Trust only `GetAsyncKeyState` without hook latch during tap pulses (reverts v0.8.373 latch-only continuation). |
+| **Root cause** | Loop/tap **continuation polls** called `reconcileHoldBindingDown`, which on one `GetAsyncKeyState` miss while hook `keyDown` still true **immediately emitted `hotkeyHoldEnded`** — session `holdRunActive` cleared mid-hold. |
+| **Shipped fix** | **v0.8.362:** `isHoldBindingStillActiveForRun` for all continuation polls; `reconcileHoldBindingDown` defers end via existing deferred KEYUP recheck instead of immediate emit. |
+| **Key symbols** | `isHoldBindingStillActiveForRun`, `reconcileHoldBindingDown`, `shouldContinueRunSession`, `launchHoldKeyTapRun`, `reconcileHoldLatchForActiveHoldSessions`, `scheduleDeferredKeyboardHoldEnd` |
+
 ---
 
 ## 10. Versioning Policy
@@ -1593,11 +1642,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ### Removed
 
+## [0.8.363] - 2026-07-29
+
+### Fixed
+
+- GUI hang / `QObject::startTimer: Timers cannot be started from another thread` when multiple repeat/hold sessions run: worker fast-repeat UI flush always marshaled to the GUI thread (`MainWindow::configureWorkerFastRepeat`); `WorkflowEngine` session signals use `Qt::QueuedConnection`; hold hotkey burst coalesces feature-list hold glow refresh (`scheduleFeatureListHoldVisualRefresh`).
+
 ## [0.8.362] - 2026-07-29
 
 ### Fixed
 
 - Hold mode (**홀드**) no longer stops mid-hold when loop/tap polling calls `reconcileHoldBindingDown`: run continuation and hold-key-tap lanes use poll-safe `isHoldBindingStillActiveForRun` (hook latch); latch reconcile defers hold-end via existing deferred KEYUP recheck instead of immediate `hotkeyHoldEnded` on a single `GetAsyncKeyState` miss (`HotkeyManager`, `MainWindow`).
+
+### Changed
+
+- Documented hold-mode latch polling regression and fix: AGENTS.md §8.20, §9.6 mistake log, `.cursor/rules/hold-mode-latch.mdc`.
 
 ## [0.8.361] - 2026-07-29
 
@@ -6133,6 +6192,11 @@ Always-applied rules live in `.cursor/rules/`. Essential content is inlined here
 
 - User-held modifiers before a feature session must not be released on loop end; PIPBONG-applied keys are restored via tracked `m_pipbongHeldVirtualKeys`.
 - Full rules in [§8.6](#86-physical-keyboard-state-during-workflow-runs-mandatory--do-not-regress): no `AttachThreadInput`, guarded modifier `SendInput`, session key tracking + `restoreRunKeyboard`, hotkey swallow in hooks, no blind keyboard sync.
+
+### `hold-mode-latch.mdc`
+
+- **홀드** continuation polls use `isHoldBindingStillActiveForRun` — never `reconcileHoldBindingDown` (no mid-hold `hotkeyHoldEnded`).
+- Full rules in [§8.20](#820-hold-mode-latch-and-run-continuation-mandatory--do-not-regress). Mistake log: [§9.6](#96-regression-mistake-log-오답노트--agents-only).
 
 ### `alt-tab-hotkey-foreground.mdc`
 

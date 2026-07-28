@@ -226,6 +226,7 @@ private:
     bool isFeatureRunHighlighted(const FeatureRunSession& session) const;
     QHash<QString, FeatureRunVisualKind> buildFeatureListRunVisualKinds() const;
     void refreshFeatureListHoldVisuals();
+    void scheduleFeatureListHoldVisualRefresh();
     void scheduleWorkerFastRepeatUiFlush();
     void flushAllPendingWorkerFastRepeatUi();
     int concurrentActiveRepeatSessionCount() const;
@@ -578,6 +579,7 @@ private:
 #endif
     bool m_ensureTriggerMonitorPending = false;
     bool m_pruneAbandonedEnginesPending = false;
+    bool m_holdVisualRefreshScheduled = false;
     int m_holdBurstDepth = 0;
     bool m_holdBurstScopeDrainScheduled = false;
     QElapsedTimer m_holdBurstForegroundPrepTimer;
