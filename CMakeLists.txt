@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.377 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.378 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -356,5 +356,25 @@ if(PIPBONG_RUN_POLICY_SIM_ON_BUILD)
                 -ReportPath "${CMAKE_BINARY_DIR}/policy-sim-report.txt"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         COMMENT "SessionRunPolicySim regression (automatic after PIPBONG link)"
+    )
+endif()
+
+option(PIPBONG_RUN_WORKFLOW_DRY_RUN_ON_BUILD
+       "Run PIPBONGWorkflowDryRunSim automatically after every successful PIPBONG link"
+       ON)
+
+if(PIPBONG_RUN_WORKFLOW_DRY_RUN_ON_BUILD)
+    add_dependencies(PIPBONG PIPBONGWorkflowDryRunSim)
+    add_custom_command(
+        TARGET PIPBONG
+        POST_BUILD
+        COMMAND powershell
+                -NoProfile
+                -ExecutionPolicy
+                Bypass
+                -File "${CMAKE_SOURCE_DIR}/scripts/run-workflow-dry-run-postbuild.ps1"
+                -SimExe "$<TARGET_FILE:PIPBONGWorkflowDryRunSim>"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "WorkflowDryRunSim regression (automatic after PIPBONG link)"
     )
 endif()
