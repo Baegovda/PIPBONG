@@ -1331,7 +1331,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R2** | GUI / worker boundary | **Partial** | 0.8.366+ | R2.1 audit; code paths done — **manual verify** (Q/W/E/R 10s, trigger 감시) still user |
 | **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.375 | **R4.2** toggle hotkey → `ensureForegroundReadyForFeatureHotkey` (v0.8.375); **R4.3** audit (v0.8.374) |
 | **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | **`RunLifecycleCoordinator`** `policyInputsFromSessions` (v0.8.376); `MainWindow.cpp` ~9272 lines |
-| **R6** | Automated workflow dry-run | **Partial** | 0.8.375+ | R6.2 scenarios through trigger primed/monitor + retry-after-next (v0.8.380) |
+| **R6** | Automated workflow dry-run | **Done (v0.8.380)** | 0.8.375+ | R6.2 scenario table complete; R6.1 stub matcher class still optional |
 | **R7** | Concurrency product policy | **Partial** | 0.8.375 | **R7.1** matrix below (documentation); no hard caps |
 
 **Agent task pick rule:** On user request for stability/performance/hang/hotkey/capture — complete the **lowest-numbered phase** with status **Partial** or **Not started** unless the user names a specific symptom (then fix symptom **and** land the matching work package below).
