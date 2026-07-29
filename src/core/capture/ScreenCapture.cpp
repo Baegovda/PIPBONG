@@ -18,6 +18,20 @@
 #include <mutex>
 #include <optional>
 
+namespace {
+
+std::optional<cv::Mat> g_injectedImageFindHaystackForDryRun;
+bool g_runWithoutTargetWindowOverrideForDryRun = false;
+
+cv::Mat clonedInjectedHaystackIfSet() {
+    if (!g_injectedImageFindHaystackForDryRun.has_value()) {
+        return {};
+    }
+    return g_injectedImageFindHaystackForDryRun->clone();
+}
+
+} // namespace
+
 #ifdef _WIN32
 namespace {
 
@@ -202,6 +216,9 @@ ImageFindCaptureModeSetting currentImageFindCaptureMode() {
 }
 
 bool runWithoutTargetWindowEnabled() {
+    if (g_runWithoutTargetWindowOverrideForDryRun) {
+        return true;
+    }
     QSettings settings;
     return settings.value(QStringLiteral("program/runWithoutTargetWindow"), false).toBool();
 }
@@ -645,6 +662,10 @@ PercentRegion ScreenCapture::storeWindowPercentFromPhysical(const CaptureRegion&
 cv::Mat ScreenCapture::captureSearchArea(SearchArea area,
                                          const CaptureRegion& custom,
                                          const PercentRegion& percent) {
+    const cv::Mat injected = clonedInjectedHaystackIfSet();
+    if (!injected.empty()) {
+        return injected;
+    }
     switch (area) {
     case SearchArea::FullScreen:
         return captureFullScreen();
@@ -664,6 +685,10 @@ cv::Mat ScreenCapture::captureSearchAreaForImageFind(SearchArea area,
 #ifdef _WIN32
     std::lock_guard<std::mutex> captureLock(g_imageFindCaptureMutex);
 #endif
+    const cv::Mat injected = clonedInjectedHaystackIfSet();
+    if (!injected.empty()) {
+        return injected;
+    }
 #ifdef _WIN32
     if (area == SearchArea::TargetWindow) {
         HWND hwnd = hwndForWorkflowCapture();
@@ -1241,3 +1266,25 @@ cv::Mat ScreenCapture::hBitmapToMat(HBITMAP hBitmap, int width, int height) {
     return bgr;
 }
 #endif
+
+void ScreenCapture::setInjectedImageFindHaystackForDryRun(const cv::Mat& haystack) {
+#ifdef _WIN32
+    std::lock_guard<std::mutex> captureLock(g_imageFindCaptureMutex);
+#endif
+    if (haystack.empty()) {
+        g_injectedImageFindHaystackForDryRun.reset();
+        return;
+    }
+    g_injectedImageFindHaystackForDryRun = haystack.clone();
+}
+
+void ScreenCapture::clearInjectedImageFindHaystackForDryRun() {
+#ifdef _WIN32
+    std::lock_guard<std::mutex> captureLock(g_imageFindCaptureMutex);
+#endif
+    g_injectedImageFindHaystackForDryRun.reset();
+}
+
+void ScreenCapture::setRunWithoutTargetWindowOverrideForDryRun(bool enabled) {
+    g_runWithoutTargetWindowOverrideForDryRun = enabled;
+}

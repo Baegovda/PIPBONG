@@ -105,6 +105,11 @@ public:
 
     static bool isMostlyBlack(const cv::Mat& image, double meanThreshold = 8.0);
 
+    /// Injected haystack for `PIPBONGWorkflowDryRunSim` only — not for production capture UI.
+    static void setInjectedImageFindHaystackForDryRun(const cv::Mat& haystack);
+    static void clearInjectedImageFindHaystackForDryRun();
+    static void setRunWithoutTargetWindowOverrideForDryRun(bool enabled);
+
 #ifdef _WIN32
     struct ScreenRect {
         int x = 0;

@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <thread>
@@ -34,6 +35,10 @@ int snapRoiCorrectionExpandPercent(int percent) {
 }
 
 namespace {
+bool workflowDryRunEnvironment() {
+    return std::getenv("PIPBONG_WORKFLOW_DRY_RUN") != nullptr;
+}
+
 bool sleepUnlessStopped(ExecutionContext& ctx, int delayMs) {
     return ctx.interruptibleSleepMs(delayMs);
 }
@@ -1443,7 +1448,7 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
             continue;
         }
 
-        if (pollAttemptCount == 1 && !triggerMonitorPoll) {
+        if (pollAttemptCount == 1 && !triggerMonitorPoll && !workflowDryRunEnvironment()) {
             const CaptureRegion overlayLegacy =
                 pollRegions.empty() ? CaptureRegion{} : pollRegions.front();
             std::vector<CaptureRegion> overlayRegions = pollRegions;
@@ -1459,7 +1464,9 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         ctx.setImageFindPollAttempt(pollAttemptCount);
         lapStart = std::chrono::steady_clock::now();
 
-        WorkflowMatchFeedbackOverlay::hideBeforeCapture();
+        if (!workflowDryRunEnvironment()) {
+            WorkflowMatchFeedbackOverlay::hideBeforeCapture();
+        }
         if (triggerMonitorPoll) {
             WorkflowRoiFlashOverlay::dismissAll();
         }
