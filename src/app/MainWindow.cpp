@@ -543,7 +543,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_targetWindowController.setHostCallbacks(targetHost);
 
     m_runSessionController.setProject(m_project.get());
-    m_runSessionController.setRunSessions(&m_runSessions);
+    m_runSessionController.setRunSessions(&runSessions());
     RunSessionController::HostCallbacks runHost;
     runHost.shouldSkipForegroundGateReconcile = [this]() {
         return m_profileSwitchPipelineActive || m_switchingProfile
@@ -785,7 +785,7 @@ QString MainWindow::buildCrashReportContextSnapshot() const {
         }
     }
 
-    lines.append(QStringLiteral("  runningSessions: %1").arg(static_cast<int>(m_runSessions.size())));
+    lines.append(QStringLiteral("  runningSessions: %1").arg(static_cast<int>(runSessions().size())));
     lines.append(QStringLiteral("  abandonedEngines: %1").arg(static_cast<int>(m_abandonedEngines.size())));
     for (const auto& abandoned : m_abandonedEngines) {
         if (!abandoned) {
@@ -797,7 +797,7 @@ QString MainWindow::buildCrashReportContextSnapshot() const {
     }
 
     const qint64 nowEpochMs = QDateTime::currentMSecsSinceEpoch();
-    for (const auto& entry : m_runSessions) {
+    for (const auto& entry : runSessions()) {
         const FeatureRunSession& session = entry.second;
         QString featureName = QString::fromStdString(entry.first);
         if (m_project) {
@@ -1837,7 +1837,7 @@ void MainWindow::reconcileMouseLocksFromRunningSessions() {
     if (MouseCenterLock::isActive()) {
         MouseCenterLock::releaseAll();
     }
-    for (const auto& entry : m_runSessions) {
+    for (const auto& entry : runSessions()) {
         const FeatureRunSession& session = entry.second;
         if (!isFeatureSessionActive(session)) {
             continue;
@@ -1845,7 +1845,7 @@ void MainWindow::reconcileMouseLocksFromRunningSessions() {
         if (session.sessionContext && session.sessionContext->isPaused()) {
             continue;
         }
-        FeatureRunSession& mutableSession = m_runSessions.at(entry.first);
+        FeatureRunSession& mutableSession = runSessions().at(entry.first);
         if (isEarlyLoopMouseLockWindow(mutableSession)) {
             engageEarlyLoopMouseLockAtBestPoint(mutableSession);
             continue;
@@ -2069,9 +2069,9 @@ void MainWindow::onSpikeWatch() {
             updateAuxiliaryToolButtonStates();
         });
         wireAuxiliaryDialogVisibility(m_spikeWatchDialog);
-        m_spikeWatchDialog->setFeatureRunningCallback([this]() { return !m_runSessions.empty(); });
+        m_spikeWatchDialog->setFeatureRunningCallback([this]() { return !runSessions().empty(); });
     } else {
-        m_spikeWatchDialog->setFeatureRunningCallback([this]() { return !m_runSessions.empty(); });
+        m_spikeWatchDialog->setFeatureRunningCallback([this]() { return !runSessions().empty(); });
     }
     m_spikeWatchDialog->show();
     m_spikeWatchDialog->raise();
@@ -2885,7 +2885,7 @@ void MainWindow::pruneSessionOwnerProjects() {
     }
     for (auto it = m_sessionOwnerProjects.begin(); it != m_sessionOwnerProjects.end();) {
         bool stillNeeded = false;
-        for (const auto& entry : m_runSessions) {
+        for (const auto& entry : runSessions()) {
             if (entry.second.profileId == it->first) {
                 stillNeeded = true;
                 break;
@@ -2913,11 +2913,19 @@ void MainWindow::applyRunningBlockVisuals(FeatureRunSession& session,
 }
 
 FeatureRunSession* MainWindow::sessionFor(const std::string& featureId) {
-    return RunLifecycleCoordinator::sessionForId(m_runSessions, featureId);
+    return RunLifecycleCoordinator::sessionForId(runSessions(), featureId);
 }
 
 const FeatureRunSession* MainWindow::sessionFor(const std::string& featureId) const {
-    return RunLifecycleCoordinator::sessionForId(m_runSessions, featureId);
+    return RunLifecycleCoordinator::sessionForId(runSessions(), featureId);
+}
+
+std::map<std::string, FeatureRunSession>& MainWindow::runSessions() {
+    return m_runSessionRegistry.sessions();
+}
+
+const std::map<std::string, FeatureRunSession>& MainWindow::runSessions() const {
+    return m_runSessionRegistry.sessions();
 }
 
 FeatureRunSession* MainWindow::sessionForEngine(const QObject* sender) {
@@ -2943,17 +2951,17 @@ bool MainWindow::isFeatureInActiveWorkflowRun(const std::string& featureId) cons
 
 bool MainWindow::hasAnyRunningSession() const {
     return SessionRunPolicy::hasAnyRunningSession(
-        RunLifecycleCoordinator::policyInputsFromSessions(m_runSessions));
+        RunLifecycleCoordinator::policyInputsFromSessions(runSessions()));
 }
 
 bool MainWindow::hasAnyActiveWorkflowEngine() const {
     return SessionRunPolicy::hasAnyActiveWorkflowEngine(
-        RunLifecycleCoordinator::policyInputsFromSessions(m_runSessions));
+        RunLifecycleCoordinator::policyInputsFromSessions(runSessions()));
 }
 
 QSet<QString> MainWindow::activeWorkflowFeatureIds() const {
     QSet<QString> ids;
-    for (const auto& entry : m_runSessions) {
+    for (const auto& entry : runSessions()) {
         if (!sessionBelongsToActiveProfile(entry.second)) {
             continue;
         }
@@ -2966,7 +2974,7 @@ QSet<QString> MainWindow::activeWorkflowFeatureIds() const {
 
 QSet<QString> MainWindow::runningFeatureIds() const {
     QSet<QString> ids;
-    for (const auto& entry : m_runSessions) {
+    for (const auto& entry : runSessions()) {
         if (!sessionBelongsToActiveProfile(entry.second)) {
             continue;
         }
@@ -2989,7 +2997,7 @@ bool MainWindow::isFeatureRunHighlighted(const FeatureRunSession& session) const
 
 QHash<QString, FeatureRunVisualKind> MainWindow::buildFeatureListRunVisualKinds() const {
     QHash<QString, FeatureRunVisualKind> visualKinds;
-    for (const auto& entry : m_runSessions) {
+    for (const auto& entry : runSessions()) {
         if (!sessionBelongsToActiveProfile(entry.second)) {
             continue;
         }
@@ -3120,12 +3128,12 @@ void MainWindow::updateRunUiState(bool immediate) {
 }
 
 bool MainWindow::shouldCoalesceRunUiUpdates() const {
-    return RunLifecycleCoordinator::shouldCoalesceRunUi(m_runSessions, false);
+    return RunLifecycleCoordinator::shouldCoalesceRunUi(runSessions(), false);
 }
 
 int MainWindow::concurrentActiveRepeatSessionCount() const {
     return SessionRunPolicy::countActiveRepeatSessions(
-        RunLifecycleCoordinator::policyInputsFromSessions(m_runSessions));
+        RunLifecycleCoordinator::policyInputsFromSessions(runSessions()));
 }
 
 bool MainWindow::shouldPublishFastRepeatLoopLog(const FeatureRunSession& session) const {
@@ -3152,7 +3160,7 @@ void MainWindow::abandonSessionEngine(FeatureRunSession& session) {
     enginePtr->stop();
     m_abandonedEngines.push_back(std::move(session.engine));
     if (RunLifecycleCoordinator::shouldDeferAbandonedEnginePrune(
-            m_runSessions, RunLifecycleCoordinator::isHoldBurstUiActive(*this))) {
+            runSessions(), RunLifecycleCoordinator::isHoldBurstUiActive(*this))) {
         m_deferredBurstPruneEngines = true;
     } else {
         schedulePruneAbandonedEngines();
@@ -3172,20 +3180,7 @@ void MainWindow::stopRunningSessionsForUpdate() {
 }
 
 void MainWindow::stopAllSessions() {
-    UserInputInterruptMonitor::instance().unregisterAll();
-    MouseCenterLock::releaseAll();
-    std::vector<std::string> featureIds;
-    featureIds.reserve(m_runSessions.size());
-    for (const auto& entry : m_runSessions) {
-        featureIds.push_back(entry.first);
-    }
-    // Shutdown / bulk teardown must not clear triggerArmedFeatureIds — only explicit user stop does.
-    const bool previousSuppress = m_suppressTriggerArmedPersist;
-    m_suppressTriggerArmedPersist = true;
-    for (const std::string& featureId : featureIds) {
-        stopFeatureRun(featureId);
-    }
-    m_suppressTriggerArmedPersist = previousSuppress;
+    RunLifecycleCoordinator::stopAllSessions(*this);
 }
 
 void MainWindow::detachUiForProfileSwitch() {
@@ -3201,7 +3196,7 @@ void MainWindow::detachUiForProfileSwitch() {
 }
 
 bool MainWindow::hasTriggerMonitoringSessions() const {
-    for (const auto& entry : m_runSessions) {
+    for (const auto& entry : runSessions()) {
         if (isTriggerMonitoring(entry.second)) {
             return true;
         }
@@ -4914,7 +4909,7 @@ void MainWindow::reconcileHoldLatchForActiveHoldSessions() {
     if (!m_hotkeyManager) {
         return;
     }
-    for (const auto& entry : m_runSessions) {
+    for (const auto& entry : runSessions()) {
         const FeatureRunSession& session = entry.second;
         if (session.runningMode != FeatureRunMode::Hold || !session.holdRunActive) {
             continue;
@@ -4988,7 +4983,7 @@ void MainWindow::scheduleEnsureTriggerMonitorEnginesRunning() {
 }
 
 void MainWindow::ensureTriggerMonitorEnginesRunning() {
-    for (auto& entry : m_runSessions) {
+    for (auto& entry : runSessions()) {
         FeatureRunSession& session = entry.second;
         if (session.runningMode != FeatureRunMode::Trigger
             || session.triggerPhase != TriggerSessionPhase::Monitoring) {
@@ -5179,7 +5174,7 @@ void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession)
     triggerSession.triggerPreemptSavedCursor = false;
     triggerSession.triggerReleasedOwnMouseLockForPreempt = false;
 
-    for (auto& entry : m_runSessions) {
+    for (auto& entry : runSessions()) {
         if (entry.first == triggerSession.featureId) {
             continue;
         }
@@ -5374,8 +5369,8 @@ void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
 
 void MainWindow::finalizeDeferredStopSessions() {
     std::vector<std::string> featureIdsToFinalize;
-    featureIdsToFinalize.reserve(m_runSessions.size());
-    for (const auto& entry : m_runSessions) {
+    featureIdsToFinalize.reserve(runSessions().size());
+    for (const auto& entry : runSessions()) {
         if (!entry.second.userStopRequested || entry.second.engine) {
             continue;
         }
@@ -6010,7 +6005,7 @@ HWND MainWindow::findSubTargetHwndForCenterPin() const {
 #endif
 
 bool MainWindow::hasAnyActiveWorkflowBurst() const {
-    for (const auto& entry : m_runSessions) {
+    for (const auto& entry : runSessions()) {
         if (isFeatureInActiveWorkflowRun(entry.first)) {
             return true;
         }
@@ -6020,7 +6015,7 @@ bool MainWindow::hasAnyActiveWorkflowBurst() const {
 
 bool MainWindow::hasAnyCapturingWorkflowBurstExcept(const std::string& excludeFeatureId) const {
     return SessionRunPolicy::hasAnyCapturingWorkflowBurst(
-        RunLifecycleCoordinator::policyInputsFromSessions(m_runSessions, &excludeFeatureId));
+        RunLifecycleCoordinator::policyInputsFromSessions(runSessions(), &excludeFeatureId));
 }
 
 bool MainWindow::applyCenterPinToEnabledTargets(bool forceSnap) {
@@ -6113,13 +6108,13 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
     if (session->userStopRequested) {
         const bool deferHoldTeardown =
             session->runningMode == FeatureRunMode::Hold
-            && (m_runSessions.size() > 1 || RunLifecycleCoordinator::isHoldBurstUiActive(*this)
+            && (runSessions().size() > 1 || RunLifecycleCoordinator::isHoldBurstUiActive(*this)
                 || !m_pendingHoldFeatureEndFinishes.empty());
         if (deferHoldTeardown) {
             RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this, session->featureId);
             return;
         }
-        const bool deferUi = m_runSessions.size() > 1;
+        const bool deferUi = runSessions().size() > 1;
         finishRunSession(session->featureId, success, message, deferUi);
         if (deferUi) {
             RunLifecycleCoordinator::scheduleCoalescedHoldEndCleanup(*this);
@@ -6202,13 +6197,13 @@ void MainWindow::onHoldKeyTapLaneFinished(const QString& featureId, bool success
     if (session->userStopRequested) {
         const bool deferHoldTeardown =
             session->runningMode == FeatureRunMode::Hold
-            && (m_runSessions.size() > 1 || RunLifecycleCoordinator::isHoldBurstUiActive(*this)
+            && (runSessions().size() > 1 || RunLifecycleCoordinator::isHoldBurstUiActive(*this)
                 || !m_pendingHoldFeatureEndFinishes.empty());
         if (deferHoldTeardown) {
             RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this, session->featureId);
             return;
         }
-        const bool deferUi = m_runSessions.size() > 1;
+        const bool deferUi = runSessions().size() > 1;
         finishRunSession(session->featureId, success, message, deferUi);
         if (deferUi) {
             RunLifecycleCoordinator::scheduleCoalescedHoldEndCleanup(*this);
@@ -7739,7 +7734,7 @@ void MainWindow::syncEffectiveTargetWindowTitleToCapture() {
 
 #ifdef _WIN32
     if (adoptForegroundLinkedCaptureIfMatched()) {
-        for (auto& entry : m_runSessions) {
+        for (auto& entry : runSessions()) {
             FeatureRunSession& session = entry.second;
             if (session.runningMode != FeatureRunMode::Trigger
                 || session.triggerPhase != TriggerSessionPhase::Monitoring) {
@@ -7784,7 +7779,7 @@ void MainWindow::syncEffectiveTargetWindowTitleToCapture() {
     }
 #endif
 
-    for (auto& entry : m_runSessions) {
+    for (auto& entry : runSessions()) {
         FeatureRunSession& session = entry.second;
         if (session.runningMode != FeatureRunMode::Trigger
             || session.triggerPhase != TriggerSessionPhase::Monitoring) {

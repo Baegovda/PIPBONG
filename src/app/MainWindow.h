@@ -6,6 +6,7 @@
 #include "app/ForegroundRunGate.h"
 #include "app/ProfileManager.h"
 #include "app/ProfileSwitchCoordinator.h"
+#include "app/RunSessionRegistry.h"
 #include "app/RunSessionController.h"
 #include "app/TargetWindowController.h"
 #include "core/workflow/ExecutionContext.h"
@@ -221,6 +222,8 @@ private:
     void connectSessionEngine(FeatureRunSession& session);
     FeatureRunSession* sessionFor(const std::string& featureId);
     const FeatureRunSession* sessionFor(const std::string& featureId) const;
+    std::map<std::string, FeatureRunSession>& runSessions();
+    const std::map<std::string, FeatureRunSession>& runSessions() const;
     FeatureRunSession* sessionForEngine(const QObject* sender);
     void onHoldKeyTapLaneFinished(const QString& featureId, bool success, const QString& message);
     bool isFeatureRunning(const std::string& featureId) const;
@@ -537,7 +540,7 @@ private:
     bool m_autoUpdateInstallStarted = false;
     QString m_persistentStatusMessage;
     QString m_transientStatusMessage;
-    std::map<std::string, FeatureRunSession> m_runSessions;
+    RunSessionRegistry m_runSessionRegistry;
     /// Project snapshots for sessions running on non-active profiles after a profile switch.
     mutable std::unordered_map<QString, std::shared_ptr<Project>> m_sessionOwnerProjects;
     std::map<std::string, std::unique_ptr<WorkerFastRepeatUiCoalesce>> m_fastRepeatUiCoalesce;

@@ -6,6 +6,7 @@
 #include "app/FeatureRunSession.h"
 #include "app/ProgramSettings.h"
 #include "app/SessionRunPolicy.h"
+#include "app/MouseCenterLock.h"
 #include "app/UserInputInterruptMonitor.h"
 #include "core/capture/ScreenCapture.h"
 #include "core/diagnostics/AppStutterProfiler.h"
@@ -85,14 +86,14 @@ FeatureRunSession* RunLifecycleCoordinator::sessionForEngine(MainWindow& window,
     if (!engine) {
         return nullptr;
     }
-    for (auto& entry : window.m_runSessions) {
+    for (auto& entry : window.runSessions()) {
         if (entry.second.engine.get() == engine) {
             return &entry.second;
         }
     }
     const auto abandonedIt = window.m_abandonedEngineFeatureIds.find(engine);
     if (abandonedIt != window.m_abandonedEngineFeatureIds.end()) {
-        return sessionForId(window.m_runSessions, abandonedIt->second);
+        return sessionForId(window.runSessions(), abandonedIt->second);
     }
     return nullptr;
 }
@@ -113,7 +114,7 @@ void RunLifecycleCoordinator::tearDownAndEraseSessionEntry(MainWindow& window,
                                                              const std::string& featureId) {
   FeatureRunSession* session = window.sessionFor(featureId);
   if (!session) {
-    window.m_runSessions.erase(featureId);
+    window.runSessions().erase(featureId);
     return;
   }
   if (session->sessionContext) {
@@ -127,12 +128,12 @@ void RunLifecycleCoordinator::tearDownAndEraseSessionEntry(MainWindow& window,
   if (session->engine) {
     window.abandonSessionEngine(*session);
   }
-  window.m_runSessions.erase(featureId);
+  window.runSessions().erase(featureId);
 }
 
 void RunLifecycleCoordinator::eraseSessionEntryAndRefreshRunUi(MainWindow& window,
                                                                const std::string& featureId) {
-  window.m_runSessions.erase(featureId);
+  window.runSessions().erase(featureId);
   requestRunUiRefresh(window, false);
 }
 
@@ -164,7 +165,7 @@ bool RunLifecycleCoordinator::shouldDeferAbandonedEnginePrune(
 
 bool RunLifecycleCoordinator::isHoldBurstUiActive(const MainWindow& window) {
     return window.m_holdBurstDepth > 0
-           || shouldCoalesceRunUi(window.m_runSessions, false) || window.m_holdStartUiFlushScheduled
+           || shouldCoalesceRunUi(window.runSessions(), false) || window.m_holdStartUiFlushScheduled
            || window.m_holdEndCleanupScheduled || window.m_holdFeatureStartFlushScheduled
            || window.m_holdFeatureEndFinishFlushScheduled
            || !window.m_pendingHoldFeatureStartOrder.empty()
@@ -176,7 +177,7 @@ bool RunLifecycleCoordinator::shouldLogSessionDetailsInBurst(const MainWindow& w
     if (isHoldBurstUiActive(window)) {
         return false;
     }
-    return window.m_runSessions.size() < 2;
+    return window.runSessions().size() < 2;
 }
 
 void RunLifecycleCoordinator::prepareForegroundForHoldBurst(MainWindow& window) {
@@ -488,7 +489,7 @@ RunLifecycleCoordinator::evaluateRunStartForeground(MainWindow& window,
 }
 
 void RunLifecycleCoordinator::requestRunUiRefresh(MainWindow& window, bool immediate) {
-    if (immediate && shouldCoalesceRunUi(window.m_runSessions, false)) {
+    if (immediate && shouldCoalesceRunUi(window.runSessions(), false)) {
         immediate = false;
     }
     if (immediate) {
@@ -507,9 +508,9 @@ void RunLifecycleCoordinator::requestRunUiRefresh(MainWindow& window, bool immed
         applyRunUiState(window);
         return;
     }
-    const auto policyInputs = policyInputsFromSessions(window.m_runSessions);
+    const auto policyInputs = policyInputsFromSessions(window.runSessions());
     const int intervalMs =
-        SessionRunPolicy::runUiDebounceIntervalMs(policyInputs, window.m_runSessions.size());
+        SessionRunPolicy::runUiDebounceIntervalMs(policyInputs, window.runSessions().size());
     window.m_runUiDebounceTimer->setInterval(intervalMs);
     if (!window.m_runUiDebounceTimer->isActive()) {
         window.m_runUiDebounceTimer->start();
@@ -524,7 +525,7 @@ void RunLifecycleCoordinator::applyRunUiState(MainWindow& window) {
     const bool burstUi = isHoldBurstUiActive(window) || window.shouldCoalesceRunUiUpdates();
     if (window.m_featureList) {
         bool suppressRunAnimation = false;
-        for (const auto& entry : window.m_runSessions) {
+        for (const auto& entry : window.runSessions()) {
             if (entry.second.sessionContext && entry.second.sessionContext->suppressRepeatUi()) {
                 suppressRunAnimation = true;
                 break;
@@ -538,7 +539,7 @@ void RunLifecycleCoordinator::applyRunUiState(MainWindow& window) {
         window.m_featureList->setActiveWorkflowFeatureIds(window.activeWorkflowFeatureIds());
 
         QHash<QString, FeatureTriggerCooldownState> cooldownStates;
-        for (const auto& entry : window.m_runSessions) {
+        for (const auto& entry : window.runSessions()) {
             if (!window.sessionBelongsToActiveProfile(entry.second)) {
                 continue;
             }
@@ -560,7 +561,7 @@ void RunLifecycleCoordinator::applyRunUiState(MainWindow& window) {
             bool needRestore = false;
             for (const QString& armedId : armedIds) {
                 if (visualKinds.contains(armedId)
-                    || window.m_runSessions.find(armedId.toStdString()) != window.m_runSessions.end()) {
+                    || window.runSessions().find(armedId.toStdString()) != window.runSessions().end()) {
                     continue;
                 }
                 Feature* feature = window.m_project->featureById(armedId.toStdString());
@@ -615,13 +616,13 @@ void RunLifecycleCoordinator::applyRunUiState(MainWindow& window) {
     }
 
     AppStutterProfiler::setActiveFeatureSessionCount(
-        static_cast<int>(window.m_runSessions.size()));
+        static_cast<int>(window.runSessions().size()));
     AppStutterProfiler::setPipbongFeatureBurstActive(window.hasAnyActiveWorkflowEngine());
 
     if (window.hasAnyRunningSession()) {
         bool anyPaused = false;
         bool anyTriggerMonitoring = false;
-        for (const auto& entry : window.m_runSessions) {
+        for (const auto& entry : window.runSessions()) {
             if (entry.second.sessionContext && entry.second.sessionContext->isPaused()) {
                 anyPaused = true;
             }
@@ -634,9 +635,9 @@ void RunLifecycleCoordinator::applyRunUiState(MainWindow& window) {
             window.setPersistentStatus(window.tr("일시정지 — 입력하여 재개"));
         } else if (anyTriggerMonitoring) {
             window.setPersistentStatus(
-                window.tr("트리거 감시 중 (%1)").arg(window.m_runSessions.size()));
+                window.tr("트리거 감시 중 (%1)").arg(window.runSessions().size()));
         } else {
-            window.setPersistentStatus(window.tr("실행 중 (%1)").arg(window.m_runSessions.size()));
+            window.setPersistentStatus(window.tr("실행 중 (%1)").arg(window.runSessions().size()));
         }
     } else {
         window.m_persistentStatusMessage.clear();
@@ -735,8 +736,8 @@ RunLifecycleCoordinator::activateAndLaunchPreparedSession(
         }
     }
 
-    if (window.m_runSessions.size() >= 2) {
-        for (auto& entry : window.m_runSessions) {
+    if (window.runSessions().size() >= 2) {
+        for (auto& entry : window.runSessions()) {
             if (entry.second.sessionContext) {
                 entry.second.sessionContext->setSuppressRepeatUi(true);
             }
@@ -838,13 +839,13 @@ void RunLifecycleCoordinator::startFeatureRun(MainWindow& window,
     const bool useHoldKeyTapFastPath = prepared.useHoldKeyTapFastPath;
     const int holdTapVirtualKey = prepared.holdTapVirtualKey;
 
-    window.m_runSessions.emplace(featureId, std::move(prepared.session));
-    if (!silentRestoreStart && window.m_runSessions.size() >= 4) {
+    window.runSessions().emplace(featureId, std::move(prepared.session));
+    if (!silentRestoreStart && window.runSessions().size() >= 4) {
         window.showTransientStatus(
             window.tr("동시에 여러 기능이 실행 중입니다. 화면이 버벅일 수 있습니다."),
             4500);
     }
-    FeatureRunSession& activeSession = window.m_runSessions.at(featureId);
+    FeatureRunSession& activeSession = window.runSessions().at(featureId);
     activateAndLaunchPreparedSession(
         window,
         feature,
@@ -873,6 +874,23 @@ RunLifecycleCoordinator::reconcileExistingSessionBeforeStart(MainWindow& window,
     }
     tearDownAndEraseSessionEntry(window, featureId);
     return ExistingSessionReconcileOutcome::StaleRemoved;
+}
+
+void RunLifecycleCoordinator::stopAllSessions(MainWindow& window) {
+    UserInputInterruptMonitor::instance().unregisterAll();
+    MouseCenterLock::releaseAll();
+    std::vector<std::string> featureIds;
+    featureIds.reserve(window.runSessions().size());
+    for (const auto& entry : window.runSessions()) {
+        featureIds.push_back(entry.first);
+    }
+    // Shutdown / bulk teardown must not clear triggerArmedFeatureIds — only explicit user stop does.
+    const bool previousSuppress = window.m_suppressTriggerArmedPersist;
+    window.m_suppressTriggerArmedPersist = true;
+    for (const std::string& featureId : featureIds) {
+        stopFeatureRun(window, featureId);
+    }
+    window.m_suppressTriggerArmedPersist = previousSuppress;
 }
 
 void RunLifecycleCoordinator::stopFeatureRun(MainWindow& window, const std::string& featureId) {
@@ -935,7 +953,7 @@ void RunLifecycleCoordinator::finishRunSession(MainWindow& window,
                                                const QString& message,
                                                const bool deferUiUpdate) {
     FeatureRunSession* session = window.sessionFor(featureId);
-    const bool coalesceUi = shouldCoalesceRunUi(window.m_runSessions, deferUiUpdate);
+    const bool coalesceUi = shouldCoalesceRunUi(window.runSessions(), deferUiUpdate);
     if (session && window.isDisplayedRunningFeature(session) && !coalesceUi) {
         window.m_workflowEditor->clearExecutionHighlight();
         window.m_workflowEditor->persistRunFeedbackForCurrentFeature();
@@ -998,7 +1016,7 @@ void RunLifecycleCoordinator::finishRunSession(MainWindow& window,
 
     UserInputInterruptMonitor::instance().unregisterSession(featureId);
     window.m_fastRepeatUiCoalesce.erase(featureId);
-    window.m_runSessions.erase(featureId);
+    window.runSessions().erase(featureId);
     window.pruneSessionOwnerProjects();
     if (!coalesceUi) {
         window.reconcileMouseLocksFromRunningSessions();

@@ -20,7 +20,7 @@ class RunLifecycleCoordinator {
 public:
     static SessionRunPolicyInput policyInputFrom(const FeatureRunSession& session);
 
-    /// Build policy inputs for all entries in `m_runSessions` (optional `excludeFeatureId` skips one key).
+    /// Build policy inputs for all entries in the run session registry (optional `excludeFeatureId` skips one key).
     static std::vector<SessionRunPolicyInput> policyInputsFromSessions(
         const std::map<std::string, FeatureRunSession>& sessions,
         const std::string* excludeFeatureId = nullptr);
@@ -37,7 +37,7 @@ public:
     static bool holdSessionBlocksNewPhysicalStart(const FeatureRunSession& session,
                                                   HoldKeyTapMultiplexer* mux);
 
-    /// Tear down lane/engine/context and remove `m_runSessions` entry (§8.21 R5.2).
+    /// Tear down lane/engine/context and remove registry entry (§8.21 R5.2).
     static void tearDownAndEraseSessionEntry(class MainWindow& window, const std::string& featureId);
 
     /// Remove map entry and refresh run UI (e.g. ROI edit cancelled).
@@ -89,6 +89,9 @@ public:
     /// User stop path (§8.21 R5.1b) — engine/lane teardown or `finishRunSession`.
     static void stopFeatureRun(class MainWindow& window, const std::string& featureId);
 
+    /// Bulk stop for shutdown/update/profile teardown; does not persist trigger disarm (§8.21 R5.2).
+    static void stopAllSessions(class MainWindow& window);
+
     /// Session teardown after run ends (§8.21 R5.1b).
     static void finishRunSession(class MainWindow& window,
                                  const std::string& featureId,
@@ -121,7 +124,7 @@ public:
         int holdTapVirtualKey = 0;
     };
 
-    /// Session shell + optional `WorkflowEngine` before `m_runSessions.emplace` (§8.21 R5.2).
+    /// Session shell + optional `WorkflowEngine` before registry emplace (§8.21 R5.2).
     static PreparedFeatureRunSession prepareNewSession(class MainWindow& window,
                                                        Feature& feature,
                                                        const QString& profileId,
@@ -133,7 +136,7 @@ public:
         Launched,
     };
 
-    /// After `m_runSessions.emplace`: capture lock, run UI prep, ROI gate, trigger/hold/workflow launch.
+    /// After registry emplace: capture lock, run UI prep, ROI gate, trigger/hold/workflow launch.
     static PreparedSessionLaunchOutcome activateAndLaunchPreparedSession(
         class MainWindow& window,
         Feature* feature,
