@@ -88,4 +88,20 @@ public:
                                                        const QString& profileId,
                                                        bool fromHotkey,
                                                        bool skipTargetActivationOnStart);
+
+    enum class PreparedSessionLaunchOutcome {
+        AwaitingRoiEdit,
+        Launched,
+    };
+
+    /// After `m_runSessions.emplace`: capture lock, run UI prep, ROI gate, trigger/hold/workflow launch.
+    static PreparedSessionLaunchOutcome activateAndLaunchPreparedSession(
+        class MainWindow& window,
+        Feature* feature,
+        FeatureRunSession& activeSession,
+        bool fromHotkey,
+        bool deferTriggerRestoreStart,
+        bool useHoldKeyTapFastPath,
+        int holdTapVirtualKey,
+        bool holdHotkeyStart);
 };

@@ -296,6 +296,78 @@ RunLifecycleCoordinator::PreparedFeatureRunSession RunLifecycleCoordinator::prep
     return prepared;
 }
 
+RunLifecycleCoordinator::PreparedSessionLaunchOutcome
+RunLifecycleCoordinator::activateAndLaunchPreparedSession(
+    MainWindow& window,
+    Feature* feature,
+    FeatureRunSession& activeSession,
+    const bool fromHotkey,
+    const bool deferTriggerRestoreStart,
+    const bool useHoldKeyTapFastPath,
+    const int holdTapVirtualKey,
+    const bool holdHotkeyStart) {
+    if (!feature) {
+        return PreparedSessionLaunchOutcome::Launched;
+    }
+
+    if (holdHotkeyStart && window.m_holdBurstCaptureTitleValid) {
+        activeSession.lockedCaptureTargetTitle = window.m_holdBurstCaptureTitle;
+        if (!window.m_holdBurstCaptureAppliedToCapture) {
+            window.applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
+            window.m_holdBurstCaptureAppliedToCapture = true;
+        }
+    } else {
+        activeSession.lockedCaptureTargetTitle = window.resolveRunCaptureTargetTitleW(feature);
+        window.applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
+        if (holdHotkeyStart && !activeSession.lockedCaptureTargetTitle.empty()) {
+            window.m_holdBurstCaptureTitle = activeSession.lockedCaptureTargetTitle;
+            window.m_holdBurstCaptureTitleValid = true;
+        }
+    }
+
+    if (window.m_runSessions.size() >= 2) {
+        for (auto& entry : window.m_runSessions) {
+            if (entry.second.sessionContext) {
+                entry.second.sessionContext->setSuppressRepeatUi(true);
+            }
+        }
+    }
+
+    const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
+    if (feature->runMode() == FeatureRunMode::Hold) {
+        window.scheduleFeatureListHoldVisualRefresh();
+    }
+    if (!hotkeyHoldStart) {
+        window.selectRunningFeatureForDisplay(feature);
+    }
+
+    if (window.tryBeginFirstTemplateRoiEdit(activeSession, feature)) {
+        return PreparedSessionLaunchOutcome::AwaitingRoiEdit;
+    }
+
+    const std::string& featureId = activeSession.featureId;
+    if (feature->runMode() == FeatureRunMode::Trigger) {
+        window.persistTriggerArmedState(QString::fromStdString(featureId), true);
+        if (deferTriggerRestoreStart) {
+            activeSession.waitingForScopedTargetForeground = true;
+            window.m_runSessionController.scheduleScopedTargetForegroundResumePoll();
+            window.updateRunUiState();
+            return PreparedSessionLaunchOutcome::Launched;
+        }
+        window.launchTriggerMonitor(activeSession, feature, true);
+        return PreparedSessionLaunchOutcome::Launched;
+    }
+
+    if (useHoldKeyTapFastPath) {
+        activeSession.usesHoldKeyTapFastPath = true;
+        window.launchHoldKeyTapRun(activeSession, feature, holdTapVirtualKey);
+        return PreparedSessionLaunchOutcome::Launched;
+    }
+
+    window.launchWorkflowRun(activeSession, feature, false);
+    return PreparedSessionLaunchOutcome::Launched;
+}
+
 RunLifecycleCoordinator::ExistingSessionReconcileOutcome
 RunLifecycleCoordinator::reconcileExistingSessionBeforeStart(MainWindow& window,
                                                              const std::string& featureId,

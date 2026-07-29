@@ -4451,54 +4451,15 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
 
     m_runSessions.emplace(featureId, std::move(prepared.session));
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
-    if (holdHotkeyStart && m_holdBurstCaptureTitleValid) {
-        activeSession.lockedCaptureTargetTitle = m_holdBurstCaptureTitle;
-        if (!m_holdBurstCaptureAppliedToCapture) {
-            applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
-            m_holdBurstCaptureAppliedToCapture = true;
-        }
-    } else {
-        activeSession.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW(feature);
-        applySessionCaptureTarget(activeSession.lockedCaptureTargetTitle);
-        if (holdHotkeyStart && !activeSession.lockedCaptureTargetTitle.empty()) {
-            m_holdBurstCaptureTitle = activeSession.lockedCaptureTargetTitle;
-            m_holdBurstCaptureTitleValid = true;
-        }
-    }
-    if (m_runSessions.size() >= 2) {
-        for (auto& entry : m_runSessions) {
-            if (entry.second.sessionContext) {
-                entry.second.sessionContext->setSuppressRepeatUi(true);
-            }
-        }
-    }
-    const bool hotkeyHoldStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
-    if (feature->runMode() == FeatureRunMode::Hold) {
-        scheduleFeatureListHoldVisualRefresh();
-    }
-    if (!hotkeyHoldStart) {
-        selectRunningFeatureForDisplay(feature);
-    }
-    if (tryBeginFirstTemplateRoiEdit(activeSession, feature)) {
-        return;
-    }
-    if (feature->runMode() == FeatureRunMode::Trigger) {
-        persistTriggerArmedState(QString::fromStdString(featureId), true);
-        if (deferTriggerRestoreStart) {
-            activeSession.waitingForScopedTargetForeground = true;
-            m_runSessionController.scheduleScopedTargetForegroundResumePoll();
-            updateRunUiState();
-            return;
-        }
-        launchTriggerMonitor(activeSession, feature, true);
-        return;
-    }
-    if (useHoldKeyTapFastPath) {
-        activeSession.usesHoldKeyTapFastPath = true;
-        launchHoldKeyTapRun(activeSession, feature, holdTapVirtualKey);
-        return;
-    }
-    launchWorkflowRun(activeSession, feature, false);
+    RunLifecycleCoordinator::activateAndLaunchPreparedSession(
+        *this,
+        feature,
+        activeSession,
+        fromHotkey,
+        deferTriggerRestoreStart,
+        useHoldKeyTapFastPath,
+        holdTapVirtualKey,
+        holdHotkeyStart);
 }
 
 ImageFindBlock* firstImageFindWithEditableRoi(Workflow& workflow) {
