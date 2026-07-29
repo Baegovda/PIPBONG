@@ -47,6 +47,9 @@ public:
 
     static void requestRunUiRefresh(class MainWindow& window, bool immediate);
 
+    /// Coalesced run UI refresh body (§8.21 R5.3); GUI thread only — `MainWindow::applyRunUiState` asserts first.
+    static void applyRunUiState(class MainWindow& window);
+
     /// User stop path (§8.21 R5.1b) — engine/lane teardown or `finishRunSession`.
     static void stopFeatureRun(class MainWindow& window, const std::string& featureId);
 

@@ -8,6 +8,7 @@
 #include "app/SessionRunPolicy.h"
 #include "app/UserInputInterruptMonitor.h"
 #include "core/capture/ScreenCapture.h"
+#include "core/diagnostics/AppStutterProfiler.h"
 #include "core/diagnostics/CrashReporter.h"
 #include "core/workflow/ExecutionContext.h"
 #include "core/workflow/WorkflowEngine.h"
@@ -16,12 +17,16 @@
 #include "model/FeatureCaptureTargetScope.h"
 #include "model/FeatureRunMode.h"
 #include "model/Project.h"
+#include "ui/FeatureListPanel.h"
+#include "ui/ProfileListWidget.h"
 #include "ui/WorkflowEditorPanel.h"
 #include "ui/editors/WorkflowMatchFeedbackOverlay.h"
 #include "ui/editors/WorkflowRoiFlashOverlay.h"
 #include "ui/LogPanelWidget.h"
 
+#include <QCoreApplication>
 #include <QMessageBox>
+#include <QThread>
 #include <QTimer>
 
 #ifdef _WIN32
@@ -245,7 +250,171 @@ RunLifecycleCoordinator::evaluateRunStartForeground(MainWindow& window,
 }
 
 void RunLifecycleCoordinator::requestRunUiRefresh(MainWindow& window, bool immediate) {
-    window.updateRunUiState(immediate);
+    if (immediate && shouldCoalesceRunUi(window.m_runSessions, false)) {
+        immediate = false;
+    }
+    if (immediate) {
+        QCoreApplication* app = QCoreApplication::instance();
+        if (app && QThread::currentThread() != app->thread()) {
+            qWarning("MainWindow: updateRunUiState(immediate) called off GUI thread");
+            Q_ASSERT(false);
+        }
+        if (window.m_runUiDebounceTimer) {
+            window.m_runUiDebounceTimer->stop();
+        }
+        applyRunUiState(window);
+        return;
+    }
+    if (!window.m_runUiDebounceTimer) {
+        applyRunUiState(window);
+        return;
+    }
+    const auto policyInputs = policyInputsFromSessions(window.m_runSessions);
+    const int intervalMs =
+        SessionRunPolicy::runUiDebounceIntervalMs(policyInputs, window.m_runSessions.size());
+    window.m_runUiDebounceTimer->setInterval(intervalMs);
+    if (!window.m_runUiDebounceTimer->isActive()) {
+        window.m_runUiDebounceTimer->start();
+    }
+}
+
+void RunLifecycleCoordinator::applyRunUiState(MainWindow& window) {
+    window.reconcileHoldLatchForActiveHoldSessions();
+    const bool burstUi = window.isHoldBurstActive() || window.shouldCoalesceRunUiUpdates();
+    if (window.m_featureList) {
+        bool suppressRunAnimation = false;
+        for (const auto& entry : window.m_runSessions) {
+            if (entry.second.sessionContext && entry.second.sessionContext->suppressRepeatUi()) {
+                suppressRunAnimation = true;
+                break;
+            }
+        }
+        window.m_featureList->beginRunStateBatch();
+        window.m_featureList->setRunAnimationLowCpu(suppressRunAnimation);
+        window.m_featureList->setRunningFeatureIds(window.runningFeatureIds());
+        QHash<QString, FeatureRunVisualKind> visualKinds = window.buildFeatureListRunVisualKinds();
+        window.m_featureList->setFeatureRunVisualKinds(visualKinds);
+        window.m_featureList->setActiveWorkflowFeatureIds(window.activeWorkflowFeatureIds());
+
+        QHash<QString, FeatureTriggerCooldownState> cooldownStates;
+        for (const auto& entry : window.m_runSessions) {
+            if (!window.sessionBelongsToActiveProfile(entry.second)) {
+                continue;
+            }
+            if (entry.second.runningMode != FeatureRunMode::Trigger
+                || entry.second.triggerPhase != TriggerSessionPhase::Cooldown
+                || entry.second.triggerCooldownEndsAtEpochMs <= 0) {
+                continue;
+            }
+            FeatureTriggerCooldownState state;
+            state.endsAtEpochMs = entry.second.triggerCooldownEndsAtEpochMs;
+            state.totalMs = entry.second.triggerCooldownTotalMs;
+            cooldownStates.insert(QString::fromStdString(entry.first), state);
+        }
+        window.m_featureList->setTriggerCooldownStates(cooldownStates);
+
+        if (window.m_profileManager && window.m_project && !window.m_suppressTriggerArmedPersist) {
+            const QString profileId = window.m_profileManager->activeProfileId();
+            const QStringList armedIds = window.m_profileManager->triggerArmedFeatureIds(profileId);
+            bool needRestore = false;
+            for (const QString& armedId : armedIds) {
+                if (visualKinds.contains(armedId)
+                    || window.m_runSessions.find(armedId.toStdString()) != window.m_runSessions.end()) {
+                    continue;
+                }
+                Feature* feature = window.m_project->featureById(armedId.toStdString());
+                if (!feature || !feature->enabled()
+                    || feature->runMode() != FeatureRunMode::Trigger) {
+                    continue;
+                }
+                visualKinds.insert(armedId, FeatureRunVisualKind::TriggerWatch);
+                needRestore = true;
+            }
+            if (needRestore) {
+                if (burstUi) {
+                    window.m_deferredBurstTriggerRestore = true;
+                } else {
+                    window.scheduleRestorePersistedTriggerSessions();
+                }
+            }
+        }
+        window.m_featureList->endRunStateBatch();
+    }
+
+    Feature* selected =
+        window.m_featureList ? window.m_featureList->selectedFeature() : nullptr;
+    const bool selectedRunning = selected && window.isFeatureRunning(selected->id());
+    const bool selectedActiveWorkflow =
+        selected && window.isFeatureInActiveWorkflowRun(selected->id());
+    if (window.m_profileList) {
+        window.m_profileList->setFeatureDropEnabled(true);
+    }
+    if (window.m_workflowEditor) {
+        window.m_workflowEditor->setEditingEnabled(!window.m_libraryPreviewFeature
+                                                   && !selectedActiveWorkflow);
+
+        bool runBtnEnabled = false;
+        bool showStop = false;
+        QString disabledTip;
+        if (selected && !window.m_libraryPreviewFeature) {
+            showStop = selectedRunning;
+            const bool holdMode = selected->runMode() == FeatureRunMode::Hold;
+            const bool hasBlocks = !selected->workflow().blocks().empty();
+            runBtnEnabled = selected->enabled() && (selectedRunning || (hasBlocks && !holdMode));
+            if (holdMode && !selectedRunning) {
+                disabledTip = window.tr(
+                    "홀드 방식은 단축키를 누르고 있는 동안 워크플로가 무한 반복됩니다. 키를 떼면 중지됩니다.");
+            } else if (!hasBlocks && !selectedRunning) {
+                disabledTip = window.tr("선택한 기능에 블록이 없습니다.");
+            } else if (!selected->enabled() && !selectedRunning) {
+                disabledTip = window.tr("기능이 비활성화되어 있습니다.");
+            }
+        }
+        window.m_workflowEditor->setRunStatusButtonState(showStop, runBtnEnabled, disabledTip);
+    }
+
+    AppStutterProfiler::setActiveFeatureSessionCount(
+        static_cast<int>(window.m_runSessions.size()));
+    AppStutterProfiler::setPipbongFeatureBurstActive(window.hasAnyActiveWorkflowEngine());
+
+    if (window.hasAnyRunningSession()) {
+        bool anyPaused = false;
+        bool anyTriggerMonitoring = false;
+        for (const auto& entry : window.m_runSessions) {
+            if (entry.second.sessionContext && entry.second.sessionContext->isPaused()) {
+                anyPaused = true;
+            }
+            if (entry.second.runningMode == FeatureRunMode::Trigger
+                && entry.second.triggerPhase == TriggerSessionPhase::Monitoring) {
+                anyTriggerMonitoring = true;
+            }
+        }
+        if (anyPaused) {
+            window.setPersistentStatus(window.tr("일시정지 — 입력하여 재개"));
+        } else if (anyTriggerMonitoring) {
+            window.setPersistentStatus(
+                window.tr("트리거 감시 중 (%1)").arg(window.m_runSessions.size()));
+        } else {
+            window.setPersistentStatus(window.tr("실행 중 (%1)").arg(window.m_runSessions.size()));
+        }
+    } else {
+        window.m_persistentStatusMessage.clear();
+        if (window.m_transientStatusMessage.isEmpty()) {
+            window.refreshTitleBarStatus();
+        }
+    }
+
+    window.scheduleEnsureTriggerMonitorEnginesRunning();
+    if (!burstUi) {
+        window.schedulePruneAbandonedEngines();
+        window.flushDeferredProfileSwitchIfIdle();
+    } else {
+        window.m_deferredBurstPruneEngines = true;
+        if (window.m_runUiDebounceTimer && window.m_runUiDebounceTimer->isActive()) {
+            window.m_runUiDebounceTimer->stop();
+        }
+    }
+    window.maybeStartAutomaticUpdate();
 }
 
 RunLifecycleCoordinator::PreparedFeatureRunSession RunLifecycleCoordinator::prepareNewSession(
