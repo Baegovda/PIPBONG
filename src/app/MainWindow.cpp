@@ -4442,44 +4442,14 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
         break;
     }
 
-    int holdTapVirtualKey = 0;
-    const bool useHoldKeyTapFastPath = holdKeyTapWorkflowVirtualKey(*feature, holdTapVirtualKey);
+    const QString profileId = m_profileManager ? m_profileManager->activeProfileId() : QString();
+    RunLifecycleCoordinator::PreparedFeatureRunSession prepared =
+        RunLifecycleCoordinator::prepareNewSession(
+            *this, *feature, profileId, fromHotkey, skipTargetActivationOnStart);
+    const bool useHoldKeyTapFastPath = prepared.useHoldKeyTapFastPath;
+    const int holdTapVirtualKey = prepared.holdTapVirtualKey;
 
-    FeatureRunSession session;
-    session.featureId = featureId;
-    session.profileId = m_profileManager ? m_profileManager->activeProfileId() : QString();
-    if (!useHoldKeyTapFastPath) {
-        session.engine = std::make_unique<WorkflowEngine>(this);
-    }
-    session.userStopRequested = false;
-    session.skipTargetActivationOnStart = skipTargetActivationOnStart;
-    session.runningMode = feature->runMode();
-    session.hotkeyLaunchedSession = fromHotkey;
-    session.repeatSession = session.runningMode == FeatureRunMode::RepeatInfinite
-                            || session.runningMode == FeatureRunMode::RepeatCount
-                            || session.runningMode == FeatureRunMode::Hold
-                            || session.runningMode == FeatureRunMode::Trigger;
-    session.repeatRemaining = feature->repeatCount();
-    session.holdRunActive = session.runningMode == FeatureRunMode::Hold;
-    if (session.runningMode == FeatureRunMode::Trigger) {
-        session.triggerPhase = TriggerSessionPhase::Monitoring;
-        session.triggerBlockIndex = WorkflowRunner::firstImageFindBlockIndex(feature->workflow());
-    }
-    if (session.runningMode == FeatureRunMode::Hold
-        || session.runningMode == FeatureRunMode::RepeatInfinite
-        || session.runningMode == FeatureRunMode::RepeatCount) {
-        ++session.holdRepeatGeneration;
-    }
-    session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
-    session.lockMouseToScreenCenterDuringRun = feature->lockMouseToScreenCenterDuringRun();
-    session.lockMouseToCurrentPositionDuringRun = feature->lockMouseToCurrentPositionDuringRun();
-    session.lockMouseDuringFirstLoopCount = feature->lockMouseDuringFirstLoopCount();
-    session.unlockMouseOnBlockFailureCount = feature->unlockMouseOnBlockFailureCount();
-
-    if (!useHoldKeyTapFastPath) {
-        connectSessionEngine(session);
-    }
-    m_runSessions.emplace(featureId, std::move(session));
+    m_runSessions.emplace(featureId, std::move(prepared.session));
     FeatureRunSession& activeSession = m_runSessions.at(featureId);
     if (holdHotkeyStart && m_holdBurstCaptureTitleValid) {
         activeSession.lockedCaptureTargetTitle = m_holdBurstCaptureTitle;

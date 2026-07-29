@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/SessionRunPolicy.h"
+#include "app/FeatureRunSession.h"
 
 #include <QString>
 
@@ -8,7 +9,7 @@
 #include <string>
 #include <vector>
 
-struct FeatureRunSession;
+class Feature;
 
 /// Run session lifecycle policy helpers (AGENTS.md §8.21 R5.2).
 /// Maps `FeatureRunSession` → `SessionRunPolicyInput` and continuation rules without HWND/hotkey I/O.
@@ -74,4 +75,17 @@ public:
                                                                 bool fromHotkey,
                                                                 bool silentRestoreStart,
                                                                 bool holdHotkeyStart);
+
+    struct PreparedFeatureRunSession {
+        FeatureRunSession session;
+        bool useHoldKeyTapFastPath = false;
+        int holdTapVirtualKey = 0;
+    };
+
+    /// Session shell + optional `WorkflowEngine` before `m_runSessions.emplace` (§8.21 R5.2).
+    static PreparedFeatureRunSession prepareNewSession(class MainWindow& window,
+                                                       Feature& feature,
+                                                       const QString& profileId,
+                                                       bool fromHotkey,
+                                                       bool skipTargetActivationOnStart);
 };

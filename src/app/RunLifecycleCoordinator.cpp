@@ -10,6 +10,8 @@
 #include "core/capture/ScreenCapture.h"
 #include "core/diagnostics/CrashReporter.h"
 #include "core/workflow/ExecutionContext.h"
+#include "core/workflow/WorkflowEngine.h"
+#include "core/workflow/WorkflowRunner.h"
 #include "model/Feature.h"
 #include "model/FeatureCaptureTargetScope.h"
 #include "model/FeatureRunMode.h"
@@ -244,6 +246,54 @@ RunLifecycleCoordinator::evaluateRunStartForeground(MainWindow& window,
 
 void RunLifecycleCoordinator::requestRunUiRefresh(MainWindow& window, bool immediate) {
     window.updateRunUiState(immediate);
+}
+
+RunLifecycleCoordinator::PreparedFeatureRunSession RunLifecycleCoordinator::prepareNewSession(
+    MainWindow& window,
+    Feature& feature,
+    const QString& profileId,
+    const bool fromHotkey,
+    const bool skipTargetActivationOnStart) {
+    PreparedFeatureRunSession prepared;
+    prepared.session.featureId = feature.id();
+    prepared.session.profileId = profileId;
+    prepared.useHoldKeyTapFastPath =
+        holdKeyTapWorkflowVirtualKey(feature, prepared.holdTapVirtualKey);
+    if (!prepared.useHoldKeyTapFastPath) {
+        prepared.session.engine = std::make_unique<WorkflowEngine>(&window);
+    }
+    prepared.session.userStopRequested = false;
+    prepared.session.skipTargetActivationOnStart = skipTargetActivationOnStart;
+    prepared.session.runningMode = feature.runMode();
+    prepared.session.hotkeyLaunchedSession = fromHotkey;
+    prepared.session.repeatSession =
+        prepared.session.runningMode == FeatureRunMode::RepeatInfinite
+        || prepared.session.runningMode == FeatureRunMode::RepeatCount
+        || prepared.session.runningMode == FeatureRunMode::Hold
+        || prepared.session.runningMode == FeatureRunMode::Trigger;
+    prepared.session.repeatRemaining = feature.repeatCount();
+    prepared.session.holdRunActive = prepared.session.runningMode == FeatureRunMode::Hold;
+    if (prepared.session.runningMode == FeatureRunMode::Trigger) {
+        prepared.session.triggerPhase = TriggerSessionPhase::Monitoring;
+        prepared.session.triggerBlockIndex =
+            WorkflowRunner::firstImageFindBlockIndex(feature.workflow());
+    }
+    if (prepared.session.runningMode == FeatureRunMode::Hold
+        || prepared.session.runningMode == FeatureRunMode::RepeatInfinite
+        || prepared.session.runningMode == FeatureRunMode::RepeatCount) {
+        ++prepared.session.holdRepeatGeneration;
+    }
+    prepared.session.restoreMousePositionOnEnd = feature.restoreMousePositionOnEnd();
+    prepared.session.lockMouseToScreenCenterDuringRun = feature.lockMouseToScreenCenterDuringRun();
+    prepared.session.lockMouseToCurrentPositionDuringRun =
+        feature.lockMouseToCurrentPositionDuringRun();
+    prepared.session.lockMouseDuringFirstLoopCount = feature.lockMouseDuringFirstLoopCount();
+    prepared.session.unlockMouseOnBlockFailureCount = feature.unlockMouseOnBlockFailureCount();
+
+    if (!prepared.useHoldKeyTapFastPath) {
+        window.connectSessionEngine(prepared.session);
+    }
+    return prepared;
 }
 
 RunLifecycleCoordinator::ExistingSessionReconcileOutcome
