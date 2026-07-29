@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.376 LANGUAGES CXX)
+project(PIPBONG VERSION 0.8.377 LANGUAGES CXX)
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -268,9 +268,54 @@ if(MSVC)
     target_compile_options(PIPBONGPolicySim PRIVATE /utf-8)
 endif()
 
-add_executable(PIPBONGWorkflowDryRunSim src/tools/WorkflowDryRunSim.cpp)
+add_executable(PIPBONGWorkflowDryRunSim
+    src/tools/WorkflowDryRunSim.cpp
+    src/core/workflow/WorkflowRunner.cpp
+    src/core/workflow/Workflow.cpp
+    src/core/workflow/WorkflowLoopRegion.cpp
+    src/core/workflow/LoopExitCondition.cpp
+    src/core/workflow/ExecutionContext.cpp
+    src/core/workflow/BlockFactory.cpp
+    src/core/workflow/blocks/WaitBlock.cpp
+    src/core/workflow/blocks/ImageFindBlock.cpp
+    src/core/workflow/blocks/ClickBlock.cpp
+    src/core/workflow/blocks/KeyPressBlock.cpp
+    src/core/workflow/blocks/TextBlock.cpp
+    src/core/input/InputSimulator.cpp
+    src/core/input/HotkeyBinding.cpp
+    src/core/capture/ScreenCapture.cpp
+    src/core/capture/DxgiScreenCapture.cpp
+    src/core/vision/ImageMatcher.cpp
+    src/core/vision/TemplateCache.cpp
+    src/core/vision/TemplateCaptureMetadata.cpp
+    src/app/PointerFeedbackSettings.cpp
+    src/app/MouseCenterLock.cpp
+    src/core/diagnostics/DiagnosticHub.cpp
+    src/ui/editors/WorkflowMatchFeedbackOverlay.cpp
+    src/ui/editors/WorkflowRoiFlashOverlay.cpp
+    src/ui/ClickPointerFeedbackRenderer.cpp
+    src/core/diagnostics/LiveSessionLog.cpp
+    src/ui/OpenCvQtUtil.cpp
+)
+target_include_directories(PIPBONGWorkflowDryRunSim PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
+    ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(PIPBONGWorkflowDryRunSim PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    nlohmann_json::nlohmann_json
+    opencv_core
+    opencv_imgproc
+    opencv_imgcodecs
+)
 if(MSVC)
     target_compile_options(PIPBONGWorkflowDryRunSim PRIVATE /utf-8)
+    target_compile_definitions(PIPBONGWorkflowDryRunSim PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+endif()
+if(WIN32)
+    target_link_libraries(PIPBONGWorkflowDryRunSim PRIVATE user32 gdi32 dwmapi dxgi d3d11 winmm shell32)
 endif()
 
 add_executable(FeatureGroupLayoutSim

@@ -116,4 +116,14 @@ bool shouldContinueSession(const SessionRunPolicyInput& session, bool holdBindin
     }
 }
 
+int countActiveRepeatSessions(const std::vector<SessionRunPolicyInput>& sessions) {
+    int count = 0;
+    for (const SessionRunPolicyInput& session : sessions) {
+        if (isSessionActive(session) && session.repeatSession) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 } // namespace SessionRunPolicy

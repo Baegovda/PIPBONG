@@ -3350,13 +3350,8 @@ void MainWindow::flushCoalescedHoldFeatureEndFinishes() {
 }
 
 int MainWindow::concurrentActiveRepeatSessionCount() const {
-    int count = 0;
-    for (const auto& entry : m_runSessions) {
-        if (isFeatureSessionActive(entry.second) && entry.second.repeatSession) {
-            ++count;
-        }
-    }
-    return count;
+    return SessionRunPolicy::countActiveRepeatSessions(
+        RunLifecycleCoordinator::policyInputsFromSessions(m_runSessions));
 }
 
 bool MainWindow::shouldPublishFastRepeatLoopLog(const FeatureRunSession& session) const {

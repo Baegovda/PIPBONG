@@ -48,4 +48,7 @@ std::vector<int> activeWorkflowSessionIndices(const std::vector<SessionRunPolicy
 /// Loop / trigger monitor continuation after a workflow iteration (Hold needs physical latch).
 bool shouldContinueSession(const SessionRunPolicyInput& session, bool holdBindingStillActive);
 
+/// Active sessions with `repeatSession` set (Hold / infinite / N-repeat loop gap UI coalesce).
+int countActiveRepeatSessions(const std::vector<SessionRunPolicyInput>& sessions);
+
 } // namespace SessionRunPolicy

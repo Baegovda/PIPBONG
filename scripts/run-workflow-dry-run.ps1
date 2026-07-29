@@ -2,8 +2,8 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 . (Join-Path $root 'scripts\build-common.ps1')
-Prepare-IncrementalBuildEnvironment
-Ensure-BuildTreeConfigured -Root $root
+Prepare-IncrementalBuildEnvironment -RepoRoot $root
+Ensure-BuildTreeConfigured -RepoRoot $root
 
 $buildDir = Join-Path $root 'build'
 cmake --build $buildDir --config Release --target PIPBONGWorkflowDryRunSim

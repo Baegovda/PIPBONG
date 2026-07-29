@@ -283,6 +283,12 @@ void runShouldContinueScenarios() {
     expectScenario(!SessionRunPolicy::shouldContinueSession(repeatCount, false),
                    "repeat_count_exhausted",
                    u8"N회 반복 remaining=0 중단");
+
+    const std::vector<SessionRunPolicyInput> repeatMix = {holdActive(true), repeatInfinite(false),
+                                                          triggerWatch(false)};
+    expectScenario(SessionRunPolicy::countActiveRepeatSessions(repeatMix) == 3,
+                   "count_active_repeat_sessions",
+                   u8"repeatSession+활성 세션 3건 카운트");
 }
 
 void runForegroundGateScenarios() {
