@@ -19,6 +19,7 @@
 #include "model/Project.h"
 #include "ui/FeatureListPanel.h"
 #include "ui/ProfileListWidget.h"
+#include "ui/BlockListWidget.h"
 #include "ui/WorkflowEditorPanel.h"
 #include "ui/editors/WorkflowMatchFeedbackOverlay.h"
 #include "ui/editors/WorkflowRoiFlashOverlay.h"
@@ -127,6 +128,191 @@ bool RunLifecycleCoordinator::isHoldBurstUiActive(const MainWindow& window) {
            || !window.m_pendingHoldFeatureStartOrder.empty()
            || !window.m_pendingHoldFeatureEndFinishes.empty()
            || window.m_pendingHoldStartUiFeatureIds.size() > 1;
+}
+
+bool RunLifecycleCoordinator::shouldLogSessionDetailsInBurst(const MainWindow& window) {
+    if (isHoldBurstUiActive(window)) {
+        return false;
+    }
+    return window.m_runSessions.size() < 2;
+}
+
+void RunLifecycleCoordinator::prepareForegroundForHoldBurst(MainWindow& window) {
+    if (window.m_holdBurstForegroundPrepared && isHoldBurstUiActive(window)) {
+        return;
+    }
+    if (window.m_holdBurstForegroundPrepTimer.isValid()
+        && window.m_holdBurstForegroundPrepTimer.elapsed() < 50) {
+        return;
+    }
+#ifdef _WIN32
+    window.ensureForegroundReadyForFeatureHotkey();
+#endif
+    window.m_holdBurstForegroundPrepTimer.start();
+    window.m_holdBurstForegroundPrepared = true;
+}
+
+void RunLifecycleCoordinator::scheduleCoalescedHoldStartUi(MainWindow& window,
+                                                             const std::string& featureId) {
+    window.m_pendingHoldStartUiFeatureIds.insert(featureId);
+    if (window.m_holdStartUiFlushScheduled) {
+        return;
+    }
+    window.m_holdStartUiFlushScheduled = true;
+    QTimer::singleShot(0, &window, [&window]() { flushCoalescedHoldStartUi(window); });
+}
+
+void RunLifecycleCoordinator::flushCoalescedHoldStartUi(MainWindow& window) {
+    window.m_holdStartUiFlushScheduled = false;
+    if (window.m_pendingHoldStartUiFeatureIds.empty()) {
+        return;
+    }
+
+    const auto pending = window.m_pendingHoldStartUiFeatureIds;
+    window.m_pendingHoldStartUiFeatureIds.clear();
+
+    bool loggedStart = false;
+    bool selectedDisplay = false;
+    for (const std::string& featureId : pending) {
+        FeatureRunSession* session = window.sessionFor(featureId);
+        if (!session) {
+            continue;
+        }
+        Feature* feature = window.m_project ? window.m_project->featureById(featureId) : nullptr;
+        if (!selectedDisplay && feature) {
+            window.selectRunningFeatureForDisplay(feature);
+            selectedDisplay = true;
+        }
+        if (window.isDisplayedRunningFeature(session) && window.m_workflowEditor) {
+            window.syncLoopTimingToWorkflowEditor(session);
+            window.m_workflowEditor->clearBlockMatchResults();
+            window.m_workflowEditor->clearExecutionHighlight();
+            if (session->runningBlockIndex >= 0
+                && session->runningBlockHighlight != BlockListWidget::ExecutionHighlight::None) {
+                window.m_workflowEditor->setActiveBlockIndex(session->runningBlockIndex,
+                                                             session->runningBlockHighlight);
+            }
+        }
+        if (window.shouldLogRunDetails(*session) && !loggedStart) {
+            window.appendSessionLog(*session, window.tr("기능 실행을 시작합니다"), LogLineKind::Accent);
+            loggedStart = true;
+        }
+    }
+    if (selectedDisplay && window.m_workflowEditor) {
+        window.m_workflowEditor->persistRunFeedbackForCurrentFeature();
+    }
+    requestRunUiRefresh(window, false);
+}
+
+void RunLifecycleCoordinator::scheduleCoalescedHoldEndCleanup(MainWindow& window) {
+    if (window.m_holdEndCleanupScheduled) {
+        return;
+    }
+    window.m_holdEndCleanupScheduled = true;
+    QTimer::singleShot(0, &window, [&window]() { flushCoalescedHoldEndCleanup(window); });
+}
+
+void RunLifecycleCoordinator::flushCoalescedHoldEndCleanup(MainWindow& window) {
+    if (!window.m_holdEndCleanupScheduled) {
+        return;
+    }
+    window.m_holdEndCleanupScheduled = false;
+    window.reconcileMouseLocksFromRunningSessions();
+    requestRunUiRefresh(window, false);
+    flushDeferredBurstSideEffects(window);
+}
+
+void RunLifecycleCoordinator::scheduleHoldBurstScopeDrain(MainWindow& window) {
+    if (window.m_holdBurstScopeDrainScheduled) {
+        return;
+    }
+    window.m_holdBurstScopeDrainScheduled = true;
+    QTimer::singleShot(0, &window, [&window]() { drainHoldBurstScope(window); });
+}
+
+void RunLifecycleCoordinator::drainHoldBurstScope(MainWindow& window) {
+    window.m_holdBurstScopeDrainScheduled = false;
+    if (!window.m_pendingHoldStartUiFeatureIds.empty() && !window.m_holdStartUiFlushScheduled) {
+        flushCoalescedHoldStartUi(window);
+    }
+    flushDeferredBurstSideEffects(window);
+}
+
+void RunLifecycleCoordinator::flushDeferredBurstSideEffects(MainWindow& window) {
+    if (window.m_deferredBurstTriggerRestore) {
+        window.m_deferredBurstTriggerRestore = false;
+        window.scheduleRestorePersistedTriggerSessions();
+    }
+    if (window.m_deferredBurstPruneEngines) {
+        window.m_deferredBurstPruneEngines = false;
+        window.schedulePruneAbandonedEngines();
+    }
+    window.m_holdBurstTargetActivated = false;
+    window.m_holdBurstCaptureAppliedToCapture = false;
+    if (window.m_holdBurstForegroundPrepTimer.isValid()
+        && window.m_holdBurstForegroundPrepTimer.elapsed() > 200) {
+        window.m_holdBurstCaptureTitleValid = false;
+        window.m_holdBurstForegroundPrepared = false;
+    }
+}
+
+void RunLifecycleCoordinator::scheduleCoalescedHoldFeatureStart(MainWindow& window,
+                                                                const std::string& featureId) {
+    if (window.m_pendingHoldFeatureStartIds.insert(featureId).second) {
+        window.m_pendingHoldFeatureStartOrder.push_back(featureId);
+    }
+    if (window.m_holdFeatureStartFlushScheduled) {
+        return;
+    }
+    window.m_holdFeatureStartFlushScheduled = true;
+    QTimer::singleShot(0, &window, [&window]() { flushCoalescedHoldFeatureStarts(window); });
+}
+
+void RunLifecycleCoordinator::flushCoalescedHoldFeatureStarts(MainWindow& window) {
+    window.m_holdFeatureStartFlushScheduled = false;
+    if (window.m_pendingHoldFeatureStartOrder.empty()) {
+        return;
+    }
+
+    std::vector<std::string> pending = std::move(window.m_pendingHoldFeatureStartOrder);
+    window.m_pendingHoldFeatureStartOrder.clear();
+    window.m_pendingHoldFeatureStartIds.clear();
+
+    for (const std::string& featureId : pending) {
+        Feature* feature = window.m_project ? window.m_project->featureById(featureId) : nullptr;
+        if (feature && feature->enabled() && feature->runMode() == FeatureRunMode::Hold) {
+            startFeatureRun(window, feature, true, false);
+        }
+    }
+    window.scheduleFeatureListHoldVisualRefresh();
+}
+
+void RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(MainWindow& window,
+                                                                    const std::string& featureId) {
+    window.m_pendingHoldFeatureEndFinishes.insert(featureId);
+    if (window.m_holdFeatureEndFinishFlushScheduled) {
+        return;
+    }
+    window.m_holdFeatureEndFinishFlushScheduled = true;
+    QTimer::singleShot(0, &window, [&window]() { flushCoalescedHoldFeatureEndFinishes(window); });
+}
+
+void RunLifecycleCoordinator::flushCoalescedHoldFeatureEndFinishes(MainWindow& window) {
+    window.m_holdFeatureEndFinishFlushScheduled = false;
+    if (window.m_pendingHoldFeatureEndFinishes.empty()) {
+        return;
+    }
+
+    std::vector<std::string> pending(window.m_pendingHoldFeatureEndFinishes.begin(),
+                                     window.m_pendingHoldFeatureEndFinishes.end());
+    window.m_pendingHoldFeatureEndFinishes.clear();
+
+    for (const std::string& featureId : pending) {
+        if (window.sessionFor(featureId)) {
+            finishRunSession(window, featureId, true, QString(), true);
+        }
+    }
+    scheduleCoalescedHoldEndCleanup(window);
 }
 
 void RunLifecycleCoordinator::applyUserStopRequestFlags(FeatureRunSession& session,
@@ -581,7 +767,7 @@ void RunLifecycleCoordinator::startFeatureRun(MainWindow& window,
     bool deferTriggerRestoreStart = false;
     const bool holdHotkeyStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
     if (holdHotkeyStart) {
-        window.prepareForegroundForHoldBurst();
+        prepareForegroundForHoldBurst(window);
     }
     switch (evaluateRunStartForeground(
             window, feature, fromHotkey, silentRestoreStart, holdHotkeyStart)) {
@@ -690,7 +876,7 @@ void RunLifecycleCoordinator::stopFeatureRun(MainWindow& window, const std::stri
                                 LogLineKind::Warning);
         window.abandonSessionEngine(*session);
         if (window.shouldCoalesceRunUiUpdates()) {
-            window.scheduleCoalescedHoldEndCleanup();
+            scheduleCoalescedHoldEndCleanup(window);
         } else {
             window.reconcileMouseLocksFromRunningSessions();
             requestRunUiRefresh(window, false);
@@ -705,7 +891,7 @@ void RunLifecycleCoordinator::stopFeatureRun(MainWindow& window, const std::stri
                      QString(),
                      window.shouldCoalesceRunUiUpdates());
     if (window.shouldCoalesceRunUiUpdates()) {
-        window.scheduleCoalescedHoldEndCleanup();
+        scheduleCoalescedHoldEndCleanup(window);
     } else {
         requestRunUiRefresh(window, false);
     }
@@ -792,7 +978,7 @@ void RunLifecycleCoordinator::finishRunSession(MainWindow& window,
     if (!deferUiUpdate) {
         window.updateRunUiState(false);
     } else {
-        window.scheduleCoalescedHoldEndCleanup();
+        scheduleCoalescedHoldEndCleanup(window);
     }
     Q_UNUSED(message);
 }

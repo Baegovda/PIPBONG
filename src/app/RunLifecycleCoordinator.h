@@ -39,6 +39,23 @@ public:
     /// Hold-burst / coalesced hold-start UI window (§8.21 R5.2); `MainWindow::isHoldBurstActive` delegates here.
     static bool isHoldBurstUiActive(const class MainWindow& window);
 
+    static bool shouldLogSessionDetailsInBurst(const class MainWindow& window);
+
+    /// Hold hotkey burst: foreground prep + coalesced start/end UI and deferred burst side effects (§8.21 R5.2).
+    static void prepareForegroundForHoldBurst(class MainWindow& window);
+    static void scheduleCoalescedHoldStartUi(class MainWindow& window, const std::string& featureId);
+    static void flushCoalescedHoldStartUi(class MainWindow& window);
+    static void scheduleCoalescedHoldEndCleanup(class MainWindow& window);
+    static void flushCoalescedHoldEndCleanup(class MainWindow& window);
+    static void scheduleHoldBurstScopeDrain(class MainWindow& window);
+    static void drainHoldBurstScope(class MainWindow& window);
+    static void flushDeferredBurstSideEffects(class MainWindow& window);
+    static void scheduleCoalescedHoldFeatureStart(class MainWindow& window, const std::string& featureId);
+    static void flushCoalescedHoldFeatureStarts(class MainWindow& window);
+    static void scheduleCoalescedHoldFeatureEndFinish(class MainWindow& window,
+                                                      const std::string& featureId);
+    static void flushCoalescedHoldFeatureEndFinishes(class MainWindow& window);
+
     /// User stop: shared flag teardown before engine/lane abandon (§8.21 R5.1b).
     static void applyUserStopRequestFlags(FeatureRunSession& session, bool suppressTriggerArmedPersist);
 

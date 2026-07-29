@@ -3152,184 +3152,55 @@ bool MainWindow::isHoldBurstActive() const {
 }
 
 bool MainWindow::shouldLogSessionDetailsInBurst() const {
-    if (isHoldBurstActive()) {
-        return false;
-    }
-    return m_runSessions.size() < 2;
+    return RunLifecycleCoordinator::shouldLogSessionDetailsInBurst(*this);
 }
 
 void MainWindow::prepareForegroundForHoldBurst() {
-    if (m_holdBurstForegroundPrepared && isHoldBurstActive()) {
-        return;
-    }
-    if (m_holdBurstForegroundPrepTimer.isValid()
-        && m_holdBurstForegroundPrepTimer.elapsed() < 50) {
-        return;
-    }
-#ifdef _WIN32
-    ensureForegroundReadyForFeatureHotkey();
-#endif
-    m_holdBurstForegroundPrepTimer.start();
-    m_holdBurstForegroundPrepared = true;
+    RunLifecycleCoordinator::prepareForegroundForHoldBurst(*this);
 }
 
 void MainWindow::scheduleCoalescedHoldStartUi(const std::string& featureId) {
-    m_pendingHoldStartUiFeatureIds.insert(featureId);
-    if (m_holdStartUiFlushScheduled) {
-        return;
-    }
-    m_holdStartUiFlushScheduled = true;
-    QTimer::singleShot(0, this, [this]() { flushCoalescedHoldStartUi(); });
+    RunLifecycleCoordinator::scheduleCoalescedHoldStartUi(*this, featureId);
 }
 
 void MainWindow::flushCoalescedHoldStartUi() {
-    m_holdStartUiFlushScheduled = false;
-    if (m_pendingHoldStartUiFeatureIds.empty()) {
-        return;
-    }
-
-    const auto pending = m_pendingHoldStartUiFeatureIds;
-    m_pendingHoldStartUiFeatureIds.clear();
-
-    bool loggedStart = false;
-    bool selectedDisplay = false;
-    for (const std::string& featureId : pending) {
-        FeatureRunSession* session = sessionFor(featureId);
-        if (!session) {
-            continue;
-        }
-        Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
-        if (!selectedDisplay && feature) {
-            selectRunningFeatureForDisplay(feature);
-            selectedDisplay = true;
-        }
-        if (isDisplayedRunningFeature(session) && m_workflowEditor) {
-            syncLoopTimingToWorkflowEditor(session);
-            m_workflowEditor->clearBlockMatchResults();
-            m_workflowEditor->clearExecutionHighlight();
-            if (session->runningBlockIndex >= 0
-                && session->runningBlockHighlight != BlockListWidget::ExecutionHighlight::None) {
-                m_workflowEditor->setActiveBlockIndex(session->runningBlockIndex,
-                                                      session->runningBlockHighlight);
-            }
-        }
-        if (shouldLogRunDetails(*session) && !loggedStart) {
-            appendSessionLog(*session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
-            loggedStart = true;
-        }
-    }
-    if (selectedDisplay && m_workflowEditor) {
-        m_workflowEditor->persistRunFeedbackForCurrentFeature();
-    }
-    updateRunUiState(false);
+    RunLifecycleCoordinator::flushCoalescedHoldStartUi(*this);
 }
 
 void MainWindow::scheduleCoalescedHoldEndCleanup() {
-    if (m_holdEndCleanupScheduled) {
-        return;
-    }
-    m_holdEndCleanupScheduled = true;
-    QTimer::singleShot(0, this, [this]() { flushCoalescedHoldEndCleanup(); });
+    RunLifecycleCoordinator::scheduleCoalescedHoldEndCleanup(*this);
 }
 
 void MainWindow::flushCoalescedHoldEndCleanup() {
-    if (!m_holdEndCleanupScheduled) {
-        return;
-    }
-    m_holdEndCleanupScheduled = false;
-    reconcileMouseLocksFromRunningSessions();
-    updateRunUiState(false);
-    flushDeferredBurstSideEffects();
+    RunLifecycleCoordinator::flushCoalescedHoldEndCleanup(*this);
 }
 
 void MainWindow::scheduleHoldBurstScopeDrain() {
-    if (m_holdBurstScopeDrainScheduled) {
-        return;
-    }
-    m_holdBurstScopeDrainScheduled = true;
-    QTimer::singleShot(0, this, [this]() { drainHoldBurstScope(); });
+    RunLifecycleCoordinator::scheduleHoldBurstScopeDrain(*this);
 }
 
 void MainWindow::drainHoldBurstScope() {
-    m_holdBurstScopeDrainScheduled = false;
-    if (!m_pendingHoldStartUiFeatureIds.empty() && !m_holdStartUiFlushScheduled) {
-        flushCoalescedHoldStartUi();
-    }
-    flushDeferredBurstSideEffects();
+    RunLifecycleCoordinator::drainHoldBurstScope(*this);
 }
 
 void MainWindow::flushDeferredBurstSideEffects() {
-    if (m_deferredBurstTriggerRestore) {
-        m_deferredBurstTriggerRestore = false;
-        scheduleRestorePersistedTriggerSessions();
-    }
-    if (m_deferredBurstPruneEngines) {
-        m_deferredBurstPruneEngines = false;
-        schedulePruneAbandonedEngines();
-    }
-    m_holdBurstTargetActivated = false;
-    m_holdBurstCaptureAppliedToCapture = false;
-    if (m_holdBurstForegroundPrepTimer.isValid() && m_holdBurstForegroundPrepTimer.elapsed() > 200) {
-        m_holdBurstCaptureTitleValid = false;
-        m_holdBurstForegroundPrepared = false;
-    }
+    RunLifecycleCoordinator::flushDeferredBurstSideEffects(*this);
 }
 
 void MainWindow::scheduleCoalescedHoldFeatureStart(const std::string& featureId) {
-    if (m_pendingHoldFeatureStartIds.insert(featureId).second) {
-        m_pendingHoldFeatureStartOrder.push_back(featureId);
-    }
-    if (m_holdFeatureStartFlushScheduled) {
-        return;
-    }
-    m_holdFeatureStartFlushScheduled = true;
-    QTimer::singleShot(0, this, [this]() { flushCoalescedHoldFeatureStarts(); });
+    RunLifecycleCoordinator::scheduleCoalescedHoldFeatureStart(*this, featureId);
 }
 
 void MainWindow::flushCoalescedHoldFeatureStarts() {
-    m_holdFeatureStartFlushScheduled = false;
-    if (m_pendingHoldFeatureStartOrder.empty()) {
-        return;
-    }
-
-    std::vector<std::string> pending = std::move(m_pendingHoldFeatureStartOrder);
-    m_pendingHoldFeatureStartOrder.clear();
-    m_pendingHoldFeatureStartIds.clear();
-
-    for (const std::string& featureId : pending) {
-        Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
-        if (feature && feature->enabled() && feature->runMode() == FeatureRunMode::Hold) {
-            startFeatureRun(feature, true);
-        }
-    }
-    scheduleFeatureListHoldVisualRefresh();
+    RunLifecycleCoordinator::flushCoalescedHoldFeatureStarts(*this);
 }
 
 void MainWindow::scheduleCoalescedHoldFeatureEndFinish(const std::string& featureId) {
-    m_pendingHoldFeatureEndFinishes.insert(featureId);
-    if (m_holdFeatureEndFinishFlushScheduled) {
-        return;
-    }
-    m_holdFeatureEndFinishFlushScheduled = true;
-    QTimer::singleShot(0, this, [this]() { flushCoalescedHoldFeatureEndFinishes(); });
+    RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this, featureId);
 }
 
 void MainWindow::flushCoalescedHoldFeatureEndFinishes() {
-    m_holdFeatureEndFinishFlushScheduled = false;
-    if (m_pendingHoldFeatureEndFinishes.empty()) {
-        return;
-    }
-
-    std::vector<std::string> pending(m_pendingHoldFeatureEndFinishes.begin(),
-                                     m_pendingHoldFeatureEndFinishes.end());
-    m_pendingHoldFeatureEndFinishes.clear();
-
-    for (const std::string& featureId : pending) {
-        if (sessionFor(featureId)) {
-            finishRunSession(featureId, true, QString(), true);
-        }
-    }
-    scheduleCoalescedHoldEndCleanup();
+    RunLifecycleCoordinator::flushCoalescedHoldFeatureEndFinishes(*this);
 }
 
 int MainWindow::concurrentActiveRepeatSessionCount() const {
