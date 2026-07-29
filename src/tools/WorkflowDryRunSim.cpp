@@ -52,7 +52,8 @@ std::filesystem::path prepareTemplateProject(cv::Mat& haystack,
 }
 
 std::unique_ptr<ImageFindBlock> makeImageFindBlock(const std::string& relativeTemplate,
-                                                   bool returnToPrevious) {
+                                                   bool returnToPrevious,
+                                                   bool retryAfterNext = false) {
     auto block = std::make_unique<ImageFindBlock>();
     block->templatePaths = {relativeTemplate};
     block->searchArea = SearchArea::FullScreen;
@@ -62,6 +63,10 @@ std::unique_ptr<ImageFindBlock> makeImageFindBlock(const std::string& relativeTe
     if (returnToPrevious) {
         block->returnToPreviousImageFindOnFailure = true;
         block->returnToPreviousMissLimit = 1;
+        block->threshold = 0.99;
+    }
+    if (retryAfterNext) {
+        block->retryAfterNextActionOnFailure = true;
         block->threshold = 0.99;
     }
     return block;
@@ -184,6 +189,115 @@ bool runImageFindReturnToPrevious(const std::filesystem::path& projectRoot, cons
     return true;
 }
 
+bool runImageFindRetryAfterNext(const std::filesystem::path& projectRoot, const cv::Mat& haystack) {
+    Workflow workflow;
+    workflow.addBlock(makeImageFindBlock("templates/nomatch.png", false, true));
+    auto wait = std::make_unique<WaitBlock>();
+    wait->ms = 0;
+    wait->randomRange = false;
+    workflow.addBlock(std::move(wait));
+    workflow.addBlock(makeImageFindBlock("templates/match.png", false));
+
+    DryRunCaptureScope capture(haystack);
+    ExecutionContext ctx;
+    ctx.setProjectDirectory(projectRoot.generic_string());
+
+    int waitStarts = 0;
+    int matchBlockStarts = 0;
+    int retryAfterNextCount = -1;
+    WorkflowRunHooks hooks;
+    hooks.onBlockStarted = [&](int blockIndex, const std::string&) {
+        if (blockIndex == 1) {
+            ++waitStarts;
+        }
+        if (blockIndex == 2) {
+            ++matchBlockStarts;
+        }
+    };
+    hooks.onImageFindFailureHandling = [&](int blockIndex, int, int retryCount) {
+        if (blockIndex == 0) {
+            retryAfterNextCount = retryCount;
+        }
+    };
+
+    const WorkflowRunResult result = WorkflowRunner::run(workflow, ctx, &hooks);
+    if (!result.success) {
+        std::cerr << "retry-after-next workflow failed: " << result.message << '\n';
+        return false;
+    }
+    if (waitStarts != 1) {
+        std::cerr << "retry-after-next expected 1 wait start, got " << waitStarts << '\n';
+        return false;
+    }
+    if (matchBlockStarts != 1) {
+        std::cerr << "retry-after-next expected 1 match block start, got " << matchBlockStarts
+                  << '\n';
+        return false;
+    }
+    if (retryAfterNextCount < 1) {
+        std::cerr << "retry-after-next expected failure counter >= 1, got " << retryAfterNextCount
+                  << '\n';
+        return false;
+    }
+    return true;
+}
+
+bool runImageFindTriggerPrimedAction(const std::filesystem::path& projectRoot) {
+    Workflow workflow;
+    workflow.addBlock(makeImageFindBlock("templates/match.png", false));
+
+    ExecutionContext ctx;
+    ctx.setProjectDirectory(projectRoot.generic_string());
+    ctx.setLastMatch(cv::Point(80, 80), 0.95, cv::Mat(), 0.85);
+    ctx.setImageFindPrimedBlockIndex(0);
+
+    bool finishedOk = false;
+    WorkflowRunHooks hooks;
+    hooks.onBlockFinished = [&](int blockIndex, bool success, const std::string& message, qint64,
+                                qint64 pollAttempts, int) {
+        if (blockIndex == 0) {
+            finishedOk = success;
+            if (!success) {
+                std::cerr << "trigger primed block failed: " << message << '\n';
+            }
+            if (pollAttempts > 0) {
+                std::cerr << "trigger primed expected no capture polls, got " << pollAttempts
+                          << '\n';
+                finishedOk = false;
+            }
+        }
+    };
+
+    const WorkflowRunResult result = WorkflowRunner::run(workflow, ctx, &hooks);
+    if (!result.success) {
+        std::cerr << "trigger primed workflow failed: " << result.message << '\n';
+        return false;
+    }
+    return finishedOk;
+}
+
+bool runImageFindTriggerMonitorMatch(const std::filesystem::path& projectRoot,
+                                     const cv::Mat& haystack) {
+    Workflow workflow;
+    workflow.addBlock(makeImageFindBlock("templates/match.png", false));
+
+    DryRunCaptureScope capture(haystack);
+    ExecutionContext ctx;
+    ctx.setProjectDirectory(projectRoot.generic_string());
+    ctx.setTriggerMonitorBlockIndex(0);
+
+    const WorkflowRunResult result = WorkflowRunner::run(workflow, ctx, nullptr);
+    if (!result.success) {
+        std::cerr << "trigger monitor workflow failed: " << result.message << '\n';
+        return false;
+    }
+    if (!ctx.hasLastMatch()) {
+        std::cerr << "trigger monitor: no last match recorded\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -215,7 +329,16 @@ int main(int argc, char** argv) {
     if (!runImageFindReturnToPrevious(projectRoot, haystack)) {
         return 1;
     }
+    if (!runImageFindRetryAfterNext(projectRoot, haystack)) {
+        return 1;
+    }
+    if (!runImageFindTriggerPrimedAction(projectRoot)) {
+        return 1;
+    }
+    if (!runImageFindTriggerMonitorMatch(projectRoot, haystack)) {
+        return 1;
+    }
 
-    std::cout << "PIPBONGWorkflowDryRunSim: wait + loop-region + ImageFind branches OK (R6.2)\n";
+    std::cout << "PIPBONGWorkflowDryRunSim: wait + loop-region + ImageFind + trigger/retry OK (R6.2)\n";
     return 0;
 }

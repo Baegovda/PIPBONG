@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.379` (from `project(PIPBONG VERSION 0.8.379)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.380` (from `project(PIPBONG VERSION 0.8.379)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1331,7 +1331,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R2** | GUI / worker boundary | **Partial** | 0.8.366+ | R2.1 audit; code paths done — **manual verify** (Q/W/E/R 10s, trigger 감시) still user |
 | **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.375 | **R4.2** toggle hotkey → `ensureForegroundReadyForFeatureHotkey` (v0.8.375); **R4.3** audit (v0.8.374) |
 | **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | **`RunLifecycleCoordinator`** `policyInputsFromSessions` (v0.8.376); `MainWindow.cpp` ~9272 lines |
-| **R6** | Automated workflow dry-run | **Partial** | 0.8.375+ | **R6.2** wait + loop-region + ImageFind match/return (v0.8.379); injected haystack (v0.8.379); trigger/retry scenarios pending |
+| **R6** | Automated workflow dry-run | **Partial** | 0.8.375+ | R6.2 scenarios through trigger primed/monitor + retry-after-next (v0.8.380) |
 | **R7** | Concurrency product policy | **Partial** | 0.8.375 | **R7.1** matrix below (documentation); no hard caps |
 
 **Agent task pick rule:** On user request for stability/performance/hang/hotkey/capture — complete the **lowest-numbered phase** with status **Partial** or **Not started** unless the user names a specific symptom (then fix symptom **and** land the matching work package below).
@@ -1483,7 +1483,7 @@ User hotkey (hook)
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R6.1** Design | `PIPBONGWorkflowDryRunSim` target: mock `ScreenCapture` + stub `ImageMatcher` returning scripted peaks | **Partial (v0.8.379)** — `ScreenCapture` injected haystack + `PIPBONG_WORKFLOW_DRY_RUN` overlay skip; full `StubImageMatcher` not linked |
-| **R6.2** Scenarios | JSON or C++ tables: return-to-previous ImageFind, retry-after-next, trigger monitor→action primed match, loop region exit | **Partial (v0.8.379)** — wait + loop-region + ImageFind match + return-to-previous (`WorkflowDryRunSim.cpp`); trigger/retry pending |
+| **R6.2** Scenarios | JSON or C++ tables: return-to-previous ImageFind, retry-after-next, trigger monitor→action primed match, loop region exit | **Done (v0.8.380)** — all listed branches in `WorkflowDryRunSim.cpp` |
 | **R6.3** Block dependencies | Isolate `WorkflowRunner` from widgets — link only `core/workflow` + mocks | No Qt Widgets in sim exe |
 | **R6.4** Handover | Extend [§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) Stage 2 paragraph with symbols | **`scripts/run-workflow-dry-run.ps1`** (manual); **`run-workflow-dry-run-postbuild.ps1`** + `PIPBONG_RUN_WORKFLOW_DRY_RUN_ON_BUILD` (v0.8.378); skip `PIPBONG_SKIP_WORKFLOW_DRY_RUN=1` |
 
@@ -1956,6 +1956,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.380] - 2026-07-29
+
+### Added
+
+- **`PIPBONGWorkflowDryRunSim`**: retry-after-next, trigger primed action, and trigger monitor match scenarios (`WorkflowDryRunSim.cpp`, AGENTS.md §8.21 R6.2).
 
 ## [0.8.379] - 2026-07-29
 
