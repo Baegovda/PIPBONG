@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.387` (from `project(PIPBONG VERSION 0.8.387)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.388` (from `project(PIPBONG VERSION 0.8.388)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1330,9 +1330,9 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R1** | Policy surface completeness | **Done** | 0.8.381 | R1.2 coalesce/debounce via `SessionRunPolicy` + `RunLifecycleCoordinator` |
 | **R2** | GUI / worker boundary | **Done** | 0.8.382 | R2.3 coalesce; manual Q/W/E/R + trigger 감시 + Alt+Tab/Shift — user verified 2026-07-30 |
 | **R4** | Hotkey / input state machine | **Done (code)** | 0.8.294+ | R4.4 skipped; manual Alt+Tab 5× + Shift §8.17 — user |
-| **R5** | MainWindow decomposition | **Partial** | 0.8.387 | R5.4 controller audit + deferred profile-switch wiring; R5.5 manual §8.17 pending user |
+| **R5** | MainWindow decomposition | **Partial** | 0.8.388 | R5.2 `isHoldBurstUiActive` on coordinator; `MainWindow.cpp` ~7930 lines; R5.5 manual §8.17 pending user |
 | **R6** | Automated workflow dry-run | **Done (v0.8.380)** | 0.8.375+ | R6.2 complete; R6.3 overlay link deferred (ImageFindBlock) |
-| **R7** | Concurrency product policy | **Partial** | 0.8.381 | R7.1 matrix + R7.2 perf-hint column (doc) |
+| **R7** | Concurrency product policy | **Partial** | 0.8.388 | R7.2 perf hint at 4+ sessions (title bar); R7.1 matrix done |
 
 **Agent task pick rule:** On user request for stability/performance/hang/hotkey/capture — complete the **lowest-numbered phase** with status **Partial** or **Not started** unless the user names a specific symptom (then fix symptom **and** land the matching work package below).
 
@@ -1524,7 +1524,7 @@ Grep: `src/app/*Controller*.cpp` and `ProfileSwitchCoordinator.cpp` contain **no
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R7.1** Matrix | Table: run mode × run mode → supported / best-effort / unsupported | **Done (doc)** — matrix below (v0.8.375); no runtime warnings yet |
-| **R7.2** UI hints | Korean tooltip when starting 4th simultaneous session (performance) | **Partial (doc)** — perf-hint column on R7.1 matrix (v0.8.381); in-app tooltip only if user asks |
+| **R7.2** UI hints | Korean tooltip when starting 4th simultaneous session (performance) | **Done (code)** — transient title-bar hint when `m_runSessions.size() >= 4` at start (v0.8.388) |
 | **R7.3** Hard caps | Only if data shows hangs — soft queue for `startFeatureRun` | Document in §11; sim scenarios for cap |
 
 **R7.1 concurrency matrix (best-effort, 2026-07-29; perf hints v0.8.381):**
@@ -1971,6 +1971,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.388] - 2026-07-30
+
+### Added
+
+- Concurrent run perf hint: when four or more feature sessions are active, a short title-bar message warns that the UI may stutter (`RunLifecycleCoordinator::startFeatureRun`).
+
+### Changed
+
+- Hold-burst UI detection moved to `RunLifecycleCoordinator::isHoldBurstUiActive`; `MainWindow::isHoldBurstActive` delegates (`RunLifecycleCoordinator`, `MainWindow`).
+- `RunLifecycleCoordinator::applyRunUiState` asserts GUI thread in debug builds (§8.21 R2.5).
 
 ## [0.8.387] - 2026-07-30
 

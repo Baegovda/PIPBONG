@@ -3148,11 +3148,7 @@ bool MainWindow::shouldCoalesceRunUiUpdates() const {
 }
 
 bool MainWindow::isHoldBurstActive() const {
-    return m_holdBurstDepth > 0 || shouldCoalesceRunUiUpdates() || m_holdStartUiFlushScheduled
-           || m_holdEndCleanupScheduled || m_holdFeatureStartFlushScheduled
-           || m_holdFeatureEndFinishFlushScheduled || !m_pendingHoldFeatureStartOrder.empty()
-           || !m_pendingHoldFeatureEndFinishes.empty()
-           || m_pendingHoldStartUiFeatureIds.size() > 1;
+    return RunLifecycleCoordinator::isHoldBurstUiActive(*this);
 }
 
 bool MainWindow::shouldLogSessionDetailsInBurst() const {

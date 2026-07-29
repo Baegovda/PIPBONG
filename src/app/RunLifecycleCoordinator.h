@@ -36,6 +36,9 @@ public:
     static bool shouldDeferAbandonedEnginePrune(const std::map<std::string, FeatureRunSession>& sessions,
                                                 bool holdBurstUiActive);
 
+    /// Hold-burst / coalesced hold-start UI window (§8.21 R5.2); `MainWindow::isHoldBurstActive` delegates here.
+    static bool isHoldBurstUiActive(const class MainWindow& window);
+
     /// User stop: shared flag teardown before engine/lane abandon (§8.21 R5.1b).
     static void applyUserStopRequestFlags(FeatureRunSession& session, bool suppressTriggerArmedPersist);
 

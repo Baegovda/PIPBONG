@@ -119,6 +119,16 @@ bool RunLifecycleCoordinator::shouldDeferAbandonedEnginePrune(
     return SessionRunPolicy::shouldCoalesceRunUiUpdates(policyInputsFromSessions(sessions));
 }
 
+bool RunLifecycleCoordinator::isHoldBurstUiActive(const MainWindow& window) {
+    return window.m_holdBurstDepth > 0
+           || shouldCoalesceRunUi(window.m_runSessions, false) || window.m_holdStartUiFlushScheduled
+           || window.m_holdEndCleanupScheduled || window.m_holdFeatureStartFlushScheduled
+           || window.m_holdFeatureEndFinishFlushScheduled
+           || !window.m_pendingHoldFeatureStartOrder.empty()
+           || !window.m_pendingHoldFeatureEndFinishes.empty()
+           || window.m_pendingHoldStartUiFeatureIds.size() > 1;
+}
+
 void RunLifecycleCoordinator::applyUserStopRequestFlags(FeatureRunSession& session,
                                                           const bool suppressTriggerArmedPersist) {
     session.userStopRequested = true;
@@ -279,8 +289,11 @@ void RunLifecycleCoordinator::requestRunUiRefresh(MainWindow& window, bool immed
 }
 
 void RunLifecycleCoordinator::applyRunUiState(MainWindow& window) {
+    if (QCoreApplication::instance()) {
+        Q_ASSERT(QThread::currentThread() == QCoreApplication::instance()->thread());
+    }
     window.reconcileHoldLatchForActiveHoldSessions();
-    const bool burstUi = window.isHoldBurstActive() || window.shouldCoalesceRunUiUpdates();
+    const bool burstUi = isHoldBurstUiActive(window) || window.shouldCoalesceRunUiUpdates();
     if (window.m_featureList) {
         bool suppressRunAnimation = false;
         for (const auto& entry : window.m_runSessions) {
@@ -598,6 +611,11 @@ void RunLifecycleCoordinator::startFeatureRun(MainWindow& window,
     const int holdTapVirtualKey = prepared.holdTapVirtualKey;
 
     window.m_runSessions.emplace(featureId, std::move(prepared.session));
+    if (!silentRestoreStart && window.m_runSessions.size() >= 4) {
+        window.showTransientStatus(
+            window.tr("동시에 여러 기능이 실행 중입니다. 화면이 버벅일 수 있습니다."),
+            4500);
+    }
     FeatureRunSession& activeSession = window.m_runSessions.at(featureId);
     activateAndLaunchPreparedSession(
         window,
