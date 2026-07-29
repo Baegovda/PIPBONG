@@ -20,6 +20,20 @@ SessionRunPolicyInput RunLifecycleCoordinator::policyInputFrom(const FeatureRunS
     return input;
 }
 
+std::vector<SessionRunPolicyInput> RunLifecycleCoordinator::policyInputsFromSessions(
+    const std::map<std::string, FeatureRunSession>& sessions,
+    const std::string* excludeFeatureId) {
+    std::vector<SessionRunPolicyInput> inputs;
+    inputs.reserve(sessions.size());
+    for (const auto& entry : sessions) {
+        if (excludeFeatureId && entry.first == *excludeFeatureId) {
+            continue;
+        }
+        inputs.push_back(policyInputFrom(entry.second));
+    }
+    return inputs;
+}
+
 bool RunLifecycleCoordinator::shouldContinueSession(const FeatureRunSession& session,
                                                     bool holdBindingStillActive) {
     if (session.userStopRequested) {

@@ -2953,21 +2953,13 @@ bool MainWindow::isFeatureInActiveWorkflowRun(const std::string& featureId) cons
 }
 
 bool MainWindow::hasAnyRunningSession() const {
-    std::vector<SessionRunPolicyInput> inputs;
-    inputs.reserve(m_runSessions.size());
-    for (const auto& entry : m_runSessions) {
-        inputs.push_back(RunLifecycleCoordinator::policyInputFrom(entry.second));
-    }
-    return SessionRunPolicy::hasAnyRunningSession(inputs);
+    return SessionRunPolicy::hasAnyRunningSession(
+        RunLifecycleCoordinator::policyInputsFromSessions(m_runSessions));
 }
 
 bool MainWindow::hasAnyActiveWorkflowEngine() const {
-    std::vector<SessionRunPolicyInput> inputs;
-    inputs.reserve(m_runSessions.size());
-    for (const auto& entry : m_runSessions) {
-        inputs.push_back(RunLifecycleCoordinator::policyInputFrom(entry.second));
-    }
-    return SessionRunPolicy::hasAnyActiveWorkflowEngine(inputs);
+    return SessionRunPolicy::hasAnyActiveWorkflowEngine(
+        RunLifecycleCoordinator::policyInputsFromSessions(m_runSessions));
 }
 
 QSet<QString> MainWindow::activeWorkflowFeatureIds() const {
@@ -6769,15 +6761,8 @@ bool MainWindow::hasAnyActiveWorkflowBurst() const {
 }
 
 bool MainWindow::hasAnyCapturingWorkflowBurstExcept(const std::string& excludeFeatureId) const {
-    std::vector<SessionRunPolicyInput> inputs;
-    inputs.reserve(m_runSessions.size());
-    for (const auto& entry : m_runSessions) {
-        if (entry.first == excludeFeatureId) {
-            continue;
-        }
-        inputs.push_back(RunLifecycleCoordinator::policyInputFrom(entry.second));
-    }
-    return SessionRunPolicy::hasAnyCapturingWorkflowBurst(inputs);
+    return SessionRunPolicy::hasAnyCapturingWorkflowBurst(
+        RunLifecycleCoordinator::policyInputsFromSessions(m_runSessions, &excludeFeatureId));
 }
 
 bool MainWindow::applyCenterPinToEnabledTargets(bool forceSnap) {

@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.375` (from `project(PIPBONG VERSION 0.8.375)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.376` (from `project(PIPBONG VERSION 0.8.376)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -416,6 +416,7 @@ Sbm1.0/                        # repo root (local workspace)
 │   ├── build-release.ps1      # canonical incremental Release build (IDE + AI task close)
 │   ├── build-and-run.ps1      # F5: build-release + Start-Process PIPBONG.exe
 │   ├── run-policy-sim.ps1     # build PIPBONGPolicySim only + run (manual)
+│   ├── run-workflow-dry-run.ps1  # build PIPBONGWorkflowDryRunSim + run (manual, §8.21 R6)
 │   ├── run-policy-sim-postbuild.ps1  # POST_BUILD hook: run sim after PIPBONG link
 │   ├── analyze-app-stutter.ps1  # summarize app-stutter/latest.md
 │   ├── analyze-live-session.ps1 # tail live-session/latest.log
@@ -1141,7 +1142,9 @@ Cursor rule: `.cursor/rules/list-column-header-resize.mdc`.
 
 **When to run `run-policy-sim.ps1` alone:** policy-only edits without relinking PIPBONG, or quick re-check after changing sim scenarios.
 
-**Stage 2 (in progress):** `PIPBONGWorkflowDryRunSim` stub target in CMake (v0.8.375); full `WorkflowRunner` dry-run with mock `ScreenCapture` + stub `ImageMatcher` — see [§8.21 R6.1](#phase-r6--automated-workflow-dry-run-stage-2). Manual: `cmake --build build --config Release --target PIPBONGWorkflowDryRunSim`.
+**Stage 2 workflow dry-run (manual):** `scripts/run-workflow-dry-run.ps1` builds and runs `PIPBONGWorkflowDryRunSim` (stub until R6.2 scenarios link `WorkflowRunner` + mocks).
+
+**Stage 2 (in progress):** `PIPBONGWorkflowDryRunSim` stub target in CMake (v0.8.375); full `WorkflowRunner` dry-run with mock `ScreenCapture` + stub `ImageMatcher` — see [§8.21 R6.1](#phase-r6--automated-workflow-dry-run-stage-2). Manual: `scripts/run-workflow-dry-run.ps1` or `cmake --build build --config Release --target PIPBONGWorkflowDryRunSim`.
 
 ### 8.14 App stutter profiling (mandatory — PIPBONG lag / UI stall diagnosis)
 
@@ -1327,8 +1330,8 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R1** | Policy surface completeness | **Partial** | 0.8.220+ | **R1.2** `shouldContinueSession` + sim (v0.8.375); **R1.1** inventory (v0.8.374); **R1.3** sim (v0.8.371) |
 | **R2** | GUI / worker boundary | **Partial** | 0.8.366+ | R2.1 audit; code paths done — **manual verify** (Q/W/E/R 10s, trigger 감시) still user |
 | **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.375 | **R4.2** toggle hotkey → `ensureForegroundReadyForFeatureHotkey` (v0.8.375); **R4.3** audit (v0.8.374) |
-| **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | **`RunLifecycleCoordinator`** policy mapping (v0.8.375); `MainWindow.cpp` still large |
-| **R6** | Automated workflow dry-run | **Partial** | 0.8.375 | **R6.1** `PIPBONGWorkflowDryRunSim` stub + design below; scenarios not linked |
+| **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | **`RunLifecycleCoordinator`** `policyInputsFromSessions` (v0.8.376); `MainWindow.cpp` ~9272 lines |
+| **R6** | Automated workflow dry-run | **Partial** | 0.8.375+ | **R6.1** stub; **R6.4** `scripts/run-workflow-dry-run.ps1` (v0.8.376); scenarios not linked |
 | **R7** | Concurrency product policy | **Partial** | 0.8.375 | **R7.1** matrix below (documentation); no hard caps |
 
 **Agent task pick rule:** On user request for stability/performance/hang/hotkey/capture — complete the **lowest-numbered phase** with status **Partial** or **Not started** unless the user names a specific symptom (then fix symptom **and** land the matching work package below).
@@ -1464,7 +1467,7 @@ User hotkey (hook)
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R5.1** Size budget | Track `MainWindow.cpp` line count in §11 when touching — goal **&lt; 2500** lines long-term (informal) | Reported on each R5 task |
-| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | **Partial** — `policyInputFrom` + `shouldContinueSession` delegation (v0.8.375); full session map still on `MainWindow` |
+| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | **Partial** — `policyInputFrom`, `policyInputsFromSessions`, `shouldContinueSession` (v0.8.375–376); full session map still on `MainWindow` |
 | **R5.3** UI refresh facade | `RunUiPublisher` or methods on coordinator: feature list run chrome, workflow panel run state — coalesced | R2.3 coalesce lives in one class |
 | **R5.4** No new cross-deps | Controllers (`ProfileSwitchCoordinator`, `RunSessionController`, …) do not call `MainWindow` back — signals only | Grep `MainWindow::` from controllers = wiring only |
 | **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | User or agent documents pass in §11 |
@@ -1482,7 +1485,7 @@ User hotkey (hook)
 | **R6.1** Design | `PIPBONGWorkflowDryRunSim` target: mock `ScreenCapture` + stub `ImageMatcher` returning scripted peaks | **Partial (v0.8.375)** — stub exe + design below; full mocks not linked |
 | **R6.2** Scenarios | JSON or C++ tables: return-to-previous ImageFind, retry-after-next, trigger monitor→action primed match, loop region exit | Tool runs in POST_BUILD or CI script (policy sim script extended) |
 | **R6.3** Block dependencies | Isolate `WorkflowRunner` from widgets — link only `core/workflow` + mocks | No Qt Widgets in sim exe |
-| **R6.4** Handover | Extend [§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) Stage 2 paragraph with symbols | Agents know when to run `run-workflow-dry-run.ps1` |
+| **R6.4** Handover | Extend [§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) Stage 2 paragraph with symbols | **`scripts/run-workflow-dry-run.ps1`** builds/runs `PIPBONGWorkflowDryRunSim` (v0.8.376); POST_BUILD when scenarios exist |
 
 **Blocked until:** R2–R3 stable (avoid testing moving contracts). **Can start R6.1 design in parallel.**
 
@@ -1953,6 +1956,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.376] - 2026-07-29
+
+### Added
+
+- **`RunLifecycleCoordinator::policyInputsFromSessions`**: builds `SessionRunPolicyInput` vectors from `m_runSessions` with optional exclude feature id (`RunLifecycleCoordinator.*`, `MainWindow` session policy queries).
+- **`scripts/run-workflow-dry-run.ps1`**: manual build/run for `PIPBONGWorkflowDryRunSim` (AGENTS.md §8.12 / §8.21 R6.4).
+
+### Changed
+
+- AGENTS.md §8.21 progress tracker: R5.2/R6.4 notes; `MainWindow.cpp` line count ~9272 (R5.1).
 
 ## [0.8.375] - 2026-07-29
 
