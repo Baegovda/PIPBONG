@@ -34,21 +34,6 @@
 #include <windows.h>
 #endif
 
-namespace {
-
-bool holdSessionBlocksNewPhysicalStart(const FeatureRunSession& session,
-                                       HoldKeyTapMultiplexer* mux) {
-    if (session.engine && session.engine->isRunning()) {
-        return true;
-    }
-    if (mux && session.holdKeyTapLaneActive && mux->isLaneActive(session.featureId)) {
-        return true;
-    }
-    return false;
-}
-
-} // namespace
-
 SessionRunPolicyInput RunLifecycleCoordinator::policyInputFrom(const FeatureRunSession& session) {
     SessionRunPolicyInput input;
     input.runningMode = session.runningMode;
@@ -92,6 +77,63 @@ const FeatureRunSession* RunLifecycleCoordinator::sessionForId(
     const std::string& featureId) {
     const auto it = sessions.find(featureId);
     return it == sessions.end() ? nullptr : &it->second;
+}
+
+FeatureRunSession* RunLifecycleCoordinator::sessionForEngine(MainWindow& window,
+                                                             const QObject* sender) {
+    const auto* engine = qobject_cast<const WorkflowEngine*>(sender);
+    if (!engine) {
+        return nullptr;
+    }
+    for (auto& entry : window.m_runSessions) {
+        if (entry.second.engine.get() == engine) {
+            return &entry.second;
+        }
+    }
+    const auto abandonedIt = window.m_abandonedEngineFeatureIds.find(engine);
+    if (abandonedIt != window.m_abandonedEngineFeatureIds.end()) {
+        return sessionForId(window.m_runSessions, abandonedIt->second);
+    }
+    return nullptr;
+}
+
+bool RunLifecycleCoordinator::holdSessionBlocksNewPhysicalStart(
+    const FeatureRunSession& session,
+    HoldKeyTapMultiplexer* mux) {
+    if (session.engine && session.engine->isRunning()) {
+        return true;
+    }
+    if (mux && session.holdKeyTapLaneActive && mux->isLaneActive(session.featureId)) {
+        return true;
+    }
+    return false;
+}
+
+void RunLifecycleCoordinator::tearDownAndEraseSessionEntry(MainWindow& window,
+                                                             const std::string& featureId) {
+  FeatureRunSession* session = window.sessionFor(featureId);
+  if (!session) {
+    window.m_runSessions.erase(featureId);
+    return;
+  }
+  if (session->sessionContext) {
+    session->sessionContext->endRunInputSession();
+  }
+  UserInputInterruptMonitor::instance().unregisterSession(featureId);
+  if (session->holdKeyTapLaneActive && window.m_holdKeyTapMux) {
+    window.m_holdKeyTapMux->stopLane(featureId);
+    session->holdKeyTapLaneActive = false;
+  }
+  if (session->engine) {
+    window.abandonSessionEngine(*session);
+  }
+  window.m_runSessions.erase(featureId);
+}
+
+void RunLifecycleCoordinator::eraseSessionEntryAndRefreshRunUi(MainWindow& window,
+                                                               const std::string& featureId) {
+  window.m_runSessions.erase(featureId);
+  requestRunUiRefresh(window, false);
 }
 
 bool RunLifecycleCoordinator::shouldContinueSession(const FeatureRunSession& session,
@@ -824,22 +866,12 @@ RunLifecycleCoordinator::reconcileExistingSessionBeforeStart(MainWindow& window,
     }
     const bool staleHoldStart =
         holdHotkeyStart
-        && !holdSessionBlocksNewPhysicalStart(*existing, window.m_holdKeyTapMux);
+        && !RunLifecycleCoordinator::holdSessionBlocksNewPhysicalStart(*existing,
+                                                                       window.m_holdKeyTapMux);
     if (!staleHoldStart && window.isFeatureSessionActive(*existing)) {
         return ExistingSessionReconcileOutcome::AbortAlreadyActive;
     }
-    if (existing->sessionContext) {
-        existing->sessionContext->endRunInputSession();
-    }
-    UserInputInterruptMonitor::instance().unregisterSession(featureId);
-    if (existing->holdKeyTapLaneActive && window.m_holdKeyTapMux) {
-        window.m_holdKeyTapMux->stopLane(featureId);
-        existing->holdKeyTapLaneActive = false;
-    }
-    if (existing->engine) {
-        window.abandonSessionEngine(*existing);
-    }
-    window.m_runSessions.erase(featureId);
+    tearDownAndEraseSessionEntry(window, featureId);
     return ExistingSessionReconcileOutcome::StaleRemoved;
 }
 

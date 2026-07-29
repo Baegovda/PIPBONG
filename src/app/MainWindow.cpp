@@ -159,17 +159,6 @@ void assertMainWindowOnGuiThread(const char* where) {
 
 namespace {
 
-bool holdSessionBlocksNewPhysicalStart(const FeatureRunSession& session,
-                                       HoldKeyTapMultiplexer* mux) {
-    if (session.engine && session.engine->isRunning()) {
-        return true;
-    }
-    if (mux && session.holdKeyTapLaneActive && mux->isLaneActive(session.featureId)) {
-        return true;
-    }
-    return false;
-}
-
 bool isShellTransientForegroundWindow(HWND hwnd) {
     return ForegroundWindowMonitor::isShellTransientWindow(hwnd);
 }
@@ -2932,20 +2921,7 @@ const FeatureRunSession* MainWindow::sessionFor(const std::string& featureId) co
 }
 
 FeatureRunSession* MainWindow::sessionForEngine(const QObject* sender) {
-    const auto* engine = qobject_cast<const WorkflowEngine*>(sender);
-    if (!engine) {
-        return nullptr;
-    }
-    for (auto& entry : m_runSessions) {
-        if (entry.second.engine.get() == engine) {
-            return &entry.second;
-        }
-    }
-    const auto abandonedIt = m_abandonedEngineFeatureIds.find(engine);
-    if (abandonedIt != m_abandonedEngineFeatureIds.end()) {
-        return sessionFor(abandonedIt->second);
-    }
-    return nullptr;
+    return RunLifecycleCoordinator::sessionForEngine(*this, sender);
 }
 
 bool MainWindow::isFeatureSessionActive(const FeatureRunSession& session) const {
@@ -4127,8 +4103,7 @@ bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Featur
         FeatureRunSession* activeSession = self->sessionFor(featureId);
         Feature* activeFeature = self->m_project ? self->m_project->featureById(featureId) : nullptr;
         if (!activeSession || !activeFeature) {
-            self->m_runSessions.erase(featureId);
-            self->updateRunUiState();
+            RunLifecycleCoordinator::eraseSessionEntryAndRefreshRunUi(*self, featureId);
             return;
         }
 
@@ -4171,8 +4146,8 @@ bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Featur
             if (*confirmed) {
                 return;
             }
-            self->m_runSessions.erase(featureId);
-            self->updateRunUiState();
+            RunLifecycleCoordinator::tearDownAndEraseSessionEntry(*self, featureId);
+            RunLifecycleCoordinator::requestRunUiRefresh(*self, false);
         },
         options);
     return shown;
@@ -5610,22 +5585,10 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
             }
             return;
         }
-        if (holdSessionBlocksNewPhysicalStart(*session, m_holdKeyTapMux)) {
+        if (RunLifecycleCoordinator::holdSessionBlocksNewPhysicalStart(*session, m_holdKeyTapMux)) {
             return;
         }
-        const bool hadTapLane = session->holdKeyTapLaneActive;
-        if (session->sessionContext) {
-            session->sessionContext->endRunInputSession();
-        }
-        UserInputInterruptMonitor::instance().unregisterSession(id);
-        if (hadTapLane && m_holdKeyTapMux) {
-            m_holdKeyTapMux->stopLane(id);
-        }
-        session->holdKeyTapLaneActive = false;
-        if (session->engine) {
-            abandonSessionEngine(*session);
-        }
-        m_runSessions.erase(id);
+        RunLifecycleCoordinator::tearDownAndEraseSessionEntry(*this, id);
     }
 
     RunLifecycleCoordinator::scheduleCoalescedHoldFeatureStart(*this, id);

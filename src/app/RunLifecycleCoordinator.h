@@ -10,6 +10,9 @@
 #include <vector>
 
 class Feature;
+class HoldKeyTapMultiplexer;
+class QObject;
+class WorkflowEngine;
 
 /// Run session lifecycle policy helpers (AGENTS.md §8.21 R5.2).
 /// Maps `FeatureRunSession` → `SessionRunPolicyInput` and continuation rules without HWND/hotkey I/O.
@@ -26,6 +29,19 @@ public:
                                           const std::string& featureId);
     static const FeatureRunSession* sessionForId(const std::map<std::string, FeatureRunSession>& sessions,
                                                  const std::string& featureId);
+
+    /// Resolve session from `WorkflowEngine` signal sender (active map + abandoned-engine fallback).
+    static FeatureRunSession* sessionForEngine(class MainWindow& window, const QObject* sender);
+
+    /// Hold retap: block new physical start while engine or mux lane is still active.
+    static bool holdSessionBlocksNewPhysicalStart(const FeatureRunSession& session,
+                                                  HoldKeyTapMultiplexer* mux);
+
+    /// Tear down lane/engine/context and remove `m_runSessions` entry (§8.21 R5.2).
+    static void tearDownAndEraseSessionEntry(class MainWindow& window, const std::string& featureId);
+
+    /// Remove map entry and refresh run UI (e.g. ROI edit cancelled).
+    static void eraseSessionEntryAndRefreshRunUi(class MainWindow& window, const std::string& featureId);
 
     /// `holdBindingStillActive` from `HotkeyManager::isHoldBindingStillActiveForRun` (Hold mode only).
     static bool shouldContinueSession(const FeatureRunSession& session, bool holdBindingStillActive);
