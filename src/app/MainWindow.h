@@ -371,6 +371,8 @@ private:
     Feature* featureForSession(FeatureRunSession& session);
     const Feature* featureForSession(const FeatureRunSession& session) const;
     void pruneSessionOwnerProjects();
+    void releaseHoldHotkeyInputToTarget(FeatureRunSession& session, Feature* feature);
+    void restoreRunStartCursorPosition(const FeatureRunSession& session);
     void applyRunningBlockVisuals(FeatureRunSession& session,
                                   int index,
                                   BlockListWidget::ExecutionHighlight highlight);

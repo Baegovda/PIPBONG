@@ -2,6 +2,8 @@
 
 #include "app/SessionRunPolicy.h"
 
+#include <QString>
+
 #include <map>
 #include <string>
 #include <vector>
@@ -43,6 +45,28 @@ public:
     };
 
     static void requestRunUiRefresh(class MainWindow& window, bool immediate);
+
+    /// User stop path (§8.21 R5.1b) — engine/lane teardown or `finishRunSession`.
+    static void stopFeatureRun(class MainWindow& window, const std::string& featureId);
+
+    /// Session teardown after run ends (§8.21 R5.1b).
+    static void finishRunSession(class MainWindow& window,
+                                 const std::string& featureId,
+                                 bool success,
+                                 const QString& message,
+                                 bool deferUiUpdate);
+
+    enum class ExistingSessionReconcileOutcome {
+        NoExistingSession,
+        AbortAlreadyActive,
+        StaleRemoved,
+    };
+
+    /// Tear down stale session map entry before creating a new one in `startFeatureRun`.
+    static ExistingSessionReconcileOutcome reconcileExistingSessionBeforeStart(
+        class MainWindow& window,
+        const std::string& featureId,
+        bool holdHotkeyStart);
 
     /// Foreground/capture gate before `startFeatureRun` body (§8.21 R5.1a). `MainWindow` friend required.
     static RunStartForegroundOutcome evaluateRunStartForeground(class MainWindow& window,

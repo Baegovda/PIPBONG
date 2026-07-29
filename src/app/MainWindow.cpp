@@ -337,6 +337,10 @@ void ensureFramelessResizeFrame(HWND hwnd) {
 } // namespace
 #endif
 
+} // namespace
+
+#endif
+
 QIcon iconForProcessPath(const std::wstring& processPath) {
     if (processPath.empty()) {
         return {};
@@ -365,12 +369,6 @@ void captureRunStartCursorPosition(FeatureRunSession& session) {
     session.hasRunStartCursorPosition = true;
 }
 
-void restoreRunStartCursorPosition(const FeatureRunSession& session) {
-    if (!session.hasRunStartCursorPosition) {
-        return;
-    }
-    InputSimulator::moveMouse(session.runStartCursorScreenX, session.runStartCursorScreenY);
-}
 
 std::optional<MouseButton> mouseButtonFromVirtualKey(int virtualKey) {
     switch (virtualKey) {
@@ -403,31 +401,6 @@ bool shouldDeliverHoldHotkeyRelease(const FeatureRunSession& session, const Feat
     }
     return session.sessionContext->pipbongEverInjectedVirtualKey(vk);
 }
-
-void releaseHoldHotkeyInputToTarget(FeatureRunSession& session, const Feature* feature) {
-    if (session.holdHotkeyReleasedToTarget || !feature || feature->hotkey().isEmpty()) {
-        return;
-    }
-    if (!shouldDeliverHoldHotkeyRelease(session, feature)) {
-        session.holdHotkeyReleasedToTarget = true;
-        return;
-    }
-#ifdef _WIN32
-    HWND hwnd = ScreenCapture::findTargetWindow();
-    InputSimulator::releaseHoldHotkeyToTarget(hwnd, feature->hotkey().virtualKey);
-#else
-    const int vk = feature->hotkey().virtualKey;
-    if (HotkeyBinding::isMouseVirtualKey(vk)) {
-        InputSimulator::forceHotkeyMouseButtonUp(vk);
-    } else {
-        InputSimulator::forceKeyUp(vk);
-    }
-#endif
-    session.holdHotkeyReleasedToTarget = true;
-}
-
-} // namespace
-#endif
 
 namespace {
 
@@ -2875,6 +2848,35 @@ const Feature* MainWindow::featureForSession(const FeatureRunSession& session) c
     return m_project ? m_project->featureById(session.featureId) : nullptr;
 }
 
+void MainWindow::restoreRunStartCursorPosition(const FeatureRunSession& session) {
+    if (!session.hasRunStartCursorPosition) {
+        return;
+    }
+    InputSimulator::moveMouse(session.runStartCursorScreenX, session.runStartCursorScreenY);
+}
+
+void MainWindow::releaseHoldHotkeyInputToTarget(FeatureRunSession& session, Feature* feature) {
+    if (session.holdHotkeyReleasedToTarget || !feature || feature->hotkey().isEmpty()) {
+        return;
+    }
+    if (!shouldDeliverHoldHotkeyRelease(session, feature)) {
+        session.holdHotkeyReleasedToTarget = true;
+        return;
+    }
+#ifdef _WIN32
+    HWND hwnd = ScreenCapture::findTargetWindow();
+    InputSimulator::releaseHoldHotkeyToTarget(hwnd, feature->hotkey().virtualKey);
+#else
+    const int vk = feature->hotkey().virtualKey;
+    if (HotkeyBinding::isMouseVirtualKey(vk)) {
+        InputSimulator::forceHotkeyMouseButtonUp(vk);
+    } else {
+        InputSimulator::forceKeyUp(vk);
+    }
+#endif
+    session.holdHotkeyReleasedToTarget = true;
+}
+
 void MainWindow::pruneSessionOwnerProjects() {
     if (m_sessionOwnerProjects.empty()) {
         return;
@@ -3509,50 +3511,7 @@ void MainWindow::abandonSessionEngine(FeatureRunSession& session) {
 }
 
 void MainWindow::stopFeatureRun(const std::string& featureId) {
-    FeatureRunSession* session = sessionFor(featureId);
-    if (!session) {
-        return;
-    }
-
-    CrashReporter::noteBreadcrumb(QStringLiteral("run"),
-                                  QStringLiteral("stop feature %1").arg(featureDisplayName(featureId)));
-
-    RunLifecycleCoordinator::applyUserStopRequestFlags(*session, m_suppressTriggerArmedPersist);
-    if (session->disarmPersistedTrigger) {
-        persistTriggerArmedState(QString::fromStdString(featureId), false);
-    }
-
-    Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
-    if (session->runningMode == FeatureRunMode::Hold) {
-        releaseHoldHotkeyInputToTarget(*session, feature);
-    }
-    UserInputInterruptMonitor::instance().unregisterSession(featureId);
-
-    const bool hadEngine = session->engine != nullptr;
-    const bool hadHoldTapLane = session->holdKeyTapLaneActive;
-    if (hadHoldTapLane && m_holdKeyTapMux) {
-        m_holdKeyTapMux->stopLane(featureId);
-        return;
-    }
-    if (hadEngine) {
-        appendSessionLog(*session, tr("실행 중지를 요청했습니다."), LogLineKind::Warning);
-        abandonSessionEngine(*session);
-        if (shouldCoalesceRunUiUpdates()) {
-            scheduleCoalescedHoldEndCleanup();
-        } else {
-            reconcileMouseLocksFromRunningSessions();
-            RunLifecycleCoordinator::requestRunUiRefresh(*this, false);
-        }
-        schedulePruneAbandonedEngines();
-        return;
-    }
-
-    finishRunSession(featureId, session->lastLoopSuccess, QString(), shouldCoalesceRunUiUpdates());
-    if (shouldCoalesceRunUiUpdates()) {
-        scheduleCoalescedHoldEndCleanup();
-    } else {
-        RunLifecycleCoordinator::requestRunUiRefresh(*this, false);
-    }
+    RunLifecycleCoordinator::stopFeatureRun(*this, featureId);
 }
 
 void MainWindow::stopRunningSessionsForUpdate() {
@@ -4474,24 +4433,13 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
     }
 
     const std::string featureId = feature->id();
-    if (FeatureRunSession* existing = sessionFor(featureId)) {
-        const bool staleHoldStart =
-            holdHotkeyStart && !holdSessionBlocksNewPhysicalStart(*existing, m_holdKeyTapMux);
-        if (!staleHoldStart && isFeatureSessionActive(*existing)) {
-            return;
-        }
-        if (existing->sessionContext) {
-            existing->sessionContext->endRunInputSession();
-        }
-        UserInputInterruptMonitor::instance().unregisterSession(featureId);
-        if (existing->holdKeyTapLaneActive && m_holdKeyTapMux) {
-            m_holdKeyTapMux->stopLane(featureId);
-            existing->holdKeyTapLaneActive = false;
-        }
-        if (existing->engine) {
-            abandonSessionEngine(*existing);
-        }
-        m_runSessions.erase(featureId);
+    switch (RunLifecycleCoordinator::reconcileExistingSessionBeforeStart(
+            *this, featureId, holdHotkeyStart)) {
+    case RunLifecycleCoordinator::ExistingSessionReconcileOutcome::AbortAlreadyActive:
+        return;
+    case RunLifecycleCoordinator::ExistingSessionReconcileOutcome::NoExistingSession:
+    case RunLifecycleCoordinator::ExistingSessionReconcileOutcome::StaleRemoved:
+        break;
     }
 
     int holdTapVirtualKey = 0;
@@ -5951,84 +5899,7 @@ void MainWindow::finishRunSession(const std::string& featureId,
                                   bool success,
                                   const QString& message,
                                   bool deferUiUpdate) {
-    FeatureRunSession* session = sessionFor(featureId);
-    const bool coalesceUi =
-        RunLifecycleCoordinator::shouldCoalesceRunUi(m_runSessions, deferUiUpdate);
-    if (session && isDisplayedRunningFeature(session) && !coalesceUi) {
-        m_workflowEditor->clearExecutionHighlight();
-        m_workflowEditor->persistRunFeedbackForCurrentFeature();
-    }
-
-    if (session && !coalesceUi) {
-        showTransientStatus(tr("[%1] %2")
-                                .arg(featureDisplayName(featureId), success ? tr("완료") : tr("실패")),
-                            3000);
-    }
-
-    if (session && session->runningMode == FeatureRunMode::Hold) {
-        Feature* feature = featureForSession(*session);
-        releaseHoldHotkeyInputToTarget(*session, feature);
-    }
-
-    if (session && session->sessionContext) {
-        session->sessionContext->endRunInputSession();
-    }
-
-    if (session && session->runningMode == FeatureRunMode::Trigger) {
-        resumePreemptedSessionsForTrigger(*session);
-    }
-
-    if (session) {
-        ++session->triggerCooldownGeneration;
-        ++session->triggerMonitorRestartGeneration;
-        ++session->holdRepeatGeneration;
-        restoreRunStartCursorPosition(*session);
-    }
-
-    if (session && session->runningMode == FeatureRunMode::Trigger && session->disarmPersistedTrigger) {
-        if (m_profileManager && !session->profileId.isEmpty()) {
-            m_profileManager->updateTriggerArmedFeature(session->profileId,
-                                                        QString::fromStdString(featureId),
-                                                        false);
-        } else {
-            persistTriggerArmedState(QString::fromStdString(featureId), false);
-        }
-    }
-
-    if (session && session->engine) {
-        abandonSessionEngine(*session);
-    }
-
-    if (session && session->holdKeyTapLaneActive && m_holdKeyTapMux) {
-        m_holdKeyTapMux->stopLane(featureId);
-        session->holdKeyTapLaneActive = false;
-    }
-
-    for (auto it = m_abandonedEngineFeatureIds.begin(); it != m_abandonedEngineFeatureIds.end();) {
-        if (it->second == featureId) {
-            it = m_abandonedEngineFeatureIds.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    UserInputInterruptMonitor::instance().unregisterSession(featureId);
-    m_fastRepeatUiCoalesce.erase(featureId);
-    m_runSessions.erase(featureId);
-    pruneSessionOwnerProjects();
-    if (!coalesceUi) {
-        reconcileMouseLocksFromRunningSessions();
-    }
-    if (!hasAnyRunningSession()) {
-        WorkflowMatchFeedbackOverlay::dismissAll();
-        WorkflowRoiFlashOverlay::dismissAll();
-    }
-    if (!deferUiUpdate) {
-        updateRunUiState(false);
-    } else {
-        scheduleCoalescedHoldEndCleanup();
-    }
-    Q_UNUSED(message);
+    RunLifecycleCoordinator::finishRunSession(*this, featureId, success, message, deferUiUpdate);
 }
 
 void MainWindow::runFeature(Feature* feature) {
