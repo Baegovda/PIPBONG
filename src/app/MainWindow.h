@@ -81,6 +81,7 @@ class UpdateChecker;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
+    friend class RunLifecycleCoordinator;
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;

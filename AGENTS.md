@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.380` (from `project(PIPBONG VERSION 0.8.379)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.381` (from `project(PIPBONG VERSION 0.8.381)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1327,12 +1327,12 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | Phase | Name | Status | Target version (first ship) | Notes |
 | ----- | ---- | ------ | --------------------------- | ----- |
 | **R0** | Roadmap + agent gates | **Done** | 0.8.365 | This section + `.cursor/rules/architecture-stabilization-roadmap.mdc` |
-| **R1** | Policy surface completeness | **Partial** | 0.8.220+ | **R1.2** `shouldContinueSession` + `countActiveRepeatSessions` + sim (v0.8.375–377); **R1.1** inventory (v0.8.374); **R1.3** sim (v0.8.371) |
-| **R2** | GUI / worker boundary | **Partial** | 0.8.366+ | R2.1 audit; code paths done — **manual verify** (Q/W/E/R 10s, trigger 감시) still user |
-| **R4** | Hotkey / input state machine | **Partial** | 0.8.294–0.8.375 | **R4.2** toggle hotkey → `ensureForegroundReadyForFeatureHotkey` (v0.8.375); **R4.3** audit (v0.8.374) |
-| **R5** | MainWindow decomposition | **In progress** | 0.8.330+ | **`RunLifecycleCoordinator`** `policyInputsFromSessions` (v0.8.376); `MainWindow.cpp` ~9272 lines |
-| **R6** | Automated workflow dry-run | **Done (v0.8.380)** | 0.8.375+ | R6.2 scenario table complete; R6.1 stub matcher class still optional |
-| **R7** | Concurrency product policy | **Partial** | 0.8.375 | **R7.1** matrix below (documentation); no hard caps |
+| **R1** | Policy surface completeness | **Done** | 0.8.381 | R1.2 coalesce/debounce via `SessionRunPolicy` + `RunLifecycleCoordinator` |
+| **R2** | GUI / worker boundary | **Done (code)** | 0.8.381 | R2.3 coalesce; manual Q/W/E/R + trigger 감시 편집 — user Windows checklist |
+| **R4** | Hotkey / input state machine | **Done (code)** | 0.8.294+ | R4.4 skipped; manual Alt+Tab 5× + Shift §8.17 — user |
+| **R5** | MainWindow decomposition | **Partial** | 0.8.381 | R5.1a–R5.3 coordinator; `MainWindow.cpp` ~9143 lines (R5.4) |
+| **R6** | Automated workflow dry-run | **Done (v0.8.380)** | 0.8.375+ | R6.2 complete; R6.3 overlay link deferred (ImageFindBlock) |
+| **R7** | Concurrency product policy | **Partial** | 0.8.381 | R7.1 matrix + R7.2 perf-hint column (doc) |
 
 **Agent task pick rule:** On user request for stability/performance/hang/hotkey/capture — complete the **lowest-numbered phase** with status **Partial** or **Not started** unless the user names a specific symptom (then fix symptom **and** land the matching work package below).
 
@@ -1345,7 +1345,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R1.1** Inventory | Grep `MainWindow.cpp` for `runForegroundGate`, `GetForegroundWindow`, `setTargetWindow`, `finishRunSession`, `reconcileRunSessions` — list call sites | **Done** — inventory table below (v0.8.374) |
-| **R1.2** Delegate | Move any remaining gate math into `SessionRunPolicy` or `ForegroundRunGate` | **Partial** — `SessionRunPolicy::shouldContinueSession` + `RunLifecycleCoordinator` (v0.8.375); coalesce UI still on `MainWindow` |
+| **R1.2** Delegate | Move any remaining gate math into `SessionRunPolicy` or `ForegroundRunGate` | **Done** — `shouldCoalesceRunUiUpdates` / `runUiDebounceIntervalMs` + `RunLifecycleCoordinator::shouldCoalesceRunUi` (v0.8.381) |
 | **R1.3** Sim scenarios | Add `SessionRunPolicySim` cases: multi-hold + trigger monitoring + profile switch deferred + background-profile sessions | **Done** — multi-session roadmap scenarios (v0.8.371); deferred/background cases still optional |
 | **R1.4** Docs | When a row in [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) manual sheet changes, update sheet in same task | Sheet matches behavior |
 
@@ -1376,7 +1376,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | ------------ | ------- | --------- |
 | **R2.1** Signal audit | `rg -n "invokeMethod|Qt::DirectConnection|startTimer|QTimer::" src/app/MainWindow.cpp src/core/workflow/WorkflowEngine.cpp src/app/HotkeyManager.cpp` — document each hit | Spreadsheet or §11 list; every worker→GUI path is `QueuedConnection` or `invokeMethod(..., QueuedConnection)` |
 | **R2.2** `WorkflowEngine` connections | All signals to `MainWindow` that touch UI state: **QueuedConnection** only | Grep confirms; no `DirectConnection` on cross-thread slots |
-| **R2.3** Coalesced run UI | `applyRunUiState`, `updateRunUiState`, `flushWorkerFastRepeatUi`, feature-list hold refresh — single debounce/coalesce when `SessionRunPolicy::shouldCoalesceRunUiUpdates()` | Repro: 4× hold (Q/W/E/R) + trigger watch — no multi-second GUI stall; no `startTimer from another thread` in `live-session/latest.log` |
+| **R2.3** Coalesced run UI | `applyRunUiState`, `updateRunUiState`, `flushWorkerFastRepeatUi`, feature-list hold refresh — single debounce/coalesce when `SessionRunPolicy::shouldCoalesceRunUiUpdates()` | **Done (code)** — policy + debounce intervals + `RunLifecycleCoordinator::requestRunUiRefresh` (v0.8.381); manual repro still §8.21 R2 checklist |
 | **R2.4** Engine teardown queue | `finishRunSession` / `abandonSessionEngine` / `schedulePruneAbandonedEngines` — never block GUI on `wait()`; bounded stop only ([§9.6](#96-regression-mistake-log-오답노트--agents-only) profile switch) | Profile switch + 4 sessions: UI responsive &lt; 1 s perceived |
 | **R2.5** Static guard (optional) | `Q_ASSERT(qApp->thread() == QThread::currentThread())` in debug builds for `applyRunUiState` entry (or `CrashReporter::noteBreadcrumb` only) | Debug build catches regressions in dev |
 
@@ -1396,6 +1396,8 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 1. Hold Q/W/E/R together 10 s → release — no hang dialog; hotkeys work after.
 2. Trigger **감시** + 2 hold features — CPU watch optional; no `GUI_HANG_DETECTED` in `live-session/latest.log`.
 3. §8.17 rows 7–8 (Shift hold + scoped trigger gate).
+
+**Agent checklist (WP2 / WP5 — user must confirm on Windows):** Run items 1–3 above plus §8.17 row 4 (Alt+Tab 5× without focusing PIPBONG). Log pass/fail in chat or `live-session/latest.log` if hang.
 
 **Anti-patterns:** `scheduleWorkerFastRepeatUiFlush()` from worker without queue; synchronous `refreshWorkflowEditor` on every loop iteration with 4 sessions.
 
@@ -1467,8 +1469,8 @@ User hotkey (hook)
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R5.1** Size budget | Track `MainWindow.cpp` line count in §11 when touching — goal **&lt; 2500** lines long-term (informal) | Reported on each R5 task |
-| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | **Partial** — `policyInputFrom`, `policyInputsFromSessions`, `shouldContinueSession` (v0.8.375–376); full session map still on `MainWindow` |
-| **R5.3** UI refresh facade | `RunUiPublisher` or methods on coordinator: feature list run chrome, workflow panel run state — coalesced | R2.3 coalesce lives in one class |
+| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | **Partial** — `sessionForId`, `evaluateRunStartForeground`, `applyUserStopRequestFlags`, `shouldDeferAbandonedEnginePrune`, `shouldCoalesceRunUi` (v0.8.381); session map + `startFeatureRun` body still on `MainWindow` |
+| **R5.3** UI refresh facade | `RunUiPublisher` or methods on coordinator: feature list run chrome, workflow panel run state — coalesced | **Partial** — `RunLifecycleCoordinator::requestRunUiRefresh` → `updateRunUiState` (v0.8.381) |
 | **R5.4** No new cross-deps | Controllers (`ProfileSwitchCoordinator`, `RunSessionController`, …) do not call `MainWindow` back — signals only | Grep `MainWindow::` from controllers = wiring only |
 | **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | User or agent documents pass in §11 |
 
@@ -1510,19 +1512,20 @@ User hotkey (hook)
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R7.1** Matrix | Table: run mode × run mode → supported / best-effort / unsupported | **Done (doc)** — matrix below (v0.8.375); no runtime warnings yet |
-| **R7.2** UI hints | Korean tooltip when starting 4th simultaneous session (performance) | `FeatureEditDialog` or status bar — only if user asks |
+| **R7.2** UI hints | Korean tooltip when starting 4th simultaneous session (performance) | **Partial (doc)** — perf-hint column on R7.1 matrix (v0.8.381); in-app tooltip only if user asks |
 | **R7.3** Hard caps | Only if data shows hangs — soft queue for `startFeatureRun` | Document in §11; sim scenarios for cap |
 
-**R7.1 concurrency matrix (best-effort, 2026-07-29):**
+**R7.1 concurrency matrix (best-effort, 2026-07-29; perf hints v0.8.381):**
 
-| Session A | Session B | Support | Notes |
-| --------- | --------- | ------- | ----- |
+| Session A | Session B | Support | Perf hint (user-facing) |
+| --------- | --------- | ------- | ----------------------- |
 | Hold | Hold | **Supported** | Q/W/E/R together; coalesced UI; capture mutex serializes ImageFind |
 | Hold | Trigger **감시** | **Best-effort** | Watch polls yield during other features' capture burst |
 | Hold | Trigger **동작** | **Best-effort** | Trigger action may preempt/pause other sessions |
 | Trigger **감시** | Trigger **감시** | **Supported** | Multiple monitors; serialized capture |
 | N회/무한 반복 | Hold | **Supported** | Independent engines per feature |
 | Same feature twice | — | **Unsupported** | One session per feature id |
+| **4+ active sessions** | any | **Best-effort** | Run UI updates debounce up to ~160 ms; expect brief list/chrome lag under heavy simultaneous hold |
 
 ---
 
@@ -1956,6 +1959,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.381] - 2026-07-29
+
+### Added
+
+- **`RunLifecycleCoordinator`**: `evaluateRunStartForeground` (R5.1a), `applyUserStopRequestFlags`, `shouldCoalesceRunUi`, `shouldDeferAbandonedEnginePrune`, `requestRunUiRefresh` (AGENTS.md §8.21 R5).
+- **`SessionRunPolicy`**: `shouldCoalesceRunUiUpdates`, `runUiDebounceIntervalMs` — single source for multi-session run UI coalesce (§8.21 R2.3).
+- **`SessionRunPolicySim`**: coalesce UI + debounce interval scenarios (`SessionRunPolicySim.cpp`).
+
+### Changed
+
+- `MainWindow::startFeatureRun` foreground/capture gate delegates to `RunLifecycleCoordinator::evaluateRunStartForeground`; `sessionFor` → `sessionForId`; stop/finish use coordinator stop flags and coalesce helpers (`MainWindow.cpp`).
+- AGENTS.md §8.21 progress tracker R1/R2/R5/R7; R7.1 matrix perf-hint column; `MainWindow.cpp` ~9143 lines (R5.4).
 
 ## [0.8.380] - 2026-07-29
 

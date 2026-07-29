@@ -126,4 +126,26 @@ int countActiveRepeatSessions(const std::vector<SessionRunPolicyInput>& sessions
     return count;
 }
 
+bool shouldCoalesceRunUiUpdates(const std::vector<SessionRunPolicyInput>& sessions) {
+    if (sessions.size() > 1) {
+        return true;
+    }
+    return countActiveRepeatSessions(sessions) >= 2;
+}
+
+int runUiDebounceIntervalMs(const std::vector<SessionRunPolicyInput>& sessions,
+                            const std::size_t sessionMapSize) {
+    const int activeRepeat = countActiveRepeatSessions(sessions);
+    if (activeRepeat >= 4) {
+        return 160;
+    }
+    if (activeRepeat >= 2) {
+        return 100;
+    }
+    if (sessionMapSize >= 2) {
+        return 80;
+    }
+    return 50;
+}
+
 } // namespace SessionRunPolicy

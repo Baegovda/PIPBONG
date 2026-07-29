@@ -2909,13 +2909,11 @@ void MainWindow::applyRunningBlockVisuals(FeatureRunSession& session,
 }
 
 FeatureRunSession* MainWindow::sessionFor(const std::string& featureId) {
-    const auto it = m_runSessions.find(featureId);
-    return it == m_runSessions.end() ? nullptr : &it->second;
+    return RunLifecycleCoordinator::sessionForId(m_runSessions, featureId);
 }
 
 const FeatureRunSession* MainWindow::sessionFor(const std::string& featureId) const {
-    const auto it = m_runSessions.find(featureId);
-    return it == m_runSessions.end() ? nullptr : &it->second;
+    return RunLifecycleCoordinator::sessionForId(m_runSessions, featureId);
 }
 
 FeatureRunSession* MainWindow::sessionForEngine(const QObject* sender) {
@@ -3142,14 +3140,10 @@ void MainWindow::updateRunUiState(bool immediate) {
         applyRunUiState();
         return;
     }
-    int intervalMs = 50;
-    if (concurrentActiveRepeatSessionCount() >= 4) {
-        intervalMs = 160;
-    } else if (concurrentActiveRepeatSessionCount() >= 2) {
-        intervalMs = 100;
-    } else if (m_runSessions.size() >= 2) {
-        intervalMs = 80;
-    }
+    const auto policyInputs =
+        RunLifecycleCoordinator::policyInputsFromSessions(m_runSessions);
+    const int intervalMs =
+        SessionRunPolicy::runUiDebounceIntervalMs(policyInputs, m_runSessions.size());
     m_runUiDebounceTimer->setInterval(intervalMs);
     if (!m_runUiDebounceTimer->isActive()) {
         m_runUiDebounceTimer->start();
@@ -3157,7 +3151,7 @@ void MainWindow::updateRunUiState(bool immediate) {
 }
 
 bool MainWindow::shouldCoalesceRunUiUpdates() const {
-    return m_runSessions.size() > 1 || concurrentActiveRepeatSessionCount() >= 2;
+    return RunLifecycleCoordinator::shouldCoalesceRunUi(m_runSessions, false);
 }
 
 bool MainWindow::isHoldBurstActive() const {
@@ -3507,7 +3501,7 @@ void MainWindow::abandonSessionEngine(FeatureRunSession& session) {
     m_abandonedEngineFeatureIds[enginePtr] = session.featureId;
     enginePtr->stop();
     m_abandonedEngines.push_back(std::move(session.engine));
-    if (isHoldBurstActive() || shouldCoalesceRunUiUpdates()) {
+    if (RunLifecycleCoordinator::shouldDeferAbandonedEnginePrune(m_runSessions, isHoldBurstActive())) {
         m_deferredBurstPruneEngines = true;
     } else {
         schedulePruneAbandonedEngines();
@@ -3523,19 +3517,9 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     CrashReporter::noteBreadcrumb(QStringLiteral("run"),
                                   QStringLiteral("stop feature %1").arg(featureDisplayName(featureId)));
 
-    session->userStopRequested = true;
-    session->repeatSession = false;
-    session->holdRunActive = false;
-    session->waitingForScopedTargetForeground = false;
-    ++session->holdRepeatGeneration;
-    ++session->triggerCooldownGeneration;
-    ++session->triggerMonitorRestartGeneration;
-
-    if (session->runningMode == FeatureRunMode::Trigger) {
-        session->disarmPersistedTrigger = !m_suppressTriggerArmedPersist;
-        if (session->disarmPersistedTrigger) {
-            persistTriggerArmedState(QString::fromStdString(featureId), false);
-        }
+    RunLifecycleCoordinator::applyUserStopRequestFlags(*session, m_suppressTriggerArmedPersist);
+    if (session->disarmPersistedTrigger) {
+        persistTriggerArmedState(QString::fromStdString(featureId), false);
     }
 
     Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
@@ -3557,7 +3541,7 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
             scheduleCoalescedHoldEndCleanup();
         } else {
             reconcileMouseLocksFromRunningSessions();
-            updateRunUiState(false);
+            RunLifecycleCoordinator::requestRunUiRefresh(*this, false);
         }
         schedulePruneAbandonedEngines();
         return;
@@ -3567,7 +3551,7 @@ void MainWindow::stopFeatureRun(const std::string& featureId) {
     if (shouldCoalesceRunUiUpdates()) {
         scheduleCoalescedHoldEndCleanup();
     } else {
-        updateRunUiState(false);
+        RunLifecycleCoordinator::requestRunUiRefresh(*this, false);
     }
 }
 
@@ -4478,110 +4462,16 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
     if (holdHotkeyStart) {
         prepareForegroundForHoldBurst();
     }
-#ifdef _WIN32
-    if (!ProgramSettings::runWithoutTargetWindow()) {
-        const bool skipHeavyForegroundSync =
-            holdHotkeyStart && m_holdBurstForegroundPrepared && isHoldBurstActive();
-        if (!skipHeavyForegroundSync) {
-            switchToForegroundLinkedProfileIfNeeded(true);
-            if (!fromHotkey) {
-                applyProfileSwitchFromForegroundState(m_foregroundMonitor->currentState());
-            }
-            syncEffectiveTargetWindowTitleToCapture();
-            if (fromHotkey && !holdHotkeyStart) {
-                QTimer::singleShot(0, this, [this]() {
-                    reconcileRunSessionsWithForegroundGate();
-                });
-            } else if (!fromHotkey) {
-                reconcileRunSessionsWithForegroundGate();
-            }
-        }
-        const bool foregroundGateActive = runForegroundGateActive(feature);
-        const std::wstring captureTitle = resolveRunCaptureTargetTitleW(feature);
-        const FeatureCaptureTargetScope scope = feature->captureTargetScope();
-        const bool triggerRestore = silentRestoreStart && feature->runMode() == FeatureRunMode::Trigger;
-        if (!foregroundGateActive) {
-            if (!silentRestoreStart) {
-                QMessageBox::information(
-                    this,
-                    tr("실행"),
-                    tr("현재 포커스 창에 연결된 프로필의 기능만 실행됩니다. "
-                       "해당 프로필로 전환하거나 타겟 프로그램을 활성화한 뒤 다시 시도하세요."));
-                return;
-            }
-            if (triggerRestore) {
-                deferTriggerRestoreStart = true;
-            } else {
-                return;
-            }
-        }
-        if (captureTitle.empty()) {
-            if (!silentRestoreStart) {
-                QString message;
-                if (scope == FeatureCaptureTargetScope::SubOnly) {
-                    message = tr("이 기능은 서브 창에서만 실행됩니다. 프로필 편집에서 서브 창을 "
-                                 "지정하세요.");
-                } else {
-                    message = tr("타겟이 지정되지 않았습니다. '타겟 지정'으로 타겟을 선택하거나, "
-                                 "프로그램 설정에서 '창을 지정하지 않은 상태에서도 동작'을 켜세요.");
-                }
-                QMessageBox::information(this, tr("실행"), message);
-                return;
-            }
-            if (triggerRestore) {
-                deferTriggerRestoreStart = true;
-            } else {
-                return;
-            }
-        } else {
-            std::wstring processPath;
-            if (m_profileManager && !isActiveDefaultProfile()) {
-                const QString profileId = m_profileManager->activeProfileId();
-                if (scope == FeatureCaptureTargetScope::SubOnly) {
-                    processPath =
-                        m_profileManager->subLinkedTargetProcessPath(profileId).toStdWString();
-                } else {
-                    processPath =
-                        m_profileManager->linkedTargetProcessPath(profileId).toStdWString();
-                }
-            }
-            bool captureHwndValid = false;
-            if (holdHotkeyStart && m_holdBurstCaptureTitleValid
-                && captureTitle == m_holdBurstCaptureTitle) {
-                captureHwndValid = true;
-            } else {
-                const HWND captureHwnd =
-                    ScreenCapture::findVisibleWindowMatchingTitle(captureTitle, processPath);
-                captureHwndValid = captureHwnd != nullptr;
-                if (captureHwndValid && holdHotkeyStart) {
-                    m_holdBurstCaptureTitle = captureTitle;
-                    m_holdBurstCaptureTitleValid = true;
-                }
-            }
-            if (!captureHwndValid) {
-                if (!silentRestoreStart) {
-                    QString message;
-                    if (scope == FeatureCaptureTargetScope::SubOnly) {
-                        message = tr("서브 창을 찾을 수 없습니다. 해당 창이 실행 중인지 확인하세요.");
-                    } else if (scope == FeatureCaptureTargetScope::MainOnly) {
-                        message = tr("메인 창을 찾을 수 없습니다. '타겟 지정'으로 타겟을 선택하거나, "
-                                     "프로그램 설정에서 '창을 지정하지 않은 상태에서도 동작'을 켜세요.");
-                    } else {
-                        message = tr("타겟을 찾을 수 없습니다. 메인·서브 창이 실행 중인지 확인하거나, "
-                                     "'타겟 지정'·프로필 편집을 확인하세요.");
-                    }
-                    QMessageBox::information(this, tr("실행"), message);
-                    return;
-                }
-                if (triggerRestore) {
-                    deferTriggerRestoreStart = true;
-                } else {
-                    return;
-                }
-            }
-        }
+    switch (RunLifecycleCoordinator::evaluateRunStartForeground(
+            *this, feature, fromHotkey, silentRestoreStart, holdHotkeyStart)) {
+    case RunLifecycleCoordinator::RunStartForegroundOutcome::Proceed:
+        break;
+    case RunLifecycleCoordinator::RunStartForegroundOutcome::DeferTriggerRestore:
+        deferTriggerRestoreStart = true;
+        break;
+    case RunLifecycleCoordinator::RunStartForegroundOutcome::Abort:
+        return;
     }
-#endif
 
     const std::string featureId = feature->id();
     if (FeatureRunSession* existing = sessionFor(featureId)) {
@@ -6062,7 +5952,8 @@ void MainWindow::finishRunSession(const std::string& featureId,
                                   const QString& message,
                                   bool deferUiUpdate) {
     FeatureRunSession* session = sessionFor(featureId);
-    const bool coalesceUi = deferUiUpdate || shouldCoalesceRunUiUpdates();
+    const bool coalesceUi =
+        RunLifecycleCoordinator::shouldCoalesceRunUi(m_runSessions, deferUiUpdate);
     if (session && isDisplayedRunningFeature(session) && !coalesceUi) {
         m_workflowEditor->clearExecutionHighlight();
         m_workflowEditor->persistRunFeedbackForCurrentFeature();

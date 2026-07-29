@@ -289,6 +289,25 @@ void runShouldContinueScenarios() {
     expectScenario(SessionRunPolicy::countActiveRepeatSessions(repeatMix) == 3,
                    "count_active_repeat_sessions",
                    u8"repeatSession+활성 세션 3건 카운트");
+
+    const std::vector<SessionRunPolicyInput> single = {holdActive(true)};
+    expectScenario(!SessionRunPolicy::shouldCoalesceRunUiUpdates(single),
+                   "coalesce_ui_single_session",
+                   u8"단일 세션은 UI 코얼스 불필요");
+    expectScenario(SessionRunPolicy::shouldCoalesceRunUiUpdates(repeatMix),
+                   "coalesce_ui_multi_repeat",
+                   u8"다중 repeatSession 시 UI 코얼스");
+    expectScenario(SessionRunPolicy::runUiDebounceIntervalMs(single, 1) == 50,
+                   "debounce_single_50ms",
+                   u8"단일 세션 디바운스 50ms");
+    const std::vector<SessionRunPolicyInput> fourRepeat = {
+        holdActive(true), holdActive(true), repeatInfinite(false), repeatInfinite(false)};
+    expectScenario(SessionRunPolicy::runUiDebounceIntervalMs(fourRepeat, 4) == 160,
+                   "debounce_four_repeat_160ms",
+                   u8"4 repeat 세션 디바운스 160ms");
+    expectScenario(SessionRunPolicy::runUiDebounceIntervalMs(repeatMix, 3) == 100,
+                   "debounce_three_repeat_100ms",
+                   u8"3 repeat 세션 디바운스 100ms");
 }
 
 void runForegroundGateScenarios() {

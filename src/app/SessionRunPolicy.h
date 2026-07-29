@@ -51,4 +51,11 @@ bool shouldContinueSession(const SessionRunPolicyInput& session, bool holdBindin
 /// Active sessions with `repeatSession` set (Hold / infinite / N-repeat loop gap UI coalesce).
 int countActiveRepeatSessions(const std::vector<SessionRunPolicyInput>& sessions);
 
+/// Coalesce run UI refreshes when multiple sessions or 2+ active repeat loops compete (§8.21 R2.3).
+bool shouldCoalesceRunUiUpdates(const std::vector<SessionRunPolicyInput>& sessions);
+
+/// Debounce interval for `MainWindow::updateRunUiState` (ms) based on session load.
+int runUiDebounceIntervalMs(const std::vector<SessionRunPolicyInput>& sessions,
+                            std::size_t sessionMapSize);
+
 } // namespace SessionRunPolicy
