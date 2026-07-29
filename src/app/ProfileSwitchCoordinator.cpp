@@ -34,6 +34,17 @@ void ProfileSwitchCoordinator::scheduleDeferredFlush(int delayMs) {
     QTimer::singleShot(delayMs, this, [this]() { m_host.flushDeferredProfileSwitchIfIdle(); });
 }
 
+void ProfileSwitchCoordinator::scheduleDeferredProfileSwitchFlush(int delayMs) {
+    scheduleDeferredFlush(delayMs);
+}
+
+bool ProfileSwitchCoordinator::foregroundStableForAutoSwitchMs(int requiredMs) const {
+    if (!m_foregroundChurnTimer.isValid()) {
+        return true;
+    }
+    return m_foregroundChurnTimer.elapsed() >= requiredMs;
+}
+
 void ProfileSwitchCoordinator::onManualProfileSwitchCommitted(const QString& profileId,
                                                               bool isDefaultProfile) {
     m_deferredProfileSwitchId.clear();
@@ -60,6 +71,10 @@ void ProfileSwitchCoordinator::flushDeferredIfIdle() {
 
 void ProfileSwitchCoordinator::flushDeferredProfileSwitch() {
     if (m_deferredProfileSwitchId.isEmpty() || !m_profileManager) {
+        return;
+    }
+    if (m_host.hasTriggerMonitoringSessions && m_host.hasTriggerMonitoringSessions()) {
+        scheduleDeferredFlush(300);
         return;
     }
     if (m_host.isSwitchingProfile && m_host.isSwitchingProfile()) {
@@ -112,6 +127,10 @@ void ProfileSwitchCoordinator::applyFromForegroundState(const ForegroundWindowSt
     }
     const ForegroundWindowState& live =
         m_foregroundMonitor ? m_foregroundMonitor->currentState() : state;
+    if (live.monotonicSeq != m_lastForegroundMonotonicSeq) {
+        m_lastForegroundMonotonicSeq = live.monotonicSeq;
+        m_foregroundChurnTimer.restart();
+    }
     if (live.pipbong) {
         if (m_host.onPipbongForegroundFocus) {
             m_host.onPipbongForegroundFocus();
@@ -140,6 +159,11 @@ void ProfileSwitchCoordinator::applyFromForegroundState(const ForegroundWindowSt
         return;
     }
 
+    if (m_host.hasTriggerMonitoringSessions && m_host.hasTriggerMonitoringSessions()) {
+        m_deferredProfileSwitchId = resolved.profileId;
+        return;
+    }
+
     if (ForegroundWindowMonitor::isAltTabModifierHeld()) {
         if (!m_profileManager->isDefaultProfile(resolved.profileId)) {
             m_deferredProfileSwitchId = resolved.profileId;
@@ -153,12 +177,19 @@ void ProfileSwitchCoordinator::applyFromForegroundState(const ForegroundWindowSt
         return;
     }
 
-    constexpr int kMinAutoSwitchIntervalMs = 80;
+    constexpr int kMinAutoSwitchIntervalMs = 200;
+    constexpr int kForegroundStabilityMs = 320;
     if (m_lastAutomaticProfileSwitchTimer.isValid()
         && m_lastAutomaticProfileSwitchTimer.elapsed() < kMinAutoSwitchIntervalMs) {
         m_deferredProfileSwitchId = resolved.profileId;
         scheduleDeferredFlush(
             static_cast<int>(kMinAutoSwitchIntervalMs - m_lastAutomaticProfileSwitchTimer.elapsed()));
+        return;
+    }
+    if (!foregroundStableForAutoSwitchMs(kForegroundStabilityMs)) {
+        m_deferredProfileSwitchId = resolved.profileId;
+        scheduleDeferredFlush(
+            static_cast<int>(kForegroundStabilityMs - m_foregroundChurnTimer.elapsed() + 15));
         return;
     }
 

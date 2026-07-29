@@ -519,6 +519,9 @@ MainWindow::MainWindow(QWidget* parent)
         m_targetWindowController.applyForegroundCaptureHints(hwnd, title);
     };
     profileSwitchHost.onPipbongForegroundFocus = [this]() { handlePipbongForegroundFocus(); };
+    profileSwitchHost.hasTriggerMonitoringSessions = [this]() {
+        return hasTriggerMonitoringSessions();
+    };
 #ifdef _WIN32
     profileSwitchHost.flushDeferredProfileSwitchIfIdle = [this]() {
         if (!isAltTabModifierHeld()) {
@@ -6059,9 +6062,8 @@ void MainWindow::completeProfileSwitchPipeline(bool automatic) {
 
         if (automatic && !deferredAutoId.isEmpty() && m_profileManager
             && deferredAutoId != m_profileManager->activeProfileId()) {
-            QTimer::singleShot(0, this, [this, deferredAutoId]() {
-                executeProfileSwitch(deferredAutoId, true);
-            });
+            m_profileSwitchCoordinator.setDeferredProfileSwitchId(deferredAutoId);
+            m_profileSwitchCoordinator.scheduleDeferredProfileSwitchFlush(400);
         }
     });
 }

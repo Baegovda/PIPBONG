@@ -23,6 +23,8 @@ public:
         std::function<void(HWND hwnd, const QString& title)> applyForegroundCaptureHints;
         std::function<void()> onPipbongForegroundFocus;
         std::function<void()> flushDeferredProfileSwitchIfIdle;
+        /// When true, automatic foreground profile switches are deferred (trigger 감시).
+        std::function<bool()> hasTriggerMonitoringSessions;
     };
 
     explicit ProfileSwitchCoordinator(QObject* parent = nullptr);
@@ -55,8 +57,12 @@ public:
 
     void markAutomaticProfileSwitchCommitted();
 
+    /// Schedule a deferred auto-switch flush (e.g. after profile pipeline completes).
+    void scheduleDeferredProfileSwitchFlush(int delayMs);
+
 private:
     void scheduleDeferredFlush(int delayMs);
+    bool foregroundStableForAutoSwitchMs(int requiredMs) const;
 
     ProfileManager* m_profileManager = nullptr;
     ForegroundWindowMonitor* m_foregroundMonitor = nullptr;
@@ -66,4 +72,6 @@ private:
     QElapsedTimer m_lastAutomaticProfileSwitchTimer;
     QElapsedTimer m_recentAutomaticDefaultProfileSwitchTimer;
     QString m_lastLinkedForegroundProfileId;
+    quint64 m_lastForegroundMonotonicSeq = 0;
+    QElapsedTimer m_foregroundChurnTimer;
 };

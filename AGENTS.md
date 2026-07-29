@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.400` (from `project(PIPBONG VERSION 0.8.400)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.401` (from `project(PIPBONG VERSION 0.8.401)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1472,7 +1472,7 @@ User hotkey (hook)
 | **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, run session registry mutations, `applyRunUiState` orchestration | **Done (v0.8.400)** — `onEngineFinished`, repeat/trigger launch paths, `launchWorkflowRun`; registry + hold-burst (v0.8.389–0.8.392) |
 | **R5.3** UI refresh facade | `RunUiPublisher` or methods on coordinator: feature list run chrome, workflow panel run state — coalesced | **Done (code)** — `requestRunUiRefresh` debounce + `applyRunUiState` on coordinator (v0.8.386); `MainWindow` thin wrappers + timer |
 | **R5.4** No new cross-deps | Controllers (`ProfileSwitchCoordinator`, `RunSessionController`, …) do not call `MainWindow` back — signals only | **Done (v0.8.387)** — audit below; wired missing `ProfileSwitchCoordinator::flushDeferredProfileSwitchIfIdle`; `RunSessionController` run UI via `requestRunUiRefresh` |
-| **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | **Pending user** — policy/workflow sim at build OK (v0.8.400); §8.17 manual not re-run (user verify Alt+Tab 5×, Shift hold, trigger scoped gate) |
+| **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | **Re-verify** — user Alt+Tab spam + trigger 감시 → GUI hang (v0.8.400); fixed v0.8.401 defer auto profile switch during trigger watch; §8.17 manual still needed |
 
 **R5.4 controller ↔ MainWindow dependency audit (2026-07-30, v0.8.387):**
 
@@ -1971,6 +1971,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.401] - 2026-07-30
+
+### Fixed
+
+- Alt+Tab foreground churn no longer stacks automatic profile switches on the GUI thread while trigger **감시** sessions are active — defer until monitoring ends; added foreground stability (320 ms) and longer min auto-switch interval (`ProfileSwitchCoordinator`, `MainWindow::completeProfileSwitchPipeline`, `RunLifecycleCoordinator::finishRunSession`).
 
 ## [0.8.400] - 2026-07-30
 
