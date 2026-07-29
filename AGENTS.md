@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.386` (from `project(PIPBONG VERSION 0.8.386)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.387` (from `project(PIPBONG VERSION 0.8.387)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1330,7 +1330,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R1** | Policy surface completeness | **Done** | 0.8.381 | R1.2 coalesce/debounce via `SessionRunPolicy` + `RunLifecycleCoordinator` |
 | **R2** | GUI / worker boundary | **Done** | 0.8.382 | R2.3 coalesce; manual Q/W/E/R + trigger 감시 + Alt+Tab/Shift — user verified 2026-07-30 |
 | **R4** | Hotkey / input state machine | **Done (code)** | 0.8.294+ | R4.4 skipped; manual Alt+Tab 5× + Shift §8.17 — user |
-| **R5** | MainWindow decomposition | **Partial** | 0.8.386 | R5.3 `applyRunUiState` + debounce in coordinator; `MainWindow.cpp` ~8727 lines (R5.4 next) |
+| **R5** | MainWindow decomposition | **Partial** | 0.8.387 | R5.4 controller audit + deferred profile-switch wiring; R5.5 manual §8.17 pending user |
 | **R6** | Automated workflow dry-run | **Done (v0.8.380)** | 0.8.375+ | R6.2 complete; R6.3 overlay link deferred (ImageFindBlock) |
 | **R7** | Concurrency product policy | **Partial** | 0.8.381 | R7.1 matrix + R7.2 perf-hint column (doc) |
 
@@ -1471,8 +1471,20 @@ User hotkey (hook)
 | **R5.1** Size budget | Track `MainWindow.cpp` line count in §11 when touching — goal **&lt; 2500** lines long-term (informal) | Reported on each R5 task |
 | **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | **Partial** — full `startFeatureRun` path (v0.8.385); session map still on `MainWindow` |
 | **R5.3** UI refresh facade | `RunUiPublisher` or methods on coordinator: feature list run chrome, workflow panel run state — coalesced | **Done (code)** — `requestRunUiRefresh` debounce + `applyRunUiState` on coordinator (v0.8.386); `MainWindow` thin wrappers + timer |
-| **R5.4** No new cross-deps | Controllers (`ProfileSwitchCoordinator`, `RunSessionController`, …) do not call `MainWindow` back — signals only | Grep `MainWindow::` from controllers = wiring only |
-| **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | User or agent documents pass in §11 |
+| **R5.4** No new cross-deps | Controllers (`ProfileSwitchCoordinator`, `RunSessionController`, …) do not call `MainWindow` back — signals only | **Done (v0.8.387)** — audit below; wired missing `ProfileSwitchCoordinator::flushDeferredProfileSwitchIfIdle`; `RunSessionController` run UI via `requestRunUiRefresh` |
+| **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | **Partial** — policy/workflow sim at build; §8.17 manual sheet not re-run this task (user verify) |
+
+**R5.4 controller ↔ MainWindow dependency audit (2026-07-30, v0.8.387):**
+
+| Component | Includes `MainWindow.h`? | Calls `MainWindow` API? | Wiring |
+| --------- | ------------------------ | ------------------------- | ------ |
+| `ProfileSwitchCoordinator` | No | No — `HostCallbacks` only | `MainWindow` ctor sets lambdas (`executeProfileSwitch`, capture hints, deferred flush) |
+| `RunSessionController` | No | No — `HostCallbacks` + `FinishGateCallbacks` | Foreground gate reconcile, launch hooks, `requestRunUiRefresh` for run UI |
+| `TargetWindowController` | No | No — `HostCallbacks` only | Capture sync, auto-save, default-profile guard |
+| `RunLifecycleCoordinator` | Yes | Yes — `friend`; orchestrates run lifecycle | Intentional R5.2–R5.3 surface; not a passive controller |
+| `ForegroundRunGate` | No | No | Win32 helpers only |
+
+Grep: `src/app/*Controller*.cpp` and `ProfileSwitchCoordinator.cpp` contain **no** `MainWindow::` static calls and **no** `#include "app/MainWindow.h"`.
 
 **Key files:** `MainWindow.cpp`, `RunSessionController.*`, new `RunLifecycleCoordinator.*` (name may vary).
 
@@ -1959,6 +1971,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.387] - 2026-07-30
+
+### Fixed
+
+- Profile list drag during deferred foreground auto-switch: `ProfileSwitchCoordinator::scheduleDeferredFlush` now receives `flushDeferredProfileSwitchIfIdle` from `MainWindow` host wiring (was unset — deferred flush never ran) (`MainWindow` ctor).
+
+### Changed
+
+- `RunSessionController` foreground-gate reconcile calls `RunLifecycleCoordinator::requestRunUiRefresh` instead of `MainWindow::updateRunUiState` directly (`MainWindow` host lambda).
+- AGENTS.md §8.21 **R5.4** controller dependency audit table; R5.5 notes build-time sim only.
 
 ## [0.8.386] - 2026-07-30
 

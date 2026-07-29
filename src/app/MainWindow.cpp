@@ -530,6 +530,17 @@ MainWindow::MainWindow(QWidget* parent)
         m_targetWindowController.applyForegroundCaptureHints(hwnd, title);
     };
     profileSwitchHost.onPipbongForegroundFocus = [this]() { handlePipbongForegroundFocus(); };
+#ifdef _WIN32
+    profileSwitchHost.flushDeferredProfileSwitchIfIdle = [this]() {
+        if (!isAltTabModifierHeld()) {
+            flushDeferredProfileSwitchIfIdle();
+        }
+    };
+#else
+    profileSwitchHost.flushDeferredProfileSwitchIfIdle = [this]() {
+        flushDeferredProfileSwitchIfIdle();
+    };
+#endif
     m_profileSwitchCoordinator.setHostCallbacks(profileSwitchHost);
 
     m_targetWindowController.setProfileManager(m_profileManager.get());
@@ -556,7 +567,9 @@ MainWindow::MainWindow(QWidget* parent)
     runHost.runForegroundGateActiveForSession = [this](FeatureRunSession& session, Feature* feature) {
         return runForegroundGateActiveForSession(session, feature);
     };
-    runHost.updateRunUiState = [this]() { updateRunUiState(); };
+    runHost.updateRunUiState = [this]() {
+        RunLifecycleCoordinator::requestRunUiRefresh(*this, false);
+    };
     runHost.stopSessionEngine = [this](FeatureRunSession& session) {
         if (session.engine) {
             session.engine->stop();
