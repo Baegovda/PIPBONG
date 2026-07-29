@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.389` (from `project(PIPBONG VERSION 0.8.389)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.390` (from `project(PIPBONG VERSION 0.8.390)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1330,7 +1330,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R1** | Policy surface completeness | **Done** | 0.8.381 | R1.2 coalesce/debounce via `SessionRunPolicy` + `RunLifecycleCoordinator` |
 | **R2** | GUI / worker boundary | **Done** | 0.8.382 | R2.3 coalesce; manual Q/W/E/R + trigger 감시 + Alt+Tab/Shift — user verified 2026-07-30 |
 | **R4** | Hotkey / input state machine | **Done (code)** | 0.8.294+ | R4.4 skipped; manual Alt+Tab 5× + Shift §8.17 — user |
-| **R5** | MainWindow decomposition | **Partial** | 0.8.389 | R5.2 hold-burst coalesced UI scheduling on coordinator; `MainWindow.cpp` ~8607 lines; R5.5 manual §8.17 pending user |
+| **R5** | MainWindow decomposition | **Partial** | 0.8.390 | R5.2 hold-burst calls coordinator directly (no MainWindow pass-through); `MainWindow.cpp` ~8552 lines; R5.5 manual §8.17 pending user |
 | **R6** | Automated workflow dry-run | **Done (v0.8.380)** | 0.8.375+ | R6.2 complete; R6.3 overlay link deferred (ImageFindBlock) |
 | **R7** | Concurrency product policy | **Partial** | 0.8.388 | R7.2 perf hint at 4+ sessions (title bar); R7.1 matrix done |
 
@@ -1469,7 +1469,7 @@ User hotkey (hook)
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R5.1** Size budget | Track `MainWindow.cpp` line count in §11 when touching — goal **&lt; 2500** lines long-term (informal) | Reported on each R5 task |
-| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | **Partial** — session map still on `MainWindow`; hold-burst coalesced start/end UI + deferred burst side effects on coordinator (v0.8.389) |
+| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | **Partial** — session map still on `MainWindow`; hold-burst scheduling on coordinator; MainWindow calls coordinator APIs directly (v0.8.389–0.8.390) |
 | **R5.3** UI refresh facade | `RunUiPublisher` or methods on coordinator: feature list run chrome, workflow panel run state — coalesced | **Done (code)** — `requestRunUiRefresh` debounce + `applyRunUiState` on coordinator (v0.8.386); `MainWindow` thin wrappers + timer |
 | **R5.4** No new cross-deps | Controllers (`ProfileSwitchCoordinator`, `RunSessionController`, …) do not call `MainWindow` back — signals only | **Done (v0.8.387)** — audit below; wired missing `ProfileSwitchCoordinator::flushDeferredProfileSwitchIfIdle`; `RunSessionController` run UI via `requestRunUiRefresh` |
 | **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | **Partial** — policy/workflow sim at build; §8.17 manual sheet not re-run this task (user verify) |
@@ -1971,6 +1971,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.390] - 2026-07-30
+
+### Changed
+
+- Removed `MainWindow` pass-through methods for hold-burst coalesced UI; hotkey and engine paths call `RunLifecycleCoordinator` static APIs directly (`MainWindow`, `RunLifecycleCoordinator`).
 
 ## [0.8.389] - 2026-07-30
 

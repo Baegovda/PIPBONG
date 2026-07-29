@@ -342,7 +342,7 @@ RunLifecycleCoordinator::evaluateRunStartForeground(MainWindow& window,
 #ifdef _WIN32
     if (!ProgramSettings::runWithoutTargetWindow()) {
         const bool skipHeavyForegroundSync =
-            holdHotkeyStart && window.m_holdBurstForegroundPrepared && window.isHoldBurstActive();
+            holdHotkeyStart && window.m_holdBurstForegroundPrepared && isHoldBurstUiActive(window);
         if (!skipHeavyForegroundSync) {
             window.switchToForegroundLinkedProfileIfNeeded(true);
             if (!fromHotkey) {

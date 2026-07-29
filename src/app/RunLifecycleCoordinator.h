@@ -36,7 +36,7 @@ public:
     static bool shouldDeferAbandonedEnginePrune(const std::map<std::string, FeatureRunSession>& sessions,
                                                 bool holdBurstUiActive);
 
-    /// Hold-burst / coalesced hold-start UI window (§8.21 R5.2); `MainWindow::isHoldBurstActive` delegates here.
+    /// Hold-burst / coalesced hold-start UI window (§8.21 R5.2).
     static bool isHoldBurstUiActive(const class MainWindow& window);
 
     static bool shouldLogSessionDetailsInBurst(const class MainWindow& window);

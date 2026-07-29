@@ -559,7 +559,7 @@ MainWindow::MainWindow(QWidget* parent)
     runHost.shouldSkipForegroundGateReconcile = [this]() {
         return m_profileSwitchPipelineActive || m_switchingProfile
                || ProgramSettings::runWithoutTargetWindow() || isActiveDefaultProfile()
-               || isHoldBurstActive();
+               || RunLifecycleCoordinator::isHoldBurstUiActive(*this);
     };
     runHost.runForegroundGateActive = [this](Feature* feature) {
         return runForegroundGateActive(feature);
@@ -3147,62 +3147,6 @@ bool MainWindow::shouldCoalesceRunUiUpdates() const {
     return RunLifecycleCoordinator::shouldCoalesceRunUi(m_runSessions, false);
 }
 
-bool MainWindow::isHoldBurstActive() const {
-    return RunLifecycleCoordinator::isHoldBurstUiActive(*this);
-}
-
-bool MainWindow::shouldLogSessionDetailsInBurst() const {
-    return RunLifecycleCoordinator::shouldLogSessionDetailsInBurst(*this);
-}
-
-void MainWindow::prepareForegroundForHoldBurst() {
-    RunLifecycleCoordinator::prepareForegroundForHoldBurst(*this);
-}
-
-void MainWindow::scheduleCoalescedHoldStartUi(const std::string& featureId) {
-    RunLifecycleCoordinator::scheduleCoalescedHoldStartUi(*this, featureId);
-}
-
-void MainWindow::flushCoalescedHoldStartUi() {
-    RunLifecycleCoordinator::flushCoalescedHoldStartUi(*this);
-}
-
-void MainWindow::scheduleCoalescedHoldEndCleanup() {
-    RunLifecycleCoordinator::scheduleCoalescedHoldEndCleanup(*this);
-}
-
-void MainWindow::flushCoalescedHoldEndCleanup() {
-    RunLifecycleCoordinator::flushCoalescedHoldEndCleanup(*this);
-}
-
-void MainWindow::scheduleHoldBurstScopeDrain() {
-    RunLifecycleCoordinator::scheduleHoldBurstScopeDrain(*this);
-}
-
-void MainWindow::drainHoldBurstScope() {
-    RunLifecycleCoordinator::drainHoldBurstScope(*this);
-}
-
-void MainWindow::flushDeferredBurstSideEffects() {
-    RunLifecycleCoordinator::flushDeferredBurstSideEffects(*this);
-}
-
-void MainWindow::scheduleCoalescedHoldFeatureStart(const std::string& featureId) {
-    RunLifecycleCoordinator::scheduleCoalescedHoldFeatureStart(*this, featureId);
-}
-
-void MainWindow::flushCoalescedHoldFeatureStarts() {
-    RunLifecycleCoordinator::flushCoalescedHoldFeatureStarts(*this);
-}
-
-void MainWindow::scheduleCoalescedHoldFeatureEndFinish(const std::string& featureId) {
-    RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this, featureId);
-}
-
-void MainWindow::flushCoalescedHoldFeatureEndFinishes() {
-    RunLifecycleCoordinator::flushCoalescedHoldFeatureEndFinishes(*this);
-}
-
 int MainWindow::concurrentActiveRepeatSessionCount() const {
     return SessionRunPolicy::countActiveRepeatSessions(
         RunLifecycleCoordinator::policyInputsFromSessions(m_runSessions));
@@ -3231,7 +3175,8 @@ void MainWindow::abandonSessionEngine(FeatureRunSession& session) {
     m_abandonedEngineFeatureIds[enginePtr] = session.featureId;
     enginePtr->stop();
     m_abandonedEngines.push_back(std::move(session.engine));
-    if (RunLifecycleCoordinator::shouldDeferAbandonedEnginePrune(m_runSessions, isHoldBurstActive())) {
+    if (RunLifecycleCoordinator::shouldDeferAbandonedEnginePrune(
+            m_runSessions, RunLifecycleCoordinator::isHoldBurstUiActive(*this))) {
         m_deferredBurstPruneEngines = true;
     } else {
         schedulePruneAbandonedEngines();
@@ -4704,7 +4649,7 @@ void MainWindow::syncLoopTimingToWorkflowEditor(const FeatureRunSession* session
 }
 
 bool MainWindow::shouldLogRunDetails(const FeatureRunSession& session) const {
-    if (!shouldLogSessionDetailsInBurst()) {
+    if (!RunLifecycleCoordinator::shouldLogSessionDetailsInBurst(*this)) {
         return false;
     }
     return !session.repeatSession || session.sessionIteration <= 0;
@@ -4797,7 +4742,7 @@ void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature,
         } else {
             const std::string featureId = session.featureId;
             QTimer::singleShot(0, this, [this, featureId]() {
-                scheduleCoalescedHoldStartUi(featureId);
+                RunLifecycleCoordinator::scheduleCoalescedHoldStartUi(*this, featureId);
             });
         }
         session.runningBlockIndex = -1;
@@ -4917,7 +4862,7 @@ void MainWindow::launchHoldKeyTapRun(FeatureRunSession& session, Feature* featur
         session.holdKeyTapStartUiDone = true;
         const std::string featureId = session.featureId;
         QTimer::singleShot(0, this, [this, featureId]() {
-            scheduleCoalescedHoldStartUi(featureId);
+            RunLifecycleCoordinator::scheduleCoalescedHoldStartUi(*this, featureId);
         });
     } else if (!session.hotkeyLaunchedSession) {
         selectRunningFeatureForDisplay(feature);
@@ -5633,7 +5578,7 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
         ~HoldBurstScope() {
             if (window) {
                 --window->m_holdBurstDepth;
-                window->scheduleHoldBurstScopeDrain();
+                RunLifecycleCoordinator::scheduleHoldBurstScopeDrain(*window);
             }
         }
     } burstScope(this);
@@ -5683,7 +5628,7 @@ void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
         m_runSessions.erase(id);
     }
 
-    scheduleCoalescedHoldFeatureStart(id);
+    RunLifecycleCoordinator::scheduleCoalescedHoldFeatureStart(*this, id);
     scheduleFeatureListHoldVisualRefresh();
 }
 
@@ -5698,7 +5643,7 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
         ~HoldBurstScope() {
             if (window) {
                 --window->m_holdBurstDepth;
-                window->scheduleHoldBurstScopeDrain();
+                RunLifecycleCoordinator::scheduleHoldBurstScopeDrain(*window);
             }
         }
     } burstScope(this);
@@ -5742,7 +5687,7 @@ void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
     }
 
     session->userStopRequested = false;
-    scheduleCoalescedHoldFeatureEndFinish(id);
+    RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this, id);
 }
 
 bool MainWindow::shouldSuppressFeatureHotkeyExecution(const Feature* feature) const {
@@ -6205,16 +6150,16 @@ void MainWindow::onEngineFinished(bool success, const QString& message) {
     if (session->userStopRequested) {
         const bool deferHoldTeardown =
             session->runningMode == FeatureRunMode::Hold
-            && (m_runSessions.size() > 1 || isHoldBurstActive()
+            && (m_runSessions.size() > 1 || RunLifecycleCoordinator::isHoldBurstUiActive(*this)
                 || !m_pendingHoldFeatureEndFinishes.empty());
         if (deferHoldTeardown) {
-            scheduleCoalescedHoldFeatureEndFinish(session->featureId);
+            RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this, session->featureId);
             return;
         }
         const bool deferUi = m_runSessions.size() > 1;
         finishRunSession(session->featureId, success, message, deferUi);
         if (deferUi) {
-            scheduleCoalescedHoldEndCleanup();
+            RunLifecycleCoordinator::scheduleCoalescedHoldEndCleanup(*this);
         } else {
             updateRunUiState(false);
         }
@@ -6294,16 +6239,16 @@ void MainWindow::onHoldKeyTapLaneFinished(const QString& featureId, bool success
     if (session->userStopRequested) {
         const bool deferHoldTeardown =
             session->runningMode == FeatureRunMode::Hold
-            && (m_runSessions.size() > 1 || isHoldBurstActive()
+            && (m_runSessions.size() > 1 || RunLifecycleCoordinator::isHoldBurstUiActive(*this)
                 || !m_pendingHoldFeatureEndFinishes.empty());
         if (deferHoldTeardown) {
-            scheduleCoalescedHoldFeatureEndFinish(session->featureId);
+            RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this, session->featureId);
             return;
         }
         const bool deferUi = m_runSessions.size() > 1;
         finishRunSession(session->featureId, success, message, deferUi);
         if (deferUi) {
-            scheduleCoalescedHoldEndCleanup();
+            RunLifecycleCoordinator::scheduleCoalescedHoldEndCleanup(*this);
         } else {
             updateRunUiState(false);
         }
