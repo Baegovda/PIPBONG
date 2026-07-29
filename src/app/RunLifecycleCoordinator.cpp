@@ -368,6 +368,79 @@ RunLifecycleCoordinator::activateAndLaunchPreparedSession(
     return PreparedSessionLaunchOutcome::Launched;
 }
 
+void RunLifecycleCoordinator::startFeatureRun(MainWindow& window,
+                                              Feature* feature,
+                                              const bool fromHotkey,
+                                              const bool skipTargetActivationOnStart) {
+    if (!feature) {
+        return;
+    }
+    if (!feature->enabled()) {
+        return;
+    }
+    const bool silentRestoreStart = window.m_suppressTriggerArmedPersist;
+    if (feature->workflow().blocks().empty()) {
+        if (!silentRestoreStart) {
+            QMessageBox::information(
+                &window, window.tr("실행"), window.tr("선택한 기능에 블록이 없습니다."));
+        }
+        return;
+    }
+    if (feature->runMode() == FeatureRunMode::Trigger
+        && WorkflowRunner::firstImageFindBlockIndex(feature->workflow()) < 0) {
+        if (!silentRestoreStart) {
+            QMessageBox::information(
+                &window,
+                window.tr("실행"),
+                window.tr("트리거 모드에는 템플릿이 지정된 템플릿 매칭 블록이 최소 하나 필요합니다."));
+        }
+        return;
+    }
+    bool deferTriggerRestoreStart = false;
+    const bool holdHotkeyStart = fromHotkey && feature->runMode() == FeatureRunMode::Hold;
+    if (holdHotkeyStart) {
+        window.prepareForegroundForHoldBurst();
+    }
+    switch (evaluateRunStartForeground(
+            window, feature, fromHotkey, silentRestoreStart, holdHotkeyStart)) {
+    case RunStartForegroundOutcome::Proceed:
+        break;
+    case RunStartForegroundOutcome::DeferTriggerRestore:
+        deferTriggerRestoreStart = true;
+        break;
+    case RunStartForegroundOutcome::Abort:
+        return;
+    }
+
+    const std::string featureId = feature->id();
+    switch (reconcileExistingSessionBeforeStart(window, featureId, holdHotkeyStart)) {
+    case ExistingSessionReconcileOutcome::AbortAlreadyActive:
+        return;
+    case ExistingSessionReconcileOutcome::NoExistingSession:
+    case ExistingSessionReconcileOutcome::StaleRemoved:
+        break;
+    }
+
+    const QString profileId =
+        window.m_profileManager ? window.m_profileManager->activeProfileId() : QString();
+    PreparedFeatureRunSession prepared =
+        prepareNewSession(window, *feature, profileId, fromHotkey, skipTargetActivationOnStart);
+    const bool useHoldKeyTapFastPath = prepared.useHoldKeyTapFastPath;
+    const int holdTapVirtualKey = prepared.holdTapVirtualKey;
+
+    window.m_runSessions.emplace(featureId, std::move(prepared.session));
+    FeatureRunSession& activeSession = window.m_runSessions.at(featureId);
+    activateAndLaunchPreparedSession(
+        window,
+        feature,
+        activeSession,
+        fromHotkey,
+        deferTriggerRestoreStart,
+        useHoldKeyTapFastPath,
+        holdTapVirtualKey,
+        holdHotkeyStart);
+}
+
 RunLifecycleCoordinator::ExistingSessionReconcileOutcome
 RunLifecycleCoordinator::reconcileExistingSessionBeforeStart(MainWindow& window,
                                                              const std::string& featureId,

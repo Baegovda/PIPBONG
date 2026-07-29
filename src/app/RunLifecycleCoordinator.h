@@ -104,4 +104,10 @@ public:
         bool useHoldKeyTapFastPath,
         int holdTapVirtualKey,
         bool holdHotkeyStart);
+
+    /// Full `MainWindow::startFeatureRun` orchestration (§8.21 R5.2); stutter scope stays on `MainWindow`.
+    static void startFeatureRun(class MainWindow& window,
+                                Feature* feature,
+                                bool fromHotkey,
+                                bool skipTargetActivationOnStart);
 };

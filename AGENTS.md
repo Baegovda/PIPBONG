@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.384` (from `project(PIPBONG VERSION 0.8.384)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.385` (from `project(PIPBONG VERSION 0.8.385)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1330,7 +1330,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R1** | Policy surface completeness | **Done** | 0.8.381 | R1.2 coalesce/debounce via `SessionRunPolicy` + `RunLifecycleCoordinator` |
 | **R2** | GUI / worker boundary | **Done** | 0.8.382 | R2.3 coalesce; manual Q/W/E/R + trigger 감시 + Alt+Tab/Shift — user verified 2026-07-30 |
 | **R4** | Hotkey / input state machine | **Done (code)** | 0.8.294+ | R4.4 skipped; manual Alt+Tab 5× + Shift §8.17 — user |
-| **R5** | MainWindow decomposition | **Partial** | 0.8.384 | R5.2 `activateAndLaunchPreparedSession` (capture + launch); `MainWindow.cpp` ~8128 lines (R5.4) |
+| **R5** | MainWindow decomposition | **Partial** | 0.8.385 | R5.2 `startFeatureRun` in coordinator; `MainWindow.cpp` ~8065 lines (R5.3 next) |
 | **R6** | Automated workflow dry-run | **Done (v0.8.380)** | 0.8.375+ | R6.2 complete; R6.3 overlay link deferred (ImageFindBlock) |
 | **R7** | Concurrency product policy | **Partial** | 0.8.381 | R7.1 matrix + R7.2 perf-hint column (doc) |
 
@@ -1469,7 +1469,7 @@ User hotkey (hook)
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R5.1** Size budget | Track `MainWindow.cpp` line count in §11 when touching — goal **&lt; 2500** lines long-term (informal) | Reported on each R5 task |
-| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | **Partial** — `prepareNewSession`, `activateAndLaunchPreparedSession`, `stopFeatureRun`, `finishRunSession`, `reconcileExistingSessionBeforeStart` (v0.8.384); `startFeatureRun` pre-checks still on `MainWindow` |
+| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, `m_runSessions` map mutations, `applyRunUiState` orchestration | **Partial** — full `startFeatureRun` path (v0.8.385); `applyRunUiState` still on `MainWindow` (R5.3) |
 | **R5.3** UI refresh facade | `RunUiPublisher` or methods on coordinator: feature list run chrome, workflow panel run state — coalesced | **Partial** — `RunLifecycleCoordinator::requestRunUiRefresh` → `updateRunUiState` (v0.8.381) |
 | **R5.4** No new cross-deps | Controllers (`ProfileSwitchCoordinator`, `RunSessionController`, …) do not call `MainWindow` back — signals only | Grep `MainWindow::` from controllers = wiring only |
 | **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | User or agent documents pass in §11 |
@@ -1959,6 +1959,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.385] - 2026-07-30
+
+### Changed
+
+- **`RunLifecycleCoordinator::startFeatureRun`**: full feature-run start orchestration (validation, foreground gate, reconcile, prepare, launch); `MainWindow::startFeatureRun` only wraps stutter scope (`RunLifecycleCoordinator`, `MainWindow`).
+- AGENTS.md §8.21: R5.2 start path complete; `MainWindow.cpp` line count updated.
 
 ## [0.8.384] - 2026-07-30
 

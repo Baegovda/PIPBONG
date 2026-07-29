@@ -4393,73 +4393,7 @@ void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTar
     AppStutterOperationScope stutterScope(
         "run.start",
         feature ? QString::fromStdString(feature->name()) : QStringLiteral("(null)"));
-    if (!feature) {
-        return;
-    }
-    if (!feature->enabled()) {
-        return;
-    }
-    const bool silentRestoreStart = m_suppressTriggerArmedPersist;
-    if (feature->workflow().blocks().empty()) {
-        if (!silentRestoreStart) {
-            QMessageBox::information(this, tr("실행"), tr("선택한 기능에 블록이 없습니다."));
-        }
-        return;
-    }
-    if (feature->runMode() == FeatureRunMode::Trigger
-        && WorkflowRunner::firstImageFindBlockIndex(feature->workflow()) < 0) {
-        if (!silentRestoreStart) {
-            QMessageBox::information(this,
-                                     tr("실행"),
-                                     tr("트리거 모드에는 템플릿이 지정된 템플릿 매칭 블록이 최소 하나 필요합니다."));
-        }
-        return;
-    }
-    bool deferTriggerRestoreStart = false;
-    const bool holdHotkeyStart =
-        fromHotkey && feature->runMode() == FeatureRunMode::Hold;
-    if (holdHotkeyStart) {
-        prepareForegroundForHoldBurst();
-    }
-    switch (RunLifecycleCoordinator::evaluateRunStartForeground(
-            *this, feature, fromHotkey, silentRestoreStart, holdHotkeyStart)) {
-    case RunLifecycleCoordinator::RunStartForegroundOutcome::Proceed:
-        break;
-    case RunLifecycleCoordinator::RunStartForegroundOutcome::DeferTriggerRestore:
-        deferTriggerRestoreStart = true;
-        break;
-    case RunLifecycleCoordinator::RunStartForegroundOutcome::Abort:
-        return;
-    }
-
-    const std::string featureId = feature->id();
-    switch (RunLifecycleCoordinator::reconcileExistingSessionBeforeStart(
-            *this, featureId, holdHotkeyStart)) {
-    case RunLifecycleCoordinator::ExistingSessionReconcileOutcome::AbortAlreadyActive:
-        return;
-    case RunLifecycleCoordinator::ExistingSessionReconcileOutcome::NoExistingSession:
-    case RunLifecycleCoordinator::ExistingSessionReconcileOutcome::StaleRemoved:
-        break;
-    }
-
-    const QString profileId = m_profileManager ? m_profileManager->activeProfileId() : QString();
-    RunLifecycleCoordinator::PreparedFeatureRunSession prepared =
-        RunLifecycleCoordinator::prepareNewSession(
-            *this, *feature, profileId, fromHotkey, skipTargetActivationOnStart);
-    const bool useHoldKeyTapFastPath = prepared.useHoldKeyTapFastPath;
-    const int holdTapVirtualKey = prepared.holdTapVirtualKey;
-
-    m_runSessions.emplace(featureId, std::move(prepared.session));
-    FeatureRunSession& activeSession = m_runSessions.at(featureId);
-    RunLifecycleCoordinator::activateAndLaunchPreparedSession(
-        *this,
-        feature,
-        activeSession,
-        fromHotkey,
-        deferTriggerRestoreStart,
-        useHoldKeyTapFastPath,
-        holdTapVirtualKey,
-        holdHotkeyStart);
+    RunLifecycleCoordinator::startFeatureRun(*this, feature, fromHotkey, skipTargetActivationOnStart);
 }
 
 ImageFindBlock* firstImageFindWithEditableRoi(Workflow& workflow) {
