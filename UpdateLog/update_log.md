@@ -9,7 +9,7 @@
 
 ---
 
-## v0.8.360–0.8.392 (2026/07/29 – 2026/07/30)
+## v0.8.360–0.8.393 (2026/07/29 – 2026/07/30)
 
 **추가**
 
@@ -32,6 +32,7 @@
 - _(개발용)_ 홀드 버스트 UI 스케줄링은 `MainWindow` 경유 없이 `RunLifecycleCoordinator`를 직접 호출합니다. _(사용자 인터페이스 변경 없음)_
 - _(개발용)_ 실행 세션 맵 정리·엔진→세션 찾기를 `RunLifecycleCoordinator`로 모았습니다. _(사용자 인터페이스 변경 없음)_
 - _(개발용)_ 실행 세션 맵 저장을 `RunSessionRegistry`로 분리하고, 전체 중지(`stopAllSessions`)를 `RunLifecycleCoordinator`로 옮겼습니다. _(사용자 인터페이스 변경 없음)_
+- _(개발용)_ 프로필 전환 시 실행 UI 정리·abandoned 워커 정리·지연 중지 마무리를 `RunLifecycleCoordinator`로 옮겼습니다. _(사용자 인터페이스 변경 없음)_
 
 **변경**
 

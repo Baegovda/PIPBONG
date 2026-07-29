@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.392` (from `project(PIPBONG VERSION 0.8.392)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.393` (from `project(PIPBONG VERSION 0.8.392)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1330,7 +1330,7 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R1** | Policy surface completeness | **Done** | 0.8.381 | R1.2 coalesce/debounce via `SessionRunPolicy` + `RunLifecycleCoordinator` |
 | **R2** | GUI / worker boundary | **Done** | 0.8.382 | R2.3 coalesce; manual Q/W/E/R + trigger 감시 + Alt+Tab/Shift — user verified 2026-07-30 |
 | **R4** | Hotkey / input state machine | **Done (code)** | 0.8.294+ | R4.4 skipped; manual Alt+Tab 5× + Shift §8.17 — user |
-| **R5** | MainWindow decomposition | **Partial** | 0.8.392 | `RunSessionRegistry` map storage; `stopAllSessions` on coordinator; ~8510 lines; R5.5 manual §8.17 pending user |
+| **R5** | MainWindow decomposition | **Partial** | 0.8.393 | profile-switch UI detach + abandoned-engine prune on coordinator; ~8389 lines; R5.5 manual pending |
 | **R6** | Automated workflow dry-run | **Done (v0.8.380)** | 0.8.375+ | R6.2 complete; R6.3 overlay link deferred (ImageFindBlock) |
 | **R7** | Concurrency product policy | **Partial** | 0.8.388 | R7.2 perf hint at 4+ sessions (title bar); R7.1 matrix done |
 
@@ -1971,6 +1971,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.393] - 2026-07-30
+
+### Changed
+
+- `RunLifecycleCoordinator`: `detachUiForProfileSwitch`, `pruneAbandonedEngines`, deferred stop finalize after abandoned worker teardown; removed unused `stopSessionEngineForProfileSwitch` (`RunLifecycleCoordinator`, `MainWindow`).
 
 ## [0.8.392] - 2026-07-30
 

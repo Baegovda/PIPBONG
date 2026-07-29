@@ -92,6 +92,12 @@ public:
     /// Bulk stop for shutdown/update/profile teardown; does not persist trigger disarm (§8.21 R5.2).
     static void stopAllSessions(class MainWindow& window);
 
+    /// Profile switch: clear workflow run chrome, prune abandoned workers, defer run UI refresh (§8.21 R5.2).
+    static void detachUiForProfileSwitch(class MainWindow& window);
+
+    /// Shutdown idle abandoned `WorkflowEngine` workers and finalize deferred user stops (§8.21 R5.2).
+    static void pruneAbandonedEngines(class MainWindow& window);
+
     /// Session teardown after run ends (§8.21 R5.1b).
     static void finishRunSession(class MainWindow& window,
                                  const std::string& featureId,
@@ -152,4 +158,7 @@ public:
                                 Feature* feature,
                                 bool fromHotkey,
                                 bool skipTargetActivationOnStart);
+
+private:
+    static void finalizeDeferredStopSessions(class MainWindow& window);
 };

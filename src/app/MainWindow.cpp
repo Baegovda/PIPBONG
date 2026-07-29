@@ -3184,15 +3184,7 @@ void MainWindow::stopAllSessions() {
 }
 
 void MainWindow::detachUiForProfileSwitch() {
-    schedulePruneAbandonedEngines();
-    if (m_workflowEditor) {
-        m_workflowEditor->clearExecutionHighlight();
-        m_workflowEditor->clearBlockMatchResults();
-        m_workflowEditor->clearLoopTiming();
-    }
-    reconcileMouseLocksFromRunningSessions();
-    QTimer::singleShot(0, this, [this]() { updateRunUiState(); });
-    flushDeferredProfileSwitchIfIdle();
+    RunLifecycleCoordinator::detachUiForProfileSwitch(*this);
 }
 
 bool MainWindow::hasTriggerMonitoringSessions() const {
@@ -3217,88 +3209,11 @@ void MainWindow::schedulePruneAbandonedEngines() {
 
 void MainWindow::pruneAbandonedEngines() {
     assertMainWindowOnGuiThread("pruneAbandonedEngines");
-    bool boundedWaitUsed = false;
-    bool needsAnotherPrune = false;
-
-    auto tryShutdownIdleEngine = [this, &boundedWaitUsed, &needsAnotherPrune](
-                                     const std::unique_ptr<WorkflowEngine>& engine) {
-        if (!engine) {
-            return true;
-        }
-        if (engine->isRunning()) {
-            engine->stop();
-            needsAnotherPrune = true;
-            return false;
-        }
-        if (engine->hasLiveWorker()) {
-            if (!boundedWaitUsed) {
-                engine->stopAndWaitBounded(1);
-                boundedWaitUsed = true;
-            }
-            if (engine->hasLiveWorker()) {
-                needsAnotherPrune = true;
-                return false;
-            }
-        }
-        m_abandonedEngineFeatureIds.erase(engine.get());
-        return true;
-    };
-
-    m_abandonedEngines.erase(std::remove_if(m_abandonedEngines.begin(),
-                                            m_abandonedEngines.end(),
-                                            tryShutdownIdleEngine),
-                             m_abandonedEngines.end());
-
-    constexpr std::size_t kMaxAbandonedEngines = 4;
-    while (m_abandonedEngines.size() > kMaxAbandonedEngines) {
-        std::unique_ptr<WorkflowEngine>& front = m_abandonedEngines.front();
-        if (!front) {
-            m_abandonedEngines.erase(m_abandonedEngines.begin());
-            continue;
-        }
-        if (front->isRunning()) {
-            front->stop();
-            needsAnotherPrune = true;
-            break;
-        }
-        if (front->hasLiveWorker()) {
-            if (!boundedWaitUsed) {
-                front->stopAndWaitBounded(1);
-                boundedWaitUsed = true;
-            }
-            if (front->hasLiveWorker()) {
-                needsAnotherPrune = true;
-                break;
-            }
-        }
-        m_abandonedEngineFeatureIds.erase(front.get());
-        m_abandonedEngines.erase(m_abandonedEngines.begin());
-    }
-
-    finalizeDeferredStopSessions();
-
-    if (needsAnotherPrune) {
-        schedulePruneAbandonedEngines();
-    }
+    RunLifecycleCoordinator::pruneAbandonedEngines(*this);
 }
 
 void MainWindow::flushDeferredProfileSwitchIfIdle() {
     m_profileSwitchCoordinator.flushDeferredProfileSwitch();
-}
-
-void MainWindow::stopSessionEngineForProfileSwitch(FeatureRunSession& session, Feature* feature) {
-    if (!session.engine) {
-        return;
-    }
-    session.userStopRequested = true;
-    session.repeatSession = false;
-    session.holdRunActive = false;
-    ++session.holdRepeatGeneration;
-    ++session.triggerCooldownGeneration;
-    if (session.runningMode == FeatureRunMode::Hold) {
-        releaseHoldHotkeyInputToTarget(session, feature);
-    }
-    abandonSessionEngine(session);
 }
 
 void MainWindow::onFeatureRunRequested(const QString& featureId) {
@@ -5364,42 +5279,6 @@ void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
         }
         appendSessionLog(session, tr("실행 실패 — 감시를 다시 시작합니다"), LogLineKind::Warning);
         scheduleDeferredTriggerMonitorRestart(session, feature, 500);
-    }
-}
-
-void MainWindow::finalizeDeferredStopSessions() {
-    std::vector<std::string> featureIdsToFinalize;
-    featureIdsToFinalize.reserve(runSessions().size());
-    for (const auto& entry : runSessions()) {
-        if (!entry.second.userStopRequested || entry.second.engine) {
-            continue;
-        }
-        bool workerStillRunning = false;
-        for (const auto& engine : m_abandonedEngines) {
-            if (!engine) {
-                continue;
-            }
-            const auto mapIt = m_abandonedEngineFeatureIds.find(engine.get());
-            if (mapIt != m_abandonedEngineFeatureIds.end() && mapIt->second == entry.first
-                && engine->isRunning()) {
-                workerStillRunning = true;
-                break;
-            }
-        }
-        if (!workerStillRunning) {
-            featureIdsToFinalize.push_back(entry.first);
-        }
-    }
-
-    for (const std::string& featureId : featureIdsToFinalize) {
-        const FeatureRunSession* session = sessionFor(featureId);
-        finishRunSession(featureId,
-                         session ? session->lastLoopSuccess : true,
-                         QString(),
-                         featureIdsToFinalize.size() > 1);
-    }
-    if (featureIdsToFinalize.size() > 1) {
-        updateRunUiState(false);
     }
 }
 

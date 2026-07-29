@@ -31,6 +31,10 @@
 #include <QThread>
 #include <QTimer>
 
+#include <algorithm>
+#include <cstddef>
+#include <vector>
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -874,6 +878,123 @@ RunLifecycleCoordinator::reconcileExistingSessionBeforeStart(MainWindow& window,
     }
     tearDownAndEraseSessionEntry(window, featureId);
     return ExistingSessionReconcileOutcome::StaleRemoved;
+}
+
+void RunLifecycleCoordinator::detachUiForProfileSwitch(MainWindow& window) {
+    window.schedulePruneAbandonedEngines();
+    if (window.m_workflowEditor) {
+        window.m_workflowEditor->clearExecutionHighlight();
+        window.m_workflowEditor->clearBlockMatchResults();
+        window.m_workflowEditor->clearLoopTiming();
+    }
+    window.reconcileMouseLocksFromRunningSessions();
+    QTimer::singleShot(0, &window, [&window]() { window.updateRunUiState(); });
+    window.flushDeferredProfileSwitchIfIdle();
+}
+
+void RunLifecycleCoordinator::finalizeDeferredStopSessions(MainWindow& window) {
+    std::vector<std::string> featureIdsToFinalize;
+    featureIdsToFinalize.reserve(window.runSessions().size());
+    for (const auto& entry : window.runSessions()) {
+        if (!entry.second.userStopRequested || entry.second.engine) {
+            continue;
+        }
+        bool workerStillRunning = false;
+        for (const auto& engine : window.m_abandonedEngines) {
+            if (!engine) {
+                continue;
+            }
+            const auto mapIt = window.m_abandonedEngineFeatureIds.find(engine.get());
+            if (mapIt != window.m_abandonedEngineFeatureIds.end() && mapIt->second == entry.first
+                && engine->isRunning()) {
+                workerStillRunning = true;
+                break;
+            }
+        }
+        if (!workerStillRunning) {
+            featureIdsToFinalize.push_back(entry.first);
+        }
+    }
+
+    for (const std::string& featureId : featureIdsToFinalize) {
+        const FeatureRunSession* session = window.sessionFor(featureId);
+        RunLifecycleCoordinator::finishRunSession(
+            window,
+            featureId,
+            session ? session->lastLoopSuccess : true,
+            QString(),
+            featureIdsToFinalize.size() > 1);
+    }
+    if (featureIdsToFinalize.size() > 1) {
+        window.updateRunUiState(false);
+    }
+}
+
+void RunLifecycleCoordinator::pruneAbandonedEngines(MainWindow& window) {
+    bool boundedWaitUsed = false;
+    bool needsAnotherPrune = false;
+
+    auto tryShutdownIdleEngine = [&window, &boundedWaitUsed, &needsAnotherPrune](
+                                     const std::unique_ptr<WorkflowEngine>& engine) {
+        if (!engine) {
+            return true;
+        }
+        if (engine->isRunning()) {
+            engine->stop();
+            needsAnotherPrune = true;
+            return false;
+        }
+        if (engine->hasLiveWorker()) {
+            if (!boundedWaitUsed) {
+                engine->stopAndWaitBounded(1);
+                boundedWaitUsed = true;
+            }
+            if (engine->hasLiveWorker()) {
+                needsAnotherPrune = true;
+                return false;
+            }
+        }
+        window.m_abandonedEngineFeatureIds.erase(engine.get());
+        return true;
+    };
+
+    window.m_abandonedEngines.erase(
+        std::remove_if(window.m_abandonedEngines.begin(),
+                       window.m_abandonedEngines.end(),
+                       tryShutdownIdleEngine),
+        window.m_abandonedEngines.end());
+
+    constexpr std::size_t kMaxAbandonedEngines = 4;
+    while (window.m_abandonedEngines.size() > kMaxAbandonedEngines) {
+        std::unique_ptr<WorkflowEngine>& front = window.m_abandonedEngines.front();
+        if (!front) {
+            window.m_abandonedEngines.erase(window.m_abandonedEngines.begin());
+            continue;
+        }
+        if (front->isRunning()) {
+            front->stop();
+            needsAnotherPrune = true;
+            break;
+        }
+        if (front->hasLiveWorker()) {
+            if (!boundedWaitUsed) {
+                front->stopAndWaitBounded(1);
+                boundedWaitUsed = true;
+            }
+            if (front->hasLiveWorker()) {
+                needsAnotherPrune = true;
+                break;
+            }
+        }
+        window.m_abandonedEngineFeatureIds.erase(front.get());
+        window.m_abandonedEngines.erase(window.m_abandonedEngines.begin());
+    }
+
+    finalizeDeferredStopSessions(window);
+
+    if (needsAnotherPrune) {
+        window.schedulePruneAbandonedEngines();
+    }
 }
 
 void RunLifecycleCoordinator::stopAllSessions(MainWindow& window) {

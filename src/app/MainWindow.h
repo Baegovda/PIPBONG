@@ -243,7 +243,6 @@ private:
     void stopAllSessions();
     void stopRunningSessionsForUpdate();
     void detachUiForProfileSwitch();
-    void stopSessionEngineForProfileSwitch(FeatureRunSession& session, Feature* feature);
     void abandonSessionEngine(FeatureRunSession& session);
     void pruneAbandonedEngines();
     void schedulePruneAbandonedEngines();
@@ -328,7 +327,6 @@ private:
                           bool success,
                           const QString& message,
                           bool deferUiUpdate = false);
-    void finalizeDeferredStopSessions();
     void scheduleRepeatIteration(FeatureRunSession& session,
                                  Feature* feature,
                                  bool success,
