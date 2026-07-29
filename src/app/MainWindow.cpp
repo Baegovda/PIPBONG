@@ -3149,22 +3149,7 @@ void MainWindow::applyRunUiState() {
 }
 
 void MainWindow::abandonSessionEngine(FeatureRunSession& session) {
-    if (!session.engine) {
-        return;
-    }
-    CrashReporter::noteBreadcrumb(
-        QStringLiteral("engine"),
-        QStringLiteral("abandon engine feature=%1").arg(featureDisplayName(session.featureId)));
-    WorkflowEngine* enginePtr = session.engine.get();
-    m_abandonedEngineFeatureIds[enginePtr] = session.featureId;
-    enginePtr->stop();
-    m_abandonedEngines.push_back(std::move(session.engine));
-    if (RunLifecycleCoordinator::shouldDeferAbandonedEnginePrune(
-            runSessions(), RunLifecycleCoordinator::isHoldBurstUiActive(*this))) {
-        m_deferredBurstPruneEngines = true;
-    } else {
-        schedulePruneAbandonedEngines();
-    }
+    RunLifecycleCoordinator::abandonSessionEngine(*this, session);
 }
 
 void MainWindow::stopFeatureRun(const std::string& featureId) {
@@ -3197,14 +3182,7 @@ bool MainWindow::hasTriggerMonitoringSessions() const {
 }
 
 void MainWindow::schedulePruneAbandonedEngines() {
-    if (m_pruneAbandonedEnginesPending) {
-        return;
-    }
-    m_pruneAbandonedEnginesPending = true;
-    QTimer::singleShot(0, this, [this]() {
-        m_pruneAbandonedEnginesPending = false;
-        pruneAbandonedEngines();
-    });
+    RunLifecycleCoordinator::schedulePruneAbandonedEngines(*this);
 }
 
 void MainWindow::pruneAbandonedEngines() {
@@ -4544,174 +4522,11 @@ void MainWindow::continueRepeatSession(FeatureRunSession& session,
                                        Feature* feature,
                                        bool success,
                                        const QString& message) {
-    if (!shouldContinueRunSession(session, feature)) {
-        finishRunSession(session.featureId, success, message);
-        return;
-    }
-    if (session.holdKeyTapLaneActive) {
-        if (m_holdKeyTapMux && !m_holdKeyTapMux->isLaneActive(session.featureId)) {
-            session.holdKeyTapLaneActive = false;
-        } else {
-            return;
-        }
-    }
-    if (session.engine && session.engine->isRunning()) {
-        return;
-    }
-    if (session.usesHoldKeyTapFastPath && feature) {
-        int virtualKey = 0;
-        if (holdKeyTapWorkflowVirtualKey(*feature, virtualKey)) {
-            launchHoldKeyTapRun(session, feature, virtualKey);
-            return;
-        }
-    }
-    launchWorkflowRun(session, feature, true);
+    RunLifecycleCoordinator::continueRepeatSession(*this, session, feature, success, message);
 }
 
 void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature, bool repeatIteration) {
-    if (!feature || !session.engine || session.engine->isRunning()) {
-        return;
-    }
-
-    if (deferRunUntilScopedTargetForeground(session, feature)) {
-        return;
-    }
-
-    if (!repeatIteration) {
-        CrashReporter::noteBreadcrumb(
-            QStringLiteral("run"),
-            QStringLiteral("launch \"%1\" mode=%2")
-                .arg(QString::fromStdString(feature->name()))
-                .arg(static_cast<int>(feature->runMode())));
-    }
-
-    const bool hotkeyHoldFirstStart = !repeatIteration && session.hotkeyLaunchedSession
-                                      && session.runningMode == FeatureRunMode::Hold;
-
-    if (!repeatIteration) {
-        const bool skipCaptureApply =
-            hotkeyHoldFirstStart && m_holdBurstCaptureAppliedToCapture;
-        if (!skipCaptureApply) {
-            applySessionCaptureTarget(sessionCaptureTargetTitleW(session));
-        }
-        session.sessionIteration = 0;
-        session.hasLastLoopTiming = false;
-        session.totalLoopElapsedMs = 0;
-        session.completedLoopCount = 0;
-        session.lastLoopAverageMs = 0;
-        session.earlyLoopMouseLockEngaged = false;
-        session.earlyLoopMouseLockReleased = false;
-        session.earlyLoopMouseLockFailureCount = 0;
-        session.loopLogPublishTimer.invalidate();
-        session.loopsSinceLastLogPublish = 0;
-        m_fastRepeatUiCoalesce.erase(session.featureId);
-        captureRunStartCursorPosition(session);
-        captureFeatureMouseLockPosition(session);
-        if (session.lockMouseDuringFirstLoopCount > 0) {
-            syncEarlyLoopMouseLock(session);
-        } else {
-            engageFeatureMouseLock(session);
-        }
-        if (!hotkeyHoldFirstStart) {
-            if (isDisplayedRunningFeature(&session)) {
-                syncLoopTimingToWorkflowEditor(&session);
-                m_workflowEditor->clearBlockMatchResults();
-                m_workflowEditor->clearExecutionHighlight();
-                m_workflowEditor->persistRunFeedbackForCurrentFeature();
-            }
-
-            if (shouldLogRunDetails(session)) {
-                appendSessionLog(session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
-            }
-            updateRunUiState();
-        } else {
-            const std::string featureId = session.featureId;
-            QTimer::singleShot(0, this, [this, featureId]() {
-                RunLifecycleCoordinator::scheduleCoalescedHoldStartUi(*this, featureId);
-            });
-        }
-        session.runningBlockIndex = -1;
-        session.runningBlockHighlight = BlockListWidget::ExecutionHighlight::None;
-    } else {
-        ++session.sessionIteration;
-    }
-
-    const bool refreshCaptureBinding =
-        !repeatIteration || session.lockedCaptureTargetTitle.empty();
-
-    if (!session.sessionContext) {
-        session.sessionContext = std::make_shared<ExecutionContext>();
-    }
-    syncRunSessionContext(session, refreshCaptureBinding);
-    applyFeatureRunPoliciesToContext(session, feature);
-    syncEarlyLoopMouseLock(session);
-    if (!repeatIteration && session.sessionContext) {
-        session.sessionContext->clearCorrectedRois();
-        session.sessionContext->clearRememberedPositions();
-    }
-    syncUserInputInterruptForSession(session, feature);
-
-    const bool suppressRepeatUi =
-        session.runningMode == FeatureRunMode::Hold
-        || session.runningMode == FeatureRunMode::RepeatInfinite
-        || (repeatIteration && session.runningMode == FeatureRunMode::RepeatCount);
-    if (session.sessionContext) {
-        session.sessionContext->setSuppressRepeatUi(suppressRepeatUi);
-    }
-
-    configureWorkerFastRepeat(session, feature);
-
-    const std::wstring targetTitle = sessionCaptureTargetTitleW(session, refreshCaptureBinding);
-    const std::string projectDir = Application::instance()->projectDirectory().toStdString();
-    const bool skipTargetActivation =
-        (session.hotkeyLaunchedSession || session.skipTargetActivationOnStart) && !repeatIteration;
-    WorkflowEngine* engine = session.engine.get();
-
-    // The workflow cannot be edited while its session is running. Reuse the session
-    // clone instead of allocating a fresh block graph on every fast Hold/infinite loop.
-    const bool deferWorkflowCloneToWorker = hotkeyHoldFirstStart;
-    ensureRunSessionResources(session, feature, false, deferWorkflowCloneToWorker);
-
-    if (repeatIteration) {
-        engine->runPrepared([&session]() {
-            PreparedWorkflowRun run;
-            run.workflow = session.sessionWorkflow;
-            run.context = session.sessionContext;
-            run.context->resetStop();
-            return run;
-        });
-        return;
-    }
-
-    Feature* featurePtr = feature;
-    const bool triggerBackgroundRun =
-        featurePtr->runMode() == FeatureRunMode::Trigger
-        && featurePtr->triggerRunWithoutTargetForeground();
-    const bool holdBurstFirstStart = hotkeyHoldFirstStart;
-    QPointer<MainWindow> self(this);
-    engine->runPrepared([featurePtr, &session, targetTitle, projectDir, skipTargetActivation, triggerBackgroundRun, self, holdBurstFirstStart]() {
-        PreparedWorkflowRun run;
-        run.workflow = session.sessionWorkflow;
-        if (!run.workflow) {
-            run.workflow = std::shared_ptr<Workflow>(featurePtr->workflow().clone());
-        }
-        run.context = session.sessionContext;
-        run.context->setTargetWindowTitle(targetTitle);
-        run.context->setProjectDirectory(projectDir);
-        ScreenCapture::setTargetWindowTitle(targetTitle);
-        run.context->resetStop();
-#ifdef _WIN32
-        if (!skipTargetActivation && !triggerBackgroundRun) {
-            if (!holdBurstFirstStart || !self || !self->m_holdBurstTargetActivated) {
-                ScreenCapture::activateTargetWindow();
-                if (holdBurstFirstStart && self) {
-                    self->m_holdBurstTargetActivated = true;
-                }
-            }
-        }
-#endif
-        return run;
-    });
+    RunLifecycleCoordinator::launchWorkflowRun(*this, session, feature, repeatIteration);
 }
 
 void MainWindow::launchHoldKeyTapRun(FeatureRunSession& session, Feature* feature, int virtualKey) {
@@ -4841,50 +4656,8 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
                                          Feature* feature,
                                          bool success,
                                          const QString& message) {
-    // Do not reconcileHoldBindingDown here: same-key KeyPress Tap during Hold clears
-    // GetAsyncKeyState and would falsely end the session before the loop-interval timer.
-    if (!shouldContinueRunSession(session, feature)) {
-        finishRunSession(session.featureId, success, message);
-        return;
-    }
-
-    const int delayMs = feature ? feature->resolvedLoopIntervalMs() : 0;
-    if (delayMs > 0) {
-        appendSessionLog(session,
-                         tr("루프 간격 %1ms 대기").arg(delayMs),
-                         LogLineKind::Info);
-    }
-    if (delayMs <= 0) {
-        continueRepeatSession(session, feature, success, message);
-        return;
-    }
-    const quint64 generation = ++session.holdRepeatGeneration;
-    const std::string featureId = session.featureId;
-    QTimer::singleShot(qMax(0, delayMs), this, [this, featureId, success, message, generation]() {
-        FeatureRunSession* session = sessionFor(featureId);
-        if (!session || generation != session->holdRepeatGeneration) {
-            return;
-        }
-
-        Feature* current = featureForSession(*session);
-        if (!current) {
-            finishRunSession(featureId, success, message);
-            return;
-        }
-        continueRepeatSession(*session, current, success, message);
-    });
+    RunLifecycleCoordinator::scheduleRepeatIteration(*this, session, feature, success, message);
 }
-
-namespace {
-
-bool isTriggerMonitorPermanentFailure(const QString& message) {
-    return message.contains(QStringLiteral("템플릿 파일을 찾을 수 없음"))
-        || message.contains(QStringLiteral("템플릿이 없습니다"))
-        || message.contains(QStringLiteral("템플릿을 찾을 수 없음"))
-        || message.contains(QStringLiteral("템플릿을 먼저 지정"));
-}
-
-} // namespace
 
 void MainWindow::scheduleEnsureTriggerMonitorEnginesRunning() {
     if (m_ensureTriggerMonitorPending) {
@@ -4929,159 +4702,15 @@ void MainWindow::ensureTriggerMonitorEnginesRunning() {
 void MainWindow::scheduleDeferredTriggerMonitorRestart(FeatureRunSession& session,
                                                        Feature* feature,
                                                        int delayMs) {
-    if (!feature || !session.repeatSession || session.userStopRequested) {
-        return;
-    }
-    const int boundedDelayMs = qBound(200, delayMs, 60000);
-    const std::string featureId = session.featureId;
-    const quint64 generation = ++session.triggerMonitorRestartGeneration;
-    QTimer::singleShot(boundedDelayMs, this, [this, featureId, generation]() {
-        FeatureRunSession* activeSession = sessionFor(featureId);
-        if (!activeSession || generation != activeSession->triggerMonitorRestartGeneration) {
-            return;
-        }
-        if (activeSession->userStopRequested || !activeSession->repeatSession
-            || activeSession->triggerPhase != TriggerSessionPhase::Monitoring) {
-            return;
-        }
-        Feature* current = featureForSession(*activeSession);
-        if (!current || !shouldContinueRunSession(*activeSession, current)) {
-            finishRunSession(featureId, activeSession->lastLoopSuccess, QString());
-            return;
-        }
-        if (activeSession->engine && activeSession->engine->isRunning()) {
-            return;
-        }
-        launchTriggerMonitor(*activeSession, current, false);
-    });
+    RunLifecycleCoordinator::scheduleDeferredTriggerMonitorRestart(*this, session, feature, delayMs);
 }
 
 void MainWindow::launchTriggerMonitor(FeatureRunSession& session, Feature* feature, bool firstSessionStart) {
-    AppStutterOperationScope stutterScope(
-        "trigger.monitor",
-        feature ? QString::fromStdString(feature->name()) : QStringLiteral("(null)"));
-    if (!feature || !session.engine || session.engine->isRunning()) {
-        return;
-    }
-
-    if (firstSessionStart) {
-        applySessionCaptureTarget(sessionCaptureTargetTitleW(session));
-        session.sessionIteration = 0;
-        session.hasLastLoopTiming = false;
-        session.totalLoopElapsedMs = 0;
-        session.completedLoopCount = 0;
-        session.lastLoopAverageMs = 0;
-        session.earlyLoopMouseLockEngaged = false;
-        session.earlyLoopMouseLockReleased = false;
-        session.earlyLoopMouseLockFailureCount = 0;
-        captureRunStartCursorPosition(session);
-        captureFeatureMouseLockPosition(session);
-        engageFeatureMouseLock(session);
-        if (isDisplayedRunningFeature(&session)) {
-            syncLoopTimingToWorkflowEditor(&session);
-            m_workflowEditor->clearBlockMatchResults();
-            m_workflowEditor->clearExecutionHighlight();
-            m_workflowEditor->persistRunFeedbackForCurrentFeature();
-        }
-        appendSessionLog(session, tr("트리거 감시를 시작합니다"), LogLineKind::Accent);
-        updateRunUiState();
-        session.runningBlockIndex = -1;
-        session.runningBlockHighlight = BlockListWidget::ExecutionHighlight::None;
-        session.triggerMonitorUiInitialized = true;
-    }
-
-    releaseEarlyLoopMouseLockIfEngaged(session);
-    session.triggerPhase = TriggerSessionPhase::Monitoring;
-    session.triggerCooldownEndsAtEpochMs = 0;
-    session.triggerCooldownTotalMs = 0;
-    if (!session.sessionContext) {
-        session.sessionContext = std::make_shared<ExecutionContext>();
-    }
-    const bool skipCaptureRefresh =
-        firstSessionStart || !session.lockedCaptureTargetTitle.empty();
-    if (!firstSessionStart && session.lockedCaptureTargetTitle.empty()) {
-        applySessionCaptureTarget(sessionCaptureTargetTitleW(session));
-    }
-    syncRunSessionContext(session, !skipCaptureRefresh);
-    applyFeatureRunPoliciesToContext(session, feature);
-    session.sessionContext->setTriggerMonitorBlockIndex(session.triggerBlockIndex);
-    session.sessionContext->setImageFindPrimedBlockIndex(-1);
-    session.sessionContext->clearConsumedMatchRegions();
-    session.sessionContext->clearCorrectedRois();
-    session.sessionContext->clearRememberedPositions();
-    session.sessionContext->clearLastMatch();
-    session.sessionContext->clearLastMatchAttempt();
-    session.sessionContext->setSuppressRepeatUi(false);
-    session.sessionContext->setRunLoopNumber(1);
-    syncUserInputInterruptForSession(session, feature);
-
-    if (deferRunUntilScopedTargetForeground(session, feature)) {
-        return;
-    }
-
-    applyDeferredSessionWorkflowRefresh(session, feature);
-    refreshSessionWorkflowFromProject(session, feature);
-
-    ensureRunSessionResources(session, feature, false);
-
-    const std::wstring targetTitle = sessionCaptureTargetTitleW(session, !skipCaptureRefresh);
-    const std::string projectDir = Application::instance()->projectDirectory().toStdString();
-    WorkflowEngine* engine = session.engine.get();
-
-    Feature* featurePtr = feature;
-    const bool skipTargetActivation = session.skipTargetActivationOnStart;
-    const bool triggerBackgroundRun =
-        featurePtr->runMode() == FeatureRunMode::Trigger
-        && featurePtr->triggerRunWithoutTargetForeground();
-    engine->runPrepared([this, featurePtr, &session, targetTitle, projectDir, skipTargetActivation, triggerBackgroundRun]() {
-        PreparedWorkflowRun run;
-        run.workflow = session.sessionWorkflow;
-        if (!run.workflow) {
-            run.workflow = std::shared_ptr<Workflow>(featurePtr->workflow().clone());
-        }
-        run.context = session.sessionContext;
-        run.context->setTargetWindowTitle(targetTitle);
-        run.context->setProjectDirectory(projectDir);
-        ScreenCapture::setTargetWindowTitle(targetTitle);
-        run.context->resetStop();
-        run.context->setTriggerMonitorBlockIndex(session.triggerBlockIndex);
-        run.context->setImageFindPrimedBlockIndex(-1);
-#ifdef _WIN32
-        // Trigger watch must capture the real game frame — same as a normal workflow run.
-        if (run.context->scopedTargetPollAllowed() && !skipTargetActivation && !triggerBackgroundRun) {
-            ScreenCapture::activateTargetWindow();
-        }
-#endif
-        return run;
-    });
-
-    if (session.triggerBlockIndex >= 0) {
-        applyRunningBlockVisuals(session, session.triggerBlockIndex,
-                                 BlockListWidget::ExecutionHighlight::Running);
-    }
+    RunLifecycleCoordinator::launchTriggerMonitor(*this, session, feature, firstSessionStart);
 }
 
 void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* feature) {
-    AppStutterOperationScope stutterScope(
-        "trigger.action",
-        feature ? QString::fromStdString(feature->name()) : QStringLiteral("(null)"));
-    if (!feature || !session.engine || session.engine->isRunning()) {
-        return;
-    }
-
-    applyDeferredSessionWorkflowRefresh(session, feature);
-    refreshSessionWorkflowFromProject(session, feature);
-
-    pauseOtherSessionsForTrigger(session);
-
-    session.triggerPhase = TriggerSessionPhase::RunningAction;
-    updateRunUiState();
-    if (session.sessionContext) {
-        session.sessionContext->setTriggerMonitorBlockIndex(-1);
-        session.sessionContext->setImageFindPrimedBlockIndex(session.triggerBlockIndex);
-    }
-    appendSessionLog(session, tr("화면에서 찾음 — 워크플로 실행"), LogLineKind::Success);
-    launchWorkflowRun(session, feature, false);
+    RunLifecycleCoordinator::launchTriggerActionRun(*this, session, feature);
 }
 
 void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession) {
@@ -5175,111 +4804,11 @@ void MainWindow::resumePreemptedSessionsForTrigger(FeatureRunSession& triggerSes
     updateRunUiState();
 }
 
-void MainWindow::scheduleTriggerCooldown(FeatureRunSession& session, Feature* feature) {
-    if (!shouldContinueRunSession(session, feature)) {
-        finishRunSession(session.featureId, session.lastLoopSuccess, QString());
-        return;
-    }
-    if (!feature) {
-        finishRunSession(session.featureId, false, tr("기능을 찾을 수 없음"));
-        return;
-    }
-
-    session.triggerPhase = TriggerSessionPhase::Cooldown;
-
-    const int cooldownMs = feature->triggerCooldownMs();
-    if (cooldownMs <= 0) {
-        updateRunUiState();
-        if (session.triggerBlockIndex >= 0) {
-            applyRunningBlockVisuals(session, session.triggerBlockIndex,
-                                     BlockListWidget::ExecutionHighlight::Running);
-        }
-        launchTriggerMonitor(session, feature, false);
-        return;
-    }
-
-    session.triggerCooldownTotalMs = cooldownMs;
-    session.triggerCooldownEndsAtEpochMs = QDateTime::currentMSecsSinceEpoch() + cooldownMs;
-    updateRunUiState();
-    if (session.triggerBlockIndex >= 0) {
-        applyRunningBlockVisuals(session, session.triggerBlockIndex,
-                                 BlockListWidget::ExecutionHighlight::Running);
-    }
-
-    appendSessionLog(session,
-                     tr("성공 후 %1초 쿨다운").arg(triggerCooldownSecondsFromMs(cooldownMs)),
-                     LogLineKind::Info);
-    const quint64 generation = ++session.triggerCooldownGeneration;
-    const std::string featureId = session.featureId;
-    QTimer::singleShot(cooldownMs, this, [this, featureId, generation]() {
-        FeatureRunSession* activeSession = sessionFor(featureId);
-        if (!activeSession || generation != activeSession->triggerCooldownGeneration) {
-            if (activeSession && activeSession->userStopRequested) {
-                finishRunSession(featureId, activeSession->lastLoopSuccess, QString());
-            }
-            return;
-        }
-        if (activeSession->userStopRequested || !activeSession->repeatSession) {
-            finishRunSession(featureId, activeSession->lastLoopSuccess, QString());
-            return;
-        }
-        Feature* current = featureForSession(*activeSession);
-        if (!current) {
-            finishRunSession(featureId, false, tr("기능을 찾을 수 없음"));
-            return;
-        }
-        launchTriggerMonitor(*activeSession, current, false);
-    });
-}
-
 void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
                                              Feature* feature,
                                              bool success,
                                              const QString& message) {
-    if (!shouldContinueRunSession(session, feature)) {
-        finishRunSession(session.featureId, session.lastLoopSuccess, QString());
-        return;
-    }
-
-    if (session.triggerPhase == TriggerSessionPhase::Monitoring) {
-        if (session.sessionContext) {
-            session.sessionContext->setTriggerMonitorBlockIndex(-1);
-        }
-        if (!success) {
-            if (!message.isEmpty()) {
-                appendSessionLog(session, message, LogLineKind::Warning);
-            }
-            if (isTriggerMonitorPermanentFailure(message)) {
-                appendSessionLog(session,
-                                 tr("템플릿 설정 오류 — 트리거 감시를 중지합니다"),
-                                 LogLineKind::Warning);
-                finishRunSession(session.featureId, false, message);
-                return;
-            }
-            if (!session.userStopRequested && session.repeatSession
-                && shouldContinueRunSession(session, feature)) {
-                appendSessionLog(session, tr("감시를 다시 시작합니다"), LogLineKind::Accent);
-                scheduleDeferredTriggerMonitorRestart(session, feature, 500);
-                return;
-            }
-            appendSessionLog(session, tr("트리거 감시가 종료되었습니다"), LogLineKind::Warning);
-            finishRunSession(session.featureId, false, message);
-            return;
-        }
-        launchTriggerActionRun(session, feature);
-        return;
-    }
-
-    if (session.triggerPhase == TriggerSessionPhase::RunningAction) {
-        logLoopCompletion(session, success, message);
-        resumePreemptedSessionsForTrigger(session);
-        if (success) {
-            scheduleTriggerCooldown(session, feature);
-            return;
-        }
-        appendSessionLog(session, tr("실행 실패 — 감시를 다시 시작합니다"), LogLineKind::Warning);
-        scheduleDeferredTriggerMonitorRestart(session, feature, 500);
-    }
+    RunLifecycleCoordinator::handleTriggerEngineFinished(*this, session, feature, success, message);
 }
 
 void MainWindow::finishRunSession(const std::string& featureId,
@@ -5978,92 +5507,7 @@ void MainWindow::onEngineStarted() {
 }
 
 void MainWindow::onEngineFinished(bool success, const QString& message) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (!session) {
-        schedulePruneAbandonedEngines();
-        return;
-    }
-
-    if (session->userStopRequested) {
-        const bool deferHoldTeardown =
-            session->runningMode == FeatureRunMode::Hold
-            && (runSessions().size() > 1 || RunLifecycleCoordinator::isHoldBurstUiActive(*this)
-                || !m_pendingHoldFeatureEndFinishes.empty());
-        if (deferHoldTeardown) {
-            RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this, session->featureId);
-            return;
-        }
-        const bool deferUi = runSessions().size() > 1;
-        finishRunSession(session->featureId, success, message, deferUi);
-        if (deferUi) {
-            RunLifecycleCoordinator::scheduleCoalescedHoldEndCleanup(*this);
-        } else {
-            updateRunUiState(false);
-        }
-        return;
-    }
-
-    Feature* feature = session ? featureForSession(*session) : nullptr;
-
-    if (session->runningMode == FeatureRunMode::Trigger) {
-        handleTriggerEngineFinished(*session, feature, success, message);
-        return;
-    }
-
-    const bool workerDrivenRepeat =
-        session->runningMode == FeatureRunMode::Hold
-        || session->runningMode == FeatureRunMode::RepeatInfinite
-        || session->runningMode == FeatureRunMode::RepeatCount;
-
-    if (!workerDrivenRepeat) {
-        logLoopCompletion(*session, success, message);
-        finishRunSession(session->featureId, success, message);
-        return;
-    }
-
-    if (session->completedLoopCount == 0) {
-        logLoopCompletion(*session, success, message);
-    } else {
-        publishLoopCompletionUi(*session, success, message);
-    }
-
-    if (feature && feature->infiniteExitAfterConsecutiveMisses() > 0
-        && (session->runningMode == FeatureRunMode::RepeatInfinite
-            || session->runningMode == FeatureRunMode::Hold)
-        && session->consecutiveDetectionFailLoops >= feature->infiniteExitAfterConsecutiveMisses()) {
-        finishRunSession(session->featureId,
-                         false,
-                         tr("연속 감지 실패 %1회 — 실행 종료")
-                             .arg(feature->infiniteExitAfterConsecutiveMisses()));
-        return;
-    }
-
-#ifdef _WIN32
-    if (feature && !ProgramSettings::runWithoutTargetWindow() && !isActiveDefaultProfile()
-        && !runForegroundGateActive(feature)) {
-        const bool holdPaused =
-            session->runningMode == FeatureRunMode::Hold && session->holdRunActive && m_hotkeyManager
-            && m_hotkeyManager->isHoldBindingStillActiveForRun(session->featureId);
-        const bool repeatPaused =
-            session->repeatSession
-            && (session->runningMode == FeatureRunMode::RepeatInfinite
-                || (session->runningMode == FeatureRunMode::RepeatCount
-                    && session->repeatRemaining > 0));
-        if (holdPaused || repeatPaused) {
-            session->waitingForScopedTargetForeground = true;
-            updateRunUiState();
-            m_runSessionController.scheduleScopedTargetForegroundResumePoll();
-            return;
-        }
-    }
-#endif
-
-    if (feature && shouldContinueRunSession(*session, feature)) {
-        scheduleRepeatIteration(*session, feature, success, message);
-        return;
-    }
-
-    finishRunSession(session->featureId, success, message);
+    RunLifecycleCoordinator::onEngineFinished(*this, sender(), success, message);
 }
 
 void MainWindow::onHoldKeyTapLaneFinished(const QString& featureId, bool success, const QString& message) {
@@ -7551,6 +6995,10 @@ void MainWindow::refreshSessionCaptureTarget(FeatureRunSession& session) {
     }
 
     if (shouldAdopt && session.lockedCaptureTargetTitle != resolved) {
+        CrashReporter::noteBreadcrumb(
+            QStringLiteral("capture"),
+            QStringLiteral("refreshSessionCaptureTarget adopt %1")
+                .arg(QString::fromStdWString(resolved)));
         session.lockedCaptureTargetTitle = resolved;
         applySessionCaptureTarget(resolved);
         if (triggerWatchMayMigrate) {

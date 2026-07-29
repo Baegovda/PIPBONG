@@ -1,6 +1,6 @@
 # AGENTS.md — PIPBONG Master Document
 
-**Current version:** `0.8.393` (from `project(PIPBONG VERSION 0.8.393)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
+**Current version:** `0.8.400` (from `project(PIPBONG VERSION 0.8.400)` in `CMakeLists.txt` → `PipbongVersion.h` → `QCoreApplication::applicationVersion()`)
 
 **Repository folder:** `Sbm1.0` (local workspace path; application is **PIPBONG**)
 
@@ -1330,9 +1330,9 @@ PIPBONG is not “one bug away” from stable — **several subsystems change to
 | **R1** | Policy surface completeness | **Done** | 0.8.381 | R1.2 coalesce/debounce via `SessionRunPolicy` + `RunLifecycleCoordinator` |
 | **R2** | GUI / worker boundary | **Done** | 0.8.382 | R2.3 coalesce; manual Q/W/E/R + trigger 감시 + Alt+Tab/Shift — user verified 2026-07-30 |
 | **R4** | Hotkey / input state machine | **Done (code)** | 0.8.294+ | R4.4 skipped; manual Alt+Tab 5× + Shift §8.17 — user |
-| **R5** | MainWindow decomposition | **Partial** | 0.8.393 | profile-switch UI detach + abandoned-engine prune on coordinator; ~8389 lines; R5.5 manual pending |
+| **R5** | MainWindow decomposition | **Done** | 0.8.400 | R5.2 engine/trigger/repeat launch on coordinator; `MainWindow.cpp` ~7833 lines; R5.5 §8.17 manual pending user |
 | **R6** | Automated workflow dry-run | **Done (v0.8.380)** | 0.8.375+ | R6.2 complete; R6.3 overlay link deferred (ImageFindBlock) |
-| **R7** | Concurrency product policy | **Partial** | 0.8.388 | R7.2 perf hint at 4+ sessions (title bar); R7.1 matrix done |
+| **R7** | Concurrency product policy | **Done** | 0.8.400 | R7.1–R7.2 shipped; R7.3 hard cap **deferred** until hang repro (§11 v0.8.400) |
 
 **Agent task pick rule:** On user request for stability/performance/hang/hotkey/capture — complete the **lowest-numbered phase** with status **Partial** or **Not started** unless the user names a specific symptom (then fix symptom **and** land the matching work package below).
 
@@ -1469,10 +1469,10 @@ User hotkey (hook)
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
 | **R5.1** Size budget | Track `MainWindow.cpp` line count in §11 when touching — goal **&lt; 2500** lines long-term (informal) | Reported on each R5 task |
-| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, run session registry mutations, `applyRunUiState` orchestration | **Partial** — `RunSessionRegistry` on `MainWindow`; `stopAllSessions` on coordinator (v0.8.392); mutations via tear-down/erase APIs + `sessionForEngine` (v0.8.391); hold-burst on coordinator (v0.8.389–0.8.390) |
+| **R5.2** `RunLifecycleCoordinator` (new) | Owns: `startFeatureRun`, `stopFeatureRun`, `finishRunSession`, run session registry mutations, `applyRunUiState` orchestration | **Done (v0.8.400)** — `onEngineFinished`, repeat/trigger launch paths, `launchWorkflowRun`; registry + hold-burst (v0.8.389–0.8.392) |
 | **R5.3** UI refresh facade | `RunUiPublisher` or methods on coordinator: feature list run chrome, workflow panel run state — coalesced | **Done (code)** — `requestRunUiRefresh` debounce + `applyRunUiState` on coordinator (v0.8.386); `MainWindow` thin wrappers + timer |
 | **R5.4** No new cross-deps | Controllers (`ProfileSwitchCoordinator`, `RunSessionController`, …) do not call `MainWindow` back — signals only | **Done (v0.8.387)** — audit below; wired missing `ProfileSwitchCoordinator::flushDeferredProfileSwitchIfIdle`; `RunSessionController` run UI via `requestRunUiRefresh` |
-| **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | **Partial** — policy/workflow sim at build; §8.17 manual sheet not re-run this task (user verify) |
+| **R5.5** Regression | Full [§8.17](#817-profile-auto-switch-mandatory--do-not-regress) sheet after each R5 merge chunk | **Pending user** — policy/workflow sim at build OK (v0.8.400); §8.17 manual not re-run (user verify Alt+Tab 5×, Shift hold, trigger scoped gate) |
 
 **R5.4 controller ↔ MainWindow dependency audit (2026-07-30, v0.8.387):**
 
@@ -1496,7 +1496,7 @@ Grep: `src/app/*Controller*.cpp` and `ProfileSwitchCoordinator.cpp` contain **no
 
 | Work package | Actions | Done when |
 | ------------ | ------- | --------- |
-| **R6.1** Design | `PIPBONGWorkflowDryRunSim` target: mock `ScreenCapture` + stub `ImageMatcher` returning scripted peaks | **Partial (v0.8.379)** — `ScreenCapture` injected haystack + `PIPBONG_WORKFLOW_DRY_RUN` overlay skip; full `StubImageMatcher` not linked |
+| **R6.1** Design | `PIPBONGWorkflowDryRunSim` target: mock `ScreenCapture` + stub `ImageMatcher` returning scripted peaks | **Partial (v0.8.400)** — injected haystack + dry-run overlays; `StubImageMatcher` link still backlog (not required for R5/R7 close) |
 | **R6.2** Scenarios | JSON or C++ tables: return-to-previous ImageFind, retry-after-next, trigger monitor→action primed match, loop region exit | **Done (v0.8.380)** — all listed branches in `WorkflowDryRunSim.cpp` |
 | **R6.3** Block dependencies | Isolate `WorkflowRunner` from widgets — link only `core/workflow` + mocks | No Qt Widgets in sim exe |
 | **R6.4** Handover | Extend [§8.12](#812-session-run-policy-sim-dev-regression--automatic-on-every-pipbong-link) Stage 2 paragraph with symbols | **`scripts/run-workflow-dry-run.ps1`** (manual); **`run-workflow-dry-run-postbuild.ps1`** + `PIPBONG_RUN_WORKFLOW_DRY_RUN_ON_BUILD` (v0.8.378); skip `PIPBONG_SKIP_WORKFLOW_DRY_RUN=1` |
@@ -1525,7 +1525,7 @@ Grep: `src/app/*Controller*.cpp` and `ProfileSwitchCoordinator.cpp` contain **no
 | ------------ | ------- | --------- |
 | **R7.1** Matrix | Table: run mode × run mode → supported / best-effort / unsupported | **Done (doc)** — matrix below (v0.8.375); no runtime warnings yet |
 | **R7.2** UI hints | Korean tooltip when starting 4th simultaneous session (performance) | **Done (code)** — transient title-bar hint when `m_runSessions.size() >= 4` at start (v0.8.388) |
-| **R7.3** Hard caps | Only if data shows hangs — soft queue for `startFeatureRun` | Document in §11; sim scenarios for cap |
+| **R7.3** Hard caps | Only if data shows hangs — soft queue for `startFeatureRun` | **Deferred (v0.8.400)** — no runtime cap; add soft queue + sim only after user hang repro with 4+ sessions |
 
 **R7.1 concurrency matrix (best-effort, 2026-07-29; perf hints v0.8.381):**
 
@@ -1971,6 +1971,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ### Fixed
 
 ### Removed
+
+## [0.8.400] - 2026-07-30
+
+### Changed
+
+- `RunLifecycleCoordinator`: `onEngineFinished`, `continueRepeatSession`, `scheduleRepeatIteration`, trigger finish/cooldown/relaunch, `launchWorkflowRun`, `launchTriggerMonitor`, `launchTriggerActionRun` (§8.21 R5.2b–R5.2e); `MainWindow` thin delegates; `MainWindow.cpp` ~7833 lines.
+- `refreshSessionCaptureTarget` adopts locked capture title with `CrashReporter` breadcrumb (§8.21 R3.3 backlog).
+
+### Fixed
+
+- `scheduleTriggerCooldown` as coordinator member (friend access to `MainWindow` private run APIs).
+
+## [0.8.394] - 2026-07-30
+
+### Changed
+
+- `RunLifecycleCoordinator::abandonSessionEngine` and `schedulePruneAbandonedEngines` — abandoned worker teardown and deferred prune coalescing (§8.21 R5.2a); `MainWindow` thin delegates.
 
 ## [0.8.393] - 2026-07-30
 
