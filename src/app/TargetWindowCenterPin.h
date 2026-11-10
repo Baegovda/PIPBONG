@@ -1,4 +1,7 @@
 #pragma once
+#include <QRect>
+#include <QPoint>
+#include <optional>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -10,8 +13,9 @@
 /// Keeps the designated target window centered on its current monitor (Win32).
 class TargetWindowCenterPin {
 public:
-    /// Move the target window to the monitor center when it has drifted. Returns true if repositioned.
-    static bool sync();
+    /// Pure physical-pixel calculation. Preserve the visible-frame/raw-window offset.
+    static std::optional<QPoint> placement(const QRect& visibleFrame,const QRect& rawWindow,
+                                           const QRect& monitor,bool forceSnap=false);
 
 #ifdef _WIN32
     /// Center a specific top-level window on its current monitor.

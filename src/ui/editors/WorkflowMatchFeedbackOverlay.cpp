@@ -3,7 +3,12 @@
 #include "app/PointerFeedbackSettings.h"
 #include "core/capture/ScreenCapture.h"
 #include "ui/ClickPointerFeedbackRenderer.h"
+#include "ui/editors/FeedbackHideBatch.h"
 #include <QRect>
+#include <QCoreApplication>
+#include <QThread>
+#include <QMetaObject>
+#include <map>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -39,26 +44,34 @@ struct Pulse {
 
 struct OverlayState {
     HWND hwnd = nullptr;
+    std::uint64_t token=0;
     QRect physicalBounds;
     std::vector<Pulse> pulses;
 };
 
-std::unique_ptr<OverlayState> g_state;
+std::map<std::uint64_t,std::unique_ptr<OverlayState>> g_states;
+PointerFeedbackLayers g_layers;
+FeedbackCaptureBarrier g_capture;
 
-ULONGLONG nowMs() {
-    return GetTickCount64();
+ULONGLONG nowMs() {return GetTickCount64();}
+bool ownsOverlayWindow(HWND hwnd,std::uint64_t token) {
+    DWORD process=0;wchar_t name[128]{};
+    if(!hwnd || !GetWindowThreadProcessId(hwnd,&process) || process!=GetCurrentProcessId())return false;
+    const bool matches=GetClassNameW(hwnd,name,128)>0 && std::wstring(name)==kOverlayClassName;
+    return ownedPointerFeedbackWindow(process,GetCurrentProcessId(),token,
+        static_cast<std::uint64_t>(GetWindowLongPtrW(hwnd,GWLP_USERDATA)),matches);
 }
-
-void destroyOverlayWindow() {
-    if (!g_state || !g_state->hwnd) {
-        g_state.reset();
-        return;
+void destroyOverlayWindow(std::uint64_t token) {
+    const auto it=g_states.find(token);
+    if(it!=g_states.end()) {
+        const auto hwnd=it->second->hwnd;
+        if(ownsOverlayWindow(hwnd,token)){it->second->hwnd=nullptr;KillTimer(hwnd,kTimerId);DestroyWindow(hwnd);}
+        g_states.erase(it);
     }
-
-    KillTimer(g_state->hwnd, kTimerId);
-    DestroyWindow(g_state->hwnd);
-    g_state->hwnd = nullptr;
-    g_state.reset();
+    g_layers.retire(token);
+}
+OverlayState* stateFor(HWND hwnd) {
+    for(auto& item:g_states)if(item.second->hwnd==hwnd)return item.second.get();return nullptr;
 }
 
 ULONGLONG pulseLifetimeMs(const Pulse& pulse) {
@@ -74,11 +87,11 @@ ULONGLONG pulseLifetimeMs(const Pulse& pulse) {
     return kDefaultMatchPulseLifetimeMs;
 }
 
-void pruneExpiredPulses(ULONGLONG currentMs) {
-    if (!g_state) {
+void pruneExpiredPulses(OverlayState* state, ULONGLONG currentMs) {
+    if (!state) {
         return;
     }
-    auto& pulses = g_state->pulses;
+    auto& pulses = state->pulses;
     pulses.erase(std::remove_if(pulses.begin(),
                                 pulses.end(),
                                 [currentMs](const Pulse& pulse) {
@@ -264,13 +277,13 @@ int pulseRenderMarginPx(const Pulse& pulse) {
     return 40;
 }
 
-QRect computeActivePulseClientRegion() {
-    if (!g_state || g_state->pulses.empty()) {
+QRect computeActivePulseClientRegion(const OverlayState* state) {
+    if (!state || state->pulses.empty()) {
         return {};
     }
 
-    const int windowW = g_state->physicalBounds.width();
-    const int windowH = g_state->physicalBounds.height();
+    const int windowW = state->physicalBounds.width();
+    const int windowH = state->physicalBounds.height();
     if (windowW <= 0 || windowH <= 0) {
         return {};
     }
@@ -282,7 +295,7 @@ QRect computeActivePulseClientRegion() {
     int maxY = 0;
     bool any = false;
 
-    for (const Pulse& pulse : g_state->pulses) {
+    for (const Pulse& pulse : state->pulses) {
         const ULONGLONG lifetime = pulseLifetimeMs(pulse);
         const ULONGLONG age = currentMs - pulse.startMs;
         if (age > lifetime) {
@@ -312,12 +325,12 @@ QRect computeActivePulseClientRegion() {
     return QRect(minX, minY, maxX - minX + 1, maxY - minY + 1);
 }
 
-void renderOverlayFrame() {
-    if (!g_state || !g_state->hwnd) {
+void renderOverlayFrame(OverlayState* state) {
+    if (!state || !ownsOverlayWindow(state->hwnd,state->token)) {
         return;
     }
 
-    const QRect clientRegion = computeActivePulseClientRegion();
+    const QRect clientRegion = computeActivePulseClientRegion(state);
     if (clientRegion.isEmpty()) {
         return;
     }
@@ -330,9 +343,9 @@ void renderOverlayFrame() {
 
     const int regionOffsetX = clientRegion.x();
     const int regionOffsetY = clientRegion.y();
-    const QRect screenRegion = clientRegion.translated(g_state->physicalBounds.topLeft());
+    const QRect screenRegion = clientRegion.translated(state->physicalBounds.topLeft());
 
-    SetWindowPos(g_state->hwnd,
+    SetWindowPos(state->hwnd,
                  HWND_TOPMOST,
                  screenRegion.x(),
                  screenRegion.y(),
@@ -364,7 +377,7 @@ void renderOverlayFrame() {
     std::fill(pixels, pixels + pixelCount, 0u);
 
     const ULONGLONG currentMs = nowMs();
-    for (const Pulse& pulse : g_state->pulses) {
+    for (const Pulse& pulse : state->pulses) {
         const ULONGLONG lifetime = pulseLifetimeMs(pulse);
         const ULONGLONG age = currentMs - pulse.startMs;
         if (age > lifetime) {
@@ -393,7 +406,7 @@ void renderOverlayFrame() {
     blend.BlendOp = AC_SRC_OVER;
     blend.SourceConstantAlpha = 255;
     blend.AlphaFormat = AC_SRC_ALPHA;
-    UpdateLayeredWindow(g_state->hwnd, hdcScreen, &ptDst, &size, hdcMem, &ptSrc, 0, &blend, ULW_ALPHA);
+    UpdateLayeredWindow(state->hwnd, hdcScreen, &ptDst, &size, hdcMem, &ptSrc, 0, &blend, ULW_ALPHA);
 
     SelectObject(hdcMem, oldBitmap);
     DeleteObject(bitmap);
@@ -402,36 +415,34 @@ void renderOverlayFrame() {
 }
 
 LRESULT CALLBACK overlayWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
-    switch (message) {
-    case kHideForCaptureMsg:
-        if (g_state) {
-            g_state->pulses.clear();
-            ShowWindow(hwnd, SW_HIDE);
-        }
-        return 0;
-    case WM_TIMER:
-        if (wParam == kTimerId) {
-            if (!g_state) {
-                KillTimer(hwnd, kTimerId);
-                DestroyWindow(hwnd);
-                return 0;
-            }
-            pruneExpiredPulses(nowMs());
-            if (g_state->pulses.empty()) {
-                WorkflowMatchFeedbackOverlay::dismissAll();
-                return 0;
-            }
-            renderOverlayFrame();
-            return 0;
-        }
-        break;
-    case WM_DESTROY:
-        KillTimer(hwnd, kTimerId);
-        return 0;
-    default:
-        break;
+    if(message==kHideForCaptureMsg) {
+        return g_capture.synchronized([&]() -> LRESULT {
+            auto* state=stateFor(hwnd);if(!state || !ownsOverlayWindow(hwnd,static_cast<std::uint64_t>(wParam)))return 0;
+            state->pulses.clear();ShowWindow(hwnd,SW_HIDE);return 1;
+        });
     }
-    return DefWindowProcW(hwnd, message, wParam, lParam);
+    if(message==WM_TIMER && wParam==kTimerId) {
+        g_capture.publish([&]{
+            auto* state=stateFor(hwnd);if(!state)return;
+            if(!ownsOverlayWindow(hwnd,state->token)){destroyOverlayWindow(state->token);return;}
+            pruneExpiredPulses(state,nowMs());
+            if(state->pulses.empty()){destroyOverlayWindow(state->token);return;}
+            renderOverlayFrame(state);
+        });
+        return 0;
+    }
+    if(message==WM_DESTROY){KillTimer(hwnd,kTimerId);return 0;}
+    if(message==WM_NCDESTROY) {
+        g_capture.synchronized([&]{
+            if(auto* state=stateFor(hwnd)) {
+                const auto token=state->token;state->hwnd=nullptr;
+                if(auto* app=QCoreApplication::instance())QMetaObject::invokeMethod(app,[token]{
+                    g_capture.synchronized([&]{destroyOverlayWindow(token);});
+                },Qt::QueuedConnection);
+            }
+        });
+    }
+    return DefWindowProcW(hwnd,message,wParam,lParam);
 }
 
 bool ensureOverlayClassRegistered() {
@@ -447,164 +458,110 @@ bool ensureOverlayClassRegistered() {
     return atom != 0;
 }
 
-bool ensureOverlayWindow() {
-    if (!ScreenCapture::findTargetWindow()) {
-        return false;
+OverlayState* ensureOverlayWindow(PointerFeedbackOwner owner,const PointerFeedbackFrame& frame) {
+    const auto update=g_layers.observe(std::move(owner),frame);
+    for(auto token:update.retired)destroyOverlayWindow(token);
+    if(!update.token)return nullptr;
+    const auto it=g_states.find(update.token);
+    if(it!=g_states.end()) {
+        if(ownsOverlayWindow(it->second->hwnd,update.token))return it->second.get();
+        auto prior=g_layers.find(update.token)->owner;destroyOverlayWindow(update.token);
+        return ensureOverlayWindow(std::move(prior),frame);
     }
-    const ScreenCapture::ScreenRect target = ScreenCapture::getTargetWindowScreenRect();
-    if (!target.valid || target.width <= 0 || target.height <= 0) {
-        return false;
-    }
-
-    const QRect physicalBounds(target.x, target.y, target.width, target.height);
-    if (g_state && g_state->hwnd && g_state->physicalBounds == physicalBounds) {
-        return true;
-    }
-
-    if (g_state && g_state->hwnd) {
-        KillTimer(g_state->hwnd, kTimerId);
-        DestroyWindow(g_state->hwnd);
-        g_state->hwnd = nullptr;
-    }
-
-    if (!g_state) {
-        g_state = std::make_unique<OverlayState>();
-    }
-    g_state->physicalBounds = physicalBounds;
-
-    if (!ensureOverlayClassRegistered()) {
-        return false;
-    }
-
-    g_state->hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT
-                                        | WS_EX_NOACTIVATE,
-                                    kOverlayClassName,
-                                    L"",
-                                    WS_POPUP,
-                                    physicalBounds.x(),
-                                    physicalBounds.y(),
-                                    1,
-                                    1,
-                                    nullptr,
-                                    nullptr,
-                                    GetModuleHandleW(nullptr),
-                                    nullptr);
-    if (!g_state->hwnd) {
-        g_state.reset();
-        return false;
-    }
-
-    ShowWindow(g_state->hwnd, SW_SHOWNOACTIVATE);
-    SetWindowPos(g_state->hwnd,
-                 HWND_TOPMOST,
-                 physicalBounds.x(),
-                 physicalBounds.y(),
-                 1,
-                 1,
-                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    SetTimer(g_state->hwnd, kTimerId, kTimerMs, nullptr);
-    return true;
+    if(!ensureOverlayClassRegistered()){g_layers.retire(update.token);return nullptr;}
+    auto value=std::make_unique<OverlayState>();value->token=update.token;value->physicalBounds=frame.clientBounds;
+    value->hwnd=CreateWindowExW(WS_EX_TOPMOST|WS_EX_TOOLWINDOW|WS_EX_LAYERED|WS_EX_TRANSPARENT|WS_EX_NOACTIVATE,
+        kOverlayClassName,L"",WS_POPUP,frame.clientBounds.x(),frame.clientBounds.y(),1,1,
+        nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+    if(!value->hwnd){g_layers.retire(update.token);return nullptr;}
+    SetWindowLongPtrW(value->hwnd,GWLP_USERDATA,static_cast<LONG_PTR>(update.token));
+    if(!ownsOverlayWindow(value->hwnd,update.token)){DestroyWindow(value->hwnd);g_layers.retire(update.token);return nullptr;}
+    auto* state=value.get();g_states.emplace(update.token,std::move(value));
+    SetTimer(state->hwnd,kTimerId,kTimerMs,nullptr);
+    return state; // renderOverlayFrame shows only the bounded pulse region, without activation.
 }
 
 #endif // _WIN32
 
 } // namespace
 
-void WorkflowMatchFeedbackOverlay::hideBeforeCapture() {
+std::optional<PointerFeedbackFrame> WorkflowMatchFeedbackOverlay::frameForWindow(quintptr window) {
 #ifdef _WIN32
-    if (g_state && g_state->hwnd) {
-        SendMessageW(g_state->hwnd, kHideForCaptureMsg, 0, 0);
-    }
+    const auto hwnd=reinterpret_cast<HWND>(window);RECT client{};POINT origin{};DWORD process=0;
+    if(!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd)
+        || !GetWindowThreadProcessId(hwnd,&process) || !GetClientRect(hwnd,&client) || !ClientToScreen(hwnd,&origin))return {};
+    PointerFeedbackFrame frame{window,process,QRect(origin.x,origin.y,client.right-client.left,client.bottom-client.top)};
+    if(frame.valid())return frame;
 #else
-    (void)0;
+    (void)window;
+#endif
+    return {};
+}
+
+WorkflowMatchFeedbackOverlay::CaptureLease WorkflowMatchFeedbackOverlay::prepareCapture() {
+#ifdef _WIN32
+    auto captured=g_capture.capture([] {
+        std::vector<FeedbackHideRequest> windows;
+        for(const auto& item:g_states)windows.push_back({reinterpret_cast<quintptr>(item.second->hwnd),item.first});return windows;
+    });
+    const bool ready=hideFeedbackBatch(captured.second,{[]{return GetTickCount64();},
+        [](quintptr window){const auto hwnd=reinterpret_cast<HWND>(window);
+            return ownsOverlayWindow(hwnd,static_cast<std::uint64_t>(GetWindowLongPtrW(hwnd,GWLP_USERDATA)));},
+        [](const FeedbackHideRequest& request,unsigned timeout){DWORD_PTR response=0;
+            if(!ownsOverlayWindow(reinterpret_cast<HWND>(request.window),request.token))return false;
+            return SendMessageTimeoutW(reinterpret_cast<HWND>(request.window),kHideForCaptureMsg,static_cast<WPARAM>(request.token),0,
+                SMTO_ABORTIFHUNG|SMTO_BLOCK|SMTO_ERRORONEXIT,timeout,&response)!=0 && response==1;}});
+    return {std::move(captured.first),ready};
+#else
+    return {{},true};
 #endif
 }
 
-void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
-                                                      int clientY,
-                                                      RunPointerFeedbackKind kind) {
+void WorkflowMatchFeedbackOverlay::pulseAtFrame(PointerFeedbackOwner owner,const PointerFeedbackFrame& frame,int x,int y,
+    RunPointerFeedbackKind kind,const std::optional<ClickPointerFeedbackSettings>& feedback) {
 #ifdef _WIN32
-    if (!ensureOverlayWindow()) {
-        return;
-    }
-
-    if (kind == RunPointerFeedbackKind::TriggerScan) {
-        for (Pulse& existing : g_state->pulses) {
-            if (existing.kind == RunPointerFeedbackKind::TriggerScan) {
-                existing.clientX = clientX;
-                existing.clientY = clientY;
-                existing.startMs = nowMs();
-                renderOverlayFrame();
-                return;
+    if(qEnvironmentVariableIntValue("PIPBONG_SELF_TEST_UI")==1 || qEnvironmentVariableIntValue("PIPBONG_SMOKE_TEST")==1
+        || !QCoreApplication::instance() || QThread::currentThread()!=QCoreApplication::instance()->thread())return;
+    if(!frame.valid() || x<0 || y<0 || x>=frame.clientBounds.width() || y>=frame.clientBounds.height())return;
+    g_capture.publish([&]{
+        auto* state=ensureOverlayWindow(std::move(owner),frame);if(!state)return;
+        pruneExpiredPulses(state,nowMs());
+        if(kind==RunPointerFeedbackKind::TriggerScan || (kind==RunPointerFeedbackKind::Click && feedback)) {
+            for(auto& pulse:state->pulses)if(pulse.kind==kind) {
+                pulse.clientX=x;pulse.clientY=y;pulse.startMs=nowMs();
+                pulse.useCustomFeedbackStyle=feedback.has_value();if(feedback)pulse.clickSettings=*feedback;
+                renderOverlayFrame(state);return;
             }
         }
-    }
-
-    Pulse pulse;
-    pulse.clientX = clientX;
-    pulse.clientY = clientY;
-    pulse.kind = kind;
-    pulse.startMs = nowMs();
-    g_state->pulses.push_back(pulse);
-    if (g_state->pulses.size() > kMaxActivePulses) {
-        g_state->pulses.erase(g_state->pulses.begin(),
-                              g_state->pulses.begin()
-                                  + static_cast<std::ptrdiff_t>(g_state->pulses.size() - kMaxActivePulses));
-    }
-    renderOverlayFrame();
+        Pulse pulse;pulse.clientX=x;pulse.clientY=y;pulse.kind=kind;pulse.startMs=nowMs();
+        pulse.useCustomFeedbackStyle=feedback.has_value();if(feedback)pulse.clickSettings=*feedback;
+        state->pulses.push_back(pulse);
+        if(state->pulses.size()>kMaxActivePulses)state->pulses.erase(state->pulses.begin());
+        renderOverlayFrame(state);
+    });
 #else
-    (void)clientX;
-    (void)clientY;
-    (void)kind;
+    (void)owner;(void)frame;(void)x;(void)y;(void)kind;(void)feedback;
 #endif
 }
 
-void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int clientX,
-                                                      int clientY,
-                                                      RunPointerFeedbackKind kind,
-                                                      const ClickPointerFeedbackSettings& feedback) {
+void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int x,int y,RunPointerFeedbackKind kind) {
 #ifdef _WIN32
-    if (!ensureOverlayWindow()) {
-        return;
-    }
-
-    if (kind == RunPointerFeedbackKind::Click) {
-        for (Pulse& existing : g_state->pulses) {
-            if (existing.kind == RunPointerFeedbackKind::Click) {
-                existing.clientX = clientX;
-                existing.clientY = clientY;
-                existing.clickSettings = feedback;
-                existing.useCustomFeedbackStyle = true;
-                renderOverlayFrame();
-                return;
-            }
-        }
-    }
-
-    Pulse pulse;
-    pulse.clientX = clientX;
-    pulse.clientY = clientY;
-    pulse.kind = kind;
-    pulse.startMs = nowMs();
-    pulse.clickSettings = feedback;
-    pulse.useCustomFeedbackStyle = true;
-    g_state->pulses.push_back(pulse);
-    if (g_state->pulses.size() > kMaxActivePulses) {
-        g_state->pulses.erase(g_state->pulses.begin(),
-                              g_state->pulses.begin()
-                                  + static_cast<std::ptrdiff_t>(g_state->pulses.size() - kMaxActivePulses));
-    }
-    renderOverlayFrame();
+    const auto frame=frameForWindow(reinterpret_cast<quintptr>(ScreenCapture::findTargetWindow()));
+    if(frame)pulseAtFrame({QString(),"editor-preview",{}},*frame,x,y,kind);
 #else
-    (void)clientX;
-    (void)clientY;
-    (void)kind;
-    (void)feedback;
+    (void)x;(void)y;(void)kind;
 #endif
 }
-
+void WorkflowMatchFeedbackOverlay::pulseAtClientPoint(int x,int y,RunPointerFeedbackKind kind,const ClickPointerFeedbackSettings& feedback) {
+#ifdef _WIN32
+    const auto frame=frameForWindow(reinterpret_cast<quintptr>(ScreenCapture::findTargetWindow()));
+    if(frame)pulseAtFrame({QString(),"editor-preview",{}},*frame,x,y,kind,feedback);
+#else
+    (void)x;(void)y;(void)kind;(void)feedback;
+#endif
+}
 void WorkflowMatchFeedbackOverlay::dismissAll() {
 #ifdef _WIN32
-    destroyOverlayWindow();
+    g_capture.synchronized([]{while(!g_states.empty())destroyOverlayWindow(g_states.begin()->first);});
 #endif
 }

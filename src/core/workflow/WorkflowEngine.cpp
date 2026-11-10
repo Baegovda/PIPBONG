@@ -104,8 +104,8 @@ protected:
                 if (emitFinished) {
                     QMetaObject::invokeMethod(
                         m_engine,
-                        [this, pendingSuccess, pendingMessage]() {
-                            emit m_engine->finished(pendingSuccess, pendingMessage);
+                        [engine = m_engine, pendingSuccess, pendingMessage]() {
+                            emit engine->finished(pendingSuccess, pendingMessage);
                         },
                         Qt::QueuedConnection);
                 }
@@ -116,6 +116,9 @@ protected:
             {
                 QMutexLocker lock(&m_engine->m_mutex);
                 m_engine->m_activeContext = context;
+                if (m_engine->m_stopRequested || m_engine->m_workerShutdown) {
+                    context->requestStop();
+                }
             }
 
             emit m_engine->started();
@@ -123,9 +126,9 @@ protected:
                 "workflow.engine",
                 QStringLiteral("blocks=%1").arg(workflow->blocks().size()),
                 "worker");
-            context->resetStop();
-            context->setLogCallback([this, context](const std::string& message) {
-                if (context->suppressRepeatUi()) {
+            context->setLogCallback([this, weakContext = std::weak_ptr<ExecutionContext>(context)](const std::string& message) {
+                const auto activeContext = weakContext.lock();
+                if (!activeContext || activeContext->suppressRepeatUi()) {
                     return;
                 }
                 emit m_engine->logMessage(QString::fromStdString(message));
@@ -306,6 +309,7 @@ protected:
             }
 
             context->clearWorkerFastRepeatCallbacks();
+            context->setLogCallback({});
             InputSimulator::setActiveExecutionContext(nullptr);
             setHighResolutionTimer(false);
 
@@ -325,8 +329,8 @@ protected:
             if (emitFinished) {
                 QMetaObject::invokeMethod(
                     m_engine,
-                    [this, pendingSuccess, pendingMessage]() {
-                        emit m_engine->finished(pendingSuccess, pendingMessage);
+                    [engine = m_engine, pendingSuccess, pendingMessage]() {
+                        emit engine->finished(pendingSuccess, pendingMessage);
                     },
                     Qt::QueuedConnection);
             }
@@ -346,7 +350,12 @@ WorkflowEngine::WorkflowEngine(QObject* parent)
 }
 
 WorkflowEngine::~WorkflowEngine() {
-    stopAndWaitBounded(250);
+    if (!stopAndWaitBounded(250)) {
+        // The coordinator normally defers destruction until the worker exits.
+        // Final destruction must keep the engine state alive for that worker.
+        m_worker->wait();
+        delete m_worker;
+    }
 }
 
 bool WorkflowEngine::isRunning() const {
@@ -365,11 +374,13 @@ void WorkflowEngine::ensureWorkerRunning() {
 
 void WorkflowEngine::run(std::shared_ptr<Workflow> workflow, std::shared_ptr<ExecutionContext> context) {
     QMutexLocker lock(&m_mutex);
-    if (m_running || !workflow || !context) {
+    if (m_running || m_workerShutdown || !workflow || !context) {
         return;
     }
 
     m_running = true;
+    m_stopRequested = false;
+    context->resetStop(false);
     m_hasPendingResult = true;
     m_queuedWorkflow = std::move(workflow);
     m_queuedContext = std::move(context);
@@ -385,11 +396,12 @@ void WorkflowEngine::runPrepared(WorkflowRunPreparer preparer) {
     }
 
     QMutexLocker lock(&m_mutex);
-    if (m_running) {
+    if (m_running || m_workerShutdown) {
         return;
     }
 
     m_running = true;
+    m_stopRequested = false;
     m_hasPendingResult = true;
     m_queuedWorkflow.reset();
     m_queuedContext.reset();
@@ -403,7 +415,8 @@ void WorkflowEngine::stop() {
     std::shared_ptr<ExecutionContext> context;
     {
         QMutexLocker lock(&m_mutex);
-        context = m_activeContext;
+        m_stopRequested = true;
+        context = m_activeContext ? m_activeContext : m_queuedContext;
     }
     if (context) {
         context->requestStop();
@@ -434,17 +447,7 @@ bool WorkflowEngine::stopAndWaitBounded(int timeoutMs) {
     if (worker && worker->isRunning()) {
         const int boundedMs = timeoutMs > 0 ? timeoutMs : 250;
         if (!worker->wait(boundedMs) && worker->isRunning()) {
-            QObject::connect(worker, &QThread::finished, worker, &QObject::deleteLater);
-            QMutexLocker lock(&m_mutex);
-            m_worker = nullptr;
-            m_workerShutdown = false;
-            m_hasQueuedJob = false;
-            m_queuedWorkflow.reset();
-            m_queuedContext.reset();
-            m_queuedPreparer = nullptr;
-            m_activeContext.reset();
-            m_running = false;
-            m_hasPendingResult = false;
+            // Preserve the worker and shutdown request for the next prune pass.
             return false;
         }
     }

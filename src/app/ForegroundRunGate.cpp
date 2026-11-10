@@ -3,6 +3,10 @@
 #include <QtGlobal>
 
 namespace ForegroundRunGate {
+bool preferSubTitle(const QString& title,const QString& main,const QString& sub) {
+    return !sub.isEmpty() && title.contains(sub,Qt::CaseInsensitive)
+        && (main.isEmpty() || !title.contains(main,Qt::CaseInsensitive) || sub.length()>=main.length());
+}
 
 bool activeProfileForegroundBindingMatches(const GateInput& input) {
 #ifdef _WIN32
@@ -59,7 +63,7 @@ bool activeProfileForegroundBindingMatches(const GateInput& input) {
                                                 mainProcessPath,
                                                 subProcessPath);
     }
-    return true;
+    return foregroundMatchesScopedMainTarget(foregroundTitle,foregroundHwnd,mainBinding,subBinding,mainProcessPath,subProcessPath);
 #else
     Q_UNUSED(input);
     return false;
@@ -120,7 +124,7 @@ bool profileMainOrSubForegroundActive(const GateInput& input) {
                                                 mainProcessPath,
                                                 subProcessPath);
     }
-    return true;
+    return foregroundMatchesScopedMainTarget(foregroundTitle,foregroundHwnd,mainBinding,subBinding,mainProcessPath,subProcessPath);
 #else
     Q_UNUSED(input);
     return true;

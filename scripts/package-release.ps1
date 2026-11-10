@@ -18,6 +18,14 @@ function Get-ProjectVersion {
 function Remove-ReleaseJunk {
     param([string]$StageRoot)
 
+    # Build-only checks and diagnostics must never ship in the portable app.
+    Get-ChildItem -LiteralPath $StageRoot -File | Where-Object {
+        ($_.Extension -eq '.exe' -and $_.Name -notin @('PIPBONG.exe', 'PIPBONGUpdater.exe')) -or
+        $_.Name -eq 'runtime-perf.json'
+    } | Remove-Item -Force
+    $offscreenPlugin = Join-Path $StageRoot 'platforms\qoffscreen.dll'
+    if (Test-Path -LiteralPath $offscreenPlugin) { Remove-Item -LiteralPath $offscreenPlugin -Force }
+
     $unusedDllPatterns = @(
         'libpq*.dll',
         'libecpg*.dll',
@@ -167,8 +175,16 @@ if (-not (Test-Path $updaterExe)) {
 
 $distDir = Join-Path $repoRoot "dist"
 $stageRoot = Join-Path $distDir "PIPBONG"
+$resolvedStage = [System.IO.Path]::GetFullPath($stageRoot)
+$expectedStage = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'dist\PIPBONG'))
+if ($resolvedStage -ne $expectedStage -or (Get-Item -LiteralPath $distDir -ErrorAction SilentlyContinue).Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+    throw "Unsafe release staging path: $resolvedStage"
+}
 if (Test-Path $stageRoot) {
-    Remove-Item $stageRoot -Recurse -Force
+    if ((Get-Item -LiteralPath $stageRoot).Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        throw "Refusing to remove a linked release stage: $stageRoot"
+    }
+    Remove-Item -LiteralPath $resolvedStage -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $stageRoot | Out-Null
 
@@ -179,6 +195,11 @@ if ($LASTEXITCODE -ge 8) {
 }
 
 Remove-ReleaseJunk -StageRoot $stageRoot
+foreach ($runtime in @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $stageRoot $runtime))) {
+        throw "Portable release is missing the compiler runtime: $runtime"
+    }
+}
 Write-ReleaseReadme -StageRoot $stageRoot -Version $version
 Write-ReleaseLauncher -StageRoot $stageRoot
 Set-Content -Path (Join-Path $stageRoot "VERSION.txt") -Value $version -Encoding ASCII -NoNewline

@@ -13,7 +13,12 @@
 #endif
 
 ProfileSwitchCoordinator::ProfileSwitchCoordinator(QObject* parent)
-    : QObject(parent) {}
+    : QObject(parent),m_deferredFlushTimer(new QTimer(this)) {
+    m_deferredFlushTimer->setSingleShot(true);
+    connect(m_deferredFlushTimer,&QTimer::timeout,this,[this] {
+        if(m_host.flushDeferredProfileSwitchIfIdle) m_host.flushDeferredProfileSwitchIfIdle();
+    });
+}
 
 void ProfileSwitchCoordinator::setProfileManager(ProfileManager* profileManager) {
     m_profileManager = profileManager;
@@ -28,10 +33,23 @@ void ProfileSwitchCoordinator::setHostCallbacks(const HostCallbacks& callbacks) 
 }
 
 void ProfileSwitchCoordinator::scheduleDeferredFlush(int delayMs) {
-    if (!m_host.flushDeferredProfileSwitchIfIdle) {
-        return;
+    if(!m_host.flushDeferredProfileSwitchIfIdle) return;
+    delayMs=qMax(1,delayMs);
+    if(!m_deferredFlushTimer->isActive() || m_deferredFlushTimer->remainingTime()>delayMs)
+        m_deferredFlushTimer->start(delayMs);
+}
+
+ForegroundWindowState ProfileSwitchCoordinator::readForeground(const ForegroundWindowState& fallback) {
+    if(m_host.foregroundState) return m_host.foregroundState();
+#ifdef _WIN32
+    if(m_foregroundMonitor) { m_foregroundMonitor->syncFromDesktopForeground();return m_foregroundMonitor->currentState(); }
+#endif
+    return fallback;
+}
+void ProfileSwitchCoordinator::observeForeground(const ForegroundWindowState& state) {
+    if(state.monotonicSeq!=m_lastForegroundMonotonicSeq) {
+        m_lastForegroundMonotonicSeq=state.monotonicSeq;m_foregroundChurnTimer.restart();
     }
-    QTimer::singleShot(delayMs, this, [this]() { m_host.flushDeferredProfileSwitchIfIdle(); });
 }
 
 void ProfileSwitchCoordinator::scheduleDeferredProfileSwitchFlush(int delayMs) {
@@ -73,6 +91,7 @@ void ProfileSwitchCoordinator::flushDeferredProfileSwitch() {
     if (m_deferredProfileSwitchId.isEmpty() || !m_profileManager) {
         return;
     }
+    if(m_host.isWorkspacePinned && m_host.isWorkspacePinned()) { scheduleDeferredFlush(400);return; }
     if (m_host.hasTriggerMonitoringSessions && m_host.hasTriggerMonitoringSessions()) {
         scheduleDeferredFlush(300);
         return;
@@ -84,13 +103,16 @@ void ProfileSwitchCoordinator::flushDeferredProfileSwitch() {
         return;
     }
 #ifdef _WIN32
-    if (m_foregroundMonitor) {
-        m_foregroundMonitor->syncFromDesktopForeground();
-        if (m_foregroundMonitor->isPipbongForeground()) {
-            m_deferredProfileSwitchId.clear();
-            return;
-        }
+    const auto live=readForeground();
+    if((m_host.isPipelineActive && m_host.isPipelineActive()) || m_deferredProfileSwitchId.isEmpty()) return;
+    if(live.pipbong) { m_deferredProfileSwitchId.clear();return; }
+    if((m_host.transitionModifierHeld ? m_host.transitionModifierHeld() : ForegroundWindowMonitor::isAltTabModifierHeld())
+        || (live.shellTransient && !ForegroundWindowMonitor::isDesktopShellHostHwnd(live.rootHwnd))) {
+        scheduleDeferredFlush(100);return;
     }
+    observeForeground(live);
+    m_deferredProfileSwitchId=ProfileForegroundResolver::resolve(*m_profileManager,live).profileId;
+    if(!foregroundStableForAutoSwitchMs(320)) { scheduleDeferredFlush(335-static_cast<int>(m_foregroundChurnTimer.elapsed()));return; }
 #endif
     const QString profileId = m_deferredProfileSwitchId;
     if (profileId == m_profileManager->activeProfileId()) {
@@ -101,14 +123,22 @@ void ProfileSwitchCoordinator::flushDeferredProfileSwitch() {
         scheduleDeferredFlush(50);
         return;
     }
-    m_deferredProfileSwitchId.clear();
-    if (m_host.executeProfileSwitch) {
-        m_host.executeProfileSwitch(profileId, true);
-    }
+    if(m_host.executeProfileSwitch && m_host.executeProfileSwitch(profileId,true)
+        && m_deferredProfileSwitchId==profileId) m_deferredProfileSwitchId.clear();
 }
 
 void ProfileSwitchCoordinator::applyFromForegroundState(const ForegroundWindowState& state) {
     if (!m_profileManager) {
+        return;
+    }
+    if(m_host.isWorkspacePinned && m_host.isWorkspacePinned()) {
+#ifdef _WIN32
+        if(!state.pipbong && !state.shellTransient) {
+            const auto resolved=ProfileForegroundResolver::resolve(*m_profileManager,state);
+            if(!resolved.profileId.isEmpty() && resolved.profileId!=m_profileManager->activeProfileId()) m_deferredProfileSwitchId=resolved.profileId;
+        }
+#endif
+        if(!m_deferredProfileSwitchId.isEmpty()) scheduleDeferredFlush(400);
         return;
     }
     if (m_host.isSwitchingProfile && m_host.isSwitchingProfile()) {
@@ -122,15 +152,8 @@ void ProfileSwitchCoordinator::applyFromForegroundState(const ForegroundWindowSt
     }
 
 #ifdef _WIN32
-    if (m_foregroundMonitor) {
-        m_foregroundMonitor->syncFromDesktopForeground();
-    }
-    const ForegroundWindowState& live =
-        m_foregroundMonitor ? m_foregroundMonitor->currentState() : state;
-    if (live.monotonicSeq != m_lastForegroundMonotonicSeq) {
-        m_lastForegroundMonotonicSeq = live.monotonicSeq;
-        m_foregroundChurnTimer.restart();
-    }
+    const auto live=readForeground(state);
+    observeForeground(live);
     if (live.pipbong) {
         if (m_host.onPipbongForegroundFocus) {
             m_host.onPipbongForegroundFocus();
@@ -164,7 +187,7 @@ void ProfileSwitchCoordinator::applyFromForegroundState(const ForegroundWindowSt
         return;
     }
 
-    if (ForegroundWindowMonitor::isAltTabModifierHeld()) {
+    if (m_host.transitionModifierHeld ? m_host.transitionModifierHeld() : ForegroundWindowMonitor::isAltTabModifierHeld()) {
         if (!m_profileManager->isDefaultProfile(resolved.profileId)) {
             m_deferredProfileSwitchId = resolved.profileId;
         }
@@ -202,10 +225,8 @@ void ProfileSwitchCoordinator::applyFromForegroundState(const ForegroundWindowSt
 
     CrashReporter::noteBreadcrumb(QStringLiteral("profile"),
                                   QStringLiteral("switch %1").arg(resolved.profileId));
-    if (m_host.executeProfileSwitch) {
-        m_host.executeProfileSwitch(resolved.profileId, true);
-    }
-    m_lastAutomaticProfileSwitchTimer.start();
+    if(m_host.executeProfileSwitch && m_host.executeProfileSwitch(resolved.profileId,true)) m_lastAutomaticProfileSwitchTimer.start();
+    else m_deferredProfileSwitchId=resolved.profileId;
 #else
     Q_UNUSED(state);
 #endif

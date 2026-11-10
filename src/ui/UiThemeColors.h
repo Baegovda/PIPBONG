@@ -17,7 +17,7 @@ inline bool isDarkTheme(const QPalette& pal) {
 /// Secondary hint/caption text — readable on both light and dark themes.
 inline QColor secondaryHintTextColor(const QPalette& pal) {
     if (isDarkTheme(pal)) {
-        return QColor(0xa8, 0xd4, 0xff);
+        return QColor(0xb0, 0xbb, 0xce);
     }
     return QColor(0x3d, 0x5a, 0x72);
 }

@@ -80,6 +80,7 @@ private:
     std::shared_ptr<ExecutionContext> m_activeContext;
     bool m_hasQueuedJob = false;
     bool m_workerShutdown = false;
+    bool m_stopRequested = false;
     bool m_running = false;
     bool m_hasPendingResult = false;
     bool m_pendingSuccess = false;

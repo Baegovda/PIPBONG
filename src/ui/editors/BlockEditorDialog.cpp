@@ -326,7 +326,7 @@ void BlockEditorDialog::dismissCaptureOverlays() {
     ClickContinuousInputRecorder::endSession();
     ScreenRegionOverlay::dismissAll();
     MatchTestOverlay::dismissAll();
-    RoiPreviewOverlay::dismissAll();
+    if(m_imageFindEditor)m_imageFindEditor->dismissRoiPreviewOverlay();
 }
 
 void BlockEditorDialog::reject() {

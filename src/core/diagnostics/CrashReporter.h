@@ -32,9 +32,16 @@ public:
     /// Heartbeat + background watchdog for GUI-thread hangs ("Not Responding").
     /// Call once on the main thread after install() (not in --crash-report viewer mode).
     static void installGuiHangWatchdog();
+    /// Isolated inspection saves diagnostics without opening modal/viewer windows.
+    static bool interactiveReportsAllowed();
 
     /// Registers a GUI-thread callback that refreshes the cached application context snapshot.
-    static void setContextProvider(CrashContextProvider provider);
+    /// Returns a registration token; zero rejects a non-GUI caller.
+    static quint64 setContextProvider(CrashContextProvider provider);
+    static bool clearContextProvider(quint64 token);
+    /// GUI refresh is explicit for diagnostics; off-thread calls never invoke a GUI callback.
+    static bool refreshContext();
+    static QString cachedContext();
 
     /// Records the last notable UI action (button click, etc.) for crash/hang reports.
     static void noteUserAction(const QString& description);

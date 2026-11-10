@@ -2,12 +2,18 @@
 
 #include "model/Project.h"
 #include "storage/ProjectPackage.h"
+#include "storage/ProfileRemovalTransaction.h"
+#include "storage/ProfileRemovalRecovery.h"
+#include "storage/ProfileMetadataTransaction.h"
 
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileIconProvider>
 #include <QFileInfo>
+#include <QSaveFile>
+#include <QTemporaryDir>
+#include <QSet>
 #include <QIcon>
 #include <QJsonArray>
 #include <QPixmap>
@@ -68,6 +74,15 @@ ProfileManager::ProfileManager(const QString& dataDirectory)
 
 bool ProfileManager::initialize() {
     QDir().mkpath(profilesDirectory());
+    m_storageReady=false;
+    const auto metadata=recoverProfileMetadata(profilesDirectory());
+    m_startupWarnings.clear();
+    if(!metadata.message.isEmpty())m_startupWarnings<<metadata.message;
+    if(!metadata.success)return false;
+    const auto recovery=recoverProfileRemovals(profilesDirectory());
+    m_startupWarnings+=recovery.warnings;
+    if(!recovery.complete)return false;
+    m_storageReady=true;
     const bool loaded = loadManifest();
     ensureAtLeastOneProfile();
     migrateLegacyProjectIfNeeded();
@@ -119,6 +134,7 @@ QString ProfileManager::profilePackagePath(const QString& id) const {
 }
 
 bool ProfileManager::ensureProfileWorkspace(const QString& id) const {
+    if(!m_storageReady)return false;
     if (id.isEmpty()) {
         return false;
     }
@@ -132,8 +148,10 @@ bool ProfileManager::ensureProfileWorkspace(const QString& id) const {
     }
 
     if (QFileInfo::exists(packageFile)) {
-        QDir().mkpath(directory);
-        return ProjectPackage::unpackToDirectory(packageFile, directory);
+        if(!profileById(id) || !recoverProfilePackage(profilesDirectory(),id,packageFile))return false;
+        m_settingsCache.erase(id);m_settingsFileMtime.erase(id);m_projectCache.erase(id);
+        m_projectCacheLru.erase(std::remove(m_projectCacheLru.begin(),m_projectCacheLru.end(),id),m_projectCacheLru.end());
+        return true;
     }
 
     QDir().mkpath(directory);
@@ -141,56 +159,52 @@ bool ProfileManager::ensureProfileWorkspace(const QString& id) const {
 }
 
 bool ProfileManager::sealProfilePackage(const QString& id) const {
+    if(!m_storageReady)return false;
     if (id.isEmpty() || !QFileInfo::exists(projectPath(id))) {
         return false;
     }
     return ProjectPackage::packDirectory(profileDirectory(id), profilePackagePath(id));
 }
 
-QString ProfileManager::importProfileFromPackage(const QString& packagePath,
-                                                 const QString& preferredName) {
-    if (!ProjectPackage::isPackagePath(packagePath) || !QFileInfo::exists(packagePath)) {
-        return {};
-    }
-
-    QString profileName = preferredName.trimmed();
-    if (profileName.isEmpty()) {
-        profileName = QFileInfo(packagePath).completeBaseName();
-    }
-
-    const QString profileId = addProfile(profileName);
-    if (profileId.isEmpty()) {
-        return {};
-    }
-
-    const QString directory = profileDirectory(profileId);
-    QDir(directory).removeRecursively();
-    QDir().mkpath(directory);
-
-    if (!ProjectPackage::unpackToDirectory(packagePath, directory)) {
-        removeProfile(profileId);
-        return {};
-    }
-
-    for (Profile& profile : m_profiles) {
-        if (profile.id == profileId) {
-            profile.targetWindowTitle = loadProfileTargetWindowTitleFromProject(profileId);
-            const ProgramSettings::ProfileSettings settings = loadSettings(profileId);
-            profile.subTargetWindowTitle = settings.subTargetWindowTitle;
-            break;
-        }
-    }
-    saveManifest();
-
-    const QString localPackage = profilePackagePath(profileId);
-    if (QFileInfo(packagePath).absoluteFilePath() != QFileInfo(localPackage).absoluteFilePath()) {
-        QFile::remove(localPackage);
-        QFile::copy(packagePath, localPackage);
-    } else {
-        sealProfilePackage(profileId);
-    }
-
-    return profileId;
+ProfileImportRequest ProfileManager::importRequest(const QString& path,const QString& preferred)const {
+    return {profilesDirectory(),createProfileId(),sanitizedProfileName(preferred.trimmed().isEmpty()?QFileInfo(path).completeBaseName():preferred),path,false};
+}
+QString ProfileManager::commitImportedProfile(const std::shared_ptr<PreparedProfileImport>& p,QString* error) {
+    const auto fail=[&](const QString& message){if(error)*error=message;return QString();};
+    if(error)error->clear();
+    if(!m_storageReady || !p || !p->ready || !p->temporary || !p->temporary->isValid()
+        || QUuid(p->id).isNull() || profileById(p->id)
+        || QDir::cleanPath(QFileInfo(p->root).absoluteFilePath())!=QDir::cleanPath(QFileInfo(profilesDirectory()).absoluteFilePath())
+        || p->directory!=profileDirectory(p->id) || p->package!=profilePackagePath(p->id)
+        || p->workspace!=p->temporary->filePath("workspace") || p->archive!=p->temporary->filePath("prepared.pipbong")
+        || QFileInfo::exists(p->directory) || QFileInfo::exists(p->package))return fail(QStringLiteral("프로필 상태나 가져오기 위치가 바뀌었어요. 다시 선택해 주세요."));
+    bool ownDirectory=false,ownPackage=false;
+    const auto resolvedRoot=QFileInfo(profilesDirectory()).canonicalFilePath();
+    const auto cleanup=[&] {
+        // Only freshly moved paths belonging to this generated profile can be removed.
+        const auto root=QDir::cleanPath(QFileInfo(profilesDirectory()).absoluteFilePath());
+        const auto child=QDir::cleanPath(QFileInfo(p->directory).absoluteFilePath());
+        const auto resolvedChild=QFileInfo(child).canonicalFilePath();
+        if(ownDirectory && !resolvedRoot.isEmpty() && QFileInfo(root).canonicalFilePath()==resolvedRoot
+            && resolvedChild.startsWith(resolvedRoot+QLatin1Char('/'),Qt::CaseInsensitive)
+            && child.startsWith(root+QLatin1Char('/'),Qt::CaseInsensitive)
+            && !QFileInfo(child).isSymLink() && !QFileInfo(child).isJunction())QDir(child).removeRecursively();
+        if(ownPackage && QFileInfo(p->package).absolutePath()==root && !QFileInfo(p->package).isSymLink())QFile::remove(p->package);
+        m_settingsCache.erase(p->id);m_settingsFileMtime.erase(p->id);m_projectCache.erase(p->id);
+    };
+    if(!QDir().rename(p->workspace,p->directory))return fail(QStringLiteral("프로필 파일을 설치하지 못했어요. 기존 프로필을 유지했어요."));
+    ownDirectory=true;
+    if(!QFile::rename(p->archive,p->package)){cleanup();return fail(QStringLiteral("복구 패키지를 저장하지 못했어요. 기존 프로필을 유지했어요."));}
+    ownPackage=true;
+    Profile profile;profile.id=p->id;profile.name=sanitizedProfileName(p->name);profile.targetWindowTitle=p->projectTitle;
+    profile.subTargetWindowTitle=loadSettings(p->id).subTargetWindowTitle;
+    const auto previous=m_activeProfileId;m_profiles.push_back(profile);m_activeProfileId=profile.id;
+    if(!saveManifest()){m_profiles.pop_back();m_activeProfileId=previous;cleanup();return fail(QStringLiteral("프로필 목록을 저장하지 못했어요. 기존 프로필을 유지했어요."));}
+    return profile.id;
+}
+QString ProfileManager::importProfileFromPackage(const QString& path,const QString& preferred) {
+    if(!m_storageReady)return {};
+    return commitImportedProfile(prepareProfileImport(importRequest(path,preferred)));
 }
 
 QString ProfileManager::targetWindowTitle(const QString& id) const {
@@ -297,46 +311,25 @@ bool ProfileManager::setTargetWindowTitle(const QString& id, const QString& titl
     return true;
 }
 
-bool ProfileManager::updateProfileTargetBinding(const QString& id,
-                                                const QString& title,
-                                                const QString& processPath) {
-    if (id.isEmpty() || id == m_defaultProfileId) {
-        return false;
-    }
-    Profile* profile = nullptr;
-    for (Profile& candidate : m_profiles) {
-        if (candidate.id == id) {
-            profile = &candidate;
-            break;
+bool ProfileManager::updateProfileTargetBinding(const QString& id,const QString& title,
+                                                const QString& processPath,bool replaceProcessPath) {
+    if(id.isEmpty() || id==m_defaultProfileId) return false;
+    auto found=std::find_if(m_profiles.begin(),m_profiles.end(),[&](const Profile& p){return p.id==id;});
+    if(found==m_profiles.end()) return false;
+    const QString trimmed=title.trimmed(),path=processPath.trimmed();
+    auto settings=loadSettings(id);
+    const bool replace=replaceProcessPath || !path.isEmpty() || trimmed.isEmpty();
+    if(replace) settings.linkedTargetProcessPath=trimmed.isEmpty()?QString():path;
+    if(!saveSettings(id,settings,replace)) return false;
+    found->targetWindowTitle=trimmed;
+    if(replace) {
+        if(settings.linkedTargetProcessPath.isEmpty()) clearLinkedTargetIcon(id);
+        else {
+            const QIcon icon=iconFromExecutablePath(settings.linkedTargetProcessPath);
+            if(!icon.isNull()) cacheLinkedTargetIcon(id,icon);
         }
     }
-    if (!profile) {
-        return false;
-    }
-    profile->targetWindowTitle = title.trimmed();
-    ProgramSettings::ProfileSettings settings = loadSettings(id);
-    const QString trimmedPath = processPath.trimmed();
-    if (!trimmedPath.isEmpty()) {
-        settings.linkedTargetProcessPath = trimmedPath;
-        if (!saveSettings(id, settings, true)) {
-            return false;
-        }
-        const QIcon icon = iconFromExecutablePath(trimmedPath);
-        if (!icon.isNull()) {
-            cacheLinkedTargetIcon(id, icon);
-        }
-        return true;
-    }
-    if (profile->targetWindowTitle.isEmpty()) {
-        settings.linkedTargetProcessPath.clear();
-        if (!saveSettings(id, settings, true)) {
-            return false;
-        }
-        clearLinkedTargetIcon(id);
-        return true;
-    }
-    // Title still set but path lookup failed — keep previously saved exe path.
-    return saveSettings(id, settings, false, false);
+    return true;
 }
 
 bool ProfileManager::setSubTargetWindowTitle(const QString& id, const QString& title) {
@@ -364,36 +357,18 @@ bool ProfileManager::setSubTargetWindowTitle(const QString& id, const QString& t
     return saveSettings(id, settings, false, false);
 }
 
-bool ProfileManager::updateProfileSubTargetBinding(const QString& id,
-                                                   const QString& title,
-                                                   const QString& processPath) {
-    if (id.isEmpty() || id == m_defaultProfileId) {
-        return false;
-    }
-    Profile* profile = nullptr;
-    for (Profile& candidate : m_profiles) {
-        if (candidate.id == id) {
-            profile = &candidate;
-            break;
-        }
-    }
-    if (!profile) {
-        return false;
-    }
-    const QString trimmedTitle = title.trimmed();
-    profile->subTargetWindowTitle = trimmedTitle;
-    ProgramSettings::ProfileSettings settings = loadSettings(id);
-    settings.subTargetWindowTitle = trimmedTitle;
-    const QString trimmedPath = processPath.trimmed();
-    if (!trimmedPath.isEmpty()) {
-        settings.subLinkedTargetProcessPath = trimmedPath;
-        return saveSettings(id, settings, false, true);
-    }
-    if (trimmedTitle.isEmpty()) {
-        settings.subLinkedTargetProcessPath.clear();
-        return saveSettings(id, settings, false, true);
-    }
-    return saveSettings(id, settings, false, false);
+bool ProfileManager::updateProfileSubTargetBinding(const QString& id,const QString& title,
+                                                   const QString& processPath,bool replaceProcessPath) {
+    if(id.isEmpty() || id==m_defaultProfileId) return false;
+    auto found=std::find_if(m_profiles.begin(),m_profiles.end(),[&](const Profile& p){return p.id==id;});
+    if(found==m_profiles.end()) return false;
+    const QString trimmed=title.trimmed(),path=processPath.trimmed();
+    auto settings=loadSettings(id);settings.subTargetWindowTitle=trimmed;
+    const bool replace=replaceProcessPath || !path.isEmpty() || trimmed.isEmpty();
+    if(replace) settings.subLinkedTargetProcessPath=trimmed.isEmpty()?QString():path;
+    if(!saveSettings(id,settings,false,replace)) return false;
+    found->subTargetWindowTitle=trimmed;
+    return true;
 }
 
 void ProfileManager::setProfileTargetWindowTitleInMemory(const QString& id, const QString& title) {
@@ -424,42 +399,32 @@ bool ProfileManager::setActiveProfile(const QString& id) {
     if (!profileById(id)) {
         return false;
     }
+    const auto previous = m_activeProfileId;
     m_activeProfileId = id;
-    return saveManifest();
+    if (saveManifest()) return true;
+    m_activeProfileId = previous;
+    return false;
 }
 
 bool ProfileManager::setDefaultProfile(const QString& id) {
-    if (!profileById(id)) {
-        return false;
-    }
-    const QString previousDefaultId = m_defaultProfileId;
-    m_defaultProfileId = id;
-    if (previousDefaultId != id) {
-        for (Profile& profile : m_profiles) {
-            if (profile.id == previousDefaultId && profile.name == QStringLiteral("기본")) {
-                profile.name = QStringLiteral("프로필");
-            }
-            if (profile.id == id) {
-                profile.name = QStringLiteral("기본");
-            }
-        }
-    }
-    if (!saveManifest()) {
-        return false;
-    }
-    pinDefaultProfileFirst();
-    ensureDefaultProfileConstraints();
-    return true;
+    const auto* profile=profileById(id);
+    if(!m_storageReady || !profile)return false;
+    if(id==m_defaultProfileId)return true;
+    Edit edit;edit.name=profile->name;edit.makeDefault=true;
+    return applyEdit(id,edit);
 }
 
 bool ProfileManager::reorderProfiles(const QStringList& orderedIds) {
-    if (orderedIds.size() != static_cast<int>(m_profiles.size())) {
+    if (!m_storageReady || orderedIds.size() != static_cast<int>(m_profiles.size())) {
         return false;
     }
 
     std::vector<Profile> reordered;
     reordered.reserve(m_profiles.size());
+    QSet<QString> seen;
     for (const QString& id : orderedIds) {
+        if(seen.contains(id))return false;
+        seen.insert(id);
         const auto it = std::find_if(m_profiles.begin(),
                                      m_profiles.end(),
                                      [&id](const Profile& profile) { return profile.id == id; });
@@ -468,71 +433,122 @@ bool ProfileManager::reorderProfiles(const QStringList& orderedIds) {
         }
         reordered.push_back(*it);
     }
+    const auto previous=m_profiles;
     m_profiles = std::move(reordered);
     pinDefaultProfileFirst();
-    return saveManifest();
+    if(saveManifest())return true;
+    m_profiles=previous;return false;
 }
 
-QString ProfileManager::addProfile(const QString& name) {
+QString ProfileManager::addProfile(const QString& name, bool activate) {
+    if(!m_storageReady)return {};
     Profile profile;
     profile.id = createProfileId();
     profile.name = sanitizedProfileName(name);
-    QDir().mkpath(profileDirectory(profile.id));
-    saveSettings(profile.id, ProgramSettings::profileSettings());
+    const auto directory = profileDirectory(profile.id);
+    const auto cleanup = [&] {
+        m_settingsCache.erase(profile.id);m_settingsFileMtime.erase(profile.id);
+        const auto child=QDir::cleanPath(QFileInfo(directory).absoluteFilePath());
+        const auto root=QDir::cleanPath(QFileInfo(profilesDirectory()).absoluteFilePath());
+        if(child.startsWith(root+QLatin1Char('/'),Qt::CaseInsensitive)
+            && !QFileInfo(child).isSymLink() && !QFileInfo(child).isJunction()) QDir(child).removeRecursively();
+    };
+    if (!QDir().mkpath(directory)) return {};
+    auto settings=ProgramSettings::profileSettings();
+    settings.linkedTargetProcessPath.clear();settings.subTargetWindowTitle.clear();
+    settings.subLinkedTargetProcessPath.clear();settings.triggerArmedFeatureIds.clear();
+    if (!saveSettings(profile.id,settings)) { cleanup();return {}; }
+    const auto previous=m_activeProfileId;
     m_profiles.push_back(profile);
-    m_activeProfileId = profile.id;
-    saveManifest();
-    return profile.id;
+    if(activate) m_activeProfileId=profile.id;
+    if(saveManifest()) return profile.id;
+    m_profiles.pop_back();m_activeProfileId=previous;cleanup();
+    return {};
 }
 
 bool ProfileManager::renameProfile(const QString& id, const QString& name) {
-    if (id == m_defaultProfileId) {
-        for (Profile& profile : m_profiles) {
-            if (profile.id == id) {
-                profile.name = QStringLiteral("기본");
-                return saveManifest();
-            }
-        }
+    if(!m_storageReady)return false;
+    for (auto& profile : m_profiles) {
+        if (profile.id != id) continue;
+        const auto previous = profile.name;
+        profile.name = id == m_defaultProfileId ? QStringLiteral("기본") : sanitizedProfileName(name);
+        if (saveManifest()) return true;
+        profile.name = previous;
         return false;
-    }
-    for (Profile& profile : m_profiles) {
-        if (profile.id != id) {
-            continue;
-        }
-        profile.name = sanitizedProfileName(name);
-        return saveManifest();
     }
     return false;
 }
 
-bool ProfileManager::removeProfile(const QString& id) {
-    if (id == m_defaultProfileId) {
+bool ProfileManager::applyEdit(const QString& id,const Edit& edit,QString* error) {
+    if(error)error->clear();
+    const auto fail=[&](const QString& message){if(error)*error=message;return false;};
+    if(!m_storageReady || !profileById(id) || isDefaultProfile(id) || edit.name.trimmed().isEmpty())
+        return fail(QObject::tr("프로필이 바뀌었거나 편집할 수 없는 상태예요."));
+    const auto object=[](const QString& path,QJsonObject& value,bool optional){
+        QFile file(path);if(!file.exists())return optional;
+        if(!file.open(QIODevice::ReadOnly))return false;
+        const auto json=QJsonDocument::fromJson(file.readAll());if(!json.isObject())return false;
+        value=json.object();return true;
+    };
+    QJsonObject manifest,project,settings;
+    const QString manifestPath=QDir(profilesDirectory()).filePath(kManifestFileName);
+    if(!object(manifestPath,manifest,false) || !object(projectPath(id),project,true)
+        || !object(QDir(profileDirectory(id)).filePath(kSettingsFileName),settings,false))
+        return fail(QObject::tr("프로필 저장 파일을 읽지 못했어요. 기존 파일을 유지해요."));
+    const auto persisted=manifest["profiles"].toArray();
+    if(persisted.size()!=static_cast<int>(m_profiles.size()) || manifest["defaultProfileId"].toString()!=m_defaultProfileId
+        || manifest["activeProfileId"].toString()!=m_activeProfileId)
+        return fail(QObject::tr("저장된 프로필 목록이 바뀌었어요. 다시 불러온 뒤 편집해 주세요."));
+    for(int i=0;i<persisted.size();++i)if(persisted[i].toObject()["id"].toString()!=m_profiles[i].id
+        || persisted[i].toObject()["name"].toString()!=m_profiles[i].name)
+        return fail(QObject::tr("저장된 프로필 목록이 바뀌었어요. 다시 불러온 뒤 편집해 주세요."));
+    if(!project.isEmpty() && !project["features"].isArray())return fail(QObject::tr("프로젝트 파일이 손상되어 편집을 중단했어요."));
+    auto profiles=m_profiles;
+    const QString main=edit.makeDefault?QString():edit.mainTitle.trimmed(), sub=edit.makeDefault?QString():edit.subTitle.trimmed();
+    for(auto& profile:profiles) {
+        if(profile.id==id){profile.name=edit.makeDefault?QStringLiteral("기본"):edit.name.trimmed();profile.targetWindowTitle=main;profile.subTargetWindowTitle=sub;}
+        else if(edit.makeDefault && profile.id==m_defaultProfileId && profile.name==QStringLiteral("기본"))profile.name=QStringLiteral("프로필");
+    }
+    if(edit.makeDefault) {
+        const auto found=std::find_if(profiles.begin(),profiles.end(),[&](const Profile& profile){return profile.id==id;});
+        std::rotate(profiles.begin(),found,found+1);manifest["defaultProfileId"]=id;settings["runWithoutTargetWindow"]=true;
+    }
+    QJsonArray rows;for(const auto& profile:profiles)rows.push_back(QJsonObject{{"id",profile.id},{"name",profile.name}});
+    manifest["profiles"]=rows;
+    if(project.isEmpty()){project["version"]=1;project["projectDirectory"]=profileDirectory(id);project["features"]=QJsonArray{};}
+    project["targetWindowTitle"]=main;
+    settings["linkedTargetProcessPath"]=main.isEmpty()?QString():edit.mainProcessPath.trimmed();
+    settings["subTargetWindowTitle"]=sub;settings["subLinkedTargetProcessPath"]=sub.isEmpty()?QString():edit.subProcessPath.trimmed();
+    const auto committed=writeProfileMetadata(profilesDirectory(),{{projectPath(id),QJsonDocument(project).toJson()},
+        {QDir(profileDirectory(id)).filePath(kSettingsFileName),QJsonDocument(settings).toJson()},
+        {manifestPath,QJsonDocument(manifest).toJson()}});
+    if(!committed.success) {
+        if(committed.recoveryRequired)m_storageReady=false;
+        return fail(committed.message.isEmpty()?QObject::tr("프로필을 저장하지 못했어요."):committed.message);
+    }
+    m_profiles=std::move(profiles);if(edit.makeDefault)m_defaultProfileId=id;
+    m_settingsCache.erase(id);m_settingsFileMtime.erase(id);invalidateCachedProject(id);clearLinkedTargetIcon(id);
+    if(error)*error=committed.message;
+    return true;
+}
+
+bool ProfileManager::removeProfile(const QString& id, QString* error) {
+    if(!m_storageReady)return false;
+    if (error) error->clear();
+    if (id == m_defaultProfileId || m_profiles.size() <= 1 || !profileById(id)) return false;
+    const auto previous = m_profiles;
+    const auto previousActive = m_activeProfileId;
+    const bool removed = removeProfileFilesTransaction(profilesDirectory(), profileDirectory(id), profilePackagePath(id), [&] {
+        m_profiles.erase(std::remove_if(m_profiles.begin(), m_profiles.end(),
+            [&id](const Profile& profile) { return profile.id == id; }), m_profiles.end());
+        if (m_activeProfileId == id) m_activeProfileId = m_profiles.front().id;
+        if (saveManifest()) return true;
+        m_profiles = previous; m_activeProfileId = previousActive;
         return false;
-    }
-    if (m_profiles.size() <= 1) {
-        return false;
-    }
-    const auto oldSize = m_profiles.size();
-    m_profiles.erase(
-        std::remove_if(m_profiles.begin(),
-                       m_profiles.end(),
-                       [&id](const Profile& profile) { return profile.id == id; }),
-        m_profiles.end());
-    if (m_profiles.size() == oldSize) {
-        return false;
-    }
-    QDir(profileDirectory(id)).removeRecursively();
-    QFile::remove(profilePackagePath(id));
-    if (m_activeProfileId == id) {
-        m_activeProfileId = m_profiles.front().id;
-    }
-    if (m_defaultProfileId == id) {
-        m_defaultProfileId = m_profiles.front().id;
-    }
-    if (!saveManifest()) {
-        return false;
-    }
-    ensureDefaultProfileConstraints();
+    }, error);
+    if (!removed) return false;
+    m_settingsCache.erase(id); m_settingsFileMtime.erase(id);
+    invalidateCachedProject(id);
     return true;
 }
 
@@ -596,6 +612,7 @@ bool ProfileManager::saveSettings(const QString& id,
                                   bool replaceLinkedProcessPath,
                                   bool replaceSubLinkedProcessPath,
                                   bool replaceTriggerArmedFeatureIds) const {
+    if(!m_storageReady)return false;
     QDir().mkpath(profileDirectory(id));
     ProgramSettings::ProfileSettings toWrite = settings;
     // Callers that snapshot QSettings-backed options often omit the exe path.
@@ -644,11 +661,14 @@ bool ProfileManager::saveSettings(const QString& id,
         }
         root.insert(QStringLiteral("triggerArmedFeatureIds"), armedArray);
     }
-    QFile file(QDir(profileDirectory(id)).filePath(QString::fromLatin1(kSettingsFileName)));
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    QSaveFile file(QDir(profileDirectory(id)).filePath(QString::fromLatin1(kSettingsFileName)));
+    if (!file.open(QIODevice::WriteOnly)) {
         return false;
     }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    if (file.write(bytes) != bytes.size() || !file.commit()) {
+        return false;
+    }
     const QFileInfo writtenInfo(file.fileName());
     m_settingsCache[id] = toWrite;
     m_settingsFileMtime[id] = writtenInfo.lastModified().toMSecsSinceEpoch();
@@ -721,6 +741,7 @@ bool ProfileManager::loadManifest() {
 }
 
 bool ProfileManager::saveManifest() const {
+    if(!m_storageReady)return false;
     QDir().mkpath(profilesDirectory());
     QJsonObject root;
     root.insert(QStringLiteral("version"), 1);
@@ -735,12 +756,12 @@ bool ProfileManager::saveManifest() const {
     }
     root.insert(QStringLiteral("profiles"), profiles);
 
-    QFile file(QDir(profilesDirectory()).filePath(QString::fromLatin1(kManifestFileName)));
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    QSaveFile file(QDir(profilesDirectory()).filePath(QString::fromLatin1(kManifestFileName)));
+    if (!file.open(QIODevice::WriteOnly)) {
         return false;
     }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    return true;
+    const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    return file.write(bytes) == bytes.size() && file.commit();
 }
 
 void ProfileManager::ensureAtLeastOneProfile() {

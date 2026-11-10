@@ -19,10 +19,14 @@ public:
     explicit MemoDialog(QWidget* parent = nullptr);
 
     /// Saves the current editor to the previous profile folder, then loads @p profileDirectory.
-    void setProfile(const QString& profileId,
+    bool setProfile(const QString& profileId,
                     const QString& profileDirectory,
                     const QString& profileDisplayName);
-    void saveNow();
+    bool saveNow();
+    void setAutoSaveSuspended(bool suspended);
+    bool autoSaveSuspended() const { return m_autoSaveSuspended; }
+    /// Caller checkpointed the current memo before a successful workspace restore.
+    void prepareForWorkspaceReload();
     /// Call before programmatic close during app shutdown so open state stays true when visible.
     void prepareForApplicationShutdown();
 
@@ -54,6 +58,9 @@ private:
     QPushButton* m_closeButton = nullptr;
     QTimer* m_saveTimer = nullptr;
     bool m_loading = false;
+    bool m_autoSaveSuspended = false;
+    QString m_lastSavedText;
+    bool m_hasSavedText = false;
     bool m_dragging = false;
     bool m_placementRestored = false;
     bool m_preserveOpenStateOnClose = false;

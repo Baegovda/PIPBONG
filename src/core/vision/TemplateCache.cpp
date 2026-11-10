@@ -55,7 +55,8 @@ std::shared_ptr<PreparedTemplate> TemplateCache::getOrLoad(const std::string& re
         const int index = findEntryIndex(resolvedPath, mtime);
         if (index >= 0) {
             touchEntry(index);
-            return g_entries.front().templ;
+            // Share immutable image buffers, but keep mutable scale caches per caller.
+            return std::make_shared<PreparedTemplate>(*g_entries.front().templ);
         }
     }
 
@@ -80,7 +81,7 @@ std::shared_ptr<PreparedTemplate> TemplateCache::getOrLoad(const std::string& re
         entry.templ = loaded;
         g_entries.insert(g_entries.begin(), std::move(entry));
         evictIfNeeded();
-        return loaded;
+        return std::make_shared<PreparedTemplate>(*loaded);
     }
 }
 

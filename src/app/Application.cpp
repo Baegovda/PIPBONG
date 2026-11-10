@@ -2,6 +2,7 @@
 
 #include "PipbongVersion.h"
 #include "ui/UiHoverFeedback.h"
+#include "ui/UiAppearance.h"
 
 #include <QDir>
 #include <QIcon>
@@ -20,8 +21,15 @@ Application::Application(int& argc, char** argv)
     setApplicationName(QStringLiteral("PIPBONG"));
     setOrganizationName(QStringLiteral("PIPBONG"));
     setApplicationVersion(QStringLiteral(PIPBONG_VERSION));
+    const QString isolatedData = qEnvironmentVariable("PIPBONG_DATA_DIR");
+    if (!isolatedData.isEmpty()) {
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, isolatedData);
+        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, isolatedData);
+    }
     // Once at startup — never re-apply from changeEvent (StyleChange reentrancy).
-    setStyleSheet(UiHoverFeedback::programWideStyleSheet());
+    UiAppearance::installPalette(*this);
+    setStyleSheet(UiHoverFeedback::programWideStyleSheet() + UiAppearance::styleSheet());
 
     const QIcon appIcon(QStringLiteral(":/app/Pipbong.ico"));
     if (!appIcon.isNull()) {
@@ -35,7 +43,10 @@ Application::Application(int& argc, char** argv)
 }
 
 QString Application::dataDirectory() {
-    const QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString isolatedData = qEnvironmentVariable("PIPBONG_DATA_DIR");
+    const QString path = isolatedData.isEmpty()
+        ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+        : QDir(isolatedData).absolutePath();
     QDir().mkpath(path);
     return path;
 }

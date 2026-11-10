@@ -14,6 +14,7 @@
 #include <thread>
 
 #include <QString>
+#include <QDir>
 
 namespace {
 
@@ -32,6 +33,8 @@ constexpr int kCursorPositionTolerancePx = 2;
 constexpr int kCursorPositionMaxAttempts = 5;
 
 thread_local ExecutionContext* g_activeExecutionContext = nullptr;
+thread_local const InputSimulator::KeyboardBackendForTest* g_keyboardTestBackend = nullptr;
+thread_local const InputSimulator::HoldReleaseBackendForTest* g_holdReleaseTestBackend = nullptr;
 
 /// Serialize SendInput across workflow worker threads so concurrent Hold key taps do not
 /// stall the global input queue (mouse movement shares the same path on Windows).
@@ -105,11 +108,16 @@ DWORD xButtonData(MouseButton button) {
 }
 
 void sendInputs(const INPUT* inputs, UINT count) {
+    if (g_keyboardTestBackend) {
+        g_keyboardTestBackend->record(inputs, count);
+        return;
+    }
     std::lock_guard<std::mutex> lock(g_sendInputMutex);
     SendInput(count, const_cast<INPUT*>(inputs), sizeof(INPUT));
 }
 
 bool isAsyncKeyDown(int vk) {
+    if (g_keyboardTestBackend) return g_keyboardTestBackend->keyDown(vk);
     return (GetAsyncKeyState(vk) & 0x8000) != 0;
 }
 
@@ -1204,57 +1212,56 @@ void InputSimulator::forceHotkeyMouseButtonUp(int virtualKey) {
 #endif
 }
 
-void InputSimulator::releaseHoldHotkeyToTarget(HWND hwnd, int virtualKey) {
 #ifdef _WIN32
-    if (!hwnd || !IsWindow(hwnd)) {
-        if (virtualKey == VK_LBUTTON || virtualKey == VK_RBUTTON || virtualKey == VK_MBUTTON
-            || virtualKey == VK_XBUTTON1 || virtualKey == VK_XBUTTON2) {
-            forceHotkeyMouseButtonUp(virtualKey);
-        } else {
-            forceKeyUp(virtualKey);
-        }
-        return;
+InputSimulator::ScopedHoldReleaseBackendForTest::ScopedHoldReleaseBackendForTest(const HoldReleaseBackendForTest& backend)
+    : m_previous(g_holdReleaseTestBackend) {g_holdReleaseTestBackend=&backend;}
+InputSimulator::ScopedHoldReleaseBackendForTest::~ScopedHoldReleaseBackendForTest(){g_holdReleaseTestBackend=m_previous;}
+bool InputSimulator::holdReleaseTargetMatches(HWND hwnd,unsigned long expectedProcessId,const std::wstring& expectedProcessPath) {
+    if(g_holdReleaseTestBackend)return g_holdReleaseTestBackend->validate(hwnd,expectedProcessId,expectedProcessPath);
+    DWORD processId=0;
+    if(!hwnd || !IsWindow(hwnd) || !GetWindowThreadProcessId(hwnd,&processId)
+        || (expectedProcessId && processId!=expectedProcessId))return false;
+    if(!expectedProcessPath.empty()) {
+        HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,processId);if(!process)return false;
+        wchar_t buffer[32768]{};DWORD length=32768;
+        const bool read=QueryFullProcessImageNameW(process,0,buffer,&length)!=FALSE;CloseHandle(process);
+        if(!read)return false;
+        const auto clean=[](const QString& path){return QDir::cleanPath(QDir::fromNativeSeparators(path));};
+        if(clean(QString::fromWCharArray(buffer,int(length))).compare(clean(QString::fromStdWString(expectedProcessPath)),Qt::CaseInsensitive)!=0)return false;
     }
+    DWORD after=0;return GetWindowThreadProcessId(hwnd,&after) && after==processId;
+}
+#endif
 
-    int clientX = 0;
-    int clientY = 0;
-    if (!getCursorClientPoint(hwnd, clientX, clientY)) {
-        if (virtualKey == VK_LBUTTON || virtualKey == VK_RBUTTON || virtualKey == VK_MBUTTON
-            || virtualKey == VK_XBUTTON1 || virtualKey == VK_XBUTTON2) {
-            forceHotkeyMouseButtonUp(virtualKey);
-        } else {
-            forceKeyUp(virtualKey);
-        }
-        return;
+void InputSimulator::releaseHoldHotkeyToTarget(HWND hwnd,int virtualKey,unsigned long expectedProcessId,
+                                               const std::wstring& expectedProcessPath) {
+#ifdef _WIN32
+    const bool mouse=virtualKey==VK_LBUTTON || virtualKey==VK_RBUTTON || virtualKey==VK_MBUTTON
+        || virtualKey==VK_XBUTTON1 || virtualKey==VK_XBUTTON2;
+    const auto fallback=[&] {if(mouse)forceHotkeyMouseButtonUp(virtualKey);else forceKeyUp(virtualKey);};
+    if(!mouse) {fallback();return;} // Keyboard cleanup releases injected OS state, not a window message.
+    const auto validate=[&] {
+        return holdReleaseTargetMatches(hwnd,expectedProcessId,expectedProcessPath);
+    };
+    if(!validate()) {fallback();return;}
+    int x=0,y=0;
+    const bool point=g_holdReleaseTestBackend?g_holdReleaseTestBackend->clientPoint(hwnd,x,y):getCursorClientPoint(hwnd,x,y);
+    if(!point || !validate()) {fallback();return;}
+    const LPARAM position=MAKELPARAM(static_cast<WORD>(x&0xffff),static_cast<WORD>(y&0xffff));
+    const WPARAM state=g_holdReleaseTestBackend?g_holdReleaseTestBackend->mouseState():physicalMouseMoveWParam();
+    UINT message=0;WPARAM keys=state;
+    switch(virtualKey) {
+    case VK_LBUTTON:message=WM_LBUTTONUP;keys&=~static_cast<WPARAM>(MK_LBUTTON);break;
+    case VK_RBUTTON:message=WM_RBUTTONUP;keys&=~static_cast<WPARAM>(MK_RBUTTON);break;
+    case VK_MBUTTON:message=WM_MBUTTONUP;keys&=~static_cast<WPARAM>(MK_MBUTTON);break;
+    case VK_XBUTTON1:message=WM_XBUTTONUP;keys=MAKEWPARAM(static_cast<WORD>(state&~static_cast<WPARAM>(MK_XBUTTON1)),XBUTTON1);break;
+    case VK_XBUTTON2:message=WM_XBUTTONUP;keys=MAKEWPARAM(static_cast<WORD>(state&~static_cast<WPARAM>(MK_XBUTTON2)),XBUTTON2);break;
+    default:return;
     }
-
-    const LPARAM lParam = MAKELPARAM(static_cast<WORD>(clientX & 0xFFFF),
-                                     static_cast<WORD>(clientY & 0xFFFF));
-    const WPARAM keyState = physicalMouseMoveWParam();
-
-    switch (virtualKey) {
-    case VK_LBUTTON:
-        PostMessage(hwnd, WM_LBUTTONUP, keyState & ~static_cast<WPARAM>(MK_LBUTTON), lParam);
-        return;
-    case VK_RBUTTON:
-        PostMessage(hwnd, WM_RBUTTONUP, keyState & ~static_cast<WPARAM>(MK_RBUTTON), lParam);
-        return;
-    case VK_MBUTTON:
-        PostMessage(hwnd, WM_MBUTTONUP, keyState & ~static_cast<WPARAM>(MK_MBUTTON), lParam);
-        return;
-    case VK_XBUTTON1:
-        PostMessage(hwnd, WM_XBUTTONUP, MAKEWPARAM(static_cast<WORD>(keyState), XBUTTON1), lParam);
-        return;
-    case VK_XBUTTON2:
-        PostMessage(hwnd, WM_XBUTTONUP, MAKEWPARAM(static_cast<WORD>(keyState), XBUTTON2), lParam);
-        return;
-    default:
-        forceKeyUp(virtualKey);
-        return;
-    }
+    const bool posted=g_holdReleaseTestBackend?g_holdReleaseTestBackend->post(hwnd,message,keys,position):PostMessageW(hwnd,message,keys,position)!=FALSE;
+    if(!posted)fallback(); // Failed queues/UIPI must not silently skip injected-state cleanup.
 #else
-    (void)hwnd;
-    (void)virtualKey;
+    (void)hwnd;(void)virtualKey;(void)expectedProcessId;(void)expectedProcessPath;
 #endif
 }
 
@@ -1357,6 +1364,13 @@ void InputSimulator::sendText(const std::wstring& text) {
 SessionModifierSnapshot InputSimulator::captureSessionModifierSnapshot() {
     const ModifierSnapshot snap = captureModifierSnapshot();
     return {snap.shift, snap.ctrl, snap.alt};
+}
+
+InputSimulator::ScopedKeyboardBackendForTest::ScopedKeyboardBackendForTest(const KeyboardBackendForTest& backend)
+    : m_previous(g_keyboardTestBackend) { g_keyboardTestBackend = &backend; }
+
+InputSimulator::ScopedKeyboardBackendForTest::~ScopedKeyboardBackendForTest() {
+    g_keyboardTestBackend = m_previous;
 }
 
 void InputSimulator::setActiveExecutionContext(ExecutionContext* context) {

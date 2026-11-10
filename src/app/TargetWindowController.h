@@ -13,6 +13,7 @@ class ProfileManager;
 class TargetWindowController {
 public:
     struct HostCallbacks {
+        std::function<bool()> mayApplyCapture,mayPersist;
         std::function<bool()> isActiveDefaultProfile;
         std::function<std::wstring()> currentTargetWindowTitleW;
         std::function<void()> scheduleAutoSave;

@@ -17,6 +17,27 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <QCoreApplication>
+#include <QSettings>
+#include <QTemporaryDir>
+
+bool runReliabilityChecks();
+bool runWorkspaceHistoryChecks();
+bool runRunUiPublisherChecks();
+bool runWorkerRepeatChecks();
+bool runRunContextChecks();
+bool runProjectWorkspaceChecks();
+bool runTargetBindingChecks();
+bool runTargetCenterPinChecks();
+bool runCaptureTargetChecks();
+bool runSessionMouseLockChecks();
+bool runSessionInputCleanupChecks();
+bool runTargetWindowDetailsChecks();
+bool runShutdownChecks();
+bool runUpdateControllerChecks();
+bool runInputStateChecks();
+bool runProfilePackageChecks();
+bool runRuntimeStressChecks();
 
 namespace {
 
@@ -301,8 +322,15 @@ bool runImageFindTriggerMonitorMatch(const std::filesystem::path& projectRoot,
 } // namespace
 
 int main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
+    QCoreApplication app(argc, argv);
+    QTemporaryDir settingsRoot;
+    if(!settingsRoot.isValid()) return 2;
+    QCoreApplication::setOrganizationName(QStringLiteral("PIPBONGTests"));
+    QCoreApplication::setApplicationName(QStringLiteral("WorkflowDryRun"));
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,settingsRoot.path());
+    QSettings::setPath(QSettings::IniFormat,QSettings::SystemScope,settingsRoot.path());
+    qputenv("PIPBONG_DATA_DIR",settingsRoot.path().toUtf8());
 #ifdef _WIN32
     _putenv_s("PIPBONG_WORKFLOW_DRY_RUN", "1");
 #endif
@@ -339,6 +367,23 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (!runReliabilityChecks()) return 1;
+    if (!runWorkspaceHistoryChecks()) return 1;
+    if (!runRunUiPublisherChecks()) return 1;
+    if (!runWorkerRepeatChecks()) return 1;
+    if (!runRunContextChecks()) return 1;
+    if (!runProjectWorkspaceChecks()) return 1;
+    if (!runTargetBindingChecks()) return 1;
+    if (!runTargetCenterPinChecks()) return 1;
+    if (!runCaptureTargetChecks()) return 1;
+    if (!runSessionMouseLockChecks()) return 1;
+    if (!runSessionInputCleanupChecks()) return 1;
+    if (!runTargetWindowDetailsChecks()) return 1;
+    if (!runShutdownChecks()) return 1;
+    if (!runUpdateControllerChecks()) return 1;
+    if (!runInputStateChecks()) return 1;
+    if (!runProfilePackageChecks()) return 1;
+    if (!runRuntimeStressChecks()) return 1;
     std::cout << "PIPBONGWorkflowDryRunSim: wait + loop-region + ImageFind + trigger/retry OK (R6.2)\n";
     return 0;
 }

@@ -34,6 +34,15 @@ public:
         return value;
     }
 
+    double parseComplete() {
+        const double value = parseExpression();
+        skipWhitespace();
+        if (m_pos != m_input.size() || !std::isfinite(value)) {
+            throw FormulaError::Parse;
+        }
+        return value;
+    }
+
 private:
     double parseTerm() {
         double value = parseFactor();
@@ -89,7 +98,13 @@ private:
         if (start == m_pos) {
             throw FormulaError::Parse;
         }
-        return std::stod(m_input.substr(start, m_pos - start));
+        const std::string token = m_input.substr(start, m_pos - start);
+        size_t consumed = 0;
+        const double value = std::stod(token, &consumed);
+        if (consumed != token.size() || !std::isfinite(value)) {
+            throw FormulaError::Parse;
+        }
+        return value;
     }
 
     double parseCellReference() {
@@ -214,7 +229,7 @@ FormulaResult FormulaEvaluator::evaluate(const QString& expression,
 
     try {
         Parser parser(trimmed.toStdString(), resolveCell, visiting);
-        result.value = parser.parseExpression();
+        result.value = parser.parseComplete();
         result.ok = true;
         result.error = FormulaError::None;
     } catch (FormulaError error) {

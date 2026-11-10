@@ -22,6 +22,7 @@ public:
         HWND hwnd = nullptr;
 #endif
         std::wstring title;
+        unsigned long processId = 0;
     };
 
     using Completion = std::function<void(const Result&)>;
@@ -31,4 +32,6 @@ public:
                           Completion callback,
                           TargetWindowBindingRole role = TargetWindowBindingRole::Main);
     static void cancelPick();
+    /// Queue completion on the app thread and drop it if its widget owner was destroyed.
+    static void dispatchCompletion(QWidget* owner, Completion callback, Result result);
 };

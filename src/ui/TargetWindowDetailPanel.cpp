@@ -1,6 +1,7 @@
 #include "ui/TargetWindowDetailPanel.h"
 
 #include "ui/UiThemeColors.h"
+#include "ui/UiAppearance.h"
 
 #include <QEvent>
 #include <QHBoxLayout>
@@ -14,6 +15,16 @@ namespace {
 constexpr int kComfortableDetailWidthPx = 360;
 constexpr int kCompactDetailWidthPx = 220;
 constexpr int kDetailHorizontalMarginPx = 20;
+
+QString statusBadgeStyle(const QPalette& palette, QColor accent) {
+    if (isDarkTheme(palette)) {
+        accent = QColor::fromHsl(accent.hslHue(), qMin(70, accent.hslSaturation()), 192);
+    }
+    return QStringLiteral(
+        "padding: 3px 9px; border-radius: 8px; font-weight: 600; "
+        "background-color: rgba(%1,%2,%3,24); border: 1px solid rgba(%1,%2,%3,64); color: %4;")
+        .arg(accent.red()).arg(accent.green()).arg(accent.blue()).arg(accent.name());
+}
 
 QString htmlEscape(const QString& text) {
     QString escaped = text;
@@ -98,12 +109,7 @@ TargetWindowDetailPanel::TargetWindowDetailPanel(QWidget* parent)
     stackedLayout->addWidget(m_detailsPage);
     outerLayout->addWidget(stackHost);
 
-    setStyleSheet(QStringLiteral(
-        "QFrame#targetWindowDetailPanel {"
-        "  background-color: palette(base);"
-        "  border: none;"
-        "  border-radius: 4px;"
-        "}"
+    setStyleSheet(UiAppearance::glassPanelStyle(QStringLiteral("QFrame#targetWindowDetailPanel")) + QStringLiteral(
         "QLabel#targetWindowDetailStatus {"
         "  padding: 2px 8px;"
         "  border-radius: 999px;"
@@ -195,7 +201,8 @@ void TargetWindowDetailPanel::refreshVisibleDetailText() {
     } else if (m_storedTargetBindingMode) {
         refreshStoredTargetBindingText(m_storedBindingTitle,
                                        m_storedBindingProcessName,
-                                       m_storedBindingProcessPath);
+                                       m_storedBindingProcessPath,
+                                       m_storedBindingSubTarget);
     } else if (!m_lastDetailData.hwnd.isEmpty()) {
         refreshDetailText();
     }
@@ -324,10 +331,7 @@ void TargetWindowDetailPanel::refreshDetailText() {
     setTitleDisplay(title);
     m_statusLabel->setText(m_lastDetailData.subTarget ? tr("● 서브 창") : m_lastDetailData.stateText);
 
-    const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
-    m_statusLabel->setStyleSheet(QStringLiteral(
-        "padding: 3px 10px; border-radius: 999px; font-weight: 600; background-color: %1; color: %2;")
-                                     .arg(stateColor.name(), badgeText.name()));
+    m_statusLabel->setStyleSheet(statusBadgeStyle(pal, stateColor));
 
     const QVector<QPair<QString, QString>> primaryFields = {
         {tr("프로세스"), m_lastDetailData.processName},
@@ -453,15 +457,12 @@ void TargetWindowDetailPanel::refreshGlobalDefaultProfileText() {
     const QPalette pal = palette();
     const QColor text = pal.color(QPalette::WindowText);
     const QColor muted = secondaryHintTextColor(pal);
-    const QColor stateColor = text.lightness() < 128 ? QColor(0x64, 0xb5, 0xf6) : QColor(0x1e, 0x88, 0xe5);
+    const QColor stateColor = pal.color(QPalette::Highlight);
 
     setTitleDisplay(tr("전역 기본 프로필"));
     m_statusLabel->setText(tr("● 시스템 고정"));
 
-    const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
-    m_statusLabel->setStyleSheet(QStringLiteral(
-        "padding: 3px 10px; border-radius: 999px; font-weight: 600; background-color: %1; color: %2;")
-                                     .arg(stateColor.name(), badgeText.name()));
+    m_statusLabel->setStyleSheet(statusBadgeStyle(pal, stateColor));
 
     const QVector<QPair<QString, QString>> primaryFields = {
         {tr("타겟"), tr("미지정")},
@@ -520,10 +521,7 @@ void TargetWindowDetailPanel::refreshStoredTargetBindingText(const QString& titl
     setTitleDisplay(displayTitle);
     m_statusLabel->setText(subTarget ? tr("● 서브 · 미실행") : tr("● 미실행"));
 
-    const QColor badgeText = stateColor.lightness() < 140 ? QColor(Qt::white) : QColor(0x10, 0x18, 0x20);
-    m_statusLabel->setStyleSheet(QStringLiteral(
-        "padding: 3px 10px; border-radius: 999px; font-weight: 600; background-color: %1; color: %2;")
-                                     .arg(stateColor.name(), badgeText.name()));
+    m_statusLabel->setStyleSheet(statusBadgeStyle(pal, stateColor));
 
     const QVector<QPair<QString, QString>> primaryFields = {
         {tr("프로세스"), displayProcess},
@@ -532,7 +530,8 @@ void TargetWindowDetailPanel::refreshStoredTargetBindingText(const QString& titl
     m_primaryLine->setText(formatFieldsHtml(primaryFields, m_layoutDensity, muted, text));
 
     m_secondaryLine->setText(
-        valueSpan(tr("현재 실행 중인 창이 감지되지 않습니다. 프로그램을 실행하면 자동으로 연결됩니다."),
+        valueSpan(processPath.isEmpty()
+                  ? tr("현재 실행 중인 창이 감지되지 않습니다. 프로그램을 실행하면 자동으로 연결됩니다.")
+                  : tr("창이 실행 중인지 확인하세요. 실행 파일 위치가 바뀌었다면 타겟을 다시 지정하세요."),
                   muted));
-    Q_UNUSED(processPath);
 }

@@ -7,7 +7,7 @@
 #include <vector>
 
 /// Thread-safe LRU cache for prepared OpenCV templates (path + mtime key).
-/// Returns shared_ptr so callers keep templates alive across cache eviction.
+/// Each caller owns its mutable scale cache; immutable image buffers remain shared.
 class TemplateCache {
 public:
     static constexpr int kMaxEntries = 64;

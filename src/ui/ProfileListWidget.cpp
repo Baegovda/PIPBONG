@@ -16,6 +16,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QLinearGradient>
 #include <QStyle>
 #include <QStyledItemDelegate>
 #include <QVariant>
@@ -43,8 +44,7 @@ public:
         const bool dropHover = index.data(kFeatureDropHoverRole).toString()
                                    == QStringLiteral("featureDropHover");
         const QColor contentColor = primaryContentTextColor(pal, selected);
-        const QColor accent = contentColor.lightness() < 128 ? QColor(0x64, 0xb5, 0xf6)
-                                                             : QColor(0x1e, 0x88, 0xe5);
+        const QColor accent = pal.color(QPalette::Highlight);
         QColor fill = selected ? pal.color(QPalette::Highlight)
                                : (pal.color(QPalette::Button).isValid() ? pal.color(QPalette::Button)
                                                                         : pal.color(QPalette::AlternateBase));
@@ -59,8 +59,21 @@ public:
 
         const QRect rowRect = opt.rect.adjusted(2, 1, -2, -1);
         QPainterPath path;
-        path.addRoundedRect(rowRect, 6, 6);
-        painter->fillPath(path, fill);
+        path.addRoundedRect(rowRect, 9, 9);
+        QLinearGradient glass(rowRect.topLeft(), rowRect.bottomRight());
+        QColor top = fill.lighter(selected ? 120 : 112);
+        QColor bottom = fill;
+        if (!selected && !hovered && !dropHover) {
+            top.setAlpha(76);
+            fill.setAlpha(50);
+            bottom.setAlpha(35);
+        }
+        glass.setColorAt(0, top);
+        glass.setColorAt(.45, fill);
+        glass.setColorAt(1, bottom);
+        painter->fillPath(path, glass);
+        painter->setPen(QColor(235, 231, 250, selected ? 95 : 30));
+        painter->drawPath(path);
 
         if (isDefault) {
             paintDefaultBadge(painter, opt, rowRect, accent);
@@ -125,15 +138,17 @@ private:
                                      const QRect& rowRect,
                                      const QColor& textColor) {
         const QIcon icon = qvariant_cast<QIcon>(opt.icon);
-        const QString name = opt.text;
         const int iconSize = 18;
         const int gap = 6;
         QFont nameFont = opt.font;
         nameFont.setBold(true);
         const QFontMetrics fm(nameFont);
+        const QRect contentRect = rowRect.adjusted(6, 0, -6, 0);
+        const int iconWidth = icon.isNull() ? 0 : iconSize + gap;
+        const QString name = fm.elidedText(opt.text, Qt::ElideRight, qMax(0, contentRect.width() - iconWidth));
         const int textWidth = fm.horizontalAdvance(name);
-        const int contentWidth = (icon.isNull() ? 0 : iconSize + gap) + textWidth;
-        int x = rowRect.center().x() - contentWidth / 2;
+        const int contentWidth = iconWidth + textWidth;
+        int x = contentRect.left() + qMax(0, (contentRect.width() - contentWidth) / 2);
         const int y = rowRect.center().y();
 
         if (!icon.isNull()) {

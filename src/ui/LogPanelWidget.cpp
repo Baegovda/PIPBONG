@@ -95,13 +95,13 @@ LogPanelWidget::LogPanelWidget(QWidget* parent)
     setStyleSheet(QStringLiteral(
         "QWidget#logPanel { background: transparent; }"
         "QLabel#logPanelTitle {"
-        "  color: #8b949e;"
+        "  color: #b5b6c5;"
         "  font-size: 11px;"
         "  font-weight: 600;"
         "  letter-spacing: 0.3px;"
         "}"
         "QToolButton#logPanelClearButton {"
-        "  color: #6e7681;"
+        "  color: #a3a8b7;"
         "  font-size: 11px;"
         "  padding: 2px 8px;"
         "  border-radius: 4px;"
@@ -111,11 +111,12 @@ LogPanelWidget::LogPanelWidget(QWidget* parent)
         "  background-color: #21262d;"
         "}"
         "QTextEdit#logPanelView {"
-        "  background-color: #0d1117;"
-        "  color: #3fb950;"
-        "  border: none;"
-        "  border-radius: 4px;"
-        "  padding: 4px 6px;"
+        "  background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 rgba(21,24,34,140),stop:0.5 rgba(24,29,38,125),stop:1 rgba(31,44,47,110));"
+        "  color: #bcc7d8;"
+        "  border: 1px solid rgba(225,228,245,25);"
+        "  border-top-color: rgba(239,234,254,42);"
+        "  border-radius: 13px;"
+        "  padding: 8px 10px;"
         "  font-family: 'Cascadia Mono', 'Consolas', 'D2Coding', monospace;"
         "  font-size: 12px;"
         "  selection-background-color: #264f78;"
@@ -126,7 +127,7 @@ LogPanelWidget::LogPanelWidget(QWidget* parent)
 QString LogPanelWidget::colorForKind(LogLineKind kind) const {
     switch (kind) {
     case LogLineKind::Success:
-        return QStringLiteral("#56d364");
+        return QStringLiteral("#a9d6bc");
     case LogLineKind::Warning:
         return QStringLiteral("#e3b341");
     case LogLineKind::Error:
@@ -135,7 +136,7 @@ QString LogPanelWidget::colorForKind(LogLineKind kind) const {
         return QStringLiteral("#79c0ff");
     case LogLineKind::Info:
     default:
-        return QStringLiteral("#3fb950");
+        return QStringLiteral("#bcc7d8");
     }
 }
 

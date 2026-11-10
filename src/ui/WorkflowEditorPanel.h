@@ -29,10 +29,17 @@ class BlockEditorDialog;
 
 class WorkflowEditorPanel : public QWidget {
     Q_OBJECT
+    friend class WorkflowExecutionUiChecks;
+    friend class WorkflowToolbarUiChecks;
+    friend class WorkspaceEditorChecks;
 public:
     explicit WorkflowEditorPanel(QWidget* parent = nullptr);
 
     void setFeature(Feature* feature);
+    // Keep the displayed model alive until rebinding; scope isolates run chrome
+    // for same-ID features from different documents/profiles/library entries.
+    void bindFeature(Feature* feature,std::shared_ptr<void> lifetime,const QString& feedbackScope);
+    Feature* displayedFeature()const{return m_feature;}
     void setProfileDisplayName(const QString& name);
     void setProjectDirectory(const QString& directory, bool refreshList = true);
     void refresh();
@@ -153,9 +160,14 @@ private:
 
     void saveRunFeedbackForFeature(const std::string& featureId);
     void restoreRunFeedbackForFeature(const std::string& featureId);
+    std::string feedbackKey(const std::string& featureId)const;
     void clearCurrentRunFeedbackVectors();
 
     Feature* m_feature = nullptr;
+    std::shared_ptr<void> m_featureLifetime;
+    std::string m_boundFeatureId;
+    QString m_feedbackScope;
+    quint64 m_bindingEpoch=0;
     QString m_projectDirectory;
     QString m_profileDisplayName;
 
@@ -166,6 +178,7 @@ private:
     qint64 m_loopAverageMs = 0;
     bool m_loopSuccess = true;
     BlockListWidget* m_blockList = nullptr;
+    QLabel* m_emptyHintLabel = nullptr;
     ListColumnHeaderWidget* m_blockListHeader = nullptr;
     QSplitter* m_workflowSplitter = nullptr;
     QVector<QPushButton*> m_addTypeButtons;

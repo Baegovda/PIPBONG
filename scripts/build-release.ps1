@@ -10,7 +10,7 @@ Prepare-IncrementalBuildEnvironment -RepoRoot $repoRoot
 Ensure-BuildTreeConfigured -RepoRoot $repoRoot
 
 Write-Host "Building Release (incremental, target PIPBONG, no windeployqt)..."
-Stop-Process -Name PIPBONG -ErrorAction SilentlyContinue
+Stop-RepoReleaseProcess -RepoRoot $repoRoot
 cmake --build build --config Release --target PIPBONG
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

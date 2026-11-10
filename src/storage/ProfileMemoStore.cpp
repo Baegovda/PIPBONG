@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 
 QString ProfileMemoStore::memoFilePath(const QString& profileDirectory) {
     return QDir(profileDirectory).filePath(QStringLiteral("memo.txt"));
@@ -12,19 +13,22 @@ bool ProfileMemoStore::load(const QString& profileDirectory, QString* outText) {
     if (!outText) {
         return false;
     }
-    outText->clear();
     if (profileDirectory.trimmed().isEmpty()) {
+        outText->clear();
         return true;
     }
 
     QFile file(memoFilePath(profileDirectory));
     if (!file.exists()) {
+        outText->clear();
         return true;
     }
     if (!file.open(QIODevice::ReadOnly)) {
         return false;
     }
-    *outText = QString::fromUtf8(file.readAll());
+    const QByteArray bytes = file.readAll();
+    if (file.error() != QFileDevice::NoError) return false;
+    *outText = QString::fromUtf8(bytes);
     return true;
 }
 
@@ -34,9 +38,14 @@ bool ProfileMemoStore::save(const QString& profileDirectory, const QString& text
     }
     QDir().mkpath(profileDirectory);
 
-    QFile file(memoFilePath(profileDirectory));
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    QSaveFile file(memoFilePath(profileDirectory));
+    if (!file.open(QIODevice::WriteOnly)) {
         return false;
     }
-    return file.write(text.toUtf8()) >= 0;
+    const QByteArray bytes = text.toUtf8();
+    if (file.write(bytes) != bytes.size()) {
+        file.cancelWriting();
+        return false;
+    }
+    return file.commit();
 }

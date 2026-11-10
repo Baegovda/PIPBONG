@@ -50,9 +50,7 @@ bool foregroundMatchesScopedSubTarget(const QString& foregroundTitle,
     if (subBinding.isEmpty() || !foregroundHwnd) {
         return false;
     }
-    if (foregroundHwndMatchesLinkedProcess(foregroundHwnd, {}, subProcessPath)) {
-        return true;
-    }
+    if (!subProcessPath.isEmpty())return foregroundHwndMatchesLinkedProcess(foregroundHwnd, {}, subProcessPath);
     if (foregroundTitle.isEmpty()) {
         return false;
     }
@@ -95,9 +93,7 @@ bool foregroundMatchesScopedMainTarget(const QString& foregroundTitle,
     if (mainBinding.isEmpty() || !foregroundHwnd) {
         return false;
     }
-    if (foregroundHwndMatchesLinkedProcess(foregroundHwnd, mainProcessPath, {})) {
-        return true;
-    }
+    if (!mainProcessPath.isEmpty())return foregroundHwndMatchesLinkedProcess(foregroundHwnd, mainProcessPath, {});
     if (foregroundTitle.isEmpty()) {
         return false;
     }

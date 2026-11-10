@@ -172,6 +172,7 @@ QVector<TargetWindowListEntry> collectTargetWindowListEntries() {
             auto* out = reinterpret_cast<QVector<TargetWindowListEntry>*>(lParam);
             TargetWindowListEntry entry;
             entry.hwnd = hwnd;
+            GetWindowThreadProcessId(hwnd,&entry.processId);
             entry.title = title;
             entry.processPath = QString::fromStdWString(processPath);
             entry.icon = targetWindowIconForProcessPath(processPath);
@@ -254,6 +255,8 @@ std::optional<TargetWindowListPickResult> pickTargetWindowFromList(QWidget* pare
             item->setIcon(entry.icon);
             item->setData(Qt::UserRole, QVariant::fromValue(reinterpret_cast<qulonglong>(entry.hwnd)));
             item->setData(Qt::UserRole + 1, QString::fromStdWString(entry.title));
+            item->setData(Qt::UserRole + 2, entry.processPath);
+            item->setData(Qt::UserRole + 3, qulonglong(entry.processId));
 
             const QString entryTitle = QString::fromStdWString(entry.title);
             const bool isMainBinding =
@@ -346,6 +349,8 @@ std::optional<TargetWindowListPickResult> pickTargetWindowFromList(QWidget* pare
     TargetWindowListPickResult result;
     result.hwnd = hwnd;
     result.title = currentItem->data(Qt::UserRole + 1).toString();
+    result.processPath = currentItem->data(Qt::UserRole + 2).toString();
+    result.processId = currentItem->data(Qt::UserRole + 3).toULongLong();
     return result;
 }
 

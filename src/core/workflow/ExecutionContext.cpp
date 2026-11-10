@@ -114,7 +114,16 @@ int ExecutionContext::workerFastRepeatDelayMs() const {
 }
 
 void ExecutionContext::prepareNextWorkerRepeatIteration() {
-    resetStop();
+    // Cancellation/pause belong to the whole run, so the next iteration must not
+    // clear a request racing with the worker's preceding shouldStop check.
+    m_detectionFailedThisRun = false;
+    m_nestingDepth = 0;
+    if (m_imageFindPrimedBlockIndex < 0) {
+        clearLastMatch();
+        clearLastMatchAttempt();
+        clearConsumedMatchRegions();
+    }
+    m_runLoopNumber.fetch_add(1, std::memory_order_relaxed);
 }
 
 void ExecutionContext::setWorkerRepeatRemaining(int count) {
@@ -137,9 +146,9 @@ bool ExecutionContext::shouldStop() const {
     return m_stopRequested.load();
 }
 
-void ExecutionContext::resetStop() {
+void ExecutionContext::resetStop(bool resetPause) {
     m_stopRequested.store(false);
-    m_paused.store(false);
+    if(resetPause)setPaused(false);
     m_detectionFailedThisRun = false;
     m_nestingDepth = 0;
     // Trigger action reuses the monitor's last match via imageFindPrimedBlockIndex.
@@ -152,22 +161,35 @@ void ExecutionContext::resetStop() {
 }
 
 void ExecutionContext::setPaused(bool paused) {
-    const bool wasPaused = m_paused.load();
-    if (!wasPaused && paused) {
-        restoreRunHeldInput();
-    }
-    m_paused.store(paused);
+    auto previous=m_pauseState.load();
+    while(!m_pauseState.compare_exchange_weak(previous,((previous+2)&~std::uint64_t(1)) | std::uint64_t(paused))) {}
+    if(!(previous&1) && paused)restoreRunHeldInput();
 }
 
 bool ExecutionContext::isPaused() const {
-    return m_paused.load();
+    return (m_pauseState.load()&1)!=0;
 }
 
 void ExecutionContext::togglePaused() {
-    if (!m_paused.load()) {
-        restoreRunHeldInput();
+    auto previous=m_pauseState.load();
+    while(!m_pauseState.compare_exchange_weak(previous,((previous+2)&~std::uint64_t(1)) | ((previous&1)^1))) {}
+    if(!(previous&1))restoreRunHeldInput();
+}
+
+std::optional<std::uint64_t> ExecutionContext::pauseIfRunning() {
+    auto previous=m_pauseState.load();
+    for(;;) {
+        if(previous&1)return std::nullopt;
+        const auto desired=((previous+2)&~std::uint64_t(1)) | 1;
+        if(m_pauseState.compare_exchange_weak(previous,desired)) {
+            restoreRunHeldInput();return desired;
+        }
     }
-    m_paused.store(!m_paused.load());
+}
+
+bool ExecutionContext::resumeIfPauseUnchanged(std::uint64_t token) {
+    if(!(token&1))return false;
+    return m_pauseState.compare_exchange_strong(token,(token+2)&~std::uint64_t(1));
 }
 
 bool ExecutionContext::interruptibleSleepMs(int delayMs) {
@@ -231,11 +253,11 @@ int ExecutionContext::imageFindMaxMissAttempts() const {
 }
 
 void ExecutionContext::setImageFindPollAttempt(int attempt) {
-    m_imageFindPollAttempt = attempt < 0 ? 0 : attempt;
+    m_imageFindPollAttempt.store(attempt < 0 ? 0 : attempt,std::memory_order_relaxed);
 }
 
 int ExecutionContext::imageFindPollAttempt() const {
-    return m_imageFindPollAttempt;
+    return m_imageFindPollAttempt.load(std::memory_order_relaxed);
 }
 
 void ExecutionContext::markDetectionFailure() {
@@ -364,6 +386,7 @@ void ExecutionContext::setLastMatchAttempt(double matchThreshold,
                                            double peakConfidence,
                                            const cv::Point& clientPoint,
                                            bool hasClientPoint) {
+    std::lock_guard<std::mutex> lock(m_matchAttemptMutex);
     m_hasLastMatchAttempt = true;
     m_lastMatchAttemptThreshold = matchThreshold;
     m_lastMatchAttemptConfidence = peakConfidence;
@@ -371,27 +394,30 @@ void ExecutionContext::setLastMatchAttempt(double matchThreshold,
     m_lastMatchAttemptClientPoint = clientPoint;
 }
 
-bool ExecutionContext::hasLastMatchAttempt() const {
-    return m_hasLastMatchAttempt;
+ExecutionContext::MatchAttemptSnapshot ExecutionContext::matchAttemptSnapshot()const {
+    std::lock_guard<std::mutex> lock(m_matchAttemptMutex);
+    return {m_hasLastMatchAttempt,m_lastMatchAttemptConfidence,m_lastMatchAttemptThreshold,m_hasLastMatchAttemptPoint,m_lastMatchAttemptClientPoint};
 }
+bool ExecutionContext::hasLastMatchAttempt() const {return matchAttemptSnapshot().present;}
 
 double ExecutionContext::lastMatchAttemptConfidence() const {
-    return m_lastMatchAttemptConfidence;
+    return matchAttemptSnapshot().confidence;
 }
 
 double ExecutionContext::lastMatchAttemptThreshold() const {
-    return m_lastMatchAttemptThreshold;
+    return matchAttemptSnapshot().threshold;
 }
 
 bool ExecutionContext::hasLastMatchAttemptPoint() const {
-    return m_hasLastMatchAttemptPoint;
+    return matchAttemptSnapshot().hasPoint;
 }
 
 cv::Point ExecutionContext::lastMatchAttemptClientPoint() const {
-    return m_lastMatchAttemptClientPoint;
+    return matchAttemptSnapshot().point;
 }
 
 void ExecutionContext::clearLastMatchAttempt() {
+    std::lock_guard<std::mutex> lock(m_matchAttemptMutex);
     m_hasLastMatchAttempt = false;
     m_lastMatchAttemptConfidence = 0.0;
     m_lastMatchAttemptThreshold = 0.0;
@@ -475,11 +501,11 @@ bool ExecutionContext::shouldUseRoiCorrectionForBlock(bool blockRoiCorrection) c
 }
 
 void ExecutionContext::setRunLoopNumber(int loopNumber) {
-    m_runLoopNumber = loopNumber < 1 ? 1 : loopNumber;
+    m_runLoopNumber.store(loopNumber < 1 ? 1 : loopNumber, std::memory_order_relaxed);
 }
 
 int ExecutionContext::runLoopNumber() const {
-    return m_runLoopNumber;
+    return m_runLoopNumber.load(std::memory_order_relaxed);
 }
 
 void ExecutionContext::setActiveBlockIndex(int blockIndex) {
@@ -554,7 +580,13 @@ void ExecutionContext::clearRememberedPositions() {
 }
 
 void ExecutionContext::setTargetWindowTitle(const std::wstring& title) {
+    setTargetWindowBindingForWorker(title, {});
+}
+
+void ExecutionContext::setTargetWindowBindingForWorker(const std::wstring& title, const std::wstring& processPath) {
+    std::lock_guard<std::mutex> lock(m_targetBindingMutex);
     m_targetWindowTitle = title;
+    m_targetProcessPath = processPath;
     m_cachedTargetWindow = nullptr;
 }
 
@@ -563,25 +595,36 @@ void ExecutionContext::setTargetWindowTitleForWorker(const std::wstring& title) 
 }
 
 std::wstring ExecutionContext::targetWindowTitle() const {
+    std::lock_guard<std::mutex> lock(m_targetBindingMutex);
     return m_targetWindowTitle;
+}
+
+std::pair<std::wstring, std::wstring> ExecutionContext::targetWindowBinding() const {
+    std::lock_guard<std::mutex> lock(m_targetBindingMutex);
+    return {m_targetWindowTitle, m_targetProcessPath};
 }
 
 #ifdef _WIN32
 HWND ExecutionContext::targetWindow() const {
+    std::lock_guard<std::mutex> lock(m_targetBindingMutex);
     if (m_cachedTargetWindow && IsWindow(m_cachedTargetWindow)) {
         return m_cachedTargetWindow;
     }
-    refreshTargetWindowHandle();
+    refreshTargetWindowHandleLocked();
     return m_cachedTargetWindow;
 }
 
 void ExecutionContext::refreshTargetWindowHandle() const {
+    std::lock_guard<std::mutex> lock(m_targetBindingMutex);
+    refreshTargetWindowHandleLocked();
+}
+
+void ExecutionContext::refreshTargetWindowHandleLocked() const {
     m_cachedTargetWindow = nullptr;
-    ScreenCapture::invalidateTargetWindowCache();
     if (m_targetWindowTitle.empty()) {
         return;
     }
-    HWND hwnd = ScreenCapture::findVisibleWindowMatchingTitle(m_targetWindowTitle);
+    HWND hwnd = ScreenCapture::findVisibleWindowMatchingTitle(m_targetWindowTitle, m_targetProcessPath);
     if (hwnd && IsWindow(hwnd)) {
         m_cachedTargetWindow = hwnd;
     }
@@ -592,21 +635,25 @@ std::string ExecutionContext::resolvePath(const std::string& relativePath) const
     if (relativePath.empty()) {
         return relativePath;
     }
-    std::filesystem::path path(relativePath);
+    // Project JSON and Qt's toStdString use UTF-8, including on Windows.
+    const auto path=std::filesystem::u8path(relativePath);
     if (path.is_absolute()) {
         return relativePath;
     }
-    if (m_projectDirectory.empty()) {
+    const auto directory = projectDirectory();
+    if (directory.empty()) {
         return relativePath;
     }
-    return (std::filesystem::path(m_projectDirectory) / path).string();
+    return (std::filesystem::u8path(directory) / path).u8string();
 }
 
 void ExecutionContext::setProjectDirectory(const std::string& path) {
+    std::lock_guard<std::mutex> lock(m_targetBindingMutex);
     m_projectDirectory = path;
 }
 
 std::string ExecutionContext::projectDirectory() const {
+    std::lock_guard<std::mutex> lock(m_targetBindingMutex);
     return m_projectDirectory;
 }
 
@@ -652,33 +699,37 @@ std::optional<MouseButton> mouseButtonFromVirtualKey(int virtualKey) {
 } // namespace
 
 void ExecutionContext::beginRunKeyboardSessionIfNeeded() {
-    if (m_runKeyboardSessionActive) {
-        return;
+    {
+        std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
+        if(m_runKeyboardSessionActive)return;
     }
-    m_runKeyboardSessionStart = InputSimulator::captureSessionModifierSnapshot();
-    m_runKeyboardSessionActive = true;
+    const auto snapshot=InputSimulator::captureSessionModifierSnapshot();
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
+    if(!m_runKeyboardSessionActive) {m_runKeyboardSessionStart=snapshot;m_runKeyboardSessionActive=true;}
 }
 
 void ExecutionContext::noteSyntheticKeyDown(int virtualKey) {
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
     m_pipbongHeldVirtualKeys.insert(virtualKey);
     m_pipbongEverInjectedVirtualKeys.insert(virtualKey);
-    extendSyntheticInputSuppress(virtualKey);
+    extendSyntheticInputSuppressLocked(virtualKey);
 }
 
 void ExecutionContext::noteSyntheticKeyUp(int virtualKey) {
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
     m_pipbongHeldVirtualKeys.erase(virtualKey);
-    extendSyntheticInputSuppress(virtualKey);
+    extendSyntheticInputSuppressLocked(virtualKey);
 }
 
 bool ExecutionContext::hasPipbongSyntheticKeyDown(int virtualKey) const {
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
     return m_pipbongHeldVirtualKeys.find(virtualKey) != m_pipbongHeldVirtualKeys.end();
 }
 
-void ExecutionContext::extendSyntheticInputSuppress(int virtualKey) {
+void ExecutionContext::extendSyntheticInputSuppressLocked(int virtualKey) {
     if (virtualKey <= 0) {
         return;
     }
-    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
     const auto until = std::chrono::steady_clock::now() + kSyntheticInputSuppressGrace;
     auto it = m_syntheticInputSuppressUntil.find(virtualKey);
     if (it == m_syntheticInputSuppressUntil.end() || until > it->second) {
@@ -687,7 +738,8 @@ void ExecutionContext::extendSyntheticInputSuppress(int virtualKey) {
 }
 
 bool ExecutionContext::shouldSuppressUserInputInterrupt(int virtualKey) const {
-    if (hasPipbongSyntheticKeyDown(virtualKey)) {
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
+    if (m_pipbongHeldVirtualKeys.find(virtualKey)!=m_pipbongHeldVirtualKeys.end()) {
         return true;
     }
     if (const std::optional<MouseButton> button = mouseButtonFromVirtualKey(virtualKey)) {
@@ -695,7 +747,6 @@ bool ExecutionContext::shouldSuppressUserInputInterrupt(int virtualKey) const {
             return true;
         }
     }
-    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
     const auto it = m_syntheticInputSuppressUntil.find(virtualKey);
     if (it == m_syntheticInputSuppressUntil.end()) {
         return false;
@@ -704,32 +755,32 @@ bool ExecutionContext::shouldSuppressUserInputInterrupt(int virtualKey) const {
 }
 
 bool ExecutionContext::pipbongEverInjectedVirtualKey(int virtualKey) const {
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
     return m_pipbongEverInjectedVirtualKeys.find(virtualKey) != m_pipbongEverInjectedVirtualKeys.end();
 }
 
 void ExecutionContext::noteSyntheticMouseDown(MouseButton button) {
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
     const int raw = static_cast<int>(button);
     m_pipbongHeldMouseButtons.insert(raw);
     m_pipbongEverInjectedMouseButtons.insert(raw);
-    extendSyntheticInputSuppress(virtualKeyFromMouseButton(button));
+    extendSyntheticInputSuppressLocked(virtualKeyFromMouseButton(button));
 }
 
 void ExecutionContext::noteSyntheticMouseUp(MouseButton button) {
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
     m_pipbongHeldMouseButtons.erase(static_cast<int>(button));
-    extendSyntheticInputSuppress(virtualKeyFromMouseButton(button));
+    extendSyntheticInputSuppressLocked(virtualKeyFromMouseButton(button));
 }
 
 bool ExecutionContext::pipbongEverInjectedMouseButton(MouseButton button) const {
+    std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
     return m_pipbongEverInjectedMouseButtons.find(static_cast<int>(button))
            != m_pipbongEverInjectedMouseButtons.end();
 }
 
 void ExecutionContext::restoreRunHeldInput() {
-    if (!m_runKeyboardSessionActive) {
-        return;
-    }
-    InputSimulator::restoreTrackedKeyboard(m_pipbongHeldVirtualKeys, m_runKeyboardSessionStart);
-    InputSimulator::restoreTrackedMouseButtons(m_pipbongHeldMouseButtons);
+    releaseRunInput(false);
 }
 
 void ExecutionContext::restoreRunKeyboard() {
@@ -737,16 +788,22 @@ void ExecutionContext::restoreRunKeyboard() {
 }
 
 void ExecutionContext::endRunInputSession() {
-    restoreRunHeldInput();
-    m_runKeyboardSessionActive = false;
-    m_pipbongHeldVirtualKeys.clear();
-    m_pipbongHeldMouseButtons.clear();
-    m_pipbongEverInjectedVirtualKeys.clear();
-    m_pipbongEverInjectedMouseButtons.clear();
+    releaseRunInput(true);
+}
+
+void ExecutionContext::releaseRunInput(bool ending) {
+    std::unordered_set<int> keys,buttons;SessionModifierSnapshot start;bool active=false;
     {
         std::lock_guard<std::mutex> lock(m_syntheticInputMutex);
-        m_syntheticInputSuppressUntil.clear();
+        active=m_runKeyboardSessionActive;
+        if(active || ending) {keys.swap(m_pipbongHeldVirtualKeys);buttons.swap(m_pipbongHeldMouseButtons);start=m_runKeyboardSessionStart;}
+        if(ending) {
+            m_runKeyboardSessionActive=false;
+            m_pipbongEverInjectedVirtualKeys.clear();m_pipbongEverInjectedMouseButtons.clear();m_syntheticInputSuppressUntil.clear();
+        }
     }
+    // Native emission/test callbacks must not run under the tracking-state mutex.
+    if(active) {InputSimulator::restoreTrackedKeyboard(keys,start);InputSimulator::restoreTrackedMouseButtons(buttons);}
 }
 
 void ExecutionContext::endRunKeyboardSession() {

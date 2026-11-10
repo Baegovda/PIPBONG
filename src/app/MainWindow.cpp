@@ -1,8 +1,31 @@
+#include "ui/FeatureLibraryActionsController.h"
+#include "ui/TargetPanelController.h"
+#include "ui/DocumentActionsController.h"
 #include "app/MainWindow.h"
+#include "app/WindowDiagnosticsController.h"
+#include "app/FeatureHotkeyController.h"
+#include "app/FirstTemplateRoiController.h"
+#include "app/TriggerMonitorController.h"
+#include "app/TriggerPreemptionController.h"
+#include "ui/WorkflowExecutionPresenter.h"
+#include "app/WorkerRepeatController.h"
+#include "app/RunSessionResourcesController.h"
+#include "app/HoldTapSessionController.h"
+#include "app/RunUiPublisher.h"
+#include "app/FeatureTransferController.h"
+#include "app/ShutdownCoordinator.h"
+#include "ui/MainWorkspaceView.h"
+#include "ui/WorkspaceEditorController.h"
+#include "app/InputInterruptController.h"
+#include "app/SessionMouseLockController.h"
+#include "app/ForegroundSessionController.h"
+#include "app/SessionInputCleanupController.h"
+#include "app/WorkspaceHistoryController.h"
+#include "app/ProfilePackageController.h"
+#include "app/UpdateUiController.h"
 
 #include <algorithm>
 
-#include "app/ProfileForegroundResolver.h"
 #include "app/ForegroundRunGate.h"
 #include "app/ForegroundWindowMonitor.h"
 #include "app/ProfileSwitchCoordinator.h"
@@ -11,14 +34,19 @@
 #include "app/ProgramSettings.h"
 #include "app/SessionRunPolicy.h"
 #include "app/RunLifecycleCoordinator.h"
-#include "app/WindowsRunAsAdmin.h"
+#include "app/RunContextController.h"
+#include "app/CaptureTargetController.h"
+#include "app/ProjectWorkspaceController.h"
+#include "app/ProfileTransitionController.h"
+#include "app/WorkspaceHistoryActions.h"
 #include "app/MouseCenterLock.h"
-#include "app/TargetWindowCenterPin.h"
+#include "app/TargetCenterPinController.h"
+#include "app/TargetWindowActionsController.h"
 #include "app/UserInputInterruptMonitor.h"
-#include "ui/calculator/CalculatorDialog.h"
-#include "ui/diagnostics/SpikeWatchDialog.h"
-#include "ui/memo/MemoDialog.h"
-#include "ui/ProgramSettingsDialog.h"
+#include "ui/AuxiliaryToolsController.h"
+#include "ui/WindowShellController.h"
+#include "ui/WindowChromeController.h"
+#include "app/ProgramSettingsController.h"
 #include "model/UserInputInterruptMode.h"
 #include "app/HotkeyManager.h"
 #include "app/FeatureLibraryManager.h"
@@ -44,7 +72,6 @@
 #include "storage/ProjectPackage.h"
 #include "ui/FeatureListPanel.h"
 #include "ui/BlockListWidget.h"
-#include "ui/FeatureLibraryDialog.h"
 #include "ui/WorkflowEditorPanel.h"
 #include "ui/TargetWindowBindingRole.h"
 #include "ui/TargetWindowDetailPanel.h"
@@ -53,14 +80,13 @@
 #include "app/UpdateChecker.h"
 #include "core/diagnostics/CrashReporter.h"
 #include "core/diagnostics/DiagnosticHub.h"
-#include "ui/AppHelpDialog.h"
 #include "ui/diagnostics/CrashReportDialog.h"
 #include "ui/CustomTitleBar.h"
 #include "ui/ProfileListWidget.h"
+#include "ui/ProfileListPresenter.h"
+#include "app/ProfilePresentationSnapshot.h"
 #include "ui/widgets/ReorderableListWidget.h"
-#include "ui/FeatureDragMime.h"
 #include "ui/LogPanelWidget.h"
-#include "ui/UiResizeHandle.h"
 #include "ui/ProfileEditDialog.h"
 #include "ui/UiStateManager.h"
 #include "ui/UiThemeColors.h"
@@ -86,7 +112,6 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMimeData>
-#include <QFileIconProvider>
 #include <QGroupBox>
 #include <QHash>
 #include <QHBoxLayout>
@@ -101,6 +126,7 @@
 #include <QSettings>
 #include <QShowEvent>
 #include <QSignalBlocker>
+#include <QScopedValueRollback>
 #include <QSizePolicy>
 #include <QSplitter>
 #include <QStatusBar>
@@ -108,11 +134,8 @@
 #include <QMenu>
 #include <QPointer>
 #include <QShortcut>
-#include <QStandardPaths>
 #include <QTimer>
 #include <QToolButton>
-#include <QtConcurrent/QtConcurrent>
-#include <QUuid>
 #include <QThread>
 #include <QVector>
 #include <QVBoxLayout>
@@ -154,14 +177,8 @@ void assertMainWindowOnGuiThread(const char* where) {
 
 #ifdef _WIN32
 #include <windows.h>
-#include <windowsx.h>
-#include <dwmapi.h>
 
 namespace {
-
-bool isShellTransientForegroundWindow(HWND hwnd) {
-    return ForegroundWindowMonitor::isShellTransientWindow(hwnd);
-}
 
 bool isAltTabModifierHeld() {
     return ForegroundWindowMonitor::isAltTabModifierHeld();
@@ -171,249 +188,13 @@ bool isPipbongProcessForeground(HWND hwnd) {
     return ForegroundWindowMonitor::isPipbongProcessWindow(hwnd);
 }
 
-bool applyNativeAlwaysOnTop(QWidget* window, bool enabled) {
-    if (!window || !window->internalWinId()) {
-        return false;
-    }
-
-    const HWND hwnd = reinterpret_cast<HWND>(window->winId());
-    if (!hwnd || !IsWindow(hwnd)) {
-        return false;
-    }
-
-    return SetWindowPos(hwnd,
-                        enabled ? HWND_TOPMOST : HWND_NOTOPMOST,
-                        0,
-                        0,
-                        0,
-                        0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != FALSE;
-}
-
-#ifdef _WIN32
 using ForegroundRunGate::findVisibleTopLevelWindowHwnd;
 using ForegroundRunGate::foregroundHwndMatchesLinkedProcess;
 using ForegroundRunGate::foregroundMatchesScopedMainTarget;
 using ForegroundRunGate::foregroundMatchesScopedSubTarget;
-#endif
-
-constexpr int kMinMainWorkspacePanePx = 252;
-constexpr int kMinBottomPanelPx = 108;
-
-void clampMainVerticalSplitterSizesImpl(QSplitter* splitter) {
-    if (!splitter || splitter->count() < 2) {
-        return;
-    }
-
-    QWidget* topPane = splitter->widget(0);
-    QWidget* bottomPane = splitter->widget(1);
-    if (!topPane || !bottomPane) {
-        return;
-    }
-
-    const int handle = splitter->handleWidth();
-    const int total = splitter->height();
-    if (total <= handle) {
-        return;
-    }
-
-    const int available = total - handle;
-    const int minTop = qMax(kMinMainWorkspacePanePx, topPane->minimumHeight());
-    const int minBottom = qMax(kMinBottomPanelPx, bottomPane->minimumHeight());
-    if (available < minTop + minBottom) {
-        return;
-    }
-
-    QList<int> sizes = splitter->sizes();
-    int topSize = sizes.value(0, 0);
-    int bottomSize = sizes.value(1, 0);
-    if (topSize + bottomSize <= 0) {
-        return;
-    }
-
-    topSize = qBound(minTop, topSize, available - minBottom);
-    bottomSize = available - topSize;
-    if (bottomSize < minBottom) {
-        bottomSize = minBottom;
-        topSize = available - bottomSize;
-    }
-
-    if (sizes.value(0) == topSize && sizes.value(1) == bottomSize) {
-        return;
-    }
-
-    QSignalBlocker blocker(splitter);
-    splitter->setSizes({topSize, bottomSize});
-}
-
-#if defined(Q_OS_WIN)
-namespace {
-
-bool isWindowsNativeMessage(const QByteArray& eventType) {
-    return eventType == "windows_generic_MSG" || eventType == "windows_dispatch_MSG";
-}
-
-bool framelessResizeHitTest(const MSG* msg, const QWidget* window, qintptr* result) {
-    if (!msg || !window || window->isMaximized()) {
-        return false;
-    }
-
-    const int border = UiResizeHandle::kWindowResizeBorderPx;
-    const POINT pt = {GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam)};
-    RECT rect{};
-    GetWindowRect(msg->hwnd, &rect);
-
-    const bool canResizeWidth = window->minimumWidth() < window->maximumWidth();
-    const bool canResizeHeight = window->minimumHeight() < window->maximumHeight();
-    const bool atLeft = pt.x >= rect.left && pt.x < rect.left + border;
-    const bool atRight = pt.x < rect.right && pt.x >= rect.right - border;
-    const bool atTop = pt.y >= rect.top && pt.y < rect.top + border;
-    const bool atBottom = pt.y < rect.bottom && pt.y >= rect.bottom - border;
-
-    if (canResizeWidth && canResizeHeight && atTop && atLeft) {
-        *result = HTTOPLEFT;
-        return true;
-    }
-    if (canResizeWidth && canResizeHeight && atTop && atRight) {
-        *result = HTTOPRIGHT;
-        return true;
-    }
-    if (canResizeWidth && canResizeHeight && atBottom && atLeft) {
-        *result = HTBOTTOMLEFT;
-        return true;
-    }
-    if (canResizeWidth && canResizeHeight && atBottom && atRight) {
-        *result = HTBOTTOMRIGHT;
-        return true;
-    }
-    if (canResizeWidth && atLeft) {
-        *result = HTLEFT;
-        return true;
-    }
-    if (canResizeWidth && atRight) {
-        *result = HTRIGHT;
-        return true;
-    }
-    if (canResizeHeight && atTop) {
-        *result = HTTOP;
-        return true;
-    }
-    if (canResizeHeight && atBottom) {
-        *result = HTBOTTOM;
-        return true;
-    }
-    return false;
-}
-
-void ensureFramelessResizeFrame(HWND hwnd) {
-    if (!hwnd || !IsWindow(hwnd)) {
-        return;
-    }
-    LONG style = GetWindowLongW(hwnd, GWL_STYLE);
-    if ((style & WS_THICKFRAME) != 0) {
-        return;
-    }
-    SetWindowLongW(hwnd, GWL_STYLE, style | WS_THICKFRAME);
-    SetWindowPos(hwnd,
-                 nullptr,
-                 0,
-                 0,
-                 0,
-                 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-}
-
 } // namespace
 #endif
-
-} // namespace
-
-#endif
-
-QIcon iconForProcessPath(const std::wstring& processPath) {
-    if (processPath.empty()) {
-        return {};
-    }
-    const QString path = QString::fromStdWString(processPath);
-    if (!QFileInfo::exists(path)) {
-        return {};
-    }
-    static QFileIconProvider iconProvider;
-    const QIcon icon = iconProvider.icon(QFileInfo(path));
-    return icon.isNull() ? QIcon{} : icon;
-}
-
-void captureRunStartCursorPosition(FeatureRunSession& session) {
-    session.hasRunStartCursorPosition = false;
-    if (!session.restoreMousePositionOnEnd) {
-        return;
-    }
-    int screenX = 0;
-    int screenY = 0;
-    if (!InputSimulator::getCursorScreenPosition(screenX, screenY)) {
-        return;
-    }
-    session.runStartCursorScreenX = screenX;
-    session.runStartCursorScreenY = screenY;
-    session.hasRunStartCursorPosition = true;
-}
-
-
-std::optional<MouseButton> mouseButtonFromVirtualKey(int virtualKey) {
-    switch (virtualKey) {
-    case VK_LBUTTON:
-        return MouseButton::Left;
-    case VK_RBUTTON:
-        return MouseButton::Right;
-    case VK_MBUTTON:
-        return MouseButton::Middle;
-    case VK_XBUTTON1:
-        return MouseButton::Back;
-    case VK_XBUTTON2:
-        return MouseButton::Forward;
-    default:
-        return std::nullopt;
-    }
-}
-
-bool shouldDeliverHoldHotkeyRelease(const FeatureRunSession& session, const Feature* feature) {
-    if (!feature || feature->hotkey().isEmpty()) {
-        return false;
-    }
-    const int vk = feature->hotkey().virtualKey;
-    if (!session.sessionContext) {
-        return false;
-    }
-    if (HotkeyBinding::isMouseVirtualKey(vk)) {
-        const std::optional<MouseButton> button = mouseButtonFromVirtualKey(vk);
-        return button && session.sessionContext->pipbongEverInjectedMouseButton(*button);
-    }
-    return session.sessionContext->pipbongEverInjectedVirtualKey(vk);
-}
-
 namespace {
-
-void configureTargetWindowActionButton(QToolButton* button) {
-    if (!button) {
-        return;
-    }
-    button->setProperty("class", QStringLiteral("targetWindowActionButton"));
-    button->setCursor(Qt::PointingHandCursor);
-    button->setFocusPolicy(Qt::NoFocus);
-    button->setAutoRaise(false);
-    button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-    button->setFixedHeight(22);
-}
-
-void configureBottomAuxiliaryToggleButton(QPushButton* button) {
-    if (!button) {
-        return;
-    }
-    button->setCheckable(true);
-    button->setProperty("class", QStringLiteral("bottomAuxiliaryToggleButton"));
-    button->setCursor(Qt::PointingHandCursor);
-    button->setFocusPolicy(Qt::NoFocus);
-}
 
 int featureIndexById(const Project& project, const std::string& featureId) {
     const auto& features = project.features();
@@ -425,77 +206,29 @@ int featureIndexById(const Project& project, const std::string& featureId) {
     return -1;
 }
 
-QString profileDisplayName(ProfileManager* profileManager, const QString& profileId) {
-    if (!profileManager) {
-        return profileId;
-    }
-    for (const ProfileManager::Profile& profile : profileManager->profiles()) {
-        if (profile.id == profileId) {
-            return profile.name;
-        }
-    }
-    return profileId;
-}
-
 bool isTriggerMonitoring(const FeatureRunSession& session) {
     return session.runningMode == FeatureRunMode::Trigger
         && session.triggerPhase == TriggerSessionPhase::Monitoring;
 }
 
-BlockListWidget::ExecutionHighlight mapTriggerBlockHighlight(const FeatureRunSession& session,
-                                                             int blockIndex,
-                                                             BlockListWidget::ExecutionHighlight highlight) {
-    if (session.runningMode != FeatureRunMode::Trigger || blockIndex != session.triggerBlockIndex) {
-        return highlight;
-    }
-    if (session.triggerPhase == TriggerSessionPhase::Monitoring) {
-        if (highlight == BlockListWidget::ExecutionHighlight::Running
-            || highlight == BlockListWidget::ExecutionHighlight::ImageFindMiss) {
-            return BlockListWidget::ExecutionHighlight::TriggerWatch;
-        }
-    } else if (session.triggerPhase == TriggerSessionPhase::Cooldown) {
-        if (highlight == BlockListWidget::ExecutionHighlight::Running
-            || highlight == BlockListWidget::ExecutionHighlight::ImageFindMiss) {
-            return BlockListWidget::ExecutionHighlight::TriggerCooldown;
-        }
-    }
-    return highlight;
-}
-
-QString libraryEntryDisplayName(FeatureLibraryManager* libraryManager, const QString& entryId) {
-    if (!libraryManager) {
-        return entryId;
-    }
-    for (const FeatureLibraryManager::Entry& entry : libraryManager->listEntries()) {
-        if (entry.id == entryId) {
-            return entry.name;
-        }
-    }
-    return entryId;
-}
-
-QString triggerPhaseLabel(TriggerSessionPhase phase) {
-    switch (phase) {
-    case TriggerSessionPhase::Monitoring:
-        return QStringLiteral("Monitoring");
-    case TriggerSessionPhase::RunningAction:
-        return QStringLiteral("RunningAction");
-    case TriggerSessionPhase::Cooldown:
-        return QStringLiteral("Cooldown");
-    case TriggerSessionPhase::None:
-    default:
-        return QStringLiteral("None");
-    }
-}
 
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
-    , m_project(std::make_unique<Project>())
     , m_profileManager(std::make_unique<ProfileManager>(Application::dataDirectory()))
+    , m_triggerMonitor(std::make_unique<TriggerMonitorController>(*m_profileManager,this))
+    , m_projectWorkspace(std::make_unique<ProjectWorkspaceController>(*m_profileManager,Application::autoSaveFilePath(),this))
+    , m_profileTransition(std::make_unique<ProfileTransitionController>(*m_profileManager,*m_projectWorkspace,this))
+    , m_project(m_projectWorkspace->state().project)
+    , m_projectFilePath(m_projectWorkspace->state().path)
+    , m_modified(m_projectWorkspace->state().modified)
+    , m_switchingProfile(m_profileTransition->state().switching)
+    , m_profileSwitchPipelineActive(m_profileTransition->state().pipeline)
+    , m_deferTargetDetailsProfileRefresh(m_profileTransition->state().deferTargetDetails)
     , m_hotkeyManager(new HotkeyManager(this))
-    , m_holdKeyTapMux(new HoldKeyTapMultiplexer(this)) {
+    , m_holdKeyTapMux(new HoldKeyTapMultiplexer(this))
+    , m_suppressTriggerArmedPersist(m_triggerMonitor->suppressed()) {
 #ifdef _WIN32
     m_foregroundMonitor = std::make_unique<ForegroundWindowMonitor>(this);
     connect(m_foregroundMonitor.get(),
@@ -509,11 +242,17 @@ MainWindow::MainWindow(QWidget* parent)
     m_profileSwitchCoordinator.setProfileManager(m_profileManager.get());
     m_profileSwitchCoordinator.setForegroundMonitor(m_foregroundMonitor.get());
     ProfileSwitchCoordinator::HostCallbacks profileSwitchHost;
+    profileSwitchHost.isWorkspacePinned = [this] {
+        return (m_workspaceHistory && m_workspaceHistory->isBusy())
+            || (m_profileActions && m_profileActions->busy())
+            || (m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()))
+            || FeatureHotkeyGate::isFeatureHotkeysBlocked() || QApplication::activePopupWidget();
+    };
     profileSwitchHost.isSwitchingProfile = [this]() { return m_switchingProfile; };
     profileSwitchHost.isPipelineActive = [this]() { return m_profileSwitchPipelineActive; };
     profileSwitchHost.schedulePruneAbandonedEngines = [this]() { schedulePruneAbandonedEngines(); };
     profileSwitchHost.executeProfileSwitch = [this](const QString& profileId, bool automatic) {
-        executeProfileSwitch(profileId, automatic);
+        return executeProfileSwitch(profileId, automatic);
     };
     profileSwitchHost.applyForegroundCaptureHints = [this](HWND hwnd, const QString& title) {
         m_targetWindowController.applyForegroundCaptureHints(hwnd, title);
@@ -543,7 +282,36 @@ MainWindow::MainWindow(QWidget* parent)
     targetHost.syncEffectiveTargetWindowTitleToCapture = [this]() {
         syncEffectiveTargetWindowTitleToCapture();
     };
+    targetHost.mayApplyCapture=[this]{return m_captureTargets && m_captureTargets->mayUpdateGlobal();};
+    targetHost.mayPersist=[this]{return !FeatureHotkeyGate::isFeatureHotkeysBlocked() && !m_profileSwitchPipelineActive
+        && (!m_workspaceHistory || !m_workspaceHistory->isBusy())
+        && !(m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()));};
     m_targetWindowController.setHostCallbacks(targetHost);
+    setupCaptureTargets();
+    setupForegroundSessions();
+
+    TargetWindowDetailsController::Host detailHost;
+    detailHost.current=[life=QPointer<MainWindow>(this)](const TargetWindowDetailsController::Request& source){
+        return life && life->m_targetPanel && life->m_targetPanel->current(source);
+    };
+    detailHost.synchronizeIdleCapture = [this] { syncTargetWindowTitleToCapture(); };
+#ifdef _WIN32
+    detailHost.applyIdleTarget = [](HWND hwnd, bool sub) {
+        if (!hwnd || !IsWindow(hwnd)) return;
+        ScreenCapture::setTargetWindow(hwnd);
+        if (sub) ScreenCapture::setForegroundHintWindow(hwnd);
+    };
+#endif
+    detailHost.updateProcessPath = [this](const QString& id, const QString& title,
+                                        const QString& path, bool sub) {
+        if (!m_profileManager || id != m_profileManager->activeProfileId()) return false;
+        return sub ? m_profileManager->updateProfileSubTargetBinding(id, title, path)
+                   : m_profileManager->updateProfileTargetBinding(id, title, path);
+    };
+    detailHost.refreshProfiles = [this] { refreshProfileList(); };
+    detailHost.workflowScaleChanged = [this] { if (m_workflowEditor) refreshWorkflowEditor(); };
+    m_targetDetails.setHost(std::move(detailHost));
+
 
     m_runSessionController.setProject(m_project.get());
     m_runSessionController.setRunSessions(&runSessions());
@@ -581,65 +349,67 @@ MainWindow::MainWindow(QWidget* parent)
     };
     m_runSessionController.setHostCallbacks(runHost);
 #endif
-    m_autoSaveTimer = new QTimer(this);
-    m_autoSaveTimer->setSingleShot(true);
-    connect(m_autoSaveTimer, &QTimer::timeout, this, [this]() { autoSaveProject(); });
+    m_autoSaveTimer = m_projectWorkspace->autoSaveTimer();
 
-    m_profilePackageSealTimer = new QTimer(this);
-    m_profilePackageSealTimer->setSingleShot(true);
-    m_profilePackageSealTimer->setInterval(5000);
-    connect(m_profilePackageSealTimer, &QTimer::timeout, this, [this]() { sealActiveProfilePackage(false); });
-
-    m_statusClearTimer = new QTimer(this);
-    m_statusClearTimer->setSingleShot(true);
-    connect(m_statusClearTimer, &QTimer::timeout, this, &MainWindow::clearStatusMessage);
+    m_packageController = std::make_unique<ProfilePackageController>(this);
+    setupShutdownCoordinator();
 
     setupUi();
+    AuxiliaryToolsController::Host auxiliaryHost;
+    auxiliaryHost.featureRunning=[this]{return !runSessions().empty();};
+    auxiliaryHost.warning=[this](const QString& message){showTransientStatus(message,5000);};
+    m_auxiliaryTools=std::make_unique<AuxiliaryToolsController>(*m_profileManager,*this,std::move(auxiliaryHost));
+    m_auxiliaryTools->setButtons(m_calculatorButton,m_spikeWatchButton,m_memoButton);
+    WindowShellController::Host shellHost;
+    shellHost.hideAuxiliary=[this]{m_auxiliaryTools->hideForTray();};
+    shellHost.saveUiState=[this]{if(m_uiState)m_uiState->saveNow();};
+    shellHost.checkpoint=[this]{return prepareForShutdown();};
+    shellHost.lastError=[this]{return m_shutdownCoordinator->lastError();};
+    shellHost.warning=[this](const QString& message){QMessageBox::warning(this,tr("종료 중단"),message);};
+    m_windowShell=std::make_unique<WindowShellController>(*this,m_titleBar,m_alwaysOnTopCheck,std::move(shellHost));
+    m_windowChrome=std::make_unique<WindowChromeController>(*this,m_titleBar);
+    setupProgramSettings();
+    m_profileListPresenter = std::make_unique<ProfileListPresenter>(*m_profileList, m_deleteProfileButton);
+    setupWorkspaceEditor();
     setupUiState();
     setupMenus();
+    setupTriggerMonitor();
+    setupFeatureHotkeys();
     connectSignals();
+    setupProjectWorkspace();
+    setupTargetActions();
+    setupTargetCenterPin();
     setupUpdateChecker();
-    m_mouseLockSyncTimer = new QTimer(this);
-    m_mouseLockSyncTimer->setInterval(100);
-    connect(m_mouseLockSyncTimer, &QTimer::timeout, this, &MainWindow::syncMouseLockPositions);
+    setupSessionMouseLocks();
+    m_inputCleanup=std::make_unique<SessionInputCleanupController>();
+    setupTriggerPreemption();
+    setupWorkflowExecutionPresenter();
 
-    m_workerFastRepeatUiFlushTimer = new QTimer(this);
-    m_workerFastRepeatUiFlushTimer->setSingleShot(true);
-    m_workerFastRepeatUiFlushTimer->setInterval(80);
-    connect(m_workerFastRepeatUiFlushTimer,
-            &QTimer::timeout,
-            this,
-            &MainWindow::flushAllPendingWorkerFastRepeatUi);
+    setupRunUiPublisher();
+    setupRunResources();
+    setupHoldTapSessions();
+    setupFirstTemplateRoi();
 
     m_runUiDebounceTimer = new QTimer(this);
     m_runUiDebounceTimer->setSingleShot(true);
     m_runUiDebounceTimer->setInterval(50);
     connect(m_runUiDebounceTimer, &QTimer::timeout, this, &MainWindow::applyRunUiState);
 
-    m_targetWindowCenterPinTimer = new QTimer(this);
-    m_targetWindowCenterPinTimer->setInterval(200);
-    connect(m_targetWindowCenterPinTimer, &QTimer::timeout, this, &MainWindow::syncTargetWindowCenterPin);
+    m_targetPanel=std::make_unique<TargetPanelController>(*m_targetWindowDetailPanel,
+        TargetPanelController::Controls{m_pickWindowButton,m_pickWindowListButton,m_pickSubWindowButton,m_pickSubWindowListButton,
+            m_showTargetWindowButton,m_showSubTargetWindowButton,m_pinTargetWindowCenterButton,m_pinSubTargetWindowCenterButton},
+        m_targetDetails,[this]{return targetDetailsRequest();},this);
 
-    m_targetWindowDetailRefreshTimer = new QTimer(this);
-    m_targetWindowDetailRefreshTimer->setInterval(250);
-    connect(m_targetWindowDetailRefreshTimer,
-            &QTimer::timeout,
-            this,
-            &MainWindow::updateTargetWindowDetails);
-    m_targetWindowDetailRefreshTimer->start();
-
-    if (ProgramSettings::pinTargetWindowToScreenCenter()
-        || ProgramSettings::pinSubTargetWindowToScreenCenter()) {
-        applyTargetWindowCenterPin();
-    }
-
-    refreshUpdateButtonState();
     ProgramSettings::syncWindowsStartupRegistration();
     ProgramSettings::syncWindowsRunAsAdminRegistration();
     setupTrayIcon();
 
     m_profileManager->initialize();
+    for(const auto& warning:m_profileManager->startupWarnings())appendLog(warning,LogLineKind::Warning);
     m_featureLibraryManager = std::make_unique<FeatureLibraryManager>(Application::dataDirectory());
+    setupWorkspaceHistory();
+    setupProfileActions();
+    setupFeatureTransfers();
     ProgramSettings::applyProfileSettings(
         m_profileManager->loadSettings(m_profileManager->activeProfileId()));
     refreshProfileList();
@@ -660,21 +430,34 @@ MainWindow::MainWindow(QWidget* parent)
     updateTargetWindowDetails();
     scheduleRunWarmup();
 
-    CrashReporter::setContextProvider([this]() { return buildCrashReportContextSnapshot(); });
+    m_diagnostics=std::make_unique<WindowDiagnosticsController>(*this);
     if (QApplication* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
         app->installEventFilter(this);
     }
 }
 
 MainWindow::~MainWindow() {
+    m_libraryActions.reset();
+    if(m_featureTransfers)m_featureTransfers->retire();
+    if(m_targetPanel)m_targetPanel->stop();
+    m_diagnostics.reset();
 #ifdef _WIN32
     if (m_foregroundMonitor) {
         m_foregroundMonitor->stop();
     }
 #endif
     stopAllSessions();
-    clearGlobalUiUndoHistory();
-    clearGlobalUiRedoHistory();
+    m_holdTapSessions.reset();
+    m_workspaceHistory.reset();
+    m_runResources.reset();
+    m_firstTemplateRoi.reset();
+    m_programSettings.reset();
+    m_windowChrome.reset();
+    m_windowShell.reset();
+    m_auxiliaryTools.reset();
+    m_uiState=nullptr;m_workspaceView.reset();
+    if(m_triggerPreemption)m_triggerPreemption->shutdown();
+    m_mouseLocks.reset();
 }
 
 void MainWindow::ensureInitialWindowPlacement() {
@@ -687,223 +470,10 @@ void MainWindow::ensureInitialWindowPlacement() {
 }
 
 void MainWindow::showPendingCrashReportIfAny() {
+    if (!CrashReporter::interactiveReportsAllowed()) return;
     CrashReportDialog::showPendingIfAny(this);
 }
 
-QString MainWindow::buildCrashReportContextSnapshot() const {
-    QStringList lines;
-
-    lines.append(QStringLiteral("  capturedAt: %1")
-                     .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs)));
-
-    if (!m_persistentStatusMessage.isEmpty()) {
-        lines.append(QStringLiteral("  persistentStatus: %1").arg(m_persistentStatusMessage));
-    }
-    if (!m_transientStatusMessage.isEmpty()) {
-        lines.append(QStringLiteral("  transientStatus: %1").arg(m_transientStatusMessage));
-    }
-
-    lines.append(QStringLiteral("  switchingProfile: %1")
-                     .arg(m_switchingProfile ? QStringLiteral("yes") : QStringLiteral("no")));
-    if (!m_profileSwitchCoordinator.deferredProfileSwitchId().isEmpty()) {
-        lines.append(QStringLiteral("  deferredProfileSwitch: %1")
-                         .arg(m_profileSwitchCoordinator.deferredProfileSwitchId()));
-    }
-
-    lines.append(QStringLiteral("  modelessTools: calculator=%1 memo=%2 spikeWatch=%3")
-                     .arg(m_calculatorDialog && m_calculatorDialog->isVisible() ? QStringLiteral("open")
-                                                                                : QStringLiteral("closed"))
-                     .arg(m_memoDialog && m_memoDialog->isVisible() ? QStringLiteral("open")
-                                                                    : QStringLiteral("closed"))
-                     .arg(m_spikeWatchDialog && m_spikeWatchDialog->isVisible() ? QStringLiteral("open")
-                                                                                : QStringLiteral("closed")));
-    lines.append(QStringLiteral("  mouseCenterLock: %1")
-                     .arg(MouseCenterLock::isActive() ? QStringLiteral("active")
-                                                      : QStringLiteral("inactive")));
-
-    if (m_profileManager) {
-        const QString profileId = m_profileManager->activeProfileId();
-        QString profileName = profileId;
-        if (const ProfileManager::Profile* profile = m_profileManager->activeProfile()) {
-            profileName = profile->name;
-        }
-        lines.append(QStringLiteral("  profile: %1 (%2)").arg(profileName, profileId));
-        lines.append(QStringLiteral("  defaultProfile: %1")
-                         .arg(m_profileManager->isDefaultProfile(profileId) ? QStringLiteral("yes")
-                                                                           : QStringLiteral("no")));
-    }
-
-    if (m_project) {
-        const QString mainTarget = QString::fromStdString(m_project->targetWindowTitle());
-        lines.append(QStringLiteral("  targetWindow: %1").arg(mainTarget.isEmpty() ? QStringLiteral("(empty)")
-                                                                                  : mainTarget));
-        if (m_profileManager) {
-            const QString subTarget = m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId());
-            if (!subTarget.isEmpty()) {
-                lines.append(QStringLiteral("  subTargetWindow: %1").arg(subTarget));
-            }
-        }
-
-        ScreenCapture::TargetWindowInfo targetInfo{};
-#ifdef _WIN32
-        HWND targetHwnd = ScreenCapture::targetWindow();
-        if (!targetHwnd || !IsWindow(targetHwnd)) {
-            targetHwnd = ScreenCapture::findTargetWindow();
-        }
-        const bool targetResolved =
-            targetHwnd && ScreenCapture::queryWindowInfo(targetHwnd, targetInfo) && targetInfo.found;
-#else
-        const bool targetResolved =
-            ScreenCapture::queryTargetWindowInfo(targetInfo) && targetInfo.found;
-#endif
-        if (targetResolved) {
-            lines.append(QStringLiteral("  resolvedTarget: hwnd=0x%1 visible=%2 minimized=%3 client=%4x%5")
-                             .arg(targetInfo.hwndValue, 0, 16)
-                             .arg(targetInfo.visible ? QStringLiteral("yes") : QStringLiteral("no"))
-                             .arg(targetInfo.minimized ? QStringLiteral("yes") : QStringLiteral("no"))
-                             .arg(targetInfo.clientWidth)
-                             .arg(targetInfo.clientHeight));
-        } else {
-            lines.append(QStringLiteral("  resolvedTarget: (not found)"));
-        }
-    }
-
-    if (m_libraryPreviewFeature && !m_libraryPreviewEntryId.isEmpty()) {
-        lines.append(QStringLiteral("  libraryPreview: %1 (%2)")
-                         .arg(libraryEntryDisplayName(m_featureLibraryManager.get(), m_libraryPreviewEntryId),
-                              m_libraryPreviewEntryId));
-    } else if (m_featureList) {
-        if (Feature* feature = m_featureList->selectedFeature()) {
-            lines.append(QStringLiteral("  selectedFeature: %1 (%2)")
-                             .arg(QString::fromStdString(feature->name()),
-                                  QString::fromStdString(feature->id())));
-            lines.append(QStringLiteral("  selectedFeatureScope: %1")
-                             .arg(QString::fromStdString(
-                                 featureCaptureTargetScopeToString(feature->captureTargetScope()))));
-            lines.append(QStringLiteral("  selectedFeatureRequireScopedForeground: %1")
-                             .arg(feature->requireScopedTargetForeground() ? QStringLiteral("yes")
-                                                                         : QStringLiteral("no")));
-        } else {
-            lines.append(QStringLiteral("  selectedFeature: (none)"));
-        }
-    }
-
-    lines.append(QStringLiteral("  runningSessions: %1").arg(static_cast<int>(runSessions().size())));
-    lines.append(QStringLiteral("  abandonedEngines: %1").arg(static_cast<int>(m_abandonedEngines.size())));
-    for (const auto& abandoned : m_abandonedEngines) {
-        if (!abandoned) {
-            continue;
-        }
-        lines.append(QStringLiteral("    - abandoned engine running=%1 liveWorker=%2")
-                         .arg(abandoned->isRunning() ? QStringLiteral("yes") : QStringLiteral("no"))
-                         .arg(abandoned->hasLiveWorker() ? QStringLiteral("yes") : QStringLiteral("no")));
-    }
-
-    const qint64 nowEpochMs = QDateTime::currentMSecsSinceEpoch();
-    for (const auto& entry : runSessions()) {
-        const FeatureRunSession& session = entry.second;
-        QString featureName = QString::fromStdString(entry.first);
-        if (m_project) {
-            if (const Feature* feature = m_project->featureById(entry.first)) {
-                featureName = QString::fromStdString(feature->name());
-            }
-        }
-        const bool engineRunning = session.engine && session.engine->isRunning();
-        const bool liveWorker = session.engine && session.engine->hasLiveWorker();
-        QStringList sessionBits;
-        sessionBits.append(QStringLiteral("mode=%1")
-                               .arg(QString::fromStdString(featureRunModeToString(session.runningMode))));
-        sessionBits.append(QStringLiteral("trigger=%1").arg(triggerPhaseLabel(session.triggerPhase)));
-        sessionBits.append(QStringLiteral("block=#%1")
-                               .arg(session.runningBlockIndex >= 0 ? session.runningBlockIndex + 1 : 0));
-        sessionBits.append(QStringLiteral("engine=%1")
-                               .arg(engineRunning ? QStringLiteral("running")
-                                                  : (liveWorker ? QStringLiteral("worker") : QStringLiteral("idle"))));
-        sessionBits.append(QStringLiteral("hold=%1")
-                               .arg(session.holdRunActive ? QStringLiteral("yes") : QStringLiteral("no")));
-        sessionBits.append(QStringLiteral("userStop=%1")
-                               .arg(session.userStopRequested ? QStringLiteral("yes") : QStringLiteral("no")));
-        sessionBits.append(QStringLiteral("iteration=%1").arg(session.sessionIteration));
-        if (session.repeatSession) {
-            sessionBits.append(QStringLiteral("repeatRemaining=%1").arg(session.repeatRemaining));
-        }
-        if (!session.lockedCaptureTargetTitle.empty()) {
-            sessionBits.append(QStringLiteral("capture=%1")
-                                   .arg(QString::fromStdWString(session.lockedCaptureTargetTitle)));
-        }
-        if (session.waitingForScopedTargetForeground) {
-            sessionBits.append(QStringLiteral("waitingScopedForeground=yes"));
-        }
-        if (session.deferredSessionWorkflowRefresh) {
-            sessionBits.append(QStringLiteral("deferredWorkflowRefresh=yes"));
-        }
-        if (session.triggerPhase == TriggerSessionPhase::Cooldown && session.triggerCooldownEndsAtEpochMs > 0) {
-            const qint64 remainingMs = session.triggerCooldownEndsAtEpochMs - nowEpochMs;
-            sessionBits.append(QStringLiteral("cooldownRemainingMs=%1").arg(remainingMs));
-        }
-        if (session.consecutiveDetectionFailLoops > 0) {
-            sessionBits.append(QStringLiteral("consecutiveDetectionFailLoops=%1")
-                                   .arg(session.consecutiveDetectionFailLoops));
-        }
-        if (!session.triggerPreemptedSessions.empty()) {
-            sessionBits.append(QStringLiteral("triggerPreempted=%1")
-                                   .arg(static_cast<int>(session.triggerPreemptedSessions.size())));
-        }
-        if (session.sessionContext) {
-            sessionBits.append(QStringLiteral("imageFindPoll=%1")
-                                   .arg(session.sessionContext->imageFindPollAttempt()));
-            sessionBits.append(QStringLiteral("stopRequested=%1")
-                                   .arg(session.sessionContext->shouldStop() ? QStringLiteral("yes")
-                                                                             : QStringLiteral("no")));
-            sessionBits.append(QStringLiteral("paused=%1")
-                                   .arg(session.sessionContext->isPaused() ? QStringLiteral("yes")
-                                                                           : QStringLiteral("no")));
-            sessionBits.append(
-                QStringLiteral("lastMatchConf=%1/%2")
-                    .arg(session.sessionContext->lastMatchAttemptConfidence(), 0, 'f', 3)
-                    .arg(session.sessionContext->lastMatchAttemptThreshold(), 0, 'f', 3));
-        }
-        lines.append(QStringLiteral("    - %1 %2").arg(featureName, sessionBits.join(QLatin1Char(' '))));
-
-        if (session.sessionWorkflow && session.runningBlockIndex >= 0) {
-            const auto& blocks = session.sessionWorkflow->blocks();
-            if (session.runningBlockIndex < static_cast<int>(blocks.size()) && blocks[session.runningBlockIndex]) {
-                lines.append(QStringLiteral("      runningBlock: %1")
-                                 .arg(QString::fromStdString(blocks[session.runningBlockIndex]->summary())));
-            }
-        }
-    }
-
-    int visibleDialogs = 0;
-    if (QApplication* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
-        const QWidgetList widgets = app->topLevelWidgets();
-        for (QWidget* widget : widgets) {
-            if (!widget || !widget->isVisible()) {
-                continue;
-            }
-            if (qobject_cast<QDialog*>(widget)) {
-                ++visibleDialogs;
-                const QString title = widget->windowTitle().trimmed();
-                lines.append(QStringLiteral("  dialog: %1 title=\"%2\"")
-                                 .arg(QString::fromUtf8(widget->metaObject()->className()),
-                                      title.isEmpty() ? QStringLiteral("(untitled)") : title));
-            }
-        }
-        const QWidget* active = app->activeWindow();
-        const bool pipbongForeground =
-            active && (active == this || active->window() == this);
-        lines.append(QStringLiteral("  pipbongForeground: %1")
-                         .arg(pipbongForeground ? QStringLiteral("yes") : QStringLiteral("no")));
-        if (active) {
-            lines.append(QStringLiteral("  activeWindow: %1 title=\"%2\"")
-                             .arg(QString::fromUtf8(active->metaObject()->className()),
-                                  active->windowTitle().trimmed()));
-        }
-    }
-    lines.append(QStringLiteral("  visibleDialogs: %1").arg(visibleDialogs));
-
-    return lines.join(QLatin1Char('\n'));
-}
 
 bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
     if (event->type() == QEvent::MouseButtonRelease) {
@@ -916,478 +486,65 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event) {
             CrashReporter::noteUserAction(QStringLiteral("click %1").arg(label));
         }
     }
-    if (event->type() == QEvent::Show || event->type() == QEvent::Hide) {
-        auto* widget = qobject_cast<QWidget*>(watched);
-        if (widget
-            && (widget == m_memoDialog || widget == m_spikeWatchDialog || widget == m_calculatorDialog)) {
-            updateAuxiliaryToolButtonStates();
-        }
-    }
     return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::setupUi() {
-    setWindowTitle(QStringLiteral("PIPBONG %1").arg(QCoreApplication::applicationVersion()));
-    setWindowFlag(Qt::FramelessWindowHint, true);
-    resize(1280, 820);
-
-    auto* central = new QWidget(this);
-    auto* outerLayout = new QVBoxLayout(central);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
-    outerLayout->setSpacing(0);
-
-    m_titleBar = new CustomTitleBar(this);
-    outerLayout->addWidget(m_titleBar);
-
-    m_alwaysOnTopCheck = new QCheckBox(tr("항상 위"), m_titleBar);
-    m_titleBar->setAlwaysOnTopCheckBox(m_alwaysOnTopCheck);
-
-    auto* contentHost = new QWidget(central);
-    auto* contentLayout = new QVBoxLayout(contentHost);
-    contentLayout->setContentsMargins(0, 0, 0, 0);
-    contentLayout->setSpacing(0);
-
-    m_mainHorizontalSplitter = new QSplitter(Qt::Horizontal, contentHost);
-    UiResizeHandle::configureSplitter(m_mainHorizontalSplitter);
-    auto* profileGroup = new QGroupBox(tr("프로필"), m_mainHorizontalSplitter);
-    profileGroup->setObjectName(QStringLiteral("profileListGroup"));
-    profileGroup->setStyleSheet(QStringLiteral(
-        "QGroupBox#profileListGroup {"
-        "  border: none;"
-        "  margin-top: 14px;"
-        "  padding-top: 6px;"
-        "}"
-        "QGroupBox#profileListGroup::title {"
-        "  subcontrol-origin: margin;"
-        "  subcontrol-position: top left;"
-        "  left: 4px;"
-        "  padding: 0 4px;"
-        "}"));
-    auto* profileLayout = new QVBoxLayout(profileGroup);
-    profileLayout->setContentsMargins(4, 2, 4, 4);
-    profileLayout->setSpacing(4);
-    m_profilePanel = profileGroup;
-    m_profilePanel->setMinimumWidth(92);
-    m_profileList = new ProfileListWidget(profileGroup);
-    m_profileList->setObjectName(QStringLiteral("profileListView"));
-    m_profileList->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_profileList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_profileList->setIconSize(QSize(20, 20));
-    m_profileList->setMinimumWidth(0);
-    m_profileList->setFrameShape(QFrame::NoFrame);
-    m_profileList->setStyleSheet(QStringLiteral(
-        "QListWidget#profileListView {"
-        "  border: none;"
-        "  background: transparent;"
-        "  outline: none;"
-        "}"
-        "QListWidget#profileListView::item {"
-        "  background: transparent;"
-        "  border: none;"
-        "  padding: 0;"
-        "}"
-        "QListWidget#profileListView::item:selected {"
-        "  background: transparent;"
-        "}"));
-    m_profileList->setToolTip(tr("활성 프로필의 기능과 단축키만 동작합니다. 포커스된 창에 맞춰 프로필이 자동으로 전환됩니다."));
-
-    auto* profileButtonColumn = new QVBoxLayout();
-    profileButtonColumn->setSpacing(4);
-    m_addProfileButton = new QPushButton(tr("추가"), profileGroup);
-    m_renameProfileButton = new QPushButton(tr("편집"), profileGroup);
-    m_deleteProfileButton = new QPushButton(tr("삭제"), profileGroup);
-    m_addProfileButton->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-    m_renameProfileButton->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-    m_deleteProfileButton->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-    profileButtonColumn->addWidget(m_addProfileButton);
-    profileButtonColumn->addWidget(m_renameProfileButton);
-    profileButtonColumn->addWidget(m_deleteProfileButton);
-    profileLayout->addWidget(m_profileList, 1);
-    profileLayout->addLayout(profileButtonColumn);
-
-    m_featureList = new FeatureListPanel(m_mainHorizontalSplitter);
-    m_workflowEditor = new WorkflowEditorPanel(m_mainHorizontalSplitter);
-    m_mainHorizontalSplitter->addWidget(m_profilePanel);
-    m_mainHorizontalSplitter->addWidget(m_featureList);
-    m_mainHorizontalSplitter->addWidget(m_workflowEditor);
-    m_mainHorizontalSplitter->setStretchFactor(0, 0);
-    m_mainHorizontalSplitter->setStretchFactor(1, 0);
-    m_mainHorizontalSplitter->setStretchFactor(2, 1);
-    m_mainHorizontalSplitter->setCollapsible(0, false);
-    m_mainHorizontalSplitter->setCollapsible(1, false);
-    m_mainHorizontalSplitter->setCollapsible(2, false);
-    m_mainHorizontalSplitter->setSizes({130, 210, 940});
-
-    auto* bottomPanel = new QWidget(contentHost);
-    bottomPanel->setMinimumHeight(kMinBottomPanelPx);
-    auto* bottomLayout = new QVBoxLayout(bottomPanel);
-    bottomLayout->setContentsMargins(4, 2, 4, 4);
-    bottomLayout->setSpacing(4);
-
-    auto* targetGroup = new QGroupBox(tr("타겟"), bottomPanel);
-    targetGroup->setMinimumHeight(108);
-    targetGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    auto* targetLayout = new QVBoxLayout(targetGroup);
-    targetLayout->setContentsMargins(4, 2, 4, 4);
-    targetLayout->setSpacing(2);
-
-    m_targetWindowDetailPanel = new TargetWindowDetailPanel(targetGroup);
-
-    auto* actionBar = new QWidget(targetGroup);
-    actionBar->setObjectName(QStringLiteral("targetWindowActionBar"));
-    auto* actionOuter = new QVBoxLayout(actionBar);
-    actionOuter->setContentsMargins(0, 0, 0, 0);
-    actionOuter->setSpacing(2);
-
-    auto* mainRow = new QWidget(actionBar);
-    auto* actionLayout = new QHBoxLayout(mainRow);
-    actionLayout->setContentsMargins(0, 0, 0, 0);
-    actionLayout->setSpacing(3);
-
-    auto* mainCaption = new QLabel(tr("메인 창"), mainRow);
-    mainCaption->setObjectName(QStringLiteral("targetWindowGroupCaption"));
-    mainCaption->setMinimumWidth(48);
-    mainCaption->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-
-    m_pickWindowButton = new QToolButton(mainRow);
-    m_pickWindowButton->setText(tr("지정"));
-    m_pickWindowButton->setToolTip(
-        tr("클릭한 뒤 메인 창을 눌러 지정합니다. 마우스를 올리면 초록색 테두리가 표시됩니다. 우클릭 또는 Esc로 취소."));
-    configureTargetWindowActionButton(m_pickWindowButton);
-
-    m_pickWindowListButton = new QToolButton(mainRow);
-    m_pickWindowListButton->setText(tr("메인 목록"));
-    m_pickWindowListButton->setToolTip(
-        tr("메인 창 목록에서 선택합니다. 항목을 고르면 해당 창에 테두리 애니메이션이 표시됩니다."));
-    configureTargetWindowActionButton(m_pickWindowListButton);
-
-    m_showTargetWindowButton = new QToolButton(mainRow);
-    m_showTargetWindowButton->setText(tr("표시"));
-    m_showTargetWindowButton->setToolTip(tr("지정된 메인 창 테두리를 잠시 깜빡여 표시합니다(초록색)."));
-    configureTargetWindowActionButton(m_showTargetWindowButton);
-
-    m_pinTargetWindowCenterButton = new QToolButton(mainRow);
-    m_pinTargetWindowCenterButton->setObjectName(QStringLiteral("targetPinCenterButton"));
-    m_pinTargetWindowCenterButton->setText(tr("중앙 고정"));
-    m_pinTargetWindowCenterButton->setToolTip(
-        tr("메인 창을 드래그해도 현재 모니터 중앙으로 자동 복귀합니다. 트리거 감시 중에도 동작합니다."));
-    m_pinTargetWindowCenterButton->setCheckable(true);
-    m_pinTargetWindowCenterButton->setChecked(ProgramSettings::pinTargetWindowToScreenCenter());
-    configureTargetWindowActionButton(m_pinTargetWindowCenterButton);
-#ifndef _WIN32
-    m_pinTargetWindowCenterButton->setEnabled(false);
-    m_pinTargetWindowCenterButton->setToolTip(tr("화면 중앙 고정은 Windows에서만 지원됩니다."));
-#endif
-
-    actionLayout->addWidget(mainCaption);
-    actionLayout->addWidget(m_pickWindowButton);
-    actionLayout->addWidget(m_pickWindowListButton);
-    actionLayout->addWidget(m_showTargetWindowButton);
-    actionLayout->addStretch();
-    actionLayout->addWidget(m_pinTargetWindowCenterButton);
-
-    auto* subRow = new QWidget(actionBar);
-    auto* subLayout = new QHBoxLayout(subRow);
-    subLayout->setContentsMargins(0, 0, 0, 0);
-    subLayout->setSpacing(3);
-
-    auto* subCaption = new QLabel(tr("서브 창"), subRow);
-    subCaption->setObjectName(QStringLiteral("targetWindowGroupCaption"));
-    subCaption->setMinimumWidth(48);
-    subCaption->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-
-    m_pickSubWindowButton = new QToolButton(subRow);
-    m_pickSubWindowButton->setText(tr("지정"));
-    m_pickSubWindowButton->setToolTip(
-        tr("클릭한 뒤 서브 창을 눌러 지정합니다. 마우스를 올리면 파란색 테두리가 표시됩니다. 우클릭 또는 Esc로 취소."));
-    configureTargetWindowActionButton(m_pickSubWindowButton);
-
-    m_pickSubWindowListButton = new QToolButton(subRow);
-    m_pickSubWindowListButton->setText(tr("서브 목록"));
-    m_pickSubWindowListButton->setToolTip(
-        tr("서브 창 목록에서 선택합니다. 항목을 고르면 파란색 테두리 애니메이션이 표시됩니다."));
-    configureTargetWindowActionButton(m_pickSubWindowListButton);
-
-    m_showSubTargetWindowButton = new QToolButton(subRow);
-    m_showSubTargetWindowButton->setText(tr("표시"));
-    m_showSubTargetWindowButton->setToolTip(tr("지정된 서브 창 테두리를 잠시 깜빡여 표시합니다(파란색)."));
-    configureTargetWindowActionButton(m_showSubTargetWindowButton);
-
-    m_pinSubTargetWindowCenterButton = new QToolButton(subRow);
-    m_pinSubTargetWindowCenterButton->setObjectName(QStringLiteral("targetPinSubCenterButton"));
-    m_pinSubTargetWindowCenterButton->setText(tr("중앙 고정"));
-    m_pinSubTargetWindowCenterButton->setToolTip(
-        tr("서브 창을 드래그해도 현재 모니터 중앙으로 자동 복귀합니다. 트리거 감시 중에도 동작합니다."));
-    m_pinSubTargetWindowCenterButton->setCheckable(true);
-    m_pinSubTargetWindowCenterButton->setChecked(ProgramSettings::pinSubTargetWindowToScreenCenter());
-    configureTargetWindowActionButton(m_pinSubTargetWindowCenterButton);
-#ifndef _WIN32
-    m_pickSubWindowButton->setEnabled(false);
-    m_pickSubWindowButton->setToolTip(tr("타겟 지정은 Windows에서만 지원됩니다."));
-    m_pickSubWindowListButton->setEnabled(false);
-    m_pickSubWindowListButton->setToolTip(tr("서브 창 목록은 Windows에서만 지원됩니다."));
-    m_showSubTargetWindowButton->setEnabled(false);
-    m_showSubTargetWindowButton->setToolTip(tr("창 표시는 Windows에서만 지원됩니다."));
-    m_pinSubTargetWindowCenterButton->setEnabled(false);
-    m_pinSubTargetWindowCenterButton->setToolTip(tr("화면 중앙 고정은 Windows에서만 지원됩니다."));
-#endif
-
-    subLayout->addWidget(subCaption);
-    subLayout->addWidget(m_pickSubWindowButton);
-    subLayout->addWidget(m_pickSubWindowListButton);
-    subLayout->addWidget(m_showSubTargetWindowButton);
-    subLayout->addStretch();
-    subLayout->addWidget(m_pinSubTargetWindowCenterButton);
-
-    actionOuter->addWidget(mainRow);
-    actionOuter->addWidget(subRow);
-
-    targetGroup->setStyleSheet(QStringLiteral(
-        "QGroupBox {"
-        "  border: none;"
-        "  margin-top: 14px;"
-        "  padding-top: 6px;"
-        "  font-size: 11px;"
-        "}"
-        "QGroupBox::title {"
-        "  subcontrol-origin: margin;"
-        "  left: 2px;"
-        "  padding: 0 2px;"
-        "}"
-        "QLabel#targetWindowGroupCaption {"
-        "  color: palette(mid);"
-        "  font-size: 10px;"
-        "  font-weight: 600;"
-        "  padding-right: 2px;"
-        "}"
-        "QToolButton.targetWindowActionButton {"
-        "  padding: 1px 6px;"
-        "  border: none;"
-        "  border-radius: 3px;"
-        "  background-color: transparent;"
-        "  color: palette(button-text);"
-        "  font-size: 11px;"
-        "}"
-        "QToolButton.targetWindowActionButton:hover:!checked {"
-        "  background-color: palette(light);"
-        "}"
-        "QToolButton.targetWindowActionButton:pressed:!checked {"
-        "  background-color: palette(midlight);"
-        "}"
-        "QToolButton.targetWindowActionButton:checked {"
-        "  background-color: palette(highlight);"
-        "  color: palette(highlighted-text);"
-        "}"
-        "QToolButton.targetWindowActionButton:disabled {"
-        "  color: palette(mid);"
-        "  background-color: transparent;"
-        "}"));
-
-    targetLayout->addWidget(actionBar);
-    targetLayout->addWidget(m_targetWindowDetailPanel, 1);
-
-    m_exitButton = new QPushButton(tr("종료"), bottomPanel);
-    m_updateButton = new QPushButton(bottomPanel);
-    m_updateButton->setToolTip(tr("GitHub 릴리즈에서 업데이트를 확인합니다."));
-    m_calculatorButton = new QPushButton(tr("계산기"), bottomPanel);
-    m_calculatorButton->setToolTip(tr("poe.ninja 시세 계산기"));
-    configureBottomAuxiliaryToggleButton(m_calculatorButton);
-    m_spikeWatchButton = new QPushButton(tr("CPU 감시"), bottomPanel);
-    m_spikeWatchButton->setToolTip(tr("CPU 사용률 스파이크 진단"));
-    configureBottomAuxiliaryToggleButton(m_spikeWatchButton);
-    m_memoButton = new QPushButton(tr("메모장"), bottomPanel);
-    m_memoButton->setToolTip(tr("프로필별 메모"));
-    configureBottomAuxiliaryToggleButton(m_memoButton);
-    m_settingsButton = new QPushButton(tr("설정"), bottomPanel);
-    m_settingsButton->setToolTip(tr("프로그램 설정"));
-    auto* exitRow = new QHBoxLayout;
-    exitRow->addWidget(m_updateButton);
-    exitRow->addStretch();
-    exitRow->addWidget(m_memoButton);
-    exitRow->addWidget(m_spikeWatchButton);
-    exitRow->addWidget(m_calculatorButton);
-    exitRow->addWidget(m_settingsButton);
-    exitRow->addWidget(m_exitButton);
-
-    m_logPanel = new LogPanelWidget(bottomPanel);
-    m_logPanel->setMinimumHeight(48);
-    m_logPanel->setMaxLines(ProgramSettings::logMaxLines());
-
-    m_bottomHorizontalSplitter = new QSplitter(Qt::Horizontal, bottomPanel);
-    UiResizeHandle::configureSplitter(m_bottomHorizontalSplitter);
-    m_bottomHorizontalSplitter->addWidget(m_logPanel);
-    m_bottomHorizontalSplitter->addWidget(targetGroup);
-    m_bottomHorizontalSplitter->setStretchFactor(0, 1);
-    m_bottomHorizontalSplitter->setStretchFactor(1, 1);
-    m_bottomHorizontalSplitter->setCollapsible(0, false);
-    m_bottomHorizontalSplitter->setCollapsible(1, false);
-    m_bottomHorizontalSplitter->setSizes({520, 420});
-
-    bottomLayout->addWidget(m_bottomHorizontalSplitter, 1);
-    bottomLayout->addLayout(exitRow);
-    bottomPanel->setStyleSheet(QStringLiteral(
-        "QPushButton.bottomAuxiliaryToggleButton {"
-        "  padding: 2px 8px;"
-        "  border: none;"
-        "  border-radius: 3px;"
-        "  background-color: transparent;"
-        "  color: palette(button-text);"
-        "}"
-        "QPushButton.bottomAuxiliaryToggleButton:hover:!checked {"
-        "  background-color: palette(light);"
-        "}"
-        "QPushButton.bottomAuxiliaryToggleButton:pressed:!checked {"
-        "  background-color: palette(midlight);"
-        "}"
-        "QPushButton.bottomAuxiliaryToggleButton:checked {"
-        "  background-color: palette(highlight);"
-        "  color: palette(highlighted-text);"
-        "}"));
-
-    m_mainVerticalSplitter = new QSplitter(Qt::Vertical, contentHost);
-    UiResizeHandle::configureSplitter(m_mainVerticalSplitter);
-    m_mainVerticalSplitter->addWidget(m_mainHorizontalSplitter);
-    m_mainVerticalSplitter->addWidget(bottomPanel);
-    m_mainVerticalSplitter->setStretchFactor(0, 1);
-    m_mainVerticalSplitter->setStretchFactor(1, 0);
-    m_mainVerticalSplitter->setCollapsible(0, false);
-    m_mainVerticalSplitter->setCollapsible(1, false);
-    m_mainVerticalSplitter->setSizes({640, 240});
-    connect(m_mainVerticalSplitter, &QSplitter::splitterMoved, this, [this](int, int) {
-        clampMainVerticalSplitterSizes();
-    });
-
-    contentLayout->addWidget(m_mainVerticalSplitter, 1);
-    outerLayout->addWidget(contentHost, 1);
-
-    setCentralWidget(central);
-
-    statusBar()->hide();
+    m_workspaceView=std::make_unique<MainWorkspaceView>(*this);
+    const auto& ui=m_workspaceView->widgets();
+    m_featureList=ui.m_featureList;
+    m_profilePanel=ui.m_profilePanel;
+    m_profileList=ui.m_profileList;
+    m_addProfileButton=ui.m_addProfileButton;
+    m_renameProfileButton=ui.m_renameProfileButton;
+    m_deleteProfileButton=ui.m_deleteProfileButton;
+    m_workflowEditor=ui.m_workflowEditor;
+    m_mainHorizontalSplitter=ui.m_mainHorizontalSplitter;
+    m_mainVerticalSplitter=ui.m_mainVerticalSplitter;
+    m_bottomHorizontalSplitter=ui.m_bottomHorizontalSplitter;
+    m_logPanel=ui.m_logPanel;
+    m_pickWindowButton=ui.m_pickWindowButton;
+    m_pickWindowListButton=ui.m_pickWindowListButton;
+    m_pickSubWindowButton=ui.m_pickSubWindowButton;
+    m_pickSubWindowListButton=ui.m_pickSubWindowListButton;
+    m_showSubTargetWindowButton=ui.m_showSubTargetWindowButton;
+    m_showTargetWindowButton=ui.m_showTargetWindowButton;
+    m_pinTargetWindowCenterButton=ui.m_pinTargetWindowCenterButton;
+    m_pinSubTargetWindowCenterButton=ui.m_pinSubTargetWindowCenterButton;
+    m_alwaysOnTopCheck=ui.m_alwaysOnTopCheck;
+    m_exitButton=ui.m_exitButton;
+    m_updateButton=ui.m_updateButton;
+    m_calculatorButton=ui.m_calculatorButton;
+    m_spikeWatchButton=ui.m_spikeWatchButton;
+    m_memoButton=ui.m_memoButton;
+    m_settingsButton=ui.m_settingsButton;
+    m_targetWindowDetailPanel=ui.m_targetWindowDetailPanel;
+    m_titleBar=ui.m_titleBar;
 }
-
 void MainWindow::setupUiState() {
-    m_uiState = new UiStateManager(this);
-    m_uiState->registerMainWindow(this);
-    m_uiState->registerSplitter(m_mainHorizontalSplitter, QStringLiteral("main/horizontalProfiles"));
-    m_uiState->registerSplitter(m_mainVerticalSplitter, QStringLiteral("main/vertical"));
-    m_uiState->registerSplitter(m_bottomHorizontalSplitter, QStringLiteral("main/bottomHorizontal"));
-    m_uiState->registerSplitter(m_featureList->featureLibrarySplitter(),
-                                QStringLiteral("featureList/libraryVertical_v1"));
-    m_uiState->registerSplitter(m_workflowEditor->workflowSplitter(), QStringLiteral("workflowEditor/vertical_v2"));
-    m_uiState->registerSettingsHooks(
-        QStringLiteral("featureList/columns"),
-        [this](QSettings& settings) {
-            if (m_featureList) {
-                m_featureList->saveColumnLayout(settings,
-                                                UiStateManager::settingsKey(
-                                                    QStringLiteral("featureList/columns")));
-            }
-        },
-        [this](const QSettings& settings) {
-            if (m_featureList) {
-                m_featureList->restoreColumnLayout(settings,
-                                                   UiStateManager::settingsKey(
-                                                       QStringLiteral("featureList/columns")));
-            }
-        });
-    m_uiState->registerSettingsHooks(
-        QStringLiteral("workflowBlockList/columns"),
-        [this](QSettings& settings) {
-            if (m_workflowEditor && m_workflowEditor->blockList()) {
-                m_workflowEditor->blockList()->saveColumnLayout(
-                    settings,
-                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/columns")));
-            }
-        },
-        [this](const QSettings& settings) {
-            if (m_workflowEditor && m_workflowEditor->blockList()) {
-                m_workflowEditor->blockList()->restoreColumnLayout(
-                    settings,
-                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/columns")));
-            }
-        });
-    m_uiState->registerSettingsHooks(
-        QStringLiteral("workflowBlockList/rowHeight"),
-        [this](QSettings& settings) {
-            if (m_workflowEditor && m_workflowEditor->blockList()) {
-                m_workflowEditor->blockList()->saveColumnLayout(
-                    settings,
-                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/columns")));
-            }
-        },
-        [this](const QSettings& settings) {
-            if (m_workflowEditor && m_workflowEditor->blockList()) {
-                const QString columnsKey =
-                    UiStateManager::settingsKey(QStringLiteral("workflowBlockList/columns"));
-                if (!settings.contains(columnsKey + QStringLiteral("/rowHeight"))) {
-                    m_workflowEditor->blockList()->restoreRowHeight(
-                        settings,
-                        UiStateManager::settingsKey(QStringLiteral("workflowBlockList/rowHeight")));
-                }
-            }
-        });
-    connect(m_featureList,
-            &FeatureListPanel::columnLayoutChanged,
-            m_uiState,
-            &UiStateManager::scheduleSave);
-    if (m_workflowEditor && m_workflowEditor->blockList()) {
-        connect(m_workflowEditor->blockList(),
-                &BlockListWidget::columnLayoutChanged,
-                m_uiState,
-                &UiStateManager::scheduleSave);
-        connect(m_workflowEditor->blockList(),
-                &BlockListWidget::rowHeightChanged,
-                m_uiState,
-                &UiStateManager::scheduleSave);
-    }
-    m_uiState->restoreAll();
-    m_workflowEditor->clampWorkflowSplitterSizes();
-    if (m_featureList) {
-        m_featureList->clampFeatureLibrarySplitterSizes();
-    }
-    clampMainVerticalSplitterSizes();
+    m_uiState=m_workspaceView->restoreState();
     restoreAlwaysOnTopPreference();
 }
-
-void MainWindow::clampMainVerticalSplitterSizes() {
-    clampMainVerticalSplitterSizesImpl(m_mainVerticalSplitter);
-}
+void MainWindow::clampMainVerticalSplitterSizes() {m_workspaceView->clampVertical();}
 
 void MainWindow::setupMenus() {
-    QMenuBar* bar = m_titleBar ? m_titleBar->menuBar() : menuBar();
-    auto* fileMenu = bar->addMenu(tr("파일(&F)"));
-    fileMenu->addAction(tr("새 프로젝트(&N)"), this, &MainWindow::onNewProject);
-    fileMenu->addAction(tr("프로젝트 열기(&O)..."), this, &MainWindow::onOpenProject);
-    fileMenu->addAction(tr("프로젝트 저장(&S)"), this, &MainWindow::onSaveProject);
-    fileMenu->addAction(tr("다른 이름으로 저장(&A)..."), this, &MainWindow::onSaveProjectAs);
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("PIPBONG 패키지 가져오기(&I)..."), this, &MainWindow::onImportProfilePackage);
-    fileMenu->addAction(tr("PIPBONG 패키지 내보내기(&E)..."), this, &MainWindow::onExportProfilePackage);
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("업데이트(&U)..."), this, &MainWindow::onCheckForUpdates);
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("종료(&X)"), this, &MainWindow::onExitRequested);
-
-    auto* helpMenu = bar->addMenu(tr("도움말(&H)"));
-    helpMenu->addAction(tr("PIPBONG 도움말(&H)..."), this, [this]() { AppHelpDialog::showHelp(this); });
-    helpMenu->addAction(tr("오류 보고서(&R)..."), this, [this]() {
-        const QString folder = CrashReporter::latestReportDirectory();
-        if (folder.isEmpty()) {
-            showTransientStatus(tr("저장된 오류 보고서가 없습니다."), 3000);
-            return;
-        }
-        QFile reportFile(QDir(folder).filePath(QStringLiteral("report.txt")));
-        if (!reportFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            showTransientStatus(tr("오류 보고서를 열 수 없습니다."), 3000);
-            return;
-        }
-        const QString reportText = QString::fromUtf8(reportFile.readAll());
-        const CrashReportKind kind = CrashReporter::kindFromReportText(reportText);
-        CrashReportDialog dialog(reportText, folder, this, false, kind);
-        dialog.exec();
-    });
-    helpMenu->addSeparator();
-    helpMenu->addAction(tr("PIPBONG 정보(&A)..."), this, [this]() { AppHelpDialog::showAbout(this); });
+    DocumentActionsController::Host host;
+    host.ready=[this]{return !m_switchingProfile && !m_profileSwitchPipelineActive
+        && (!m_workspaceHistory || !m_workspaceHistory->isBusy())
+        && !(m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()))
+        && !(m_updateController && m_updateController->installInProgress())
+        && !FeatureHotkeyGate::isFeatureHotkeysBlocked();};
+    host.directory=[] {return Application::instance()->projectDirectory();};
+    host.checkpoint=[this](bool quiet){return maybeSave(quiet);};
+    host.prepareImport=[this]{const QPointer<MainWindow> life(this);if(!m_projectWorkspace->saveSettings())return false;
+        return life && (!m_auxiliaryTools || m_auxiliaryTools->saveMemo());};
+    host.imported=[this]{const QPointer<MainWindow> life(this);refreshProfileList();if(!life)return;
+        loadActiveProfile(false);if(life)syncProfileListSelection();};
+    host.stopSessions=[this]{stopAllSessions();};host.update=[this]{onCheckForUpdates();};host.exit=[this]{onExitRequested();};
+    host.log=[this](const QString& message,bool success){appendLog(message,success?LogLineKind::Success:LogLineKind::Info);};
+    host.status=[this](const QString& message){showTransientStatus(message,2500);};
+    m_documentActions=std::make_unique<DocumentActionsController>(*this,*m_profileManager,*m_projectWorkspace,*m_packageController,std::move(host));
+    m_documentActions->installMenus(*(m_titleBar?m_titleBar->menuBar():menuBar()));
 }
 
 void MainWindow::connectSignals() {
@@ -1396,10 +553,9 @@ void MainWindow::connectSignals() {
         return isFeatureInActiveWorkflowRun(featureId.toStdString());
     });
     connect(m_featureList, &FeatureListPanel::selectionChanged, this, &MainWindow::onFeatureSelectionChanged);
-    connect(m_featureList,
-            &FeatureListPanel::mutationAboutToCommit,
-            this,
-            [this](const QString& reason) { pushGlobalUiUndoSnapshot(reason); });
+    m_featureList->setMutationCheckpoint([this](const QString& reason) {
+        return pushGlobalUiUndoSnapshot(reason);
+    });
     connect(m_featureList, &FeatureListPanel::projectModified, this, &MainWindow::onProjectModified);
     connect(m_featureList, &FeatureListPanel::hotkeysChanged, this, &MainWindow::syncHotkeys);
     connect(m_featureList,
@@ -1488,7 +644,7 @@ void MainWindow::connectSignals() {
                 }
                 const QString movedId = orderedIds.takeAt(fromRow);
                 orderedIds.insert(toRow, movedId);
-                pushGlobalUiUndoSnapshot(QStringLiteral("profile-reorder"));
+                if (!pushGlobalUiUndoSnapshot(QStringLiteral("profile-reorder"))) { refreshProfileList(); return; }
                 if (m_profileManager->reorderProfiles(orderedIds)) {
                     showTransientStatus(tr("프로필 순서를 저장했습니다."), 1500);
                     refreshProfileList();
@@ -1514,10 +670,6 @@ void MainWindow::connectSignals() {
             &MainWindow::onHotkeyHoldEnded,
             Qt::QueuedConnection);
 
-    connect(m_holdKeyTapMux,
-            &HoldKeyTapMultiplexer::laneFinished,
-            this,
-            &MainWindow::onHoldKeyTapLaneFinished);
 
     connect(m_workflowEditor, &WorkflowEditorPanel::workflowModified, this, &MainWindow::onProjectModified);
     connect(m_workflowEditor, &WorkflowEditorPanel::featureRunRequested, this, &MainWindow::onFeatureRunRequested);
@@ -1544,11 +696,14 @@ void MainWindow::connectSignals() {
             this,
             &MainWindow::onPinSubTargetWindowCenterToggled);
 
+    setupInputInterrupts();
     UserInputInterruptMonitor::instance().setHandler(
-        [this](const std::string& featureId) { onUserInputInterrupt(featureId); });
+        [self = QPointer<MainWindow>(this)](const std::string& featureId, const std::shared_ptr<ExecutionContext>& context) {
+            if (self) self->onUserInputInterrupt(featureId, context);
+        });
     UserInputInterruptMonitor::instance().setHotkeyExemptionCheck(
-        [this](int virtualKey) {
-            return m_hotkeyManager && m_hotkeyManager->matchesAnyRegisteredFeatureHotkey(virtualKey);
+        [self = QPointer<MainWindow>(this)](int virtualKey) {
+            return self && self->m_hotkeyManager && self->m_hotkeyManager->matchesAnyRegisteredFeatureHotkey(virtualKey);
         });
 
     auto* globalUndoShortcut = new QShortcut(QKeySequence::Undo, this);
@@ -1589,583 +744,81 @@ void MainWindow::onExitRequested() {
     requestApplicationQuit();
 }
 
-void MainWindow::setupTrayIcon() {
-    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
-        return;
-    }
-
-    m_trayIcon = new QSystemTrayIcon(windowIcon(), this);
-    m_trayIcon->setToolTip(tr("PIPBONG"));
-
-    m_trayMenu = new QMenu(this);
-    m_trayMenu->addAction(tr("열기"), this, &MainWindow::showFromTray);
-    m_trayMenu->addSeparator();
-    m_trayMenu->addAction(tr("종료"), this, &MainWindow::requestApplicationQuit);
-    m_trayIcon->setContextMenu(m_trayMenu);
-
-    connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
-        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
-            showFromTray();
-        }
-    });
-
-    applyCloseToTrayPolicy();
-}
-
-void MainWindow::applyCloseToTrayPolicy() {
-    const bool closeToTray =
-        ProgramSettings::closeToTray() && QSystemTrayIcon::isSystemTrayAvailable();
-    QApplication::setQuitOnLastWindowClosed(!closeToTray);
-    if (m_trayIcon) {
-        m_trayIcon->setVisible(closeToTray);
-    }
-}
-
-void MainWindow::hideToTray() {
-    if (m_calculatorDialog) {
-        m_calculatorDialog->hide();
-    }
-    if (m_spikeWatchDialog) {
-        m_spikeWatchDialog->hide();
-    }
-    updateAuxiliaryToolButtonStates();
-    if (m_uiState) {
-        m_uiState->saveNow();
-    }
-    hide();
-    if (!m_trayIcon) {
-        return;
-    }
-    m_trayIcon->show();
-    if (!m_trayMinimizeNotified) {
-        m_trayIcon->showMessage(tr("PIPBONG"),
-                                tr("알림 영역에서 계속 실행 중입니다."),
-                                QSystemTrayIcon::Information,
-                                3000);
-        m_trayMinimizeNotified = true;
-    }
-}
-
-void MainWindow::showFromTray() {
-    showNormal();
-    raise();
-    activateWindow();
-}
-
-void MainWindow::requestApplicationQuit() {
-    m_forceQuit = true;
-    close();
-}
+void MainWindow::setupTrayIcon() {m_windowShell->applyClosePolicy();}
+void MainWindow::applyCloseToTrayPolicy() {m_windowShell->applyClosePolicy();}
+void MainWindow::requestApplicationQuit() {m_windowShell->requestQuit();}
 
 void MainWindow::setupUpdateChecker() {
-    m_updateChecker = new UpdateChecker(this);
-    connect(m_updateChecker, &UpdateChecker::checkFinished, this, &MainWindow::onUpdateCheckFinished);
-    connect(m_updateChecker, &UpdateChecker::readyToRestartForUpdate, this, &MainWindow::onReadyToRestartForUpdate);
-
-    m_updateCheckTimer = new QTimer(this);
-    connect(m_updateCheckTimer, &QTimer::timeout, this, &MainWindow::runSilentUpdateCheck);
+    auto* checker = new UpdateChecker(this);
+    checker->setInstallPreflight([this] { return m_shutdownCoordinator->checkpoint(); });
+    UpdateUiController::HostCallbacks host;
+    host.stopSessions = [this] { stopRunningSessionsForUpdate(); };
+    host.hasActiveEngine = [this] {
+        return (m_workspaceHistory && m_workspaceHistory->isBusy()) || hasAnyActiveWorkflowEngine();
+    };
+    host.autoInstallEnabled = [] { return ProgramSettings::autoInstallUpdates(); };
+    host.showStatus = [this](const QString& text, int duration) { showTransientStatus(text, duration); };
+    m_updateController = std::make_unique<UpdateUiController>(checker, m_updateButton, this, std::move(host), this);
+    connect(checker, &UpdateChecker::readyToRestartForUpdate, this, &MainWindow::onReadyToRestartForUpdate);
     applyUpdateCheckInterval();
 }
 
 void MainWindow::applyUpdateCheckInterval() {
-    if (!m_updateCheckTimer) {
-        return;
-    }
-    const int minutes = ProgramSettings::updateCheckIntervalMinutes();
-    if (minutes <= 0) {
-        m_updateCheckTimer->stop();
-        return;
-    }
-    m_updateCheckTimer->setInterval(minutes * 60 * 1000);
-    m_updateCheckTimer->start();
+    if (m_updateController) m_updateController->applySettings(ProgramSettings::updateCheckIntervalMinutes());
 }
 
-void MainWindow::captureFeatureMouseLockPosition(FeatureRunSession& session) {
-    session.hasMouseLockPosition = false;
-    session.mouseLockAnchoredToTargetWindow = false;
-    if (!session.lockMouseToCurrentPositionDuringRun) {
-        return;
-    }
-
-    int screenX = 0;
-    int screenY = 0;
-    if (!InputSimulator::getCursorScreenPosition(screenX, screenY)) {
-        return;
-    }
-
-#ifdef _WIN32
-    const ScreenCapture::ScreenRect target = ScreenCapture::getTargetWindowScreenRect();
-    if (target.valid) {
-        session.mouseLockWindowOffsetX = screenX - target.x;
-        session.mouseLockWindowOffsetY = screenY - target.y;
-        session.mouseLockAnchoredToTargetWindow = true;
-    } else
-#endif
-    {
-        session.mouseLockScreenX = screenX;
-        session.mouseLockScreenY = screenY;
-    }
-    session.hasMouseLockPosition = true;
+void MainWindow::setupSessionMouseLocks() {
+    m_mouseLocks = std::make_unique<SessionMouseLockController>(runSessions(), this);
+    m_mouseLocks->setFailureHandler([this](const FeatureRunSession& session) {
+        if (shouldLogRunDetails(session)) appendSessionLog(session,
+            tr("초기 루프 마우스 잠금 해제: 블록 실패 %1회").arg(session.earlyLoopMouseLockFailureCount), LogLineKind::Warning);
+    });
 }
-
-bool MainWindow::isEarlyLoopMouseLockWindow(const FeatureRunSession& session) const {
-    return SessionRunPolicy::isEarlyLoopMouseLockWindow(RunLifecycleCoordinator::policyInputFrom(session));
-}
-
-bool MainWindow::engageEarlyLoopMouseLockAtBestPoint(FeatureRunSession& session) {
-#ifdef _WIN32
-    int screenX = 0;
-    int screenY = 0;
-    bool havePoint = false;
-
-    if (session.sessionContext && session.sessionContext->hasLastMatchScreenPoint()) {
-        const cv::Point matchPoint = session.sessionContext->lastMatchScreenPoint();
-        screenX = matchPoint.x;
-        screenY = matchPoint.y;
-        havePoint = true;
-    } else if (session.hasRunStartCursorPosition) {
-        screenX = session.runStartCursorScreenX;
-        screenY = session.runStartCursorScreenY;
-        havePoint = true;
-    } else if (InputSimulator::getCursorScreenPosition(screenX, screenY)) {
-        havePoint = true;
-    }
-
-    if (!havePoint) {
-        return false;
-    }
-
-    if (!session.earlyLoopMouseLockEngaged) {
-        MouseCenterLock::engageAt(screenX, screenY);
-        session.earlyLoopMouseLockEngaged = true;
-    } else {
-        MouseCenterLock::updateFixedLockPoint(screenX, screenY);
-    }
-    return true;
-#else
-    (void)session;
-    return false;
-#endif
-}
-
-void MainWindow::updateEarlyLoopMouseLockFromMatch(FeatureRunSession& session) {
-    if (!isEarlyLoopMouseLockWindow(session)) {
-        return;
-    }
-    engageEarlyLoopMouseLockAtBestPoint(session);
-}
-
-void MainWindow::releaseEarlyLoopMouseLockIfEngaged(FeatureRunSession& session) {
-#ifdef _WIN32
-    if (!session.earlyLoopMouseLockEngaged) {
-        return;
-    }
-    MouseCenterLock::release();
-    session.earlyLoopMouseLockEngaged = false;
-#else
-    (void)session;
-#endif
-}
-
-void MainWindow::syncEarlyLoopMouseLock(FeatureRunSession& session) {
-#ifdef _WIN32
-    if (isEarlyLoopMouseLockWindow(session)) {
-        engageEarlyLoopMouseLockAtBestPoint(session);
-        return;
-    }
-
-    releaseEarlyLoopMouseLockIfEngaged(session);
-    if (hasFeatureMouseLock(session) && !MouseCenterLock::isActive()) {
-        engageFeatureMouseLock(session);
-    }
-#else
-    (void)session;
-#endif
-}
-
-void MainWindow::handleEarlyLoopMouseLockBlockFailure(FeatureRunSession& session, int blockIndex) {
-    Q_UNUSED(blockIndex);
-    if (!isEarlyLoopMouseLockWindow(session)) {
-        return;
-    }
-
-    ++session.earlyLoopMouseLockFailureCount;
-    if (session.earlyLoopMouseLockFailureCount < session.unlockMouseOnBlockFailureCount) {
-        return;
-    }
-
-    session.earlyLoopMouseLockReleased = true;
-    releaseEarlyLoopMouseLockIfEngaged(session);
-    if (shouldLogRunDetails(session)) {
-        appendSessionLog(session,
-                         tr("초기 루프 마우스 잠금 해제: 블록 실패 %1회")
-                             .arg(session.earlyLoopMouseLockFailureCount),
-                         LogLineKind::Warning);
-    }
-    if (hasFeatureMouseLock(session)) {
-        engageFeatureMouseLock(session);
-    }
-}
-
-bool MainWindow::hasFeatureMouseLock(const FeatureRunSession& session) {
-    return session.lockMouseToCurrentPositionDuringRun || session.lockMouseToScreenCenterDuringRun;
-}
-
-void MainWindow::engageFeatureMouseLock(FeatureRunSession& session) {
-    if (session.lockMouseToCurrentPositionDuringRun) {
-        if (!session.hasMouseLockPosition) {
-            captureFeatureMouseLockPosition(session);
-        }
-        if (!session.hasMouseLockPosition) {
-            return;
-        }
-        if (session.mouseLockAnchoredToTargetWindow) {
-            MouseCenterLock::engageAtTargetWindowOffset(session.mouseLockWindowOffsetX,
-                                                        session.mouseLockWindowOffsetY);
-        } else {
-            MouseCenterLock::engageAt(session.mouseLockScreenX, session.mouseLockScreenY);
-        }
-        scheduleMouseLockPositionSync();
-        return;
-    }
-
-    if (session.lockMouseToScreenCenterDuringRun) {
-        MouseCenterLock::engageTargetWindowCenter();
-        scheduleMouseLockPositionSync();
-    }
-}
-
-void MainWindow::reconcileMouseLocksFromRunningSessions() {
-#ifdef _WIN32
-    if (MouseCenterLock::isActive()) {
-        MouseCenterLock::releaseAll();
-    }
-    for (const auto& entry : runSessions()) {
-        const FeatureRunSession& session = entry.second;
-        if (!isFeatureSessionActive(session)) {
-            continue;
-        }
-        if (session.sessionContext && session.sessionContext->isPaused()) {
-            continue;
-        }
-        FeatureRunSession& mutableSession = runSessions().at(entry.first);
-        if (isEarlyLoopMouseLockWindow(mutableSession)) {
-            engageEarlyLoopMouseLockAtBestPoint(mutableSession);
-            continue;
-        }
-        if (!hasFeatureMouseLock(session)) {
-            continue;
-        }
-        if (mutableSession.lockMouseToCurrentPositionDuringRun) {
-            if (!mutableSession.hasMouseLockPosition) {
-                captureFeatureMouseLockPosition(mutableSession);
-            }
-            if (!mutableSession.hasMouseLockPosition) {
-                continue;
-            }
-            if (mutableSession.mouseLockAnchoredToTargetWindow) {
-                MouseCenterLock::engageAtTargetWindowOffset(mutableSession.mouseLockWindowOffsetX,
-                                                            mutableSession.mouseLockWindowOffsetY);
-            } else {
-                MouseCenterLock::engageAt(mutableSession.mouseLockScreenX, mutableSession.mouseLockScreenY);
-            }
-        } else if (mutableSession.lockMouseToScreenCenterDuringRun) {
-            MouseCenterLock::engageTargetWindowCenter();
-        }
-    }
-    if (MouseCenterLock::isAnchoredToTargetWindow()) {
-        scheduleMouseLockPositionSync();
-    }
-#endif
-}
-
-void MainWindow::scheduleMouseLockPositionSync() {
-    if (!m_mouseLockSyncTimer || !MouseCenterLock::isAnchoredToTargetWindow()) {
-        return;
-    }
-    if (!m_mouseLockSyncTimer->isActive()) {
-        m_mouseLockSyncTimer->start();
-    }
-}
-
-void MainWindow::syncMouseLockPositions() {
-    if (MouseCenterLock::isAnchoredToTargetWindow()) {
-        MouseCenterLock::refreshAnchoredPosition();
-    }
-    if (!MouseCenterLock::isActive() && m_mouseLockSyncTimer) {
-        m_mouseLockSyncTimer->stop();
-    }
-}
-
-void MainWindow::refreshUpdateButtonState() {
-    if (!m_updateButton || !m_updateChecker) {
-        return;
-    }
-
-    if (m_updateChecker->hasPendingUpdate()) {
-        const QString version = m_updateChecker->pendingUpdate().version.toString();
-        m_updateButton->setText(tr("v%1 버전으로 업데이트").arg(version));
-        m_updateButton->setEnabled(true);
-        m_updateButton->setToolTip(tr("GitHub 릴리즈 v%1을(를) 다운로드해 설치합니다.").arg(version));
-        return;
-    }
-
-    const QString currentVersion = QCoreApplication::applicationVersion();
-    m_updateButton->setText(tr("v%1 - 최신 버전입니다").arg(currentVersion));
-    m_updateButton->setEnabled(true);
-    m_updateButton->setToolTip(tr("클릭하면 GitHub 릴리즈에서 업데이트를 다시 확인합니다."));
-}
-
-void MainWindow::runSilentUpdateCheck() {
-    if (!m_updateChecker) {
-        return;
-    }
-    m_lastUpdateCheckWasSilent = true;
-    m_updateChecker->checkForUpdates(UpdateChecker::CheckUiMode::Silent);
-}
-
-void MainWindow::onUpdateCheckFinished(bool success, bool updateAvailable, const QString& errorMessage) {
-    refreshUpdateButtonState();
-    if (!success && !updateAvailable && !errorMessage.isEmpty() && m_updateButton) {
-        m_updateButton->setToolTip(errorMessage);
-    }
-    const bool wasSilentCheck = m_lastUpdateCheckWasSilent;
-    if (success && !updateAvailable && !wasSilentCheck) {
-        showTransientStatus(
-            tr("현재 최신 버전입니다. (v%1)").arg(QCoreApplication::applicationVersion()),
-            3000);
-    }
-    if (success && updateAvailable && wasSilentCheck && ProgramSettings::autoInstallUpdates()) {
-        m_autoUpdateDeferred = true;
-        maybeStartAutomaticUpdate();
-    }
-    m_lastUpdateCheckWasSilent = false;
-}
+void MainWindow::captureFeatureMouseLockPosition(FeatureRunSession& s) {if(m_mouseLocks)m_mouseLocks->capturePosition(s);}
+bool MainWindow::isEarlyLoopMouseLockWindow(const FeatureRunSession& s) const {return SessionMouseLockController::earlyWindow(s);}
+bool MainWindow::engageEarlyLoopMouseLockAtBestPoint(FeatureRunSession& s) {return m_mouseLocks && m_mouseLocks->engageEarly(s);}
+void MainWindow::updateEarlyLoopMouseLockFromMatch(FeatureRunSession& s) {if(m_mouseLocks)m_mouseLocks->updateFromMatch(s);}
+void MainWindow::releaseEarlyLoopMouseLockIfEngaged(FeatureRunSession& s) {if(m_mouseLocks)m_mouseLocks->releaseEarly(s);}
+void MainWindow::syncEarlyLoopMouseLock(FeatureRunSession& s) {if(m_mouseLocks)m_mouseLocks->syncEarly(s);}
+void MainWindow::handleEarlyLoopMouseLockBlockFailure(FeatureRunSession& s, int) {if(m_mouseLocks)m_mouseLocks->blockFailed(s);}
+bool MainWindow::hasFeatureMouseLock(const FeatureRunSession& s) {return SessionMouseLockController::hasFeatureLock(s);}
+void MainWindow::engageFeatureMouseLock(FeatureRunSession& s) {if(m_mouseLocks)m_mouseLocks->engageFeature(s);}
+void MainWindow::reconcileMouseLocksFromRunningSessions() {if(m_mouseLocks)m_mouseLocks->reconcile();}
+void MainWindow::scheduleMouseLockPositionSync() {if(m_mouseLocks)m_mouseLocks->schedule();}
+void MainWindow::syncMouseLockPositions() {if(m_mouseLocks)m_mouseLocks->tick();}
 
 void MainWindow::onUpdateButtonClicked() {
-    stopRunningSessionsForUpdate();
-
-    if (!m_updateChecker) {
-        return;
-    }
-
-    if (m_updateChecker->hasPendingUpdate()) {
-        const UpdateChecker::ReleaseInfo release = m_updateChecker->pendingUpdate();
-        const auto reply =
-            QMessageBox::question(this,
-                                  tr("업데이트"),
-                                  tr("v%1(으)로 업데이트하시겠습니까?\n현재 버전: v%2")
-                                      .arg(release.version.toString())
-                                      .arg(QCoreApplication::applicationVersion()),
-                                  QMessageBox::Yes | QMessageBox::No,
-                                  QMessageBox::Yes);
-        if (reply == QMessageBox::Yes) {
-            m_updateChecker->installPendingUpdate();
-        }
-        return;
-    }
-
-    m_lastUpdateCheckWasSilent = false;
-    m_updateChecker->checkForUpdates(UpdateChecker::CheckUiMode::Interactive);
+    if (m_updateController) m_updateController->onButtonClicked();
 }
 
 void MainWindow::onCheckForUpdates() {
-    stopRunningSessionsForUpdate();
-
-    if (!m_updateChecker) {
-        return;
-    }
-    m_lastUpdateCheckWasSilent = false;
-    m_updateChecker->checkForUpdates(UpdateChecker::CheckUiMode::Interactive);
+    if (m_updateController) m_updateController->checkInteractively();
 }
 
 void MainWindow::maybeStartAutomaticUpdate() {
-    if (m_autoUpdateInstallStarted || !m_autoUpdateDeferred || !m_updateChecker
-        || !m_updateChecker->hasPendingUpdate() || !ProgramSettings::autoInstallUpdates()) {
-        return;
-    }
-
-    stopRunningSessionsForUpdate();
-    if (hasAnyActiveWorkflowEngine()) {
-        return;
-    }
-
-    m_autoUpdateDeferred = false;
-    m_autoUpdateInstallStarted = true;
-    const QString version = m_updateChecker->pendingUpdate().version.toString();
-    showTransientStatus(tr("v%1 자동 업데이트를 시작합니다.").arg(version), 5000);
-    m_updateChecker->installPendingUpdate();
+    if (m_updateController) m_updateController->maybeStartAutomaticUpdate();
 }
 
-void MainWindow::onProgramSettings() {
-    FeatureHotkeyGateScope hotkeyGate;
-    ProgramSettingsDialog dialog(this);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-    saveActiveProfileSettings();
-    applyCloseToTrayPolicy();
-    applyUpdateCheckInterval();
-    if (m_logPanel) {
-        m_logPanel->setMaxLines(ProgramSettings::logMaxLines());
-    }
-    if (ProgramSettings::autoInstallUpdates() && m_updateChecker && m_updateChecker->hasPendingUpdate()) {
-        m_autoUpdateDeferred = true;
-        maybeStartAutomaticUpdate();
-    }
-
-    if (ProgramSettings::runAsAdministrator() && !WindowsRunAsAdmin::isProcessElevated()) {
-        const auto reply = QMessageBox::question(
-            this,
-            tr("관리자 권한"),
-            tr("관리자 권한으로 실행하려면 PIPBONG을 다시 시작해야 합니다.\n"
-               "지금 관리자 권한으로 다시 시작하시겠습니까?"),
-            QMessageBox::Yes | QMessageBox::No,
-            QMessageBox::Yes);
-        if (reply != QMessageBox::Yes) {
-            return;
-        }
-        if (!WindowsRunAsAdmin::relaunchElevated()) {
-            QMessageBox::warning(this,
-                                 tr("관리자 권한"),
-                                 tr("관리자 권한으로 다시 시작하지 못했습니다."));
-            return;
-        }
-        m_forceQuit = true;
-        prepareForShutdown();
-        QApplication::quit();
-    }
+void MainWindow::onProgramSettings() {m_programSettings->open();}
+void MainWindow::setupProgramSettings() {
+    ProgramSettingsController::Host host;
+    host.allowed=[this]{return m_profileManager->storageReady() && !m_shutdownCoordinator->busy() && !m_shutdownCoordinator->ready()
+        && !m_profileSwitchPipelineActive && (!m_workspaceHistory || !m_workspaceHistory->isBusy()) && (!m_profileActions || !m_profileActions->busy());};
+    host.source=[this]{return ProgramSettingsController::Source{m_project.get(),m_profileManager->activeProfileId(),m_projectWorkspace->generation()};};
+    host.saveProfile=[this]{return saveActiveProfileSettings();};
+    host.worker=[this]{synchronizeRunWorkerState();};host.closePolicy=[this]{applyCloseToTrayPolicy();};
+    host.updatePolicy=[this]{applyUpdateCheckInterval();};
+    host.logLimit=[this]{if(m_logPanel)m_logPanel->setMaxLines(ProgramSettings::logMaxLines());};
+    host.handoff=[this](const auto& launch){return m_shutdownCoordinator->handoff(launch);};
+    host.lastError=[this]{return m_shutdownCoordinator->lastError();};
+    host.quit=[this]{m_windowShell->commitExit();QApplication::quit();};
+    m_programSettings=std::make_unique<ProgramSettingsController>(*this,std::move(host));
 }
 
-void MainWindow::onCalculator() {
-    if (m_calculatorDialog && m_calculatorDialog->isVisible()) {
-        m_calculatorDialog->close();
-        updateAuxiliaryToolButtonStates();
-        return;
-    }
-    if (!m_calculatorDialog) {
-        m_calculatorDialog = new CalculatorDialog(this);
-        m_calculatorDialog->setAttribute(Qt::WA_DeleteOnClose);
-        connect(m_calculatorDialog, &QObject::destroyed, this, [this]() {
-            m_calculatorDialog = nullptr;
-            updateAuxiliaryToolButtonStates();
-        });
-        wireAuxiliaryDialogVisibility(m_calculatorDialog);
-    }
-    m_calculatorDialog->show();
-    m_calculatorDialog->raise();
-    m_calculatorDialog->activateWindow();
-    updateAuxiliaryToolButtonStates();
-}
-
-void MainWindow::onSpikeWatch() {
-    if (m_spikeWatchDialog && m_spikeWatchDialog->isVisible()) {
-        m_spikeWatchDialog->close();
-        updateAuxiliaryToolButtonStates();
-        return;
-    }
-    if (!m_spikeWatchDialog) {
-        m_spikeWatchDialog = new SpikeWatchDialog(this);
-        m_spikeWatchDialog->setAttribute(Qt::WA_DeleteOnClose);
-        connect(m_spikeWatchDialog, &QObject::destroyed, this, [this]() {
-            m_spikeWatchDialog = nullptr;
-            updateAuxiliaryToolButtonStates();
-        });
-        wireAuxiliaryDialogVisibility(m_spikeWatchDialog);
-        m_spikeWatchDialog->setFeatureRunningCallback([this]() { return !runSessions().empty(); });
-    } else {
-        m_spikeWatchDialog->setFeatureRunningCallback([this]() { return !runSessions().empty(); });
-    }
-    m_spikeWatchDialog->show();
-    m_spikeWatchDialog->raise();
-    m_spikeWatchDialog->activateWindow();
-    m_spikeWatchDialog->startMonitoringIfIdle();
-    updateAuxiliaryToolButtonStates();
-}
-
-void MainWindow::onMemo() {
-    if (m_memoDialog && m_memoDialog->isVisible()) {
-        m_memoDialog->close();
-        updateAuxiliaryToolButtonStates();
-        return;
-    }
-    if (!m_memoDialog) {
-        m_memoDialog = new MemoDialog(this);
-        m_memoDialog->setAttribute(Qt::WA_DeleteOnClose);
-        connect(m_memoDialog, &QObject::destroyed, this, [this]() {
-            m_memoDialog = nullptr;
-            updateAuxiliaryToolButtonStates();
-        });
-        wireAuxiliaryDialogVisibility(m_memoDialog);
-    }
-    syncMemoDialogProfile();
-    m_memoDialog->show();
-    m_memoDialog->raise();
-    m_memoDialog->activateWindow();
-    updateAuxiliaryToolButtonStates();
-}
-
-void MainWindow::updateAuxiliaryToolButtonStates() {
-    if (m_memoButton) {
-        m_memoButton->setChecked(m_memoDialog && m_memoDialog->isVisible());
-    }
-    if (m_spikeWatchButton) {
-        m_spikeWatchButton->setChecked(m_spikeWatchDialog && m_spikeWatchDialog->isVisible());
-    }
-    if (m_calculatorButton) {
-        m_calculatorButton->setChecked(m_calculatorDialog && m_calculatorDialog->isVisible());
-    }
-}
-
-void MainWindow::wireAuxiliaryDialogVisibility(QWidget* dialog) {
-    if (!dialog || dialog->property("auxVisibilityWired").toBool()) {
-        return;
-    }
-    dialog->setProperty("auxVisibilityWired", true);
-    dialog->installEventFilter(this);
-}
-
-void MainWindow::syncMemoDialogProfile() {
-    if (!m_profileManager) {
-        return;
-    }
-
-    const QString profileId = m_profileManager->activeProfileId();
-    const bool shouldBeOpen =
-        !profileId.isEmpty()
-        && QSettings().value(QStringLiteral("memo/open/%1").arg(profileId), false).toBool();
-
-    if (!shouldBeOpen && !m_memoDialog) {
-        return;
-    }
-
-    if (!m_memoDialog) {
-        m_memoDialog = new MemoDialog(this);
-        m_memoDialog->setAttribute(Qt::WA_DeleteOnClose);
-        connect(m_memoDialog, &QObject::destroyed, this, [this]() {
-            m_memoDialog = nullptr;
-            updateAuxiliaryToolButtonStates();
-        });
-        wireAuxiliaryDialogVisibility(m_memoDialog);
-    }
-
-    const ProfileManager::Profile* profile = m_profileManager->activeProfile();
-    const QString displayName =
-        profile ? (m_profileManager->isDefaultProfile(profile->id) ? tr("기본") : profile->name)
-                : QString();
-    m_memoDialog->setProfile(profileId,
-                             m_profileManager->activeProjectDirectory(),
-                             displayName);
-
-    if (shouldBeOpen) {
-        if (!m_memoDialog->isVisible()) {
-            m_memoDialog->show();
-        }
-    } else if (m_memoDialog->isVisible()) {
-        m_memoDialog->hide();
-    }
-    updateAuxiliaryToolButtonStates();
-}
+void MainWindow::onCalculator() {m_auxiliaryTools->toggleCalculator();}
+void MainWindow::onSpikeWatch() {m_auxiliaryTools->toggleSpikeWatch();}
+void MainWindow::onMemo() {m_auxiliaryTools->toggleMemo();}
+void MainWindow::syncMemoDialogProfile() {m_auxiliaryTools->syncMemoProfile();}
 
 void MainWindow::onProfileSelectionChanged() {
     if (m_refreshingProfileList || !m_profileList || !m_profileManager) {
@@ -2179,25 +832,13 @@ void MainWindow::onProfileSelectionChanged() {
 }
 
 void MainWindow::onAddProfile() {
-    if (!m_profileManager || !maybeSave()) {
-        return;
-    }
-    bool ok = false;
-    const QString name = QInputDialog::getText(this,
-                                               tr("프로필 추가"),
-                                               tr("프로필 이름"),
-                                               QLineEdit::Normal,
-                                               tr("새 프로필"),
-                                               &ok);
-    if (!ok) {
-        return;
-    }
-    saveActiveProfileSettings();
-    stopAllSessions();
-    pushGlobalUiUndoSnapshot(QStringLiteral("profile-add"));
-    const QString id = m_profileManager->addProfile(name);
-    refreshProfileList();
-    switchToProfile(id);
+    if (!m_profileActions) return;
+    ProfileActionsController::Request request;
+    request.action=ProfileActionsController::Action::Add;
+    request.owner=m_profileManager->activeProfileId(); request.generation=m_projectWorkspace->generation();
+    bool ok=false;
+    request.edit.name=QInputDialog::getText(this,tr("프로필 추가"),tr("프로필 이름"),QLineEdit::Normal,tr("새 프로필"),&ok);
+    if(ok)showProfileActionResult(m_profileActions->execute(request));
 }
 
 void MainWindow::onRenameProfile() {
@@ -2209,6 +850,8 @@ void MainWindow::onRenameProfile() {
     if (!profile) {
         return;
     }
+    ProfileActionsController::Request request;
+    request.id=id; request.owner=m_profileManager->activeProfileId(); request.generation=m_projectWorkspace->generation();
     const bool fixedDefault = m_profileManager->isDefaultProfile(id);
     ProfileEditDialog dialog(profile->name,
                              m_profileManager->targetWindowTitle(id),
@@ -2225,43 +868,10 @@ void MainWindow::onRenameProfile() {
     if (fixedDefault) {
         return;
     }
-    pushGlobalUiUndoSnapshot(QStringLiteral("profile-edit"));
-    const ProfileEditDialog::Result edited = dialog.result();
-    m_profileManager->renameProfile(id, edited.name);
-    QString effectiveTargetTitle = edited.targetWindowTitle;
-    QString effectiveSubTargetTitle = edited.subTargetWindowTitle;
-    if (edited.defaultProfile) {
-        // Default profile is global: no bound target window title.
-        effectiveTargetTitle.clear();
-        effectiveSubTargetTitle.clear();
-    }
-    m_profileManager->setTargetWindowTitle(id, effectiveTargetTitle);
-    m_profileManager->setSubTargetWindowTitle(id, effectiveSubTargetTitle);
-    if (edited.defaultProfile) {
-        m_profileManager->setDefaultProfile(id);
-        ProgramSettings::ProfileSettings profileSettings = m_profileManager->loadSettings(id);
-        profileSettings.runWithoutTargetWindow = true;
-        profileSettings.subTargetWindowTitle.clear();
-        profileSettings.subLinkedTargetProcessPath.clear();
-        m_profileManager->saveSettings(id, profileSettings, false, true);
-    } else if (id == m_profileManager->defaultProfileId()
-               && !m_profileManager->profiles().empty()) {
-        m_profileManager->setDefaultProfile(m_profileManager->profiles().front().id);
-    }
-
-    if (id == m_profileManager->activeProfileId() && m_project) {
-        m_project->setTargetWindowTitle(effectiveTargetTitle.toStdString());
-        if (edited.defaultProfile) {
-            ProgramSettings::setRunWithoutTargetWindow(true);
-        }
-        ScreenCapture::setTargetWindow(nullptr);
-        ScreenCapture::setTargetWindowTitle(effectiveTargetTitle.toStdWString());
-        updateTargetWindowDetails();
-        scheduleAutoSave();
-        scheduleRunWarmup();
-        syncTargetWindowCenterPin();
-    }
-    refreshProfileList();
+    const auto edited=dialog.result();
+    request.edit={edited.name,edited.targetWindowTitle,edited.subTargetWindowTitle,
+                  edited.linkedTargetProcessPath,edited.subLinkedTargetProcessPath,edited.defaultProfile};
+    showProfileActionResult(m_profileActions->execute(request));
 }
 
 void MainWindow::onDeleteProfile() {
@@ -2281,63 +891,73 @@ void MainWindow::onDeleteProfile() {
         QMessageBox::information(this, tr("프로필 삭제"), tr("마지막 프로필은 삭제할 수 없습니다."));
         return;
     }
+    ProfileActionsController::Request request;
+    request.action=ProfileActionsController::Action::Remove;
+    request.id=id; request.owner=m_profileManager->activeProfileId(); request.generation=m_projectWorkspace->generation();
     const auto reply = QMessageBox::question(this,
                                              tr("프로필 삭제"),
                                              tr("'%1' 프로필을 삭제하시겠습니까?").arg(profile->name),
                                              QMessageBox::Yes | QMessageBox::No,
                                              QMessageBox::No);
-    if (reply != QMessageBox::Yes || !maybeSave()) {
-        return;
-    }
-    saveActiveProfileSettings();
-    stopAllSessions();
-    pushGlobalUiUndoSnapshot(QStringLiteral("profile-remove"));
-    m_profileManager->removeProfile(id);
-    refreshProfileList();
-    loadActiveProfile();
+    if(reply==QMessageBox::Yes)showProfileActionResult(m_profileActions->execute(request));
 }
 
-void MainWindow::onAlwaysOnTopToggled(bool checked) {
-    applyAlwaysOnTop(checked);
-    QSettings settings;
-    settings.setValue(alwaysOnTopPreferenceKey(), checked);
+void MainWindow::showProfileActionResult(const ProfileActionsController::Result& result) {
+    if (!result.message.isEmpty()) {
+        showTransientStatus(result.message,7000);appendLog(result.message,LogLineKind::Warning);
+    }
 }
 
-void MainWindow::applyAlwaysOnTop(bool enabled) {
-#ifdef _WIN32
-    applyNativeAlwaysOnTop(this, enabled);
-#else
-    Qt::WindowFlags flags = windowFlags();
-    if (enabled) {
-        flags |= Qt::WindowStaysOnTopHint;
-    } else {
-        flags &= ~Qt::WindowStaysOnTopHint;
-    }
-    setWindowFlags(flags);
-    show();
-#endif
+void MainWindow::setupProfileActions() {
+    ProfileActionsController::Host host;
+    const auto packagesPaused=std::make_shared<bool>(false);
+    host.canBegin=[this]{return !m_switchingProfile && !m_profileSwitchPipelineActive
+        && (!m_workspaceHistory || !m_workspaceHistory->isBusy())
+        && !(m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()));};
+    host.generation=[this]{return m_projectWorkspace->generation();};
+    host.checkpoint=[this,packagesPaused](const QString& reason,bool stopRuns){
+        const QPointer<MainWindow> alive(this);
+        const auto owner=m_profileManager->activeProfileId();const auto generation=m_projectWorkspace->generation();
+        if(!m_packageController->pauseAndWait())return false;
+        if(!alive)return false;
+        *packagesPaused=true;
+        if(stopRuns) {
+            if(!maybeSave() || !saveActiveProfileSettings())return false;
+            stopAllSessions();
+            if(!alive)return false;
+            if(owner!=m_profileManager->activeProfileId() || generation!=m_projectWorkspace->generation())return false;
+        }
+        return pushGlobalUiUndoSnapshot(reason);
+    };
+    host.changed=[this](const ProfileActionsController::Result& result){
+        using Action=ProfileActionsController::Action;
+        if(result.action==Action::Add) {refreshProfileList();switchToProfile(result.id);return;}
+        if(result.action==Action::Remove) {
+            m_packageController->discardPending(m_profileManager->profilePackagePath(result.id));
+            refreshProfileList();loadActiveProfile();return;
+        }
+        if(result.id==m_profileManager->activeProfileId() && m_project) {
+            m_project->setTargetWindowTitle(m_profileManager->targetWindowTitle(result.id).toStdString());
+            ProgramSettings::applyProfileSettings(m_profileManager->loadSettings(result.id));
+            syncEffectiveTargetWindowTitleToCapture();updateTargetWindowDetails();
+            scheduleAutoSave();scheduleRunWarmup();syncTargetWindowCenterPin();
+        }
+        refreshProfileList();
+    };
+    host.finished=[this,packagesPaused]{
+        if(*packagesPaused){*packagesPaused=false;if(!m_profileManager->storageReady())m_packageController->discardPending();m_packageController->resume();}
+        schedulePostProfileSwitchForegroundReconcile(false);
+    };
+    m_profileActions=std::make_unique<ProfileActionsController>(*m_profileManager,std::move(host),this);
 }
+
+void MainWindow::onAlwaysOnTopToggled(bool checked) {m_windowShell->toggleTopmost(checked);}
 
 void MainWindow::showEvent(QShowEvent* event) {
     QMainWindow::showEvent(event);
-    if (!m_initialUpdateCheckDone) {
-        m_initialUpdateCheckDone = true;
-        QTimer::singleShot(0, this, &MainWindow::runSilentUpdateCheck);
-    }
-#ifdef _WIN32
-    const HWND hwnd = reinterpret_cast<HWND>(winId());
-    if (hwnd && IsWindow(hwnd)) {
-        ensureFramelessResizeFrame(hwnd);
-        const DWM_WINDOW_CORNER_PREFERENCE cornerPreference = DWMWCP_ROUND;
-        DwmSetWindowAttribute(hwnd,
-                              DWMWA_WINDOW_CORNER_PREFERENCE,
-                              &cornerPreference,
-                              sizeof(cornerPreference));
-    }
-    if (m_alwaysOnTopCheck) {
-        applyNativeAlwaysOnTop(this, m_alwaysOnTopCheck->isChecked());
-    }
-#endif
+    if (m_updateController) m_updateController->onWindowShown();
+    if (m_windowShell) m_windowShell->shown();
+    if(m_windowChrome)m_windowChrome->shown();
 }
 
 void MainWindow::changeEvent(QEvent* event) {
@@ -2350,112 +970,59 @@ void MainWindow::changeEvent(QEvent* event) {
 
 #if defined(Q_OS_WIN)
 bool MainWindow::nativeEvent(const QByteArray& eventType, void* message, qintptr* result) {
-    if (isWindowsNativeMessage(eventType)) {
-        auto* msg = static_cast<MSG*>(message);
-        if (msg->message == WM_NCHITTEST) {
-            if (framelessResizeHitTest(msg, this, result)) {
-                return true;
-            }
-            if (m_titleBar
-                && m_titleBar->hitTestCaptionDrag(
-                    QPoint(GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam)))) {
-                *result = HTCAPTION;
-                return true;
-            }
-        }
-    }
+    if(m_windowChrome && m_windowChrome->nativeEvent(eventType,message,result))return true;
     return QMainWindow::nativeEvent(eventType, message, result);
 }
 #endif
 
-void MainWindow::restoreAlwaysOnTopPreference() {
-    if (!m_alwaysOnTopCheck) {
-        return;
-    }
-
-    QSettings settings;
-    const bool enabled = settings.value(alwaysOnTopPreferenceKey(), false).toBool();
-    QSignalBlocker blocker(m_alwaysOnTopCheck);
-    m_alwaysOnTopCheck->setChecked(enabled);
-    applyAlwaysOnTop(enabled);
-}
-
-QString MainWindow::alwaysOnTopPreferenceKey() const {
-    return QStringLiteral("ui/state/mainWindow/alwaysOnTop");
-}
-
-void MainWindow::syncWindowTitleDisplay() {
-    QString title = m_baseWindowTitle;
-    if (!m_transientStatusMessage.isEmpty()) {
-        title += QStringLiteral(" - ") + m_transientStatusMessage;
-    } else if (!m_persistentStatusMessage.isEmpty()) {
-        title += QStringLiteral(" - ") + m_persistentStatusMessage;
-    }
-    setWindowTitle(title);
-    if (m_titleBar) {
-        m_titleBar->syncFromWindowTitle();
-    }
-}
-
-void MainWindow::refreshTitleBarStatus() {
-    syncWindowTitleDisplay();
-}
-
-void MainWindow::showTransientStatus(const QString& message, int timeoutMs) {
-    if (message.isEmpty()) {
-        m_transientStatusMessage.clear();
-        if (m_statusClearTimer) {
-            m_statusClearTimer->stop();
-        }
-        refreshTitleBarStatus();
-        return;
-    }
-    if (m_statusClearTimer) {
-        m_statusClearTimer->stop();
-    }
-    m_transientStatusMessage = message;
-    refreshTitleBarStatus();
-    if (m_statusClearTimer && timeoutMs > 0) {
-        m_statusClearTimer->start(timeoutMs);
-    }
-}
-
-void MainWindow::setPersistentStatus(const QString& message) {
-    m_persistentStatusMessage = message.trimmed();
-    refreshTitleBarStatus();
-}
-
-void MainWindow::clearStatusMessage() {
-    if (m_statusClearTimer) {
-        m_statusClearTimer->stop();
-    }
-    m_transientStatusMessage.clear();
-    refreshTitleBarStatus();
-}
+void MainWindow::restoreAlwaysOnTopPreference() {m_windowShell->restoreTopmost();}
+void MainWindow::showTransientStatus(const QString& message,int timeoutMs) {m_windowShell->transient(message,timeoutMs);}
+void MainWindow::setPersistentStatus(const QString& message) {m_windowShell->persistent(message);}
+void MainWindow::clearStatusMessage() {m_windowShell->clearTransient();}
 
 void MainWindow::onReadyToRestartForUpdate() {
-    m_forceQuit = true;
-    if (m_updateCheckTimer) {
-        m_updateCheckTimer->stop();
+    if (!prepareForShutdown()) {
+        QMessageBox::warning(this,tr("업데이트 종료 중단"),m_shutdownCoordinator->lastError());
+        return;
     }
-    if (m_trayIcon) {
-        m_trayIcon->hide();
-    }
-    hide();
-    prepareForShutdown();
-    close();
-    QTimer::singleShot(0, qApp, []() { QApplication::exit(0); });
+    if(m_updateController)m_updateController->stop();
+    m_windowShell->commitExit();
+    hide();close();
+    QTimer::singleShot(0,qApp,[]{QApplication::exit(0);});
 }
 
-void MainWindow::prepareForShutdown() {
+void MainWindow::setupShutdownCoordinator() {
+    ShutdownCoordinator::HostCallbacks host;
+    host.canBegin = [this] { return (!m_workspaceHistory || !m_workspaceHistory->isBusy()) && (!m_profileActions || !m_profileActions->busy()); };
+    host.quiesce = [this] {
+        m_autoSaveTimer->stop();
+        stopAllSessions();
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    };
+    host.saveProject = [this] { return (!m_profileManager->storageReady() && !m_modified) || maybeSave(true); };
+    host.saveSettings = [this] { return (!m_profileManager->storageReady() && !m_modified) || saveActiveProfileSettings(); };
+    host.saveMemo = [this] { return !m_auxiliaryTools || m_auxiliaryTools->saveMemo(); };
+    host.finalize = [this] { finalizeShutdown(); };
+    m_shutdownCoordinator = std::make_unique<ShutdownCoordinator>(std::move(host));
+}
+
+bool MainWindow::prepareForShutdown() {
+    return m_shutdownCoordinator->prepare();
+}
+
+void MainWindow::finalizeShutdown() {
+    if(m_featureTransfers)m_featureTransfers->retire();
+    if(m_targetPanel)m_targetPanel->stop();
+    m_triggerMonitor->stop();
+    m_triggerPreemption->shutdown();
+    if(m_foregroundSessions)m_foregroundSessions->stop();
+    if (m_updateController) m_updateController->stop();
     m_hotkeyManager->unregisterAll();
     if (m_holdKeyTapMux) {
         m_holdKeyTapMux->stopAll();
     }
     UserInputInterruptMonitor::instance().unregisterAll();
-    MouseCenterLock::releaseAll();
-    stopAllSessions();
-    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    if (m_mouseLocks) m_mouseLocks->shutdown();
     ScreenRegionOverlay::dismissAll();
     MatchTestOverlay::dismissAll();
     RoiPreviewOverlay::dismissAll();
@@ -2463,28 +1030,15 @@ void MainWindow::prepareForShutdown() {
     WorkflowRoiFlashOverlay::dismissAll();
     WorkflowImageFindSelectionRoiOverlay::dismissAll();
     TargetWindowHighlightOverlay::dismissAll();
-    if (m_calculatorDialog) {
-        m_calculatorDialog->close();
-    }
-    if (m_spikeWatchDialog) {
-        m_spikeWatchDialog->close();
-    }
-    if (m_memoDialog) {
-        m_memoDialog->saveNow();
-        m_memoDialog->prepareForApplicationShutdown();
-        m_memoDialog->close();
-    }
+    m_auxiliaryTools->closeForShutdown();
+    if(m_centerPin)m_centerPin->stop();
+    if(m_targetActions)m_targetActions->cancel();
     WindowPicker::cancelPick();
     WindowPickerHoverOverlay::dismissAll();
     CursorPositionPicker::cancelPick();
     ClickContinuousInputRecorder::endSession();
     m_autoSaveTimer->stop();
-    if (m_profilePackageSealTimer) {
-        m_profilePackageSealTimer->stop();
-    }
     saveSelectedFeaturePreference();
-    autoSaveProject();
-    saveActiveProfileSettings();
     sealActiveProfilePackage(true);
     pruneAbandonedEngines();
     AppStutterProfiler::stopAndWriteReport(QStringLiteral("app_shutdown"));
@@ -2494,124 +1048,46 @@ void MainWindow::prepareForShutdown() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
-    if (!m_forceQuit && ProgramSettings::closeToTray() && QSystemTrayIcon::isSystemTrayAvailable()) {
-        hideToTray();
-        event->ignore();
-        return;
-    }
-
-    prepareForShutdown();
-    event->accept();
-    QMainWindow::closeEvent(event);
+    if(!m_windowShell->handleClose()){event->ignore();return;}
+    event->accept();QMainWindow::closeEvent(event);
 }
 
-void MainWindow::onNewProject() {
-    if (!maybeSave()) {
-        return;
-    }
+void MainWindow::onNewProject() {m_documentActions->newProject();}
 
-    prepareProjectUnload();
-    m_project = std::make_unique<Project>();
-    m_projectFilePath = m_profileManager ? m_profileManager->activeProjectPath()
-                                         : Application::autoSaveFilePath();
-    if (m_profileManager) {
-        Application::instance()->setProjectDirectory(m_profileManager->activeProjectDirectory());
-    }
-    ScreenCapture::setTargetWindow(nullptr);
-    ScreenCapture::setTargetWindowTitle(L"");
-    m_featureList->setProject(m_project.get());
-    if (m_profileManager) {
-        m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
-    }
-    onFeatureSelectionChanged();
-    m_modified = false;
-    updateWindowTitle();
-    syncHotkeys();
-    updateTargetWindowDetails();
-    autoSaveProject();
-    appendLog(tr("새 프로젝트를 준비했습니다."), LogLineKind::Info);
-}
+void MainWindow::onOpenProject() {m_documentActions->openProject();}
 
-void MainWindow::onOpenProject() {
-    if (!maybeSave()) {
-        return;
-    }
+void MainWindow::onSaveProject() {m_documentActions->saveProject();}
 
-    const QString path = QFileDialog::getOpenFileName(
-        this, tr("프로젝트 열기"), Application::instance()->projectDirectory(),
-        tr("PIPBONG 프로젝트 (*.json)"));
-    if (path.isEmpty()) {
-        return;
-    }
-    loadProjectFromFile(path);
-}
+void MainWindow::onSaveProjectAs() {m_documentActions->saveProjectAs();}
 
-void MainWindow::onSaveProject() {
-    if (!ensureProjectFilePath()) {
-        onSaveProjectAs();
-        return;
-    }
+void MainWindow::onFeatureSelectionChanged() {m_workspaceEditor->selectionChanged();}
+void MainWindow::saveSelectedFeaturePreference() {m_workspaceEditor->saveSelection();}
+void MainWindow::restoreSelectedFeaturePreference() {m_workspaceEditor->restoreSelection();}
+QString MainWindow::selectedFeaturePreferenceKey()const {return WorkspaceEditorController::preferenceKey(m_projectFilePath);}
 
-    if (JsonSerializer::saveToFile(*m_project, m_projectFilePath, Application::instance()->projectDirectory())) {
-        m_modified = false;
-        updateWindowTitle();
-        appendLog(tr("변경 내용을 저장했습니다."), LogLineKind::Success);
-        showTransientStatus(tr("저장됨"), 2000);
-    } else {
-        QMessageBox::critical(this, tr("프로젝트 저장"), tr("프로젝트 저장에 실패했습니다."));
-    }
-}
-
-void MainWindow::onSaveProjectAs() {
-    const QString path = QFileDialog::getSaveFileName(
-        this, tr("다른 이름으로 저장"), Application::instance()->projectDirectory() + QStringLiteral("/project.json"),
-        tr("PIPBONG 프로젝트 (*.json)"));
-    if (path.isEmpty()) {
-        return;
-    }
-
-    m_projectFilePath = path;
-    QSettings settings;
-    settings.setValue(QStringLiteral("project/lastFile"), m_projectFilePath);
-    onSaveProject();
-}
-
-void MainWindow::onFeatureSelectionChanged() {
-    m_libraryPreviewFeature.reset();
-    m_libraryPreviewEntryId.clear();
-    saveSelectedFeaturePreference();
-    refreshWorkflowEditor();
-}
-
-void MainWindow::saveSelectedFeaturePreference() {
-    if (!m_featureList || m_projectFilePath.isEmpty()) {
-        return;
-    }
-    const QString featureId = m_featureList->selectedFeatureId();
-    if (featureId.isEmpty()) {
-        return;
-    }
-    QSettings settings;
-    settings.setValue(selectedFeaturePreferenceKey(), featureId);
-}
-
-void MainWindow::restoreSelectedFeaturePreference() {
-    if (!m_featureList || m_projectFilePath.isEmpty()) {
-        return;
-    }
-    QSettings settings;
-    const QString featureId = settings.value(selectedFeaturePreferenceKey()).toString();
-    if (!featureId.isEmpty()) {
-        m_featureList->selectFeatureById(featureId);
-    }
-}
-
-QString MainWindow::selectedFeaturePreferenceKey() const {
-    const QString projectKey = QFileInfo(m_projectFilePath).absoluteFilePath();
-    return QStringLiteral("project/selectedFeatureId/%1").arg(QString::number(qHash(projectKey)));
+void MainWindow::setupWorkspaceEditor() {
+    WorkspaceEditorController::Host host;
+    host.source=[this]{
+        WorkspaceEditorController::Source source;source.project=m_project;source.owner=m_profileManager->activeProfileId();
+        source.modelOwner=m_projectWorkspace->state().profileId;
+        source.generation=m_projectWorkspace->generation();source.path=m_projectFilePath;source.directory=Application::instance()->projectDirectory();
+        source.selected=m_featureList->selectedFeature();source.selectedId=m_featureList->selectedFeatureId();
+        source.preview=m_libraryPreviewFeature;source.previewId=m_libraryPreviewEntryId;
+        source.previewDirectory=m_featureLibraryManager?m_featureLibraryManager->entryProjectDirectory(m_libraryPreviewEntryId):source.directory;
+        const auto* profile=m_profileManager->activeProfile();source.profileName=profile?(m_profileManager->isDefaultProfile(profile->id)?tr("기본"):profile->name):QString();return source;
+    };
+    host.session=[this](const auto& id){return sessionFor(id);};
+    host.sessions=[this]{std::vector<std::string> ids;for(const auto& item:runSessions())ids.push_back(item.first);return ids;};
+    host.pending=[this]{std::vector<std::string> ids;if(m_featureHotkeys)for(const auto& id:m_featureHotkeys->visibleQueuedStarts())ids.push_back(id.toStdString());return ids;};
+    host.timing=[this](const auto* session){syncLoopTimingToWorkflowEditor(session);};
+    host.clearPreview=[this]{m_libraryPreviewEntryId.clear();m_libraryPreviewFeature.reset();};
+    host.autoSelect=ProgramSettings::autoSelectRunningFeature;
+    host.changed=[this]{updateRunUiState();};
+    m_workspaceEditor=std::make_unique<WorkspaceEditorController>(*m_workflowEditor,*m_featureList,std::move(host),this);
 }
 
 void MainWindow::onProjectModified() {
+    synchronizeRunWorkerState();
     scheduleAutoSave();
     if (m_featureList) {
         if (Feature* feature = m_featureList->selectedFeature()) {
@@ -2620,197 +1096,18 @@ void MainWindow::onProjectModified() {
     }
 }
 
-void MainWindow::scheduleAutoSave() {
-    m_modified = true;
-    updateWindowTitle();
-    m_autoSaveTimer->start(800);
-}
+void MainWindow::scheduleAutoSave() { m_projectWorkspace->markModified(); }
+bool MainWindow::ensureProjectFilePath() { return m_projectWorkspace->ensurePath(); }
+void MainWindow::autoSaveProject(bool quiet) { m_projectWorkspace->save(quiet); }
+void MainWindow::scheduleProfilePackageSeal() { m_projectWorkspace->scheduleSeal(); }
+void MainWindow::sealActiveProfilePackage(bool synchronous) { m_projectWorkspace->seal(synchronous); }
 
-bool MainWindow::ensureProjectFilePath() {
-    if (m_projectFilePath.isEmpty()) {
-        m_projectFilePath = Application::autoSaveFilePath();
-    }
-    return !m_projectFilePath.isEmpty();
-}
+void MainWindow::onImportProfilePackage() {m_documentActions->importPackage();}
 
-void MainWindow::autoSaveProject(bool quiet) {
-    if (!ensureProjectFilePath()) {
-        return;
-    }
+void MainWindow::onExportProfilePackage() {m_documentActions->exportPackage();}
 
-    if (JsonSerializer::saveToFile(*m_project, m_projectFilePath, Application::instance()->projectDirectory())) {
-        m_modified = false;
-        updateWindowTitle();
-        if (m_profileManager) {
-            m_profileManager->invalidateCachedProject(m_profileManager->activeProfileId());
-        }
-        if (!quiet) {
-            showTransientStatus(tr("자동 저장됨"), 2000);
-        }
-        scheduleProfilePackageSeal();
-    }
-}
-
-void MainWindow::scheduleProfilePackageSeal() {
-    if (!m_profileManager || !m_profilePackageSealTimer) {
-        return;
-    }
-    m_profilePackageSealTimer->start();
-}
-
-void MainWindow::sealActiveProfilePackage(bool synchronous) {
-    if (!m_profileManager) {
-        return;
-    }
-
-    saveActiveProfileSettings();
-
-    const QString profileId = m_profileManager->activeProfileId();
-    const QString profileDirectory = m_profileManager->profileDirectory(profileId);
-    const QString packagePath = m_profileManager->profilePackagePath(profileId);
-
-    if (synchronous) {
-        ProjectPackage::packDirectory(profileDirectory, packagePath);
-        return;
-    }
-
-    if (m_profilePackageSealRunning.exchange(true)) {
-        return;
-    }
-
-    const QFuture<void> sealFuture = QtConcurrent::run([this, profileDirectory, packagePath]() {
-        ProjectPackage::packDirectory(profileDirectory, packagePath);
-        QTimer::singleShot(0, this, [this]() { m_profilePackageSealRunning.store(false); });
-    });
-    Q_UNUSED(sealFuture);
-}
-
-void MainWindow::onImportProfilePackage() {
-    if (!m_profileManager) {
-        return;
-    }
-
-    const QString path = QFileDialog::getOpenFileName(
-        this,
-        tr("PIPBONG 패키지 가져오기"),
-        ProjectPackage::defaultExportDirectory(),
-        tr("PIPBONG 패키지 (*%1)").arg(QString::fromLatin1(ProjectPackage::kExtension)));
-    if (path.isEmpty()) {
-        return;
-    }
-
-    const QString profileId = m_profileManager->importProfileFromPackage(path);
-    if (profileId.isEmpty()) {
-        QMessageBox::critical(this,
-                              tr("패키지 가져오기"),
-                              tr("PIPBONG 패키지를 불러오지 못했습니다."));
-        return;
-    }
-
-    refreshProfileList();
-    loadActiveProfile(false);
-    syncProfileListSelection();
-    appendLog(tr("PIPBONG 패키지를 새 프로필로 가져왔습니다: %1").arg(QFileInfo(path).fileName()),
-              LogLineKind::Success);
-}
-
-void MainWindow::onExportProfilePackage() {
-    if (!m_profileManager) {
-        return;
-    }
-
-    if (!maybeSave(true)) {
-        return;
-    }
-    saveActiveProfileSettings();
-    sealActiveProfilePackage(true);
-
-    const ProfileManager::Profile* profile = m_profileManager->activeProfile();
-    const QString defaultBaseName =
-        profile ? (m_profileManager->isDefaultProfile(profile->id) ? QStringLiteral("PIPBONG")
-                                                                   : profile->name)
-                : QStringLiteral("PIPBONG");
-    const QString defaultPath =
-        QDir(ProjectPackage::defaultExportDirectory())
-            .filePath(defaultBaseName + QString::fromLatin1(ProjectPackage::kExtension));
-
-    const QString path = QFileDialog::getSaveFileName(
-        this,
-        tr("PIPBONG 패키지 내보내기"),
-        defaultPath,
-        tr("PIPBONG 패키지 (*%1)").arg(QString::fromLatin1(ProjectPackage::kExtension)));
-    if (path.isEmpty()) {
-        return;
-    }
-
-    QString exportPath = path;
-    if (!exportPath.endsWith(QString::fromLatin1(ProjectPackage::kExtension), Qt::CaseInsensitive)) {
-        exportPath += QString::fromLatin1(ProjectPackage::kExtension);
-    }
-
-    if (!ProjectPackage::packDirectory(m_profileManager->activeProjectDirectory(), exportPath)) {
-        QMessageBox::critical(this,
-                              tr("패키지 내보내기"),
-                              tr("PIPBONG 패키지를 저장하지 못했습니다."));
-        return;
-    }
-
-    QSettings settings;
-    settings.setValue(QStringLiteral("project/lastExportDirectory"),
-                      QFileInfo(exportPath).absolutePath());
-    showTransientStatus(tr("패키지 내보냄: %1").arg(QFileInfo(exportPath).fileName()), 2500);
-    appendLog(tr("PIPBONG 패키지를 내보냈습니다: %1").arg(exportPath), LogLineKind::Success);
-}
-
-void MainWindow::refreshWorkflowEditor() {
-    AppStutterOperationScope stutterScope("workflow.refresh", tr("workflow editor"));
-    QString workflowProfileName;
-    if (m_libraryPreviewFeature && !m_libraryPreviewEntryId.isEmpty()) {
-        workflowProfileName = tr("라이브러리");
-        m_workflowEditor->setProjectDirectory(
-            m_featureLibraryManager
-                ? m_featureLibraryManager->entryProjectDirectory(m_libraryPreviewEntryId)
-                : Application::instance()->projectDirectory(),
-            false);
-        m_workflowEditor->setProfileDisplayName(workflowProfileName);
-        m_workflowEditor->setFeature(m_libraryPreviewFeature.get());
-        m_workflowEditor->clearLoopTiming();
-        m_workflowEditor->setEditingEnabled(false);
-        updateRunUiState();
-        return;
-    }
-
-    if (m_profileManager) {
-        const ProfileManager::Profile* profile = m_profileManager->activeProfile();
-        workflowProfileName =
-            profile ? (m_profileManager->isDefaultProfile(profile->id) ? tr("기본") : profile->name)
-                    : QString();
-    }
-    m_workflowEditor->setProfileDisplayName(workflowProfileName);
-
-    Feature* feature = m_featureList->selectedFeature();
-    m_workflowEditor->setProjectDirectory(Application::instance()->projectDirectory(), false);
-    m_workflowEditor->setFeature(feature);
-    if (feature) {
-        if (FeatureRunSession* session = sessionFor(feature->id())) {
-            if (session->runningBlockIndex >= 0) {
-                m_workflowEditor->setActiveBlockIndex(session->runningBlockIndex, session->runningBlockHighlight);
-            }
-            syncLoopTimingToWorkflowEditor(session);
-        }
-    } else {
-        m_workflowEditor->clearLoopTiming();
-    }
-    updateRunUiState();
-}
-
-bool MainWindow::isDisplayedRunningFeature(const FeatureRunSession* session) const {
-    if (!session || !m_featureList || !sessionBelongsToActiveProfile(*session)) {
-        return false;
-    }
-    const Feature* selected = m_featureList->selectedFeature();
-    return selected && selected->id() == session->featureId;
-}
+void MainWindow::refreshWorkflowEditor() {m_workspaceEditor->refresh();}
+bool MainWindow::isDisplayedRunningFeature(const FeatureRunSession* session)const {return m_workspaceEditor && m_workspaceEditor->displayed(session);}
 
 bool MainWindow::sessionBelongsToActiveProfile(const FeatureRunSession& session) const {
     if (!m_profileManager) {
@@ -2827,6 +1124,7 @@ Feature* MainWindow::featureForSession(FeatureRunSession& session) {
 }
 
 const Feature* MainWindow::featureForSession(const FeatureRunSession& session) const {
+    if (!session.profileId.isEmpty() && (!m_profileManager || !m_profileManager->profileById(session.profileId))) return nullptr;
     if (m_profileManager && !session.profileId.isEmpty()
         && session.profileId == m_profileManager->activeProfileId() && m_project) {
         return m_project->featureById(session.featureId);
@@ -2853,34 +1151,9 @@ const Feature* MainWindow::featureForSession(const FeatureRunSession& session) c
     return m_project ? m_project->featureById(session.featureId) : nullptr;
 }
 
-void MainWindow::restoreRunStartCursorPosition(const FeatureRunSession& session) {
-    if (!session.hasRunStartCursorPosition) {
-        return;
-    }
-    InputSimulator::moveMouse(session.runStartCursorScreenX, session.runStartCursorScreenY);
-}
-
-void MainWindow::releaseHoldHotkeyInputToTarget(FeatureRunSession& session, Feature* feature) {
-    if (session.holdHotkeyReleasedToTarget || !feature || feature->hotkey().isEmpty()) {
-        return;
-    }
-    if (!shouldDeliverHoldHotkeyRelease(session, feature)) {
-        session.holdHotkeyReleasedToTarget = true;
-        return;
-    }
-#ifdef _WIN32
-    HWND hwnd = ScreenCapture::findTargetWindow();
-    InputSimulator::releaseHoldHotkeyToTarget(hwnd, feature->hotkey().virtualKey);
-#else
-    const int vk = feature->hotkey().virtualKey;
-    if (HotkeyBinding::isMouseVirtualKey(vk)) {
-        InputSimulator::forceHotkeyMouseButtonUp(vk);
-    } else {
-        InputSimulator::forceKeyUp(vk);
-    }
-#endif
-    session.holdHotkeyReleasedToTarget = true;
-}
+void MainWindow::captureRunStartCursorPosition(FeatureRunSession& session) {m_inputCleanup->captureCursor(session);}
+void MainWindow::restoreRunStartCursorPosition(const FeatureRunSession& session) {m_inputCleanup->restoreCursor(session);}
+void MainWindow::releaseHoldHotkeyInputToTarget(FeatureRunSession& session) {m_inputCleanup->releaseHold(session);}
 
 void MainWindow::pruneSessionOwnerProjects() {
     if (m_sessionOwnerProjects.empty()) {
@@ -2905,15 +1178,7 @@ void MainWindow::pruneSessionOwnerProjects() {
 
 void MainWindow::applyRunningBlockVisuals(FeatureRunSession& session,
                                           int index,
-                                          BlockListWidget::ExecutionHighlight highlight) {
-    const BlockListWidget::ExecutionHighlight mapped =
-        mapTriggerBlockHighlight(session, index, highlight);
-    session.runningBlockIndex = index;
-    session.runningBlockHighlight = mapped;
-    if (isDisplayedRunningFeature(&session)) {
-        m_workflowEditor->setActiveBlockIndex(index, mapped);
-    }
-}
+                                          BlockListWidget::ExecutionHighlight highlight) { m_executionPresenter->highlight(session,index,highlight); }
 
 FeatureRunSession* MainWindow::sessionFor(const std::string& featureId) {
     return RunLifecycleCoordinator::sessionForId(runSessions(), featureId);
@@ -2998,52 +1263,7 @@ bool MainWindow::isFeatureRunHighlighted(const FeatureRunSession& session) const
     return isFeatureSessionActive(session);
 }
 
-QHash<QString, FeatureRunVisualKind> MainWindow::buildFeatureListRunVisualKinds() const {
-    QHash<QString, FeatureRunVisualKind> visualKinds;
-    for (const auto& entry : runSessions()) {
-        if (!sessionBelongsToActiveProfile(entry.second)) {
-            continue;
-        }
-        const QString featureId = QString::fromStdString(entry.first);
-        const FeatureRunSession& session = entry.second;
-
-        if (session.runningMode == FeatureRunMode::Hold) {
-            if (session.holdRunActive) {
-                visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
-            }
-            continue;
-        }
-
-        if (!isFeatureSessionActive(session)) {
-            continue;
-        }
-
-        if (session.runningMode != FeatureRunMode::Trigger || !session.repeatSession) {
-            visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
-            continue;
-        }
-        switch (session.triggerPhase) {
-        case TriggerSessionPhase::Monitoring:
-            visualKinds.insert(featureId, FeatureRunVisualKind::TriggerWatch);
-            break;
-        case TriggerSessionPhase::Cooldown:
-            visualKinds.insert(featureId, FeatureRunVisualKind::TriggerCooldown);
-            break;
-        case TriggerSessionPhase::RunningAction:
-            visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
-            break;
-        case TriggerSessionPhase::None:
-            break;
-        }
-    }
-    for (const std::string& pendingId : m_pendingHoldFeatureStartIds) {
-        const QString featureId = QString::fromStdString(pendingId);
-        if (!visualKinds.contains(featureId)) {
-            visualKinds.insert(featureId, FeatureRunVisualKind::ActiveRun);
-        }
-    }
-    return visualKinds;
-}
+QHash<QString, FeatureRunVisualKind> MainWindow::buildFeatureListRunVisualKinds()const {return m_workspaceEditor->visuals();}
 
 void MainWindow::refreshFeatureListHoldVisuals() {
     if (!m_featureList) {
@@ -3075,6 +1295,11 @@ void MainWindow::scheduleFeatureListHoldVisualRefresh() {
 }
 
 QString MainWindow::featureDisplayName(const std::string& featureId) const {
+    if(const auto* session=sessionFor(featureId)) {
+        if(!session->startedFeatureName.empty())return QString::fromStdString(session->startedFeatureName);
+        if(const auto* owned=featureForSession(*session))return QString::fromStdString(owned->name());
+        return QString::fromStdString(featureId);
+    }
     if (!m_project) {
         return QString::fromStdString(featureId);
     }
@@ -3137,13 +1362,6 @@ bool MainWindow::shouldCoalesceRunUiUpdates() const {
 int MainWindow::concurrentActiveRepeatSessionCount() const {
     return SessionRunPolicy::countActiveRepeatSessions(
         RunLifecycleCoordinator::policyInputsFromSessions(runSessions()));
-}
-
-bool MainWindow::shouldPublishFastRepeatLoopLog(const FeatureRunSession& session) const {
-    if (concurrentActiveRepeatSessionCount() >= 2) {
-        return false;
-    }
-    return isDisplayedRunningFeature(&session);
 }
 
 void MainWindow::applyRunUiState() {
@@ -3226,1292 +1444,177 @@ void MainWindow::onFeatureEnabledChanged(const QString& featureId, bool enabled)
     }
 }
 
-void MainWindow::onSaveFeatureToLibraryRequested(const QString& featureId) {
-    if (!m_project || !m_featureLibraryManager) {
-        return;
-    }
-    if (featureId.isEmpty()) {
-        return;
-    }
+void MainWindow::onSaveFeatureToLibraryRequested(const QString& id) {if(m_libraryActions)m_libraryActions->save(id);}
+void MainWindow::onImportFeatureFromLibraryRequested() {if(m_libraryActions)m_libraryActions->chooseImport();}
+void MainWindow::onImportLibraryEntriesRequested(const QStringList& ids) {importLibraryEntries(ids);}
+void MainWindow::onLibraryEntrySelected(const QString& id) {if(m_libraryActions)m_libraryActions->preview(id);}
+void MainWindow::onDeleteLibraryEntriesRequested(const QStringList& ids) {if(m_libraryActions)m_libraryActions->remove(ids);}
 
-    Feature* feature = m_project->featureById(featureId.toStdString());
-    if (!feature) {
-        return;
-    }
-
-    const QString suggestedName = QString::fromStdString(feature->name());
-    bool ok = false;
-    const QString entryName = QInputDialog::getText(this,
-                                                     tr("라이브러리에 저장"),
-                                                     tr("라이브러리 이름"),
-                                                     QLineEdit::Normal,
-                                                     suggestedName,
-                                                     &ok);
-    if (!ok) {
-        return;
-    }
-
-    QString entryId;
-    QStringList missingTemplates;
-    const QString sourceProjectDir = Application::instance()->projectDirectory();
-    pushGlobalUiUndoSnapshot(QStringLiteral("library-save-entry"));
-    if (!m_featureLibraryManager->saveFeatureToLibrary(*feature,
-                                                        sourceProjectDir,
-                                                        entryName,
-                                                        &entryId,
-                                                        &missingTemplates)) {
-        QMessageBox::critical(this,
-                              tr("라이브러리 저장 실패"),
-                              tr("기능을 라이브러리에 저장하지 못했습니다."));
-        return;
-    }
-
-    if (!missingTemplates.empty()) {
-        appendLog(tr("템플릿 일부를 라이브러리에 복사하지 못했습니다: %1")
-                       .arg(missingTemplates.join(QStringLiteral(", "))),
-                  LogLineKind::Warning);
-    }
-
-    showTransientStatus(tr("라이브러리에 저장됨: %1").arg(entryName), 2500);
-    refreshFeatureLibraryPanel();
-}
-
-void MainWindow::onImportFeatureFromLibraryRequested() {
-    if (!m_project || !m_featureLibraryManager || !m_featureList) {
-        return;
-    }
-
-    const std::vector<FeatureLibraryManager::Entry> entries = m_featureLibraryManager->listEntries();
-    if (entries.empty()) {
-        QMessageBox::information(this,
-                                 tr("라이브러리"),
-                                 tr("아직 저장된 기능 라이브러리가 없습니다. 먼저 기능을 '라이브러리에 저장'으로 저장해 주세요."));
-        return;
-    }
-
-    std::vector<FeatureLibraryDialog::EntryUi> uiEntries;
-    uiEntries.reserve(entries.size());
-    for (const auto& e : entries) {
-        FeatureLibraryDialog::EntryUi ue;
-        ue.id = e.id;
-        ue.name = e.name;
-        ue.templateCount = e.templateCount;
-        uiEntries.push_back(std::move(ue));
-    }
-
-    FeatureLibraryDialog dialog(uiEntries, this);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;
-    }
-
-    const QString entryId = dialog.selectedEntryId();
-    if (entryId.isEmpty()) {
-        return;
-    }
-    importLibraryEntry(entryId);
-}
-
-void MainWindow::onImportLibraryEntriesRequested(const QStringList& entryIds) {
-    importLibraryEntries(entryIds);
-}
-
-void MainWindow::onLibraryEntrySelected(const QString& entryId) {
-    m_libraryPreviewFeature.reset();
-    m_libraryPreviewEntryId.clear();
-
-    if (!m_featureLibraryManager || entryId.isEmpty()) {
-        refreshWorkflowEditor();
-        return;
-    }
-
-    auto preview = m_featureLibraryManager->loadEntryFeature(entryId);
-    if (!preview) {
-        showTransientStatus(tr("라이브러리 항목을 미리볼 수 없습니다."), 2500);
-        refreshWorkflowEditor();
-        return;
-    }
-
-    m_libraryPreviewEntryId = entryId;
-    m_libraryPreviewFeature = std::move(preview);
-    refreshWorkflowEditor();
-}
-
-void MainWindow::onDeleteLibraryEntriesRequested(const QStringList& entryIds) {
-    if (!m_featureLibraryManager || entryIds.isEmpty()) {
-        return;
-    }
-
-    const bool multiple = entryIds.size() > 1;
-    const QString singleEntryName =
-        multiple ? QString()
-                 : libraryEntryDisplayName(m_featureLibraryManager.get(), entryIds.front());
-    QMessageBox box(QMessageBox::Question,
-                    tr("라이브러리에서 삭제"),
-                    multiple ? tr("선택한 라이브러리 항목 %1개를 삭제하시겠습니까?\n"
-                                  "이미 가져온 기능에는 영향이 없습니다.")
-                                   .arg(entryIds.size())
-                             : tr("'%1' 항목을 라이브러리에서 삭제하시겠습니까?\n"
-                                  "이미 가져온 기능에는 영향이 없습니다.")
-                                   .arg(singleEntryName),
-                    QMessageBox::Yes | QMessageBox::No,
-                    this);
-    box.setDefaultButton(QMessageBox::No);
-    if (static_cast<QMessageBox::StandardButton>(box.exec()) != QMessageBox::Yes) {
-        return;
-    }
-    pushGlobalUiUndoSnapshot(QStringLiteral("library-remove-entries"));
-
-    int removed = 0;
-    bool previewCleared = false;
-    for (const QString& entryId : entryIds) {
-        if (entryId.isEmpty()) {
-            continue;
-        }
-        if (!m_featureLibraryManager->removeEntry(entryId)) {
-            continue;
-        }
-        ++removed;
-        if (m_libraryPreviewEntryId == entryId) {
-            m_libraryPreviewEntryId.clear();
-            m_libraryPreviewFeature.reset();
-            previewCleared = true;
-        }
-    }
-
-    if (previewCleared) {
-        refreshWorkflowEditor();
-    }
-    if (removed > 0) {
-        showTransientStatus(multiple ? tr("라이브러리에서 %1개 항목 삭제됨").arg(removed)
-                                     : tr("라이브러리에서 삭제됨: %1").arg(singleEntryName),
-                          2500);
-    }
-    refreshFeatureLibraryPanel();
-}
-
-bool MainWindow::canTransferFeatures() const {
-    // Library import, profile copy-drop, and save-to-library do not conflict with other
-    // features' sessions (including trigger watch). Per-feature guards apply when editing
-    // a feature that is in an active workflow burst.
-    return true;
-}
-
-bool MainWindow::removeFeatureFromProfile(const QString& profileId, const QString& featureId) {
-    if (!m_profileManager || featureId.isEmpty()) {
-        return false;
-    }
-
-    if (isFeatureRunning(featureId.toStdString())) {
-        stopFeatureRun(featureId.toStdString());
-    }
-    if (m_profileManager) {
-        m_profileManager->updateTriggerArmedFeature(profileId, featureId, false);
-    }
-
-    if (profileId == m_profileManager->activeProfileId()) {
-        if (!m_project) {
-            return false;
-        }
-        const int index = featureIndexById(*m_project, featureId.toStdString());
-        if (index < 0) {
-            return false;
-        }
-        m_project->removeFeature(index);
+void MainWindow::setupFeatureTransfers() {
+    FeatureTransferController::HostCallbacks host;
+    host.activeProject = [this] { return m_project; };
+    host.generation=[this]{return m_projectWorkspace->generation();};
+    host.activeDirectory=[this]{return m_projectWorkspace->state().directory;};
+    host.stopFeature = [this](const QString& profile,const QString& id) {
+        const auto* session=sessionFor(id.toStdString());
+        if(session && session->profileId==profile && isFeatureRunning(id.toStdString()))stopFeatureRun(id.toStdString());
+    };
+    host.activeChanged = [this](const QString& selectedId) {
         if (m_featureList) {
             m_featureList->refresh();
-            onFeatureSelectionChanged();
+            if (!selectedId.isEmpty()) m_featureList->selectFeatureById(selectedId);
+            else onFeatureSelectionChanged();
         }
         syncHotkeys();
         scheduleAutoSave();
-        return true;
-    }
-
-    const QString path = m_profileManager->projectPath(profileId);
-    QString projectDir = m_profileManager->projectDirectory(profileId);
-    auto project = JsonSerializer::loadFromFile(path, &projectDir);
-    if (!project) {
-        return false;
-    }
-    const int index = featureIndexById(*project, featureId.toStdString());
-    if (index < 0) {
-        return false;
-    }
-    project->removeFeature(index);
-    return JsonSerializer::saveToFile(*project, path, projectDir);
-}
-
-bool MainWindow::importLibraryEntryToProfile(const QString& entryId,
-                                             const QString& profileId,
-                                             int insertIndex,
-                                             bool refreshListUi,
-                                             QString* insertedFeatureId) {
-    if (!m_featureLibraryManager || !m_profileManager || entryId.isEmpty() || profileId.isEmpty()) {
-        return false;
-    }
-
-    const QString targetProjectDir = m_profileManager->projectDirectory(profileId);
-    FeatureLibraryManager::ImportResult res =
-        m_featureLibraryManager->importEntryToProfile(entryId, targetProjectDir);
-    if (!res.feature) {
-        return false;
-    }
-
-    const QString newFeatureId = QString::fromStdString(res.feature->id());
-    if (profileId == m_profileManager->activeProfileId()) {
-        if (!m_project || !m_featureList) {
-            return false;
-        }
-        const int count = static_cast<int>(m_project->features().size());
-        const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
-        m_project->insertFeature(idx, std::move(res.feature));
-        if (refreshListUi) {
-            m_featureList->refresh();
-            m_featureList->selectFeatureById(newFeatureId);
-            syncHotkeys();
-            scheduleAutoSave();
-        }
-    } else {
-        const QString path = m_profileManager->projectPath(profileId);
-        QString projectDir = targetProjectDir;
-        auto project = JsonSerializer::loadFromFile(path, &projectDir);
-        if (!project) {
-            return false;
-        }
-        const int count = static_cast<int>(project->features().size());
-        const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
-        project->insertFeature(idx, std::move(res.feature));
-        if (!JsonSerializer::saveToFile(*project, path, projectDir)) {
-            return false;
-        }
-    }
-
-    if (insertedFeatureId) {
-        *insertedFeatureId = newFeatureId;
-    }
-
-    if (!res.missingTemplatePaths.empty()) {
-        appendLog(tr("가져온 기능의 템플릿 일부를 복사하지 못했습니다: %1")
-                      .arg(res.missingTemplatePaths.join(QStringLiteral(", "))),
-                  LogLineKind::Warning);
-    }
-    return true;
-}
-
-bool MainWindow::saveFeatureToLibraryFromDrag(const QString& featureId, const QString& profileId) {
-    if (!m_featureLibraryManager || !m_profileManager || featureId.isEmpty()) {
-        return false;
-    }
-    if (profileId != m_profileManager->activeProfileId() || !m_project) {
-        return false;
-    }
-
-    Feature* feature = m_project->featureById(featureId.toStdString());
-    if (!feature) {
-        return false;
-    }
-
-    QString entryId;
-    QStringList missingTemplates;
-    const QString sourceProjectDir = m_profileManager->activeProjectDirectory();
-    const QString entryName = QString::fromStdString(feature->name());
-    if (!m_featureLibraryManager->saveFeatureToLibrary(*feature,
-                                                        sourceProjectDir,
-                                                        entryName,
-                                                        &entryId,
-                                                        &missingTemplates)) {
-        return false;
-    }
-
-    if (!missingTemplates.empty()) {
-        appendLog(tr("템플릿 일부를 라이브러리에 복사하지 못했습니다: %1")
-                      .arg(missingTemplates.join(QStringLiteral(", "))),
-                  LogLineKind::Warning);
-    }
-
-    refreshFeatureLibraryPanel();
-    return true;
-}
-
-bool MainWindow::copyFeatureBetweenProfiles(const QString& featureId,
-                                            const QString& sourceProfileId,
-                                            const QString& targetProfileId,
-                                            int insertIndex) {
-    if (!canTransferFeatures() || !m_profileManager || featureId.isEmpty()) {
-        return false;
-    }
-    if (sourceProfileId.isEmpty() || targetProfileId.isEmpty()
-        || sourceProfileId == targetProfileId) {
-        return false;
-    }
-
-    QString sourceProjectDir;
-    const Feature* sourceFeature = nullptr;
-    std::unique_ptr<Project> loadedSourceProject;
-
-    if (sourceProfileId == m_profileManager->activeProfileId()) {
-        if (!m_project) {
-            return false;
-        }
-        sourceProjectDir = m_profileManager->activeProjectDirectory();
-        sourceFeature = m_project->featureById(featureId.toStdString());
-    } else {
-        const QString sourcePath = m_profileManager->projectPath(sourceProfileId);
-        sourceProjectDir = m_profileManager->projectDirectory(sourceProfileId);
-        loadedSourceProject = JsonSerializer::loadFromFile(sourcePath, &sourceProjectDir);
-        if (!loadedSourceProject) {
-            return false;
-        }
-        sourceFeature = loadedSourceProject->featureById(featureId.toStdString());
-    }
-
-    if (!sourceFeature) {
-        return false;
-    }
-
-    std::unique_ptr<Feature> copiedFeature = sourceFeature->duplicateAsNewInstance();
-    if (!copiedFeature) {
-        return false;
-    }
-
-    const QString targetProjectDir = m_profileManager->projectDirectory(targetProfileId);
-    const QStringList missingTemplates =
-        FeatureLibraryManager::copyFeatureTemplatesBetweenDirectories(*sourceFeature,
-                                                                     sourceProjectDir,
-                                                                     targetProjectDir);
-    if (!missingTemplates.empty()) {
-        appendLog(tr("프로필 복사 시 템플릿 일부를 복사하지 못했습니다: %1")
-                      .arg(missingTemplates.join(QStringLiteral(", "))),
-                  LogLineKind::Warning);
-    }
-
-    const QString newFeatureId = QString::fromStdString(copiedFeature->id());
-    if (targetProfileId == m_profileManager->activeProfileId()) {
-        if (!m_project || !m_featureList) {
-            return false;
-        }
-        const int count = static_cast<int>(m_project->features().size());
-        const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
-        m_project->insertFeature(idx, std::move(copiedFeature));
+    };
+    host.profileSaved = [this](const QString& id) {
+        m_packageController->schedule(m_profileManager->profileDirectory(id), m_profileManager->profilePackagePath(id));
+    };
+    host.libraryChanged = [this] { refreshFeatureLibraryPanel(); };
+    host.warning = [this](const QString& text) { appendLog(text, LogLineKind::Warning); };
+    m_featureTransfers = std::make_unique<FeatureTransferController>(*m_profileManager, *m_featureLibraryManager, std::move(host));
+    FeatureBatchController::Host batches;
+    batches.canBegin = [this] {
+        return m_project && !m_switchingProfile && !m_profileSwitchPipelineActive
+            && m_projectWorkspace->state().profileId == m_profileManager->activeProfileId()
+            && (!m_workspaceHistory || !m_workspaceHistory->isBusy())
+            && !(m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()));
+    };
+    batches.generation = [this] { return m_projectWorkspace->generation(); };
+    batches.activeProject = [this] { return m_project.get(); };
+    batches.checkpoint = [this](const QString& reason) { return pushGlobalUiUndoSnapshot(reason); };
+    batches.activeChanged = [this](const QString& selectedId) {
         m_featureList->refresh();
-        m_featureList->selectFeatureById(newFeatureId);
-        syncHotkeys();
-        scheduleAutoSave();
-    } else {
-        const QString targetPath = m_profileManager->projectPath(targetProfileId);
-        QString loadedProjectDir = targetProjectDir;
-        auto targetProject = JsonSerializer::loadFromFile(targetPath, &loadedProjectDir);
-        if (!targetProject) {
-            return false;
-        }
-        const int count = static_cast<int>(targetProject->features().size());
-        const int idx = insertIndex < 0 ? count : qBound(0, insertIndex, count);
-        targetProject->insertFeature(idx, std::move(copiedFeature));
-        if (!JsonSerializer::saveToFile(*targetProject, targetPath, loadedProjectDir)) {
-            return false;
-        }
-    }
-
-    return true;
+        if (!selectedId.isEmpty()) m_featureList->selectFeatureById(selectedId);
+        syncHotkeys(); scheduleAutoSave();
+    };
+    batches.libraryChanged = [this] { refreshFeatureLibraryPanel(); };
+    m_featureBatches = std::make_unique<FeatureBatchController>(*m_profileManager, *m_featureLibraryManager,
+                                                              *m_featureTransfers, std::move(batches), this);
+    FeatureLibraryActionsController::Host libraryHost;
+    libraryHost.ready=[this]{return m_project && !m_switchingProfile && !m_profileSwitchPipelineActive
+        && (!m_workspaceHistory || !m_workspaceHistory->isBusy())
+        && !(m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()));};
+    libraryHost.previewId=[this]{return m_libraryPreviewEntryId;};
+    libraryHost.preview=[this](const QString& id,std::shared_ptr<Feature> feature){
+        m_libraryPreviewEntryId=id;m_libraryPreviewFeature=std::move(feature);refreshWorkflowEditor();};
+    libraryHost.status=[this](const QString& text,int ms){showTransientStatus(text,ms);};
+    libraryHost.warning=[this](const QString& text){appendLog(text,LogLineKind::Warning);};
+    m_libraryActions=std::make_unique<FeatureLibraryActionsController>(*this,*m_profileManager,*m_featureLibraryManager,
+        *m_projectWorkspace,*m_featureBatches,*m_featureList,std::move(libraryHost));
 }
 
-void MainWindow::onFeatureDroppedOnFeatureList(const QMimeData* mime, int insertIndex) {
-    if (!canTransferFeatures() || !mime || !m_profileManager) {
-        return;
-    }
+void MainWindow::onFeatureDroppedOnFeatureList(const QMimeData* mime,int index) {if(m_libraryActions)m_libraryActions->dropOnFeatureList(mime,index);}
+void MainWindow::onFeatureDroppedOnLibrary(const QMimeData* mime) {if(m_libraryActions)m_libraryActions->dropOnLibrary(mime);}
+void MainWindow::onLibraryEntriesReordered(int from,int to) {if(m_libraryActions)m_libraryActions->reorder(from,to);}
+void MainWindow::onLibraryEntriesMultiReordered(const QList<int>& rows,int index) {if(m_libraryActions)m_libraryActions->reorder(rows,index);}
+void MainWindow::onFeatureDroppedOnProfile(const QString& id,const QMimeData* mime) {if(m_libraryActions)m_libraryActions->dropOnProfile(id,mime);}
+bool MainWindow::importLibraryEntry(const QString& id) {return importLibraryEntries({id});}
+bool MainWindow::importLibraryEntries(const QStringList& ids) {return m_libraryActions && m_libraryActions->importEntries(ids);}
+void MainWindow::refreshFeatureLibraryPanel() {if(m_libraryActions)m_libraryActions->refreshPanel();}
 
-    const FeatureDragMime::Payload payload = FeatureDragMime::parse(mime);
-    if (!payload.isValid() || payload.source != FeatureDragMime::Source::Library) {
-        return;
-    }
-
-    const QStringList ids = payload.allIds();
-    if (ids.isEmpty()) {
-        return;
-    }
-    pushGlobalUiUndoSnapshot(QStringLiteral("feature-import-from-library"));
-
-    int nextInsert = insertIndex;
-    int imported = 0;
-    QStringList names;
-    for (const QString& entryId : ids) {
-        const QString entryName = libraryEntryDisplayName(m_featureLibraryManager.get(), entryId);
-        if (!importLibraryEntryToProfile(entryId, m_profileManager->activeProfileId(), nextInsert)) {
-            QMessageBox::critical(this,
-                                  tr("라이브러리 가져오기 실패"),
-                                  tr("라이브러리 항목을 불러오지 못했습니다."));
-            return;
-        }
-        ++imported;
-        names.push_back(entryName);
-        if (nextInsert >= 0) {
-            ++nextInsert;
-        }
-    }
-
-    if (imported == 1) {
-        showTransientStatus(tr("라이브러리에서 가져옴: %1").arg(names.first()), 2500);
-    } else {
-        showTransientStatus(tr("라이브러리에서 %1개 가져옴").arg(imported), 2500);
-    }
-}
-
-void MainWindow::onFeatureDroppedOnLibrary(const QMimeData* mime) {
-    if (!canTransferFeatures() || !mime || !m_profileManager) {
-        return;
-    }
-
-    const FeatureDragMime::Payload payload = FeatureDragMime::parse(mime);
-    if (!payload.isValid() || payload.source != FeatureDragMime::Source::Profile) {
-        return;
-    }
-    if (payload.profileId != m_profileManager->activeProfileId()) {
-        return;
-    }
-
-    const QStringList ids = payload.allIds();
-    if (ids.isEmpty()) {
-        return;
-    }
-    pushGlobalUiUndoSnapshot(QStringLiteral("feature-save-to-library"));
-
-    int saved = 0;
-    QStringList names;
-    for (const QString& featureId : ids) {
-        Feature* feature = m_project ? m_project->featureById(featureId.toStdString()) : nullptr;
-        if (!feature) {
-            continue;
-        }
-        const QString featureName = QString::fromStdString(feature->name());
-        if (!saveFeatureToLibraryFromDrag(featureId, payload.profileId)) {
-            QMessageBox::critical(this,
-                                  tr("라이브러리 저장 실패"),
-                                  tr("기능을 라이브러리에 저장하지 못했습니다."));
-            return;
-        }
-        ++saved;
-        names.push_back(featureName);
-    }
-
-    if (saved <= 0) {
-        return;
-    }
-    if (saved == 1) {
-        showTransientStatus(tr("라이브러리에 저장됨: %1").arg(names.first()), 2500);
-    } else {
-        showTransientStatus(tr("라이브러리에 %1개 저장됨").arg(saved), 2500);
-    }
-}
-
-void MainWindow::onLibraryEntriesReordered(int fromRow, int toRow) {
-    if (!m_featureLibraryManager || fromRow == toRow) {
-        return;
-    }
-
-    const std::vector<FeatureLibraryManager::Entry> entries = m_featureLibraryManager->listEntries();
-    if (fromRow < 0 || toRow < 0 || fromRow >= static_cast<int>(entries.size())
-        || toRow >= static_cast<int>(entries.size())) {
-        return;
-    }
-
-    QStringList orderedIds;
-    orderedIds.reserve(static_cast<int>(entries.size()));
-    for (const FeatureLibraryManager::Entry& entry : entries) {
-        orderedIds.push_back(entry.id);
-    }
-    const QString movedId = orderedIds.takeAt(fromRow);
-    orderedIds.insert(toRow, movedId);
-    pushGlobalUiUndoSnapshot(QStringLiteral("library-reorder"));
-    if (m_featureLibraryManager->reorderEntries(orderedIds)) {
-        refreshFeatureLibraryPanel();
-        showTransientStatus(tr("라이브러리 순서를 저장했습니다."), 1500);
-    }
-}
-
-void MainWindow::onLibraryEntriesMultiReordered(const QList<int>& selectedRows, int insertIndex) {
-    if (!m_featureLibraryManager || selectedRows.isEmpty()) {
-        return;
-    }
-
-    const std::vector<FeatureLibraryManager::Entry> entries = m_featureLibraryManager->listEntries();
-    QStringList orderedIds;
-    orderedIds.reserve(static_cast<int>(entries.size()));
-    for (const FeatureLibraryManager::Entry& entry : entries) {
-        orderedIds.push_back(entry.id);
-    }
-
-    QStringList movedIds;
-    movedIds.reserve(selectedRows.size());
-    for (int row : selectedRows) {
-        if (row < 0 || row >= orderedIds.size()) {
-            return;
-        }
-        movedIds.push_back(orderedIds.at(row));
-    }
-    for (int i = selectedRows.size() - 1; i >= 0; --i) {
-        orderedIds.removeAt(selectedRows.at(i));
-    }
-    int dest = insertIndex;
-    for (int row : selectedRows) {
-        if (row < insertIndex) {
-            --dest;
-        }
-    }
-    dest = qBound(0, dest, orderedIds.size());
-    for (int i = 0; i < movedIds.size(); ++i) {
-        orderedIds.insert(dest + i, movedIds.at(i));
-    }
-
-    pushGlobalUiUndoSnapshot(QStringLiteral("library-reorder-multi"));
-    if (m_featureLibraryManager->reorderEntries(orderedIds)) {
-        refreshFeatureLibraryPanel();
-        showTransientStatus(tr("라이브러리 순서를 저장했습니다."), 1500);
-    }
-}
-
-void MainWindow::onFeatureDroppedOnProfile(const QString& targetProfileId, const QMimeData* mime) {
-    if (!canTransferFeatures() || !mime || !m_profileManager || targetProfileId.isEmpty()) {
-        return;
-    }
-
-    const FeatureDragMime::Payload payload = FeatureDragMime::parse(mime);
-    if (!payload.isValid()) {
-        return;
-    }
-
-    const QString profileName = profileDisplayName(m_profileManager.get(), targetProfileId);
-    const QStringList ids = payload.allIds();
-    if (ids.isEmpty()) {
-        return;
-    }
-
-    if (payload.source == FeatureDragMime::Source::Library) {
-        pushGlobalUiUndoSnapshot(QStringLiteral("profile-import-library-feature"));
-        int imported = 0;
-        for (const QString& entryId : ids) {
-            if (!importLibraryEntryToProfile(entryId, targetProfileId, -1)) {
-                QMessageBox::critical(this,
-                                      tr("라이브러리 가져오기 실패"),
-                                      tr("라이브러리 항목을 불러오지 못했습니다."));
-                return;
-            }
-            ++imported;
-        }
-        if (imported == 1) {
-            const QString entryName = libraryEntryDisplayName(m_featureLibraryManager.get(), ids.first());
-            showTransientStatus(tr("프로필 '%1'에 라이브러리 기능을 가져옴: %2")
-                                    .arg(profileName, entryName),
-                                2500);
-        } else {
-            showTransientStatus(tr("프로필 '%1'에 라이브러리 기능 %2개 가져옴")
-                                    .arg(profileName)
-                                    .arg(imported),
-                                2500);
-        }
-        return;
-    }
-
-    if (payload.profileId == targetProfileId) {
-        return;
-    }
-
-    int copied = 0;
-    QString firstName;
-    pushGlobalUiUndoSnapshot(QStringLiteral("profile-copy-feature"));
-    for (const QString& featureId : ids) {
-        if (!copyFeatureBetweenProfiles(featureId, payload.profileId, targetProfileId, -1)) {
-            QMessageBox::critical(this,
-                                  tr("기능 복사 실패"),
-                                  tr("기능을 다른 프로필로 복사하지 못했습니다."));
-            return;
-        }
-        if (copied == 0) {
-            Feature* sourceFeature = nullptr;
-            if (payload.profileId == m_profileManager->activeProfileId() && m_project) {
-                sourceFeature = m_project->featureById(featureId.toStdString());
-            }
-            firstName = sourceFeature ? QString::fromStdString(sourceFeature->name()) : featureId;
-        }
-        ++copied;
-    }
-
-    if (copied == 1) {
-        showTransientStatus(tr("프로필 '%1'로 기능을 복사했습니다: %2")
-                                .arg(profileName, firstName),
-                            2500);
-    } else {
-        showTransientStatus(tr("프로필 '%1'로 기능 %2개를 복사했습니다")
-                                .arg(profileName)
-                                .arg(copied),
-                            2500);
-    }
-}
-
-bool MainWindow::importLibraryEntry(const QString& entryId) {
-    return importLibraryEntries(QStringList{entryId});
-}
-
-bool MainWindow::importLibraryEntries(const QStringList& entryIds) {
-    if (!m_project || !m_featureLibraryManager || !m_featureList || !m_profileManager
-        || entryIds.isEmpty()) {
-        return false;
-    }
-
-    int insertIndex = m_featureList->selectedIndex() >= 0
-                          ? m_featureList->selectedIndex() + 1
-                          : static_cast<int>(m_project->features().size());
-    const QString profileId = m_profileManager->activeProfileId();
-    QString lastFeatureId;
-    pushGlobalUiUndoSnapshot(QStringLiteral("feature-import-library"));
-    int imported = 0;
-    for (const QString& entryId : entryIds) {
-        if (entryId.isEmpty()) {
-            continue;
-        }
-        QString insertedFeatureId;
-        if (!importLibraryEntryToProfile(entryId, profileId, insertIndex, false, &insertedFeatureId)) {
-            continue;
-        }
-        lastFeatureId = insertedFeatureId;
-        ++insertIndex;
-        ++imported;
-    }
-
-    if (imported == 0) {
-        QMessageBox::critical(this,
-                              tr("라이브러리 가져오기 실패"),
-                              tr("라이브러리 항목을 불러오지 못했습니다."));
-        return false;
-    }
-
-    m_featureList->refresh();
-    if (!lastFeatureId.isEmpty()) {
-        m_featureList->selectFeatureById(lastFeatureId);
-    }
-    syncHotkeys();
-    scheduleAutoSave();
-
-    if (imported == 1) {
-        showTransientStatus(tr("라이브러리에서 가져옴: %1")
-                                .arg(libraryEntryDisplayName(m_featureLibraryManager.get(),
-                                                             entryIds.front())),
-                            2500);
-    } else {
-        showTransientStatus(tr("라이브러리에서 %1개 항목을 가져왔습니다.").arg(imported), 2500);
-    }
-    return true;
-}
-
-void MainWindow::refreshFeatureLibraryPanel() {
-    if (!m_featureLibraryManager || !m_featureList) {
-        return;
-    }
-    const std::vector<FeatureLibraryManager::Entry> entries = m_featureLibraryManager->listEntries();
-    std::vector<FeatureListPanel::LibraryEntryUi> uiEntries;
-    uiEntries.reserve(entries.size());
-    for (const auto& e : entries) {
-        FeatureListPanel::LibraryEntryUi ue;
-        ue.id = e.id;
-        ue.name = e.name;
-        ue.templateCount = e.templateCount;
-        uiEntries.push_back(std::move(ue));
-    }
-    m_featureList->setLibraryEntries(uiEntries);
-}
-
-void MainWindow::selectRunningFeatureForDisplay(Feature* feature) {
-    if (!feature || !m_featureList || !ProgramSettings::autoSelectRunningFeature()) {
-        return;
-    }
-    const QString featureId = QString::fromStdString(feature->id());
-    if (m_featureList->selectedFeatureId() == featureId) {
-        return;
-    }
-    m_featureList->selectFeatureById(featureId);
-}
+void MainWindow::selectRunningFeatureForDisplay(Feature* feature) {m_workspaceEditor->selectRunning(feature);}
 
 void MainWindow::startFeatureRun(Feature* feature, bool fromHotkey, bool skipTargetActivationOnStart) {
+    if(!m_profileManager->storageReady()){showTransientStatus(tr("프로필 복구가 끝난 뒤 실행해 주세요."),5000);return;}
     AppStutterOperationScope stutterScope(
         "run.start",
         feature ? QString::fromStdString(feature->name()) : QStringLiteral("(null)"));
     RunLifecycleCoordinator::startFeatureRun(*this, feature, fromHotkey, skipTargetActivationOnStart);
 }
 
-ImageFindBlock* firstImageFindWithEditableRoi(Workflow& workflow) {
-    for (const auto& block : workflow.blocks()) {
-        if (!block || block->type() != BlockType::ImageFind) {
-            continue;
-        }
-        auto* imageFind = static_cast<ImageFindBlock*>(block.get());
-        if (!imageFind->hasTemplates()) {
-            continue;
-        }
-        if (imageFind->customRegionsWindowPercent.empty()) {
-            continue;
-        }
-        return imageFind;
-    }
-    return nullptr;
-}
+bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session,Feature* feature) {return m_firstTemplateRoi->begin(session,feature);}
 
-bool MainWindow::tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Feature* feature) {
-    if (!feature || !feature->editFirstTemplateRoiOnStart()) {
-        return false;
-    }
-
-    ImageFindBlock* block = firstImageFindWithEditableRoi(feature->workflow());
-    if (!block) {
-        return false;
-    }
-
-    QPointer<MainWindow> self = this;
-    const std::string featureId = session.featureId;
-    auto confirmed = std::make_shared<bool>(false);
-
-    RoiPreviewOverlay::EditableOptions options;
-    options.enabled = true;
-    options.activeIndex = 0;
-    options.onRoiEdited = [block](int index, const CaptureRegion& region) {
-        if (index < 0) {
-            return;
-        }
-        block->customRegionsAnchoredToTargetWindow = true;
-        block->customRegions.clear();
-        block->customRegion = {};
-        block->searchArea = SearchArea::CustomRegion;
-        if (index >= static_cast<int>(block->customRegionsWindowPercent.size())) {
-            return;
-        }
-        block->customRegionsWindowPercent[static_cast<size_t>(index)] =
-            ScreenCapture::storeWindowPercentFromPhysical(region);
+void MainWindow::setupFirstTemplateRoi() {
+    FirstTemplateRoiController::Host host;
+    host.workspace=[this]{return FirstTemplateRoiController::Workspace{m_project.get(),m_profileManager->activeProfileId(),m_projectWorkspace->generation()};};
+    host.session=[this](const std::string& id){return sessionFor(id);};
+    host.cancel=[this](const std::string& id){RunLifecycleCoordinator::tearDownAndEraseSessionEntry(*this,id);RunLifecycleCoordinator::requestRunUiRefresh(*this,false);};
+    host.changed=[this]{m_modified=true;scheduleAutoSave();refreshWorkflowEditor();};
+    host.launch=[this](FeatureRunSession& session,Feature& feature){
+        if(feature.runMode()==FeatureRunMode::Trigger){persistTriggerArmedState(QString::fromStdString(session.featureId),true);launchTriggerMonitor(session,&feature,true);}
+        else launchWorkflowRun(session,&feature,false);
     };
-    options.onConfirm = [self, featureId, confirmed]() {
-        if (!self) {
-            return;
-        }
-        *confirmed = true;
-        RoiPreviewOverlay::dismissAll();
+    m_firstTemplateRoi=std::make_unique<FirstTemplateRoiController>(*this,std::move(host));
+}
 
-        FeatureRunSession* activeSession = self->sessionFor(featureId);
-        Feature* activeFeature = self->m_project ? self->m_project->featureById(featureId) : nullptr;
-        if (!activeSession || !activeFeature) {
-            RunLifecycleCoordinator::eraseSessionEntryAndRefreshRunUi(*self, featureId);
-            return;
-        }
+void MainWindow::refreshSessionWorkflowFromProject(FeatureRunSession& s,Feature* f) {m_runResources->refreshWorkflow(s,f);}
+void MainWindow::applyDeferredSessionWorkflowRefresh(FeatureRunSession& s,Feature* f) {m_runResources->applyDeferred(s,f);}
+void MainWindow::requestSessionWorkflowRefresh(const std::string& id) {m_runResources->requestRefresh(id);}
+void MainWindow::ensureRunSessionResources(FeatureRunSession& s,Feature* f,bool refresh,bool defer) {m_runResources->ensure(s,f,refresh,defer);}
+void MainWindow::syncRunSessionContext(FeatureRunSession& s,bool refresh) {m_runResources->syncContext(s,refresh);}
+void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& s,Feature* f) {m_runResources->applyPolicies(s,f);}
 
-        self->m_modified = true;
-        self->scheduleAutoSave();
-        self->refreshWorkflowEditor();
-        if (activeFeature->runMode() == FeatureRunMode::Trigger) {
-            self->persistTriggerArmedState(QString::fromStdString(featureId), true);
-            self->launchTriggerMonitor(*activeSession, activeFeature, true);
-        } else {
-            self->launchWorkflowRun(*activeSession, activeFeature, false);
-        }
+void MainWindow::setupRunResources() {
+    RunSessionResourcesController::Host host;
+    host.workspace=[this]{return RunSessionResourcesController::Workspace{m_project.get(),m_profileManager->activeProfileId(),m_projectWorkspace->generation()};};
+    host.sessions=[this]{std::vector<std::string> ids;for(const auto& entry:runSessions())ids.push_back(entry.first);return ids;};
+    host.session=[this](const std::string& id){return sessionFor(id);};
+    host.feature=[this](FeatureRunSession& s){return featureForSession(s);};
+    host.binding=[this](FeatureRunSession& s,bool refresh){
+        RunSessionResourcesController::Binding binding;binding.title=sessionCaptureTargetTitleW(s,refresh);
+        const auto* feature=featureForSession(s);binding.process=feature?RunLifecycleCoordinator::captureTargetProcessPath(*this,s,*feature,binding.title):std::wstring();
+        binding.directory=m_profileManager && !s.profileId.isEmpty()?m_profileManager->projectDirectory(s.profileId).toStdString():Application::instance()->projectDirectory().toStdString();return binding;
     };
-
-    const std::vector<CaptureRegion> physicalRegions = [&]() {
-        std::vector<CaptureRegion> physical;
-        physical.reserve(block->customRegionsWindowPercent.size());
-        for (const PercentRegion& percent : block->customRegionsWindowPercent) {
-            if (percent.width <= 0.0 || percent.height <= 0.0) {
-                continue;
-            }
-            physical.push_back(ScreenCapture::resolveWindowPercentRegion(percent));
-        }
-        return physical;
-    }();
-    const CaptureRegion physicalLegacy = physicalRegions.empty()
-                                           ? CaptureRegion{}
-                                           : physicalRegions.front();
-
-    const bool shown = RoiPreviewOverlay::show(
-        block->searchArea,
-        physicalLegacy,
-        block->percentRegion,
-        physicalRegions,
-        this,
-        [self, featureId, confirmed](bool visible) {
-            if (visible || !self) {
-                return;
-            }
-            if (*confirmed) {
-                return;
-            }
-            RunLifecycleCoordinator::tearDownAndEraseSessionEntry(*self, featureId);
-            RunLifecycleCoordinator::requestRunUiRefresh(*self, false);
-        },
-        options);
-    return shown;
+    host.targetAllowed=[this](FeatureRunSession& s,Feature* feature){
+        if(!feature)return false;
+        if(sessionBelongsToActiveProfile(s)){
+            if(!ProgramSettings::runWithoutTargetWindow() && !isActiveDefaultProfile())return runForegroundGateActive(feature);
+            if(feature->requireScopedTargetForeground() && feature->captureTargetScope()!=FeatureCaptureTargetScope::Auto)return scopedTargetForegroundActive(feature);
+        }return true;
+    };
+    host.captureAllowed=[this](const FeatureRunSession& s){return !hasAnyCapturingWorkflowBurstExcept(s.featureId);};
+    host.repeatAllowed=[this](FeatureRunSession& s,Feature* feature){return feature && runForegroundGateActiveForSession(s,feature);};
+    host.holdReader=[this](const std::string& id){return m_hotkeyManager?m_hotkeyManager->holdStateReader(id):std::function<bool()>{};};
+    host.warning=[this](const QString& message){showTransientStatus(message,2500);};
+    host.afterBatch=[this](FeatureRunSession& s,Feature* owner){
+        if(owner && s.engine && s.engine->isRunning() && (s.lockMouseDuringFirstLoopCount>0 || hasFeatureMouseLock(s)) && concurrentActiveRepeatSessionCount()<=1)syncEarlyLoopMouseLock(s);
+    };
+    m_runResources=std::make_unique<RunSessionResourcesController>(*m_runUiPublisher,std::move(host),this);
 }
 
-void MainWindow::refreshSessionWorkflowFromProject(FeatureRunSession& session, Feature* feature) {
-    if (!feature) {
-        return;
-    }
-    session.sessionWorkflow = std::shared_ptr<Workflow>(feature->workflow().clone());
-    session.deferredSessionWorkflowRefresh = false;
-}
-
-void MainWindow::applyDeferredSessionWorkflowRefresh(FeatureRunSession& session, Feature* feature) {
-    if (!session.deferredSessionWorkflowRefresh || !feature) {
-        return;
-    }
-    if (session.engine && session.engine->isRunning()) {
-        return;
-    }
-    refreshSessionWorkflowFromProject(session, feature);
-}
-
-void MainWindow::requestSessionWorkflowRefresh(const std::string& featureId) {
-    FeatureRunSession* session = sessionFor(featureId);
-    if (!session || !m_project) {
-        return;
-    }
-    Feature* feature = m_project->featureById(featureId);
-    if (!feature) {
-        return;
-    }
-    switch (SessionRunPolicy::workflowRefreshOnProjectEdit(RunLifecycleCoordinator::policyInputFrom(*session))) {
-    case WorkflowRefreshDecision::SkipInactive:
-        return;
-    case WorkflowRefreshDecision::Defer:
-        if (!session->deferredSessionWorkflowRefresh) {
-            showTransientStatus(tr("워크플로 변경은 현재 감시·동작이 끝난 뒤 반영됩니다"), 2500);
-        }
-        session->deferredSessionWorkflowRefresh = true;
-        return;
-    case WorkflowRefreshDecision::Immediate:
-        refreshSessionWorkflowFromProject(*session, feature);
-        return;
-    }
-}
-
-void MainWindow::ensureRunSessionResources(FeatureRunSession& session,
-                                           Feature* feature,
-                                           bool refreshWorkflow,
-                                           bool deferWorkflowCloneToWorker) {
-    if (!feature) {
-        return;
-    }
-    if (refreshWorkflow || !session.sessionWorkflow) {
-        if (!deferWorkflowCloneToWorker) {
-            session.sessionWorkflow = std::shared_ptr<Workflow>(feature->workflow().clone());
-            session.deferredSessionWorkflowRefresh = false;
-        }
-    }
-    if (!session.sessionContext) {
-        session.sessionContext = std::make_shared<ExecutionContext>();
-    }
-    syncRunSessionContext(session);
-}
-
-void MainWindow::syncRunSessionContext(FeatureRunSession& session, bool refreshCaptureBinding) {
-    if (!session.sessionContext) {
-        return;
-    }
-    session.sessionContext->setTargetWindowTitleForWorker(
-        sessionCaptureTargetTitleW(session, refreshCaptureBinding));
-    session.sessionContext->setProjectDirectory(Application::instance()->projectDirectory().toStdString());
-}
-
-void MainWindow::applyFeatureRunPoliciesToContext(FeatureRunSession& session, Feature* feature) {
-    if (!session.sessionContext || !feature) {
-        return;
-    }
-
-    session.pointerVisualFeedback = feature->pointerVisualFeedback();
-    session.sessionContext->setPointerVisualFeedback(feature->pointerVisualFeedback());
-    session.restoreMousePositionOnEnd = feature->restoreMousePositionOnEnd();
-    session.lockMouseToScreenCenterDuringRun = feature->lockMouseToScreenCenterDuringRun();
-    session.lockMouseToCurrentPositionDuringRun = feature->lockMouseToCurrentPositionDuringRun();
-    session.lockMouseDuringFirstLoopCount = feature->lockMouseDuringFirstLoopCount();
-    session.unlockMouseOnBlockFailureCount = feature->unlockMouseOnBlockFailureCount();
-
-    const int exitAfter = feature->infiniteExitAfterConsecutiveMisses();
-    const bool triggerMonitoring = session.runningMode == FeatureRunMode::Trigger
-                                   && session.triggerPhase == TriggerSessionPhase::Monitoring;
-    if (triggerMonitoring) {
-        // Trigger watch must poll until a match (or user stop), not fail after one miss.
-        session.sessionContext->setImageFindMaxMissAttempts(0);
-    } else if ((session.runningMode == FeatureRunMode::RepeatInfinite
-                || session.runningMode == FeatureRunMode::Hold)
-               && exitAfter > 0) {
-        session.sessionContext->setImageFindMaxMissAttempts(1);
-    } else {
-        session.sessionContext->setImageFindMaxMissAttempts(0);
-    }
-
-    session.sessionContext->setRoiCorrectionSession(feature->roiCorrectionSessionEligible(),
-                                                    feature->roiCorrection());
-    session.sessionContext->setFeatureRoiCorrectionExpandPercent(
-        feature->roiCorrectionExpandPercent());
-    session.sessionContext->setRunLoopNumber(session.sessionIteration + 1);
-
-    session.sessionContext->clearScopedTargetPollGate();
-    session.sessionContext->clearTriggerMonitorYieldGate();
-    if (!ProgramSettings::runWithoutTargetWindow() && !isActiveDefaultProfile()) {
-        QPointer<MainWindow> self(this);
-        const std::string featureId = session.featureId;
-        session.sessionContext->setScopedTargetPollGate([self, featureId]() {
-            if (!self) {
-                return false;
-            }
-            Feature* activeFeature =
-                self->m_project ? self->m_project->featureById(featureId) : nullptr;
-            return self->runForegroundGateActive(activeFeature);
-        });
-    } else if (feature->requireScopedTargetForeground()
-               && feature->captureTargetScope() != FeatureCaptureTargetScope::Auto) {
-        QPointer<MainWindow> self(this);
-        const std::string featureId = session.featureId;
-        session.sessionContext->setScopedTargetPollGate([self, featureId]() {
-            if (!self) {
-                return false;
-            }
-            Feature* activeFeature =
-                self->m_project ? self->m_project->featureById(featureId) : nullptr;
-            return self->scopedTargetForegroundActive(activeFeature);
-        });
-    }
-
-    if (triggerMonitoring) {
-        QPointer<MainWindow> self(this);
-        const std::string featureId = session.featureId;
-        session.sessionContext->setTriggerMonitorYieldGate([self, featureId]() {
-            if (!self) {
-                return true;
-            }
-            return !self->hasAnyCapturingWorkflowBurstExcept(featureId);
-        });
-    }
-}
-
-void MainWindow::accumulateLoopCompletionStats(FeatureRunSession& session,
-                                               bool success,
-                                               std::int64_t elapsedOverrideMs) {
-    const qint64 elapsedMs =
-        elapsedOverrideMs >= 0
-            ? static_cast<qint64>(elapsedOverrideMs)
-            : (session.loopTimer.isValid() ? session.loopTimer.elapsed() : 0);
-    session.loopTimer.invalidate();
-
-    const int loopNumber = session.sessionIteration + 1;
-    session.hasLastLoopTiming = true;
-    session.lastLoopNumber = loopNumber;
-    session.lastLoopElapsedMs = elapsedMs;
-    session.totalLoopElapsedMs += elapsedMs;
-    ++session.completedLoopCount;
-    session.lastLoopAverageMs =
-        session.completedLoopCount > 0 ? session.totalLoopElapsedMs / session.completedLoopCount : 0;
-    session.lastLoopSuccess = success;
-}
-
-void MainWindow::scheduleWorkerFastRepeatUiFlush() {
-    assertMainWindowOnGuiThread("scheduleWorkerFastRepeatUiFlush");
-    if (!m_workerFastRepeatUiFlushTimer) {
-        return;
-    }
-    const int active = concurrentActiveRepeatSessionCount();
-    int intervalMs = 80;
-    if (active >= 4) {
-        intervalMs = 160;
-    } else if (active >= 3) {
-        intervalMs = 120;
-    } else if (active >= 2) {
-        intervalMs = 100;
-    }
-    m_workerFastRepeatUiFlushTimer->setInterval(intervalMs);
-    if (!m_workerFastRepeatUiFlushTimer->isActive()) {
-        m_workerFastRepeatUiFlushTimer->start();
-    }
-}
-
-void MainWindow::flushAllPendingWorkerFastRepeatUi() {
-    std::vector<std::string> featureIds;
-    featureIds.reserve(m_fastRepeatUiCoalesce.size());
-    for (const auto& entry : m_fastRepeatUiCoalesce) {
-        featureIds.push_back(entry.first);
-    }
-    for (const std::string& featureId : featureIds) {
-        flushWorkerFastRepeatUi(featureId);
-    }
-
-    bool morePending = false;
-    for (const auto& entry : m_fastRepeatUiCoalesce) {
-        if (!entry.second) {
-            continue;
-        }
-        QMutexLocker lock(&entry.second->mutex);
-        if (entry.second->pendingIterations > 0) {
-            morePending = true;
-            break;
-        }
-    }
-    if (morePending) {
-        scheduleWorkerFastRepeatUiFlush();
-    }
-
-    if (concurrentActiveRepeatSessionCount() >= 2 && m_runUiDebounceTimer
-        && !m_runUiDebounceTimer->isActive()) {
-        m_runUiDebounceTimer->start();
-    }
+void MainWindow::setupRunUiPublisher() {
+    RunUiPublisher::HostCallbacks host;
+    host.session = [this](const std::string& id) { return sessionFor(id); };
+    host.activeRepeatCount = [this] { return concurrentActiveRepeatSessionCount(); };
+    host.isDisplayed = [this](const FeatureRunSession* session) { return isDisplayedRunningFeature(session); };
+    host.timing = [this](std::optional<RunUiPublisher::Timing> value) {
+        if (!m_workflowEditor) return;
+        if (!value) m_workflowEditor->clearLoopTiming();
+        else m_workflowEditor->setLoopTiming(value->number, value->elapsedMs, value->averageMs, value->success);
+    };
+    host.log = [this](const FeatureRunSession& session, const QString& text, bool success) {
+        appendSessionLog(session, text, success ? LogLineKind::Success : LogLineKind::Warning);
+    };
+    host.afterBatch = [this](FeatureRunSession& session){if(m_runResources)m_runResources->afterBatch(session);};
+    host.refreshRunUi = [this] {
+        if (m_runUiDebounceTimer && !m_runUiDebounceTimer->isActive()) m_runUiDebounceTimer->start();
+    };
+    m_runUiPublisher = std::make_unique<RunUiPublisher>(std::move(host), this);
 }
 
 void MainWindow::flushWorkerFastRepeatUi(const std::string& featureId) {
-    assertMainWindowOnGuiThread("flushWorkerFastRepeatUi");
-    FeatureRunSession* session = sessionFor(featureId);
-    if (!session) {
-        return;
-    }
-
-    auto coalesceIt = m_fastRepeatUiCoalesce.find(featureId);
-    if (coalesceIt == m_fastRepeatUiCoalesce.end() || !coalesceIt->second) {
-        return;
-    }
-    WorkerFastRepeatUiCoalesce& coalesce = *coalesceIt->second;
-
-    int iterations = 0;
-    qint64 totalElapsedMs = 0;
-    bool lastSuccess = false;
-    qint64 lastElapsedMs = 0;
-    QString lastMessage;
-    {
-        QMutexLocker lock(&coalesce.mutex);
-        coalesce.flushScheduled = false;
-        iterations = coalesce.pendingIterations;
-        if (iterations <= 0) {
-            return;
-        }
-        totalElapsedMs = coalesce.pendingTotalElapsedMs;
-        lastSuccess = coalesce.pendingLastSuccess;
-        lastElapsedMs = coalesce.pendingLastElapsedMs;
-        lastMessage = coalesce.pendingLastMessage;
-        coalesce.pendingIterations = 0;
-        coalesce.pendingTotalElapsedMs = 0;
-    }
-
-    session->totalLoopElapsedMs += totalElapsedMs;
-    session->completedLoopCount += iterations;
-    session->sessionIteration += iterations;
-    session->hasLastLoopTiming = true;
-    session->lastLoopNumber = session->sessionIteration;
-    session->lastLoopElapsedMs = lastElapsedMs;
-    session->lastLoopAverageMs =
-        session->completedLoopCount > 0
-            ? session->totalLoopElapsedMs / session->completedLoopCount
-            : 0;
-    session->lastLoopSuccess = lastSuccess;
-    session->loopsSinceLastLogPublish += iterations;
-
-    if (session->sessionContext) {
-        session->sessionContext->setRunLoopNumber(session->sessionIteration + 1);
-        if (session->runningMode == FeatureRunMode::RepeatCount) {
-            session->repeatRemaining = session->sessionContext->workerRepeatRemaining();
-        }
-    }
-
-    if (session->loopsSinceLastLogPublish > 0) {
-        publishLoopCompletionUi(*session, lastSuccess, lastMessage);
-    }
-
-    Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
-    if (feature
-        && (session->lockMouseDuringFirstLoopCount > 0 || hasFeatureMouseLock(*session))
-        && concurrentActiveRepeatSessionCount() <= 1) {
-        syncEarlyLoopMouseLock(*session);
-    }
+    const QPointer<MainWindow> life(this);
+    m_runUiPublisher->flush(featureId);
+    if(!life)return;
+    if (auto* session = sessionFor(featureId); session && session->workerRepeat)
+        session->consecutiveDetectionFailLoops = session->workerRepeat->consecutiveFailures();
 }
 
-WorkerFastRepeatUiCoalesce& MainWindow::fastRepeatUiCoalesceFor(const std::string& featureId) {
-    auto& slot = m_fastRepeatUiCoalesce[featureId];
-    if (!slot) {
-        slot = std::make_unique<WorkerFastRepeatUiCoalesce>();
-    }
-    return *slot;
-}
+void MainWindow::configureWorkerFastRepeat(FeatureRunSession& s,Feature* f) {m_runResources->configureRepeat(s,f);}
+void MainWindow::synchronizeRunWorkerState() {if(m_runResources)m_runResources->synchronize();}
 
-void MainWindow::configureWorkerFastRepeat(FeatureRunSession& session, Feature* feature) {
-    if (!session.sessionContext || !feature) {
-        return;
-    }
-
-    const bool eligible = session.repeatSession
-                          && (session.runningMode == FeatureRunMode::Hold
-                              || session.runningMode == FeatureRunMode::RepeatInfinite
-                              || session.runningMode == FeatureRunMode::RepeatCount);
-    if (!eligible) {
-        session.sessionContext->clearWorkerFastRepeatCallbacks();
-        return;
-    }
-
-    if (session.runningMode == FeatureRunMode::RepeatCount) {
-        session.sessionContext->setWorkerRepeatRemaining(session.repeatRemaining);
-    } else {
-        session.sessionContext->setWorkerRepeatRemaining(0);
-    }
-
-    const std::string featureId = session.featureId;
-    Feature* featurePtr = feature;
-    HotkeyManager* hotkeyMgr = m_hotkeyManager;
-    std::weak_ptr<ExecutionContext> contextWeak = session.sessionContext;
-
-    ExecutionContext::WorkerFastRepeatCallbacks callbacks;
-    callbacks.delayMs = [featurePtr]() { return featurePtr->resolvedLoopIntervalMs(); };
-    callbacks.onIterationComplete =
-        [this, featureId](bool success, std::int64_t elapsedMs, const std::string& message) {
-            const QString qMessage = QString::fromStdString(message);
-            QMetaObject::invokeMethod(
-                this,
-                [this, featureId, success, elapsedMs, qMessage]() {
-                    if (!sessionFor(featureId)) {
-                        return;
-                    }
-                    WorkerFastRepeatUiCoalesce& coalesce = fastRepeatUiCoalesceFor(featureId);
-                    {
-                        QMutexLocker lock(&coalesce.mutex);
-                        ++coalesce.pendingIterations;
-                        coalesce.pendingTotalElapsedMs += elapsedMs;
-                        coalesce.pendingLastSuccess = success;
-                        coalesce.pendingLastElapsedMs = elapsedMs;
-                        coalesce.pendingLastMessage = qMessage;
-                    }
-                    scheduleWorkerFastRepeatUiFlush();
-                },
-                Qt::QueuedConnection);
-        };
-    callbacks.shouldContinue = [this, featureId, featurePtr, hotkeyMgr, contextWeak](bool success,
-                                                                                     bool detectionFailed) {
-        std::shared_ptr<ExecutionContext> context = contextWeak.lock();
-        if (!context || context->shouldStop()) {
-            return false;
-        }
-        FeatureRunSession* active = sessionFor(featureId);
-        if (!active || !featurePtr) {
-            return false;
-        }
-        if (active->userStopRequested) {
-            return false;
-        }
-
-        const bool infiniteExitEnabled =
-            featurePtr->infiniteExitAfterConsecutiveMisses() > 0
-            && (active->runningMode == FeatureRunMode::RepeatInfinite
-                || active->runningMode == FeatureRunMode::Hold);
-        if (infiniteExitEnabled) {
-            if (success) {
-                active->consecutiveDetectionFailLoops = 0;
-            } else if (detectionFailed) {
-                ++active->consecutiveDetectionFailLoops;
-                if (active->consecutiveDetectionFailLoops
-                    >= featurePtr->infiniteExitAfterConsecutiveMisses()) {
-                    return false;
-                }
-            } else if (!success) {
-                return false;
-            }
-        }
-
-        if (active->runningMode == FeatureRunMode::RepeatCount && !success) {
-            return false;
-        }
-        if (success && active->runningMode == FeatureRunMode::RepeatCount && active->repeatSession) {
-            context->decrementWorkerRepeatRemainingAfterSuccess();
-        }
-
-#ifdef _WIN32
-        if (!ProgramSettings::runWithoutTargetWindow() && !isActiveDefaultProfile()) {
-            if (!runForegroundGateActive(featurePtr)) {
-                QMetaObject::invokeMethod(
-                    this,
-                    [this, featureId]() {
-                        if (FeatureRunSession* session = sessionFor(featureId)) {
-                            session->waitingForScopedTargetForeground = true;
-                            updateRunUiState();
-                            m_runSessionController.scheduleScopedTargetForegroundResumePoll();
-                        }
-                    },
-                    Qt::QueuedConnection);
-                return false;
-            }
-        }
-#endif
-
-        switch (active->runningMode) {
-        case FeatureRunMode::Hold:
-            if (!active->repeatSession || !active->holdRunActive || !hotkeyMgr) {
-                return false;
-            }
-            return hotkeyMgr->isHoldBindingStillActiveForRun(featureId);
-        case FeatureRunMode::RepeatInfinite:
-            return active->repeatSession;
-        case FeatureRunMode::RepeatCount:
-            return active->repeatSession && context->workerRepeatRemaining() > 0;
-        default:
-            return false;
-        }
-    };
-
-    session.sessionContext->setWorkerFastRepeatCallbacks(std::move(callbacks));
-}
-
-void MainWindow::publishLoopCompletionUi(FeatureRunSession& session,
-                                         bool success,
-                                         const QString& message) {
-    const bool fastRepeat =
-        session.sessionContext && session.sessionContext->suppressRepeatUi();
-
-    if (isDisplayedRunningFeature(&session)) {
-        if (concurrentActiveRepeatSessionCount() < 2) {
-            syncLoopTimingToWorkflowEditor(&session);
-        }
-    }
-
-    if (fastRepeat && !shouldPublishFastRepeatLoopLog(session)) {
-        return;
-    }
-
-    if (fastRepeat) {
-        const int minLogIntervalMs =
-            concurrentActiveRepeatSessionCount() >= 2 ? 5000 : 500;
-        if (session.loopLogPublishTimer.isValid()
-            && session.loopLogPublishTimer.elapsed() < minLogIntervalMs) {
-            return;
-        }
-        session.loopLogPublishTimer.restart();
-    }
-
-    QString line = tr("%1회째 루프 · %2ms · %3")
-                       .arg(session.lastLoopNumber)
-                       .arg(session.lastLoopElapsedMs)
-                       .arg(success ? tr("성공") : tr("실패"));
-    if (!success && !message.isEmpty()) {
-        line += QStringLiteral(" · ") + message;
-    }
-    if (fastRepeat && session.loopsSinceLastLogPublish > 1) {
-        line += tr(" (+%1회)").arg(session.loopsSinceLastLogPublish - 1);
-    }
-    session.loopsSinceLastLogPublish = 0;
-
-    appendSessionLog(session, line, success ? LogLineKind::Success : LogLineKind::Warning);
+void MainWindow::publishLoopCompletionUi(FeatureRunSession& session, bool success, const QString& message) {
+    m_runUiPublisher->publish(session, success, message);
 }
 
 void MainWindow::logLoopCompletion(FeatureRunSession& session, bool success, const QString& message) {
-    accumulateLoopCompletionStats(session, success);
-    publishLoopCompletionUi(session, success, message);
+    m_runUiPublisher->completeLoop(session, success, message);
 }
 
 void MainWindow::syncLoopTimingToWorkflowEditor(const FeatureRunSession* session) {
-    if (!m_workflowEditor) {
-        return;
-    }
-    if (!session || !session->hasLastLoopTiming || !isDisplayedRunningFeature(session)) {
-        m_workflowEditor->clearLoopTiming();
-        return;
-    }
-    m_workflowEditor->setLoopTiming(session->lastLoopNumber,
-                                    session->lastLoopElapsedMs,
-                                    session->lastLoopAverageMs,
-                                    session->lastLoopSuccess);
+    m_runUiPublisher->syncTiming(session);
 }
 
 bool MainWindow::shouldLogRunDetails(const FeatureRunSession& session) const {
@@ -4529,101 +1632,46 @@ void MainWindow::continueRepeatSession(FeatureRunSession& session,
 }
 
 void MainWindow::launchWorkflowRun(FeatureRunSession& session, Feature* feature, bool repeatIteration) {
+    if(session.usesHoldKeyTapFastPath){
+        int key=0;if(feature)holdKeyTapWorkflowVirtualKey(*feature,key);
+        launchHoldKeyTapRun(session,feature,key);return;
+    }
     RunLifecycleCoordinator::launchWorkflowRun(*this, session, feature, repeatIteration);
 }
 
 void MainWindow::launchHoldKeyTapRun(FeatureRunSession& session, Feature* feature, int virtualKey) {
-    if (!feature || !m_holdKeyTapMux) {
-        return;
-    }
-
-    if (session.holdKeyTapLaneActive || m_holdKeyTapMux->isLaneActive(session.featureId)) {
-        return;
-    }
-
-    if (deferRunUntilScopedTargetForeground(session, feature)) {
-        return;
-    }
-
-    CrashReporter::noteBreadcrumb(
-        QStringLiteral("run"),
-        QStringLiteral("hold tap \"%1\" vk=%2")
-            .arg(QString::fromStdString(feature->name()))
-            .arg(virtualKey));
-
-    if (!session.sessionContext) {
-        session.sessionContext = std::make_shared<ExecutionContext>();
-    }
-    syncRunSessionContext(session);
-    applyFeatureRunPoliciesToContext(session, feature);
-    session.sessionContext->setSuppressRepeatUi(true);
-    syncUserInputInterruptForSession(session, feature);
-
-    const bool needHoldTapStartUi =
-        session.hotkeyLaunchedSession && !session.holdKeyTapStartUiDone;
-    if (needHoldTapStartUi) {
-        session.holdKeyTapStartUiDone = true;
-        const std::string featureId = session.featureId;
-        QTimer::singleShot(0, this, [this, featureId]() {
-            RunLifecycleCoordinator::scheduleCoalescedHoldStartUi(*this, featureId);
-        });
-    } else if (!session.hotkeyLaunchedSession) {
-        selectRunningFeatureForDisplay(feature);
-        if (shouldLogRunDetails(session)) {
-            appendSessionLog(session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
-        }
-        updateRunUiState();
-    }
-
-    const std::string featureId = session.featureId;
-    Feature* featurePtr = feature;
-    HotkeyManager* hotkeyMgr = m_hotkeyManager;
-    const int intervalMs = feature->resolvedLoopIntervalMs();
-    std::shared_ptr<ExecutionContext> context = session.sessionContext;
-
-    session.holdKeyTapLaneActive = true;
-    m_holdKeyTapMux->startLane(
-        session.featureId,
-        virtualKey,
-        intervalMs,
-        [this, featureId, featurePtr, hotkeyMgr]() {
-            FeatureRunSession* active = sessionFor(featureId);
-            if (!active || !featurePtr) {
-                return false;
-            }
-            if (active->userStopRequested) {
-                return false;
-            }
-            return active->repeatSession && active->holdRunActive && hotkeyMgr
-                   && hotkeyMgr->isHoldBindingStillActiveForRun(featureId);
-        },
-        context);
+    m_holdTapSessions->launch(session,feature,virtualKey);
 }
 
-void MainWindow::deferHoldSessionUiAfterStart(const std::string& featureId) {
-    FeatureRunSession* session = sessionFor(featureId);
-    if (!session) {
-        return;
-    }
-    Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
-    if (feature) {
-        selectRunningFeatureForDisplay(feature);
-    }
-    if (isDisplayedRunningFeature(session)) {
-        syncLoopTimingToWorkflowEditor(session);
-        m_workflowEditor->clearBlockMatchResults();
-        m_workflowEditor->clearExecutionHighlight();
-        if (session->runningBlockIndex >= 0
-            && session->runningBlockHighlight != BlockListWidget::ExecutionHighlight::None) {
-            m_workflowEditor->setActiveBlockIndex(session->runningBlockIndex,
-                                                  session->runningBlockHighlight);
-        }
-        m_workflowEditor->persistRunFeedbackForCurrentFeature();
-    }
-    if (shouldLogRunDetails(*session)) {
-        appendSessionLog(*session, tr("기능 실행을 시작합니다"), LogLineKind::Accent);
-    }
-    updateRunUiState();
+void MainWindow::setupHoldTapSessions() {
+    HoldTapSessionController::Host host;
+    host.session=[this](const auto& id){return sessionFor(id);};
+    host.feature=[this](auto& s){return featureForSession(s);};
+    host.activeOwner=[this](const auto& s){return sessionBelongsToActiveProfile(s);};
+    host.displayed=[this](const auto& s){return isDisplayedRunningFeature(&s);};
+    host.logDetails=[this](const auto& s){return shouldLogRunDetails(s);};
+    host.deferForeground=[this](auto& s,auto* f){return deferRunUntilScopedTargetForeground(s,f);};
+    host.syncContext=[this](auto& s,auto*){syncRunSessionContext(s);};
+    host.applyPolicies=[this](auto& s,auto* f){applyFeatureRunPoliciesToContext(s,f);};
+    host.syncInterrupt=[this](auto& s,auto* f){syncUserInputInterruptForSession(s,f);};
+    host.holdReader=[this](const auto& id){return m_hotkeyManager?m_hotkeyManager->holdStateReader(id):std::function<bool()>{};};
+    host.synchronize=[this]{synchronizeRunWorkerState();};
+    host.select=[this](auto* f){selectRunningFeatureForDisplay(f);};
+    host.decorate=[this](auto& s,auto current){
+        const int index=s.runningBlockIndex;const auto highlight=s.runningBlockHighlight;
+        syncLoopTimingToWorkflowEditor(&s);if(!current() || !m_workflowEditor)return;
+        m_workflowEditor->clearBlockMatchResults();if(!current())return;
+        m_workflowEditor->clearExecutionHighlight();if(!current())return;
+        if(index>=0 && highlight!=BlockListWidget::ExecutionHighlight::None)m_workflowEditor->setActiveBlockIndex(index,highlight);
+    };
+    host.logStart=[this](auto& s){appendSessionLog(s,tr("기능 실행을 시작합니다"),LogLineKind::Accent);};
+    host.persist=[this]{if(m_workflowEditor)m_workflowEditor->persistRunFeedbackForCurrentFeature();};
+    host.refresh=[this]{RunLifecycleCoordinator::requestRunUiRefresh(*this,false);};
+    host.scheduleStart=[this](const auto& id){RunLifecycleCoordinator::scheduleCoalescedHoldStartUi(*this,id);};
+    host.scheduleEnd=[this](const auto& id){RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this,id);};
+    host.deferStopped=[this]{return runSessions().size()>1 || RunLifecycleCoordinator::isHoldBurstUiActive(*this) || !m_pendingHoldFeatureEndFinishes.empty();};
+    host.finish=[this](const auto& id,bool success,const auto& message,bool defer){finishRunSession(id,success,message,defer);};
+    m_holdTapSessions=std::make_unique<HoldTapSessionController>(*m_holdKeyTapMux,std::move(host),this);
 }
 
 bool MainWindow::shouldContinueRunSession(const FeatureRunSession& session, Feature* feature) {
@@ -4662,45 +1710,8 @@ void MainWindow::scheduleRepeatIteration(FeatureRunSession& session,
     RunLifecycleCoordinator::scheduleRepeatIteration(*this, session, feature, success, message);
 }
 
-void MainWindow::scheduleEnsureTriggerMonitorEnginesRunning() {
-    if (m_ensureTriggerMonitorPending) {
-        return;
-    }
-    m_ensureTriggerMonitorPending = true;
-    QTimer::singleShot(0, this, [this]() {
-        m_ensureTriggerMonitorPending = false;
-        ensureTriggerMonitorEnginesRunning();
-    });
-}
-
-void MainWindow::ensureTriggerMonitorEnginesRunning() {
-    for (auto& entry : runSessions()) {
-        FeatureRunSession& session = entry.second;
-        if (session.runningMode != FeatureRunMode::Trigger
-            || session.triggerPhase != TriggerSessionPhase::Monitoring) {
-            continue;
-        }
-        if (session.waitingForScopedTargetForeground || session.userStopRequested
-            || !session.repeatSession) {
-            continue;
-        }
-
-        Feature* feature = featureForSession(session);
-        if (!feature || !shouldContinueRunSession(session, feature)) {
-            continue;
-        }
-
-        if (!session.engine) {
-            session.engine = std::make_unique<WorkflowEngine>(this);
-            connectSessionEngine(session);
-        }
-        if (session.engine->isRunning()) {
-            continue;
-        }
-
-        launchTriggerMonitor(session, feature, false);
-    }
-}
+void MainWindow::scheduleEnsureTriggerMonitorEnginesRunning() {m_triggerMonitor->scheduleEnsure();}
+void MainWindow::ensureTriggerMonitorEnginesRunning() {m_triggerMonitor->ensure();}
 
 void MainWindow::scheduleDeferredTriggerMonitorRestart(FeatureRunSession& session,
                                                        Feature* feature,
@@ -4716,95 +1727,18 @@ void MainWindow::launchTriggerActionRun(FeatureRunSession& session, Feature* fea
     RunLifecycleCoordinator::launchTriggerActionRun(*this, session, feature);
 }
 
-void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& triggerSession) {
-    triggerSession.triggerPreemptedSessions.clear();
-    triggerSession.triggerPreemptSavedCursor = false;
-    triggerSession.triggerReleasedOwnMouseLockForPreempt = false;
+void MainWindow::pauseOtherSessionsForTrigger(FeatureRunSession& session) {m_triggerPreemption->pause(session);}
+void MainWindow::resumePreemptedSessionsForTrigger(FeatureRunSession& session) {m_triggerPreemption->resume(session);}
 
-    for (auto& entry : runSessions()) {
-        if (entry.first == triggerSession.featureId) {
-            continue;
-        }
-
-        FeatureRunSession& other = entry.second;
-        if (other.userStopRequested || !other.sessionContext) {
-            continue;
-        }
-
-        TriggerPreemptedSession snap;
-        snap.featureId = other.featureId;
-
-        if (!other.sessionContext->isPaused()) {
-            other.sessionContext->setPaused(true);
-            snap.pausedByTrigger = true;
-        }
-
-        if (hasFeatureMouseLock(other)) {
-            snap.releasedMouseLock = true;
-        }
-
-        if (snap.pausedByTrigger || snap.releasedMouseLock) {
-            triggerSession.triggerPreemptedSessions.push_back(std::move(snap));
-            appendSessionLog(other, tr("다른 기능 실행을 잠시 멈춤"), LogLineKind::Warning);
-        }
-    }
-
-    if (triggerSession.triggerPreemptedSessions.empty()) {
-        return;
-    }
-
-    int screenX = 0;
-    int screenY = 0;
-    if (InputSimulator::getCursorScreenPosition(screenX, screenY)) {
-        triggerSession.triggerPreemptCursorScreenX = screenX;
-        triggerSession.triggerPreemptCursorScreenY = screenY;
-        triggerSession.triggerPreemptSavedCursor = true;
-    }
-
-    if (hasFeatureMouseLock(triggerSession)) {
-        triggerSession.triggerReleasedOwnMouseLockForPreempt = true;
-    }
-
-    reconcileMouseLocksFromRunningSessions();
-
-    appendSessionLog(triggerSession,
-                     tr("다른 기능 %1개를 잠시 멈춤").arg(triggerSession.triggerPreemptedSessions.size()),
-                     LogLineKind::Warning);
-    updateRunUiState();
-}
-
-void MainWindow::resumePreemptedSessionsForTrigger(FeatureRunSession& triggerSession) {
-    if (triggerSession.triggerPreemptedSessions.empty()
-        && !triggerSession.triggerPreemptSavedCursor
-        && !triggerSession.triggerReleasedOwnMouseLockForPreempt) {
-        return;
-    }
-
-    if (triggerSession.triggerPreemptSavedCursor) {
-        InputSimulator::moveMouse(triggerSession.triggerPreemptCursorScreenX,
-                                  triggerSession.triggerPreemptCursorScreenY);
-        triggerSession.triggerPreemptSavedCursor = false;
-    }
-
-    if (triggerSession.triggerReleasedOwnMouseLockForPreempt) {
-        triggerSession.triggerReleasedOwnMouseLockForPreempt = false;
-    }
-
-    for (const TriggerPreemptedSession& snap : triggerSession.triggerPreemptedSessions) {
-        FeatureRunSession* other = sessionFor(snap.featureId);
-        if (!other || !other->sessionContext) {
-            continue;
-        }
-
-        if (snap.pausedByTrigger) {
-            other->sessionContext->setPaused(false);
-            appendSessionLog(*other, tr("일시정지했던 기능을 다시 실행합니다"), LogLineKind::Success);
-        }
-    }
-
-    triggerSession.triggerPreemptedSessions.clear();
-    reconcileMouseLocksFromRunningSessions();
-    updateRunUiState();
+void MainWindow::setupTriggerPreemption() {
+    m_triggerPreemption=std::make_unique<TriggerPreemptionController>(runSessions(),this);
+    TriggerPreemptionController::Host host;
+    host.reconcile=[this]{reconcileMouseLocksFromRunningSessions();};
+    host.changed=[this]{updateRunUiState();};
+    host.log=[this](const std::string& id,const QString& message,bool resumed){
+        if(auto* session=sessionFor(id))appendSessionLog(*session,message,resumed?LogLineKind::Success:LogLineKind::Warning);
+    };
+    m_triggerPreemption->setHost(std::move(host));
 }
 
 void MainWindow::handleTriggerEngineFinished(FeatureRunSession& session,
@@ -4825,322 +1759,104 @@ void MainWindow::runFeature(Feature* feature) {
     startFeatureRun(feature);
 }
 
-void MainWindow::persistTriggerArmedState(const QString& featureId, bool armed) {
-    if (m_suppressTriggerArmedPersist || !m_profileManager || featureId.isEmpty()) {
-        return;
-    }
-    m_profileManager->updateTriggerArmedFeature(m_profileManager->activeProfileId(), featureId, armed);
+void MainWindow::persistTriggerArmedState(const QString& id,bool armed) {m_triggerMonitor->persist(id,armed);}
+void MainWindow::scheduleRestorePersistedTriggerSessions() {m_triggerMonitor->scheduleRestore();}
+void MainWindow::restorePersistedTriggerSessions() {m_triggerMonitor->restore();}
+void MainWindow::prunePersistedTriggerArmedFeatures() {m_triggerMonitor->prune();}
+
+void MainWindow::setupTriggerMonitor() {
+    TriggerMonitorController::Host host;
+    host.workspace=[this]{
+        const bool blocked=m_switchingProfile || m_profileSwitchPipelineActive
+            || (m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()))
+            || (m_updateController && m_updateController->installInProgress())
+            || (m_profileActions && m_profileActions->busy());
+        return TriggerMonitorController::Workspace{m_project.get(),m_profileManager->activeProfileId(),m_projectWorkspace->generation(),blocked};
+    };
+    host.prepare=[this]{syncTargetWindowTitleToCapture();reconcileRunSessionsWithForegroundGate();};
+    host.resume=[this]{resumeWaitingScopedTargetForegroundSessions();};
+    host.session=[this](const auto& id){return sessionFor(id);};
+    host.feature=[this](auto& session){return featureForSession(session);};
+    host.active=[this](const auto& session){return isFeatureSessionActive(session);};
+    host.running=[this](const auto& id){return isFeatureRunning(id);};
+    host.start=[this](const QString& id){
+        startFeatureRun(m_project?m_project->featureById(id.toStdString()):nullptr,false,!ProgramSettings::focusTargetWindowOnProfileSelect());
+    };
+    host.stop=[this](const QString& id){stopFeatureRun(id.toStdString());};
+    host.sessions=[this]{std::vector<std::string> ids;ids.reserve(runSessions().size());for(const auto& entry:runSessions())ids.push_back(entry.first);return ids;};
+    host.mayContinue=[this](auto& session,auto* feature){return shouldContinueRunSession(session,feature);};
+    host.ensureEngine=[this](auto& session){session.engine=std::make_unique<WorkflowEngine>(this);connectSessionEngine(session);};
+    host.launch=[this](auto& session,auto* feature){launchTriggerMonitor(session,feature,false);};
+    host.warning=[this](const QString& message){appendLog(message,LogLineKind::Warning);showTransientStatus(message,5000);};
+    m_triggerMonitor->setHost(std::move(host));
 }
 
-void MainWindow::scheduleRestorePersistedTriggerSessions() {
-    if (m_restoreTriggerSessionsScheduled) {
-        return;
-    }
-    m_restoreTriggerSessionsScheduled = true;
-    QTimer::singleShot(0, this, [this]() {
-        m_restoreTriggerSessionsScheduled = false;
-        restorePersistedTriggerSessions();
-    });
-}
+void MainWindow::onHotkeyTriggered(const QString& id) {m_featureHotkeys->triggered(id);}
+void MainWindow::onHotkeyHoldStarted(const QString& id) {m_featureHotkeys->holdStarted(id);}
+void MainWindow::onHotkeyHoldEnded(const QString& id) {m_featureHotkeys->holdEnded(id);}
+void MainWindow::syncHotkeys() {m_featureHotkeys->sync();}
 
-void MainWindow::restorePersistedTriggerSessions() {
-    if (!m_profileManager || !m_project) {
-        return;
-    }
-    if (m_switchingProfile || m_profileSwitchPipelineActive) {
-        return;
-    }
-
-    syncTargetWindowTitleToCapture();
-    reconcileRunSessionsWithForegroundGate();
-
-    const QString profileId = m_profileManager->activeProfileId();
-    const QStringList armedIds = m_profileManager->triggerArmedFeatureIds(profileId);
-    if (armedIds.isEmpty()) {
-        return;
-    }
-
-    QStringList keptIds;
-    keptIds.reserve(armedIds.size());
-    m_suppressTriggerArmedPersist = true;
-    for (const QString& featureId : armedIds) {
-        Feature* feature = m_project->featureById(featureId.toStdString());
-        if (!feature || !feature->enabled() || feature->runMode() != FeatureRunMode::Trigger
-            || WorkflowRunner::firstImageFindBlockIndex(feature->workflow()) < 0) {
-            continue;
-        }
-        keptIds.append(featureId);
-        const FeatureRunSession* existing = sessionFor(featureId.toStdString());
-        if (existing && existing->profileId == profileId
-            && isFeatureSessionActive(*existing)) {
-            continue;
-        }
-        if (isFeatureRunning(featureId.toStdString())) {
-            continue;
-        }
-        const bool skipActivation = !ProgramSettings::focusTargetWindowOnProfileSelect();
-        startFeatureRun(feature, false, skipActivation);
-    }
-    m_suppressTriggerArmedPersist = false;
-
-    if (keptIds != armedIds) {
-        m_profileManager->setTriggerArmedFeatureIds(profileId, keptIds);
-    }
-
-    resumeWaitingScopedTargetForegroundSessions();
-}
-
-void MainWindow::prunePersistedTriggerArmedFeatures() {
-    if (!m_profileManager || !m_project) {
-        return;
-    }
-
-    const QString profileId = m_profileManager->activeProfileId();
-    const QStringList armedIds = m_profileManager->triggerArmedFeatureIds(profileId);
-    if (armedIds.isEmpty()) {
-        return;
-    }
-
-    QStringList keptIds;
-    keptIds.reserve(armedIds.size());
-    for (const QString& featureId : armedIds) {
-        Feature* feature = m_project->featureById(featureId.toStdString());
-        if (!feature || !feature->enabled() || feature->runMode() != FeatureRunMode::Trigger
-            || WorkflowRunner::firstImageFindBlockIndex(feature->workflow()) < 0) {
-            if (isFeatureRunning(featureId.toStdString())) {
-                stopFeatureRun(featureId.toStdString());
-            }
-            continue;
-        }
-        keptIds.append(featureId);
-    }
-
-    if (keptIds != armedIds) {
-        m_profileManager->setTriggerArmedFeatureIds(profileId, keptIds);
-    }
-}
-
-void MainWindow::onHotkeyTriggered(const QString& featureId) {
-    if (!m_project) {
-        return;
-    }
-    Feature* feature = m_project->featureById(featureId.toStdString());
-    if (!feature || !feature->enabled()) {
-        return;
-    }
-    if (shouldSuppressFeatureHotkeyExecution(feature)) {
-        notifyFeatureHotkeySuppressed();
-        return;
-    }
-
-    if (feature->runMode() == FeatureRunMode::Hold) {
-        return;
-    }
-
-    if (isFeatureRunning(featureId.toStdString())) {
-        stopFeatureRun(featureId.toStdString());
-        return;
-    }
-
+void MainWindow::setupFeatureHotkeys() {
+    using Controller=FeatureHotkeyController;
+    m_featureHotkeys=std::make_unique<Controller>(this);
+    Controller::Host host;
+    host.workspace=[this]{return Controller::Workspace{m_project.get(),m_profileManager->activeProfileId(),m_projectWorkspace->generation()};};
+    host.gate=[this](const QString& id) {
+        Controller::Gate value;
+        value.unavailable=!m_profileManager->storageReady() || m_switchingProfile || m_profileSwitchPipelineActive
+            || (m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()))
+            || (m_updateController && m_updateController->installInProgress());
+        value.editor=FeatureHotkeyGate::isFeatureHotkeysBlocked();
+        if(value.unavailable || value.editor)return value;
 #ifdef _WIN32
-    ensureForegroundReadyForFeatureHotkey();
+        const auto* feature=m_project?m_project->featureById(id.toStdString()):nullptr;
+        value.targetRequired=!ProgramSettings::runWithoutTargetWindow() && !isActiveDefaultProfile();
+        value.profileMatches=!value.targetRequired || foregroundProfileMatchesActive();
+        value.backgroundAllowed=!value.profileMatches && feature && triggerBackgroundRunGateActive(feature);
+        const HWND foreground=m_foregroundMonitor?m_foregroundMonitor->currentRootHwnd():nullptr;
+        value.ownWindow=foreground && IsWindow(foreground) && isPipbongProcessForeground(foreground);
 #endif
-    startFeatureRun(feature, true);
-}
-
-void MainWindow::onHotkeyHoldStarted(const QString& featureId) {
-    struct HoldBurstScope {
-        MainWindow* window = nullptr;
-        explicit HoldBurstScope(MainWindow* w) : window(w) {
-            if (window) {
-                ++window->m_holdBurstDepth;
-            }
-        }
-        ~HoldBurstScope() {
-            if (window) {
-                --window->m_holdBurstDepth;
-                RunLifecycleCoordinator::scheduleHoldBurstScopeDrain(*window);
-            }
-        }
-    } burstScope(this);
-
-    if (!m_project) {
-        return;
-    }
-    Feature* feature = m_project->featureById(featureId.toStdString());
-    if (!feature || !feature->enabled()) {
-        return;
-    }
-    if (shouldSuppressFeatureHotkeyExecution(feature)) {
-        notifyFeatureHotkeySuppressed();
-        return;
-    }
-
-    if (feature->runMode() != FeatureRunMode::Hold) {
-        return;
-    }
-
-    const std::string id = featureId.toStdString();
-    if (FeatureRunSession* session = sessionFor(id)) {
-        if (session->holdRunActive) {
-            const bool runnerIdle = !session->holdKeyTapLaneActive;
-            const bool engineIdle = !session->engine || !session->engine->isRunning();
-            if (runnerIdle && engineIdle) {
-                session->repeatSession = true;
-                scheduleRepeatIteration(*session, feature, session->lastLoopSuccess, QString());
-            }
-            return;
-        }
-        if (RunLifecycleCoordinator::holdSessionBlocksNewPhysicalStart(*session, m_holdKeyTapMux)) {
-            return;
-        }
-        RunLifecycleCoordinator::tearDownAndEraseSessionEntry(*this, id);
-    }
-
-    RunLifecycleCoordinator::scheduleCoalescedHoldFeatureStart(*this, id);
-    scheduleFeatureListHoldVisualRefresh();
-}
-
-void MainWindow::onHotkeyHoldEnded(const QString& featureId) {
-    struct HoldBurstScope {
-        MainWindow* window = nullptr;
-        explicit HoldBurstScope(MainWindow* w) : window(w) {
-            if (window) {
-                ++window->m_holdBurstDepth;
-            }
-        }
-        ~HoldBurstScope() {
-            if (window) {
-                --window->m_holdBurstDepth;
-                RunLifecycleCoordinator::scheduleHoldBurstScopeDrain(*window);
-            }
-        }
-    } burstScope(this);
-
-    const std::string id = featureId.toStdString();
-    m_pendingHoldFeatureStartIds.erase(id);
-    m_pendingHoldFeatureStartOrder.erase(
-        std::remove(m_pendingHoldFeatureStartOrder.begin(), m_pendingHoldFeatureStartOrder.end(), id),
-        m_pendingHoldFeatureStartOrder.end());
-
-    FeatureRunSession* session = sessionFor(id);
-    if (!session || session->runningMode != FeatureRunMode::Hold) {
-        scheduleFeatureListHoldVisualRefresh();
-        return;
-    }
-
-    ++session->holdRepeatGeneration;
-
-    if (!session->holdRunActive) {
-        scheduleFeatureListHoldVisualRefresh();
-        return;
-    }
-
-    session->holdRunActive = false;
-    session->repeatSession = false;
-
-    Feature* feature = m_project ? m_project->featureById(id) : nullptr;
-    releaseHoldHotkeyInputToTarget(*session, feature);
-    scheduleFeatureListHoldVisualRefresh();
-
-    if (session->holdKeyTapLaneActive && m_holdKeyTapMux) {
-        session->userStopRequested = true;
-        m_holdKeyTapMux->stopLane(id);
-        return;
-    }
-
-    if (session->engine && session->engine->isRunning()) {
-        session->userStopRequested = true;
-        session->engine->stop();
-        return;
-    }
-
-    session->userStopRequested = false;
-    RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this, id);
-}
-
-bool MainWindow::shouldSuppressFeatureHotkeyExecution(const Feature* feature) const {
-    if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
-        return true;
-    }
+        return value;
+    };
+    host.blocked=[this](Controller::Block reason) {
+        if(reason==Controller::Block::Editor)showTransientStatus(tr("편집 창이 열려 있으면 기능 단축키를 사용할 수 없습니다."),2500);
+        else if(reason==Controller::Block::Target)showTransientStatus(tr("타겟을 활성화한 뒤 단축키를 누르세요."),2500);
+    };
+    host.running=[this](const auto& id){return isFeatureRunning(id);};
+    host.session=[this](const auto& id){return sessionFor(id);};
+    host.holdBlocked=[this](const auto& s){return RunLifecycleCoordinator::holdSessionBlocksNewPhysicalStart(s,m_holdKeyTapMux);};
+    host.enterBurst=[this]{++m_holdBurstDepth;};
+    host.leaveBurst=[this]{--m_holdBurstDepth;RunLifecycleCoordinator::scheduleHoldBurstScopeDrain(*this);};
+    host.foregroundReady=[this]{
 #ifdef _WIN32
-    if (!ProgramSettings::runWithoutTargetWindow() && !isActiveDefaultProfile()
-        && !foregroundProfileMatchesActive()) {
-        if (!(feature && triggerBackgroundRunGateActive(feature))) {
-            return true;
-        }
-    }
-
-    const HWND foreground = m_foregroundMonitor ? m_foregroundMonitor->currentRootHwnd() : nullptr;
-    if (foreground && IsWindow(foreground) && isPipbongProcessForeground(foreground)) {
-        return true;
-    }
+        ensureForegroundReadyForFeatureHotkey();
 #endif
-    return false;
-}
-
-void MainWindow::notifyFeatureHotkeySuppressed() {
-    if (FeatureHotkeyGate::isFeatureHotkeysBlocked()) {
-        showTransientStatus(tr("편집 창이 열려 있으면 기능 단축키를 사용할 수 없습니다."), 2500);
-        return;
-    }
+    };
+    host.start=[this](const auto& id){startFeatureRun(m_project?m_project->featureById(id):nullptr,true);};
+    host.stop=[this](const auto& id){stopFeatureRun(id);};
+    host.erase=[this](const auto& id){RunLifecycleCoordinator::tearDownAndEraseSessionEntry(*this,id);};
+    host.queueStart=[this](const auto& id){RunLifecycleCoordinator::scheduleCoalescedHoldFeatureStart(*this,id);};
+    host.cancelStart=[this](const auto& id){
+        m_pendingHoldFeatureStartIds.erase(id);
+        m_pendingHoldFeatureStartOrder.erase(std::remove(m_pendingHoldFeatureStartOrder.begin(),m_pendingHoldFeatureStartOrder.end(),id),m_pendingHoldFeatureStartOrder.end());
+    };
+    host.queueFinish=[this](const auto& id){RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this,id);};
+    host.repeat=[this](auto& s){scheduleRepeatIteration(s,featureForSession(s),s.lastLoopSuccess,QString());};
+    host.release=[this](auto& s){releaseHoldHotkeyInputToTarget(s);};
+    host.stopLane=[this](auto& s){if(m_holdKeyTapMux)m_holdKeyTapMux->stopLaneIfToken(s.featureId,s.holdKeyTapLaneToken);};
+    host.holdVisuals=[this]{scheduleFeatureListHoldVisualRefresh();};
+    host.prune=[this]{prunePersistedTriggerArmedFeatures();};
+    host.registerBindings=[this](const Project& project){
+        Controller::Registration value;
+        if(!m_hotkeyManager)return value;
+        for(const auto& failure:m_hotkeyManager->syncFromProject(project))value.failedNames.append(QString::fromStdString(failure.featureName));
 #ifdef _WIN32
-    if (!ProgramSettings::runWithoutTargetWindow() && !isActiveDefaultProfile()
-        && !foregroundProfileMatchesActive()) {
-        showTransientStatus(tr("타겟을 활성화한 뒤 단축키를 누르세요."), 2500);
-        return;
-    }
-
-    const HWND foreground = m_foregroundMonitor ? m_foregroundMonitor->currentRootHwnd() : nullptr;
-    if (foreground && IsWindow(foreground) && isPipbongProcessForeground(foreground)) {
-        showTransientStatus(tr("타겟을 활성화한 뒤 단축키를 누르세요."), 2500);
-    }
+        value.keyboardHook=m_hotkeyManager->isKeyboardHookActive();value.mouseHook=m_hotkeyManager->isMouseHookActive();
 #endif
-}
-
-void MainWindow::syncHotkeys() {
-    AppStutterOperationScope stutterScope("hotkey.sync", QStringLiteral("project sync"));
-    if (!m_hotkeyManager || !m_project) {
-        return;
-    }
-
-    const auto failures = m_hotkeyManager->syncFromProject(*m_project);
-#ifdef _WIN32
-    if (!m_hotkeyManager->isKeyboardHookActive()
-        && (!failures.empty() || m_project->features().size() > 0)) {
-        bool hasKeyboardBinding = false;
-        for (const auto& feature : m_project->features()) {
-            if (!feature->hotkey().isEmpty() && !feature->hotkey().isMouseButton()) {
-                hasKeyboardBinding = true;
-                break;
-            }
-        }
-        if (hasKeyboardBinding) {
-            appendLog(tr("키보드 단축키를 등록하지 못했습니다. 백업 방식으로 다시 시도합니다. "
-                         "계속 안 되면 관리자 권한으로 실행하거나 보안 프로그램 예외를 확인하세요."),
-                      LogLineKind::Warning);
-        }
-    }
-    if (!m_hotkeyManager->isMouseHookActive()) {
-        bool hasMouseBinding = false;
-        for (const auto& feature : m_project->features()) {
-            if (!feature->hotkey().isEmpty() && feature->hotkey().isMouseButton()) {
-                hasMouseBinding = true;
-                break;
-            }
-        }
-        if (hasMouseBinding) {
-            appendLog(tr("마우스 단축키를 등록하지 못했습니다. 마우스 단축키가 동작하지 않을 수 있습니다."),
-                      LogLineKind::Warning);
-        }
-    }
-#endif
-    for (const auto& failure : failures) {
-        appendLog(tr("단축키 등록 실패 (%1) — 다른 프로그램이 쓰 중이거나 권한이 부족할 수 있습니다.")
-                      .arg(QString::fromStdString(failure.featureName)),
-                  LogLineKind::Error);
-    }
-    prunePersistedTriggerArmedFeatures();
+        return value;
+    };
+    host.log=[this](const QString& message,bool error){appendLog(message,error?LogLineKind::Error:LogLineKind::Warning);};
+    m_featureHotkeys->setHost(std::move(host));
 }
 
 void MainWindow::onStopWorkflow() {
@@ -5153,448 +1869,52 @@ void MainWindow::onStopWorkflow() {
     }
 }
 
-void MainWindow::onPickTargetWindow() {
-    if (isActiveDefaultProfile()) {
-        return;
-    }
-#ifdef _WIN32
-    setPersistentStatus(tr("메인 창을 클릭하세요. 우클릭 또는 Esc로 취소"));
-    WindowPicker::startPick(
-        this,
-        [this](const WindowPicker::Result& result) {
-        setPersistentStatus(QString());
-        if (!result.accepted || !result.hwnd) {
-            showTransientStatus(tr("타겟 지정이 취소되었습니다."), 3000);
-            return;
-        }
+void MainWindow::onPickTargetWindow() { m_targetActions->pick(TargetWindowBindingRole::Main); }
+void MainWindow::onPickSubTargetWindow() { m_targetActions->pick(TargetWindowBindingRole::Sub); }
+void MainWindow::onPickMainTargetWindowFromList() { m_targetActions->pick(TargetWindowBindingRole::Main,true); }
+void MainWindow::onPickSubTargetWindowFromList() { m_targetActions->pick(TargetWindowBindingRole::Sub,true); }
+void MainWindow::onShowTargetWindow() { m_targetActions->show(TargetWindowBindingRole::Main); }
+void MainWindow::onShowSubTargetWindow() { m_targetActions->show(TargetWindowBindingRole::Sub); }
 
-        const QString title = QString::fromStdWString(result.title);
-        commitActiveProfileTargetWindow(result.hwnd, title);
-        appendLog(tr("타겟을 지정했습니다: %1")
-                      .arg(title.isEmpty() ? tr("(제목 없음)") : title),
-                  LogLineKind::Success);
-        showTransientStatus(tr("메인 창을 지정했습니다."), 3000);
-        updateTargetWindowDetails();
-        refreshProfileList();
-        TargetWindowHighlightOverlay::flashSelectionWave(this, TargetWindowBindingRole::Main);
-        scheduleRunWarmup();
-        syncTargetWindowCenterPin();
-    },
-        TargetWindowBindingRole::Main);
-#else
-    QMessageBox::information(this, tr("타겟 지정"), tr("타겟 지정은 Windows에서만 지원됩니다."));
-#endif
-}
-
-void MainWindow::onPickSubTargetWindow() {
-    if (isActiveDefaultProfile()) {
-        return;
-    }
-#ifdef _WIN32
-    setPersistentStatus(tr("서브 창을 클릭하세요. 우클릭 또는 Esc로 취소"));
-    WindowPicker::startPick(
-        this,
-        [this](const WindowPicker::Result& result) {
-            setPersistentStatus(QString());
-            if (!result.accepted || !result.hwnd) {
-                showTransientStatus(tr("타겟 지정이 취소되었습니다."), 3000);
-                return;
-            }
-
-            const QString title = QString::fromStdWString(result.title);
-            commitActiveProfileSubTargetWindow(result.hwnd, title);
-            appendLog(tr("서브 창을 지정했습니다: %1")
-                          .arg(title.isEmpty() ? tr("(제목 없음)") : title),
-                      LogLineKind::Success);
-            showTransientStatus(tr("서브 창을 지정했습니다."), 3000);
-            updateTargetWindowDetails();
-            refreshProfileList();
-            TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(result.hwnd,
-                                                                    this,
-                                                                    TargetWindowBindingRole::Sub);
-        },
-        TargetWindowBindingRole::Sub);
-#else
-    QMessageBox::information(this, tr("타겟 지정"), tr("타겟 지정은 Windows에서만 지원됩니다."));
-#endif
-}
-
-void MainWindow::onPickMainTargetWindowFromList() {
-    pickTargetWindowFromList(TargetWindowListPickMode::Main);
-}
-
-void MainWindow::onPickSubTargetWindowFromList() {
-    pickTargetWindowFromList(TargetWindowListPickMode::Sub);
-}
-
-void MainWindow::pickTargetWindowFromList(TargetWindowListPickMode mode) {
-    if (isActiveDefaultProfile()) {
-        return;
-    }
-#ifdef _WIN32
-    TargetWindowListPickOptions options;
-    options.role =
-        mode == TargetWindowListPickMode::Sub ? TargetWindowBindingRole::Sub : TargetWindowBindingRole::Main;
-    options.mainBinding =
-        QString::fromStdString(m_project ? m_project->targetWindowTitle() : std::string{}).trimmed();
-    options.subBinding =
-        m_profileManager
-            ? m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed()
-            : QString();
-    options.preferredHwnd = ScreenCapture::targetWindow();
-
-    const std::optional<TargetWindowListPickResult> pickResult = ::pickTargetWindowFromList(this, options);
-    if (!pickResult) {
-        return;
-    }
-
-    const HWND selectedHwnd = pickResult->hwnd;
-    const QString title = pickResult->title;
-    if (mode == TargetWindowListPickMode::Sub) {
-        commitActiveProfileSubTargetWindow(selectedHwnd, title);
-        appendLog(tr("서브 창을 지정했습니다: %1")
-                      .arg(title.isEmpty() ? tr("(제목 없음)") : title),
-                  LogLineKind::Success);
-        showTransientStatus(tr("서브 창을 목록에서 지정했습니다."), 3000);
-        updateTargetWindowDetails();
-        QTimer::singleShot(0, this, [this, selectedHwnd]() {
-            TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd,
-                                                                    this,
-                                                                    TargetWindowBindingRole::Sub);
-        });
-        return;
-    }
-
-    commitActiveProfileTargetWindow(selectedHwnd, title);
-    appendLog(tr("타겟을 지정했습니다: %1").arg(title.isEmpty() ? tr("(제목 없음)") : title),
-              LogLineKind::Success);
-    showTransientStatus(tr("메인 창을 목록에서 지정했습니다."), 3000);
-    updateTargetWindowDetails();
-    refreshProfileList();
-    QTimer::singleShot(0, this, [this, selectedHwnd]() {
-        TargetWindowHighlightOverlay::flashSelectionWaveForHwnd(selectedHwnd,
-                                                                this,
-                                                                TargetWindowBindingRole::Main);
-    });
-    scheduleRunWarmup();
-    syncTargetWindowCenterPin();
-#else
-    Q_UNUSED(mode);
-    QMessageBox::information(this, tr("창 목록"), tr("창 목록은 Windows에서만 지원됩니다."));
-#endif
-}
-
-void MainWindow::onShowTargetWindow() {
-    if (isActiveDefaultProfile()) {
-        return;
-    }
-#ifdef _WIN32
-    if (TargetWindowHighlightOverlay::flash(this, TargetWindowBindingRole::Main)) {
-        showTransientStatus(tr("메인 창을 표시했습니다."), 2500);
-    }
-#else
-    QMessageBox::information(this, tr("창 표시"), tr("창 표시는 Windows에서만 지원됩니다."));
-#endif
-}
-
-void MainWindow::onShowSubTargetWindow() {
-    if (isActiveDefaultProfile()) {
-        return;
-    }
-#ifdef _WIN32
-    const QString subBinding =
-        m_profileManager
-            ? m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed()
-            : QString();
-    if (subBinding.isEmpty()) {
-        QMessageBox::information(this,
-                                 tr("창 표시"),
-                                 tr("서브 창이 지정되지 않았습니다.\n"
-                                    "먼저 '지정' 또는 '서브 목록'으로 서브 창을 선택하세요."));
-        return;
-    }
-
-    const HWND hwnd = ScreenCapture::findVisibleWindowMatchingTitle(subBinding.toStdWString());
-    if (!hwnd || !IsWindow(hwnd)) {
-        QMessageBox::warning(this,
-                             tr("창 표시"),
-                             tr("서브 창을 찾을 수 없습니다.\n"
-                                "해당 창이 실행 중인지 확인하세요."));
-        return;
-    }
-
-    if (TargetWindowHighlightOverlay::flashForHwnd(hwnd, this, TargetWindowBindingRole::Sub)) {
-        showTransientStatus(tr("서브 창을 표시했습니다."), 2500);
-    }
-#else
-    QMessageBox::information(this, tr("창 표시"), tr("창 표시는 Windows에서만 지원됩니다."));
-#endif
-}
-
-void MainWindow::onPinTargetWindowCenterToggled(bool checked) {
-    if (isActiveDefaultProfile()) {
-        return;
-    }
-    ProgramSettings::setPinTargetWindowToScreenCenter(checked);
-    applyTargetWindowCenterPin();
-    if (checked) {
-        if (applyCenterPinToEnabledTargets(true)) {
-            updateTargetWindowDetails();
-        }
-    }
-    saveActiveProfileSettings();
-}
-
-void MainWindow::onPinSubTargetWindowCenterToggled(bool checked) {
-    if (isActiveDefaultProfile()) {
-        return;
-    }
-    ProgramSettings::setPinSubTargetWindowToScreenCenter(checked);
-    applyTargetWindowCenterPin();
-    if (checked) {
-        if (applyCenterPinToEnabledTargets(true)) {
-            updateTargetWindowDetails();
-        }
-    }
-    saveActiveProfileSettings();
-}
-
-void MainWindow::applyTargetWindowCenterPin() {
-    const bool enabled = ProgramSettings::pinTargetWindowToScreenCenter()
-                           || ProgramSettings::pinSubTargetWindowToScreenCenter();
-    if (!m_targetWindowCenterPinTimer) {
-        return;
-    }
-    if (enabled) {
-        const bool alreadyRunning = m_targetWindowCenterPinTimer->isActive();
-        if (!alreadyRunning) {
-            m_targetWindowCenterPinTimer->start();
-        }
-        QTimer::singleShot(0, this, [this]() {
-            if (ProgramSettings::pinTargetWindowToScreenCenter()
-                || ProgramSettings::pinSubTargetWindowToScreenCenter()) {
-                syncTargetWindowCenterPin();
-            }
-        });
-        return;
-    }
-    m_targetWindowCenterPinTimer->stop();
-}
-
-#ifdef _WIN32
-HWND MainWindow::findMainTargetHwndForCenterPin() const {
-    const std::wstring mainTitle = currentTargetWindowTitleW();
-    if (mainTitle.empty() || !m_profileManager) {
-        return nullptr;
-    }
-    const QString processPath =
-        m_profileManager->linkedTargetProcessPath(m_profileManager->activeProfileId());
-    HWND hwnd = ScreenCapture::findVisibleWindowMatchingTitle(mainTitle, processPath.toStdWString());
-    if (!hwnd || !IsWindow(hwnd) || IsIconic(hwnd)) {
-        return nullptr;
-    }
-    return hwnd;
-}
-
-HWND MainWindow::findSubTargetHwndForCenterPin() const {
-    if (!m_profileManager || isActiveDefaultProfile()) {
-        return nullptr;
-    }
-    const QString profileId = m_profileManager->activeProfileId();
-    const QString subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
-    if (subBinding.isEmpty()) {
-        return nullptr;
-    }
-    const QString processPath = m_profileManager->subLinkedTargetProcessPath(profileId);
-    HWND hwnd = ScreenCapture::findVisibleWindowMatchingTitle(subBinding.toStdWString(),
-                                                              processPath.toStdWString());
-    if (!hwnd || !IsWindow(hwnd) || IsIconic(hwnd)) {
-        return nullptr;
-    }
-    return hwnd;
-}
-#endif
-
-bool MainWindow::hasAnyActiveWorkflowBurst() const {
-    for (const auto& entry : runSessions()) {
-        if (isFeatureInActiveWorkflowRun(entry.first)) {
-            return true;
-        }
-    }
-    return false;
-}
+void MainWindow::onPinTargetWindowCenterToggled(bool checked) {m_centerPin->toggle(TargetCenterPinController::Role::Main,checked);}
+void MainWindow::onPinSubTargetWindowCenterToggled(bool checked) {m_centerPin->toggle(TargetCenterPinController::Role::Sub,checked);}
+void MainWindow::applyTargetWindowCenterPin() {m_centerPin->reconcile();}
+void MainWindow::syncTargetWindowCenterPin() {m_centerPin->tick();}
 
 bool MainWindow::hasAnyCapturingWorkflowBurstExcept(const std::string& excludeFeatureId) const {
     return SessionRunPolicy::hasAnyCapturingWorkflowBurst(
         RunLifecycleCoordinator::policyInputsFromSessions(runSessions(), &excludeFeatureId));
 }
 
-bool MainWindow::applyCenterPinToEnabledTargets(bool forceSnap) {
-#ifdef _WIN32
-    bool updated = false;
-    if (ProgramSettings::pinTargetWindowToScreenCenter()) {
-        if (HWND hwnd = findMainTargetHwndForCenterPin()) {
-            if (TargetWindowCenterPin::syncWindow(hwnd, forceSnap)) {
-                updated = true;
-            }
-        }
-    }
-    if (ProgramSettings::pinSubTargetWindowToScreenCenter()) {
-        if (HWND hwnd = findSubTargetHwndForCenterPin()) {
-            if (TargetWindowCenterPin::syncWindow(hwnd, forceSnap)) {
-                updated = true;
-            }
-        }
-    }
-    return updated;
-#else
-    (void)forceSnap;
-    return false;
-#endif
+void MainWindow::setupWorkflowExecutionPresenter() {
+    m_executionPresenter=std::make_unique<WorkflowExecutionPresenter>(*m_workflowEditor,this);
+    WorkflowExecutionPresenter::Host host;
+    host.session=[this](QObject* engine)->FeatureRunSession* {
+        return m_shutdownCoordinator && m_shutdownCoordinator->ready()?nullptr:sessionForEngine(engine);
+    };
+    host.displayed=[this](const auto& session){return isDisplayedRunningFeature(&session);};
+    host.details=[this](const auto& session){return shouldLogRunDetails(session);};
+    host.log=[this](const auto& session,const QString& message,LogLineKind kind){appendSessionLog(session,message,kind);};
+    host.refresh=[this]{updateRunUiState();};
+    host.matched=[this](auto& session){updateEarlyLoopMouseLockFromMatch(session);};
+    host.failed=[this](auto& session,int index){handleEarlyLoopMouseLockBlockFailure(session,index);};
+    m_executionPresenter->setHost(std::move(host));
 }
 
-void MainWindow::syncTargetWindowCenterPin() {
-#ifdef _WIN32
-    if (hasAnyActiveWorkflowBurst()) {
-        return;
-    }
-    if (!ProgramSettings::pinTargetWindowToScreenCenter()
-        && !ProgramSettings::pinSubTargetWindowToScreenCenter()) {
-        return;
-    }
-
-    if (applyCenterPinToEnabledTargets(false)) {
-        updateTargetWindowDetails();
-    }
-#endif
-}
-
-void MainWindow::onEngineLog(const QString& message) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    const LogLineKind kind = logKindForWorkflowMessage(message);
-    if (session) {
-        appendSessionLog(*session, message, kind);
-        return;
-    }
-    appendLog(message, kind);
-}
+void MainWindow::onEngineLog(const QString& message) { m_executionPresenter->log(sender(),message); }
 
 void MainWindow::onEngineSessionPrepared(std::shared_ptr<Workflow> workflow,
-                                         std::shared_ptr<ExecutionContext> context) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (!session) {
-        return;
-    }
-    if (workflow) {
-        session->sessionWorkflow = std::move(workflow);
-    }
-    if (context && !session->sessionContext) {
-        session->sessionContext = std::move(context);
-    }
-}
+                                         std::shared_ptr<ExecutionContext> context) { m_executionPresenter->prepared(sender(),std::move(workflow),std::move(context)); }
 
-void MainWindow::onEngineStarted() {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (!session) {
-        return;
-    }
-    if (session->runningMode == FeatureRunMode::Trigger
-        && session->triggerPhase != TriggerSessionPhase::RunningAction) {
-        updateRunUiState();
-        return;
-    }
-    session->loopTimer.start();
-    if (!(session->sessionContext && session->sessionContext->suppressRepeatUi())) {
-        updateRunUiState();
-    }
-}
+void MainWindow::onEngineStarted() { m_executionPresenter->started(sender()); }
 
 void MainWindow::onEngineFinished(bool success, const QString& message) {
     RunLifecycleCoordinator::onEngineFinished(*this, sender(), success, message);
 }
 
-void MainWindow::onHoldKeyTapLaneFinished(const QString& featureId, bool success, const QString& message) {
-    FeatureRunSession* session = sessionFor(featureId.toStdString());
-    if (!session) {
-        return;
-    }
-    session->holdKeyTapLaneActive = false;
+void MainWindow::onBlockStarted(int index, const QString& summary) { m_executionPresenter->blockStarted(sender(),index,summary); }
 
-    if (session->userStopRequested) {
-        const bool deferHoldTeardown =
-            session->runningMode == FeatureRunMode::Hold
-            && (runSessions().size() > 1 || RunLifecycleCoordinator::isHoldBurstUiActive(*this)
-                || !m_pendingHoldFeatureEndFinishes.empty());
-        if (deferHoldTeardown) {
-            RunLifecycleCoordinator::scheduleCoalescedHoldFeatureEndFinish(*this, session->featureId);
-            return;
-        }
-        const bool deferUi = runSessions().size() > 1;
-        finishRunSession(session->featureId, success, message, deferUi);
-        if (deferUi) {
-            RunLifecycleCoordinator::scheduleCoalescedHoldEndCleanup(*this);
-        } else {
-            updateRunUiState(false);
-        }
-        return;
-    }
-
-    Feature* feature = session ? featureForSession(*session) : nullptr;
-    if (feature && shouldContinueRunSession(*session, feature)) {
-        int virtualKey = 0;
-        if (holdKeyTapWorkflowVirtualKey(*feature, virtualKey)) {
-            launchHoldKeyTapRun(*session, feature, virtualKey);
-            return;
-        }
-    }
-
-    finishRunSession(session->featureId, success, message);
-}
-
-void MainWindow::onBlockStarted(int index, const QString& summary) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (!session) {
-        return;
-    }
-    if (shouldLogRunDetails(*session)) {
-        appendSessionLog(*session,
-                         tr("단계 %1 · %2")
-                             .arg(index + 1)
-                             .arg(summary),
-                         LogLineKind::Info);
-    }
-    applyRunningBlockVisuals(*session, index, BlockListWidget::ExecutionHighlight::Running);
-}
-
-void MainWindow::onBlockProgress(int index, BlockProgressKind kind) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (!session) {
-        return;
-    }
-
-    switch (kind) {
-    case BlockProgressKind::ImageFindMiss:
-        if (isTriggerMonitoring(*session)) {
-            break;
-        }
-        if (isDisplayedRunningFeature(session) && m_workflowEditor->isBlockMatchSuccessCommitted(index)) {
-            break;
-        }
-        session->runningBlockIndex = index;
-        session->runningBlockHighlight = BlockListWidget::ExecutionHighlight::ImageFindMiss;
-        if (isDisplayedRunningFeature(session)) {
-            m_workflowEditor->notifyImageFindRetry(index);
-        }
-        break;
-    case BlockProgressKind::ImageFindSuccess:
-        applyRunningBlockVisuals(*session, index, BlockListWidget::ExecutionHighlight::Success);
-        if (isDisplayedRunningFeature(session)) {
-            m_workflowEditor->markBlockMatchSuccess(index);
-        }
-        updateEarlyLoopMouseLockFromMatch(*session);
-        break;
-    }
-}
+void MainWindow::onBlockProgress(int index, BlockProgressKind kind) { m_executionPresenter->progress(sender(),index,kind); }
 
 void MainWindow::onBlockMatchResult(int index,
                                     double matchThreshold,
@@ -5603,130 +1923,24 @@ void MainWindow::onBlockMatchResult(int index,
                                     bool matched,
                                     bool hasClientPoint,
                                     int clientX,
-                                    int clientY) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (session && session->sessionContext && session->sessionContext->suppressRepeatUi()) {
-        return;
-    }
-    if (hasClientPoint && session && session->pointerVisualFeedback) {
-        RunPointerFeedbackKind kind = RunPointerFeedbackKind::MatchMiss;
-        if (matched) {
-            kind = RunPointerFeedbackKind::MatchSuccess;
-        } else if (isTriggerMonitoring(*session)) {
-            kind = RunPointerFeedbackKind::TriggerScan;
-        }
-        if (kind == RunPointerFeedbackKind::TriggerScan) {
-            WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
-        } else if (session->sessionWorkflow && index >= 0) {
-            const auto& blocks = session->sessionWorkflow->blocks();
-            if (index < static_cast<int>(blocks.size())) {
-                if (auto* imageFind =
-                        dynamic_cast<ImageFindBlock*>(blocks[static_cast<size_t>(index)].get())) {
-                    if (imageFind->hasCustomMatchPointerFeedback()) {
-                        WorkflowMatchFeedbackOverlay::pulseAtClientPoint(
-                            clientX, clientY, kind, imageFind->customMatchPointerFeedback());
-                    } else {
-                        WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
-                    }
-                } else {
-                    WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
-                }
-            } else {
-                WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
-            }
-        } else {
-            WorkflowMatchFeedbackOverlay::pulseAtClientPoint(clientX, clientY, kind);
-        }
-    }
+                                    int clientY) { m_executionPresenter->match(sender(),index,matchThreshold,confidence,matchPreview,matched,hasClientPoint,clientX,clientY); }
 
-    if (!session || !isDisplayedRunningFeature(session)) {
-        return;
-    }
-    m_workflowEditor->setBlockMatchResult(
-        index, matchThreshold, confidence, matchPreview, matched, hasClientPoint, clientX, clientY);
-}
-
-void MainWindow::onPointerFeedbackAtClientPoint(int clientX, int clientY) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (!session || !session->pointerVisualFeedback) {
-        return;
-    }
-    if (session->sessionContext && session->sessionContext->suppressRepeatUi()) {
-        return;
-    }
-    WorkflowMatchFeedbackOverlay::pulseAtClientPoint(
-        clientX, clientY, RunPointerFeedbackKind::Click, PointerFeedbackSettings::click());
-}
+void MainWindow::onPointerFeedbackAtClientPoint(int clientX, int clientY) { m_executionPresenter->pointer(sender(),clientX,clientY); }
 
 void MainWindow::onBlockFinished(int index, bool success, const QString& message, qint64 durationMs,
-                                 qint64 imageFindMatchDurationMs, int imageFindPollAttempts) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (!session) {
-        return;
-    }
-
-    if (shouldLogRunDetails(*session) || !success) {
-        appendSessionLog(*session,
-                         tr("단계 %1 · %2 · %3")
-                             .arg(index + 1)
-                             .arg(success ? tr("성공") : tr("실패"))
-                             .arg(message),
-                         success ? LogLineKind::Success : LogLineKind::Warning);
-    }
-    if (isDisplayedRunningFeature(session)) {
-        m_workflowEditor->setBlockDuration(index, durationMs);
-        m_workflowEditor->setBlockImageFindMatchDuration(index, imageFindMatchDurationMs);
-        if (imageFindPollAttempts > 0) {
-            m_workflowEditor->setBlockImageFindAttemptCount(index, imageFindPollAttempts);
-        }
-    }
-    if (!success) {
-        applyRunningBlockVisuals(*session, index, BlockListWidget::ExecutionHighlight::Failed);
-        handleEarlyLoopMouseLockBlockFailure(*session, index);
-    } else {
-        applyRunningBlockVisuals(*session, index, BlockListWidget::ExecutionHighlight::Success);
-        if (isDisplayedRunningFeature(session)) {
-            m_workflowEditor->markBlockMatchSuccess(index);
-        }
-    }
-}
+                                 qint64 imageFindMatchDurationMs, int imageFindPollAttempts) { m_executionPresenter->blockFinished(sender(),index,success,message,durationMs,imageFindMatchDurationMs,imageFindPollAttempts); }
 
 void MainWindow::onBlockImageFindAttempt(int index,
                                          int attemptCount,
                                          double matchThreshold,
                                          double detectedConfidence,
-                                         bool matched) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (!session) {
-        return;
-    }
-    if (!isDisplayedRunningFeature(session)) {
-        return;
-    }
-    m_workflowEditor->setBlockImageFindAttemptCount(index, attemptCount);
-    if (!matched) {
-        m_workflowEditor->setBlockMatchResult(index, matchThreshold, detectedConfidence, QPixmap(), false);
-    }
-}
+                                         bool matched) { m_executionPresenter->attempt(sender(),index,attemptCount,matchThreshold,detectedConfidence,matched); }
 
 void MainWindow::onImageFindFailureHandling(int index,
                                             int returnToPreviousCount,
-                                            int retryAfterNextCount) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (!session || !isDisplayedRunningFeature(session)) {
-        return;
-    }
-    m_workflowEditor->setBlockImageFindFailureHandlingCounts(
-        index, returnToPreviousCount, retryAfterNextCount);
-}
+                                            int retryAfterNextCount) { m_executionPresenter->failureHandling(sender(),index,returnToPreviousCount,retryAfterNextCount); }
 
-void MainWindow::onImageFindReturnToPrevious(int sourceIndex, int targetIndex) {
-    FeatureRunSession* session = sessionForEngine(sender());
-    if (!session || !isDisplayedRunningFeature(session)) {
-        return;
-    }
-    m_workflowEditor->notifyImageFindReturnToPrevious(sourceIndex, targetIndex);
-}
+void MainWindow::onImageFindReturnToPrevious(int sourceIndex, int targetIndex) { m_executionPresenter->returnToPrevious(sender(),sourceIndex,targetIndex); }
 
 void MainWindow::appendLog(const QString& message, LogLineKind kind) {
     DiagnosticHub::appendAppLog(diagnosticLogLevelTag(kind), message);
@@ -5735,236 +1949,23 @@ void MainWindow::appendLog(const QString& message, LogLineKind kind) {
     }
 }
 
-bool MainWindow::maybeSave(bool quiet) {
-    if (!m_modified) {
-        return true;
-    }
-
-    m_autoSaveTimer->stop();
-    autoSaveProject(quiet);
-    return true;
-}
-
-void MainWindow::saveActiveProfileSettings() {
-    if (!m_profileManager) {
-        return;
-    }
-    const QString profileId = m_profileManager->activeProfileId();
-    ProgramSettings::ProfileSettings settings = ProgramSettings::profileSettings();
-    settings.linkedTargetProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
-    if (m_lastPersistedProfileSettingsValid && profileId == m_lastPersistedProfileSettingsProfileId
-        && profileSettingsEqual(settings, m_lastPersistedProfileSettings)) {
-        return;
-    }
-    if (!m_profileManager->saveSettings(profileId, settings)) {
-        return;
-    }
-    m_lastPersistedProfileSettings = settings;
-    m_lastPersistedProfileSettingsProfileId = profileId;
-    m_lastPersistedProfileSettingsValid = true;
-}
-
-bool MainWindow::profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
-                                      const ProgramSettings::ProfileSettings& b) const {
-    return a.autoSelectRunningFeature == b.autoSelectRunningFeature
-           && a.pinTargetWindowToScreenCenter == b.pinTargetWindowToScreenCenter
-           && a.pinSubTargetWindowToScreenCenter == b.pinSubTargetWindowToScreenCenter
-           && a.imageFindCaptureMode == b.imageFindCaptureMode
-           && a.runWithoutTargetWindow == b.runWithoutTargetWindow
-           && a.linkedTargetProcessPath == b.linkedTargetProcessPath;
-}
-
-void MainWindow::loadActiveProfile(bool quiet, bool scheduleTriggerRestore) {
-    if (!m_profileManager) {
-        return;
-    }
-
-    const QString profileId = m_profileManager->activeProfileId();
-    ProgramSettings::applyProfileSettings(m_profileManager->loadSettings(profileId));
-    m_lastPersistedProfileSettings = ProgramSettings::profileSettings();
-    m_lastPersistedProfileSettings.linkedTargetProcessPath =
-        m_profileManager->linkedTargetProcessPath(profileId);
-    m_lastPersistedProfileSettingsProfileId = profileId;
-    m_lastPersistedProfileSettingsValid = true;
-    if (profileId == m_profileManager->defaultProfileId() && m_project) {
-        m_project->setTargetWindowTitle({});
-        ScreenCapture::setTargetWindow(nullptr);
-        ScreenCapture::setTargetWindowTitle(L"");
-    }
-    if (m_pinTargetWindowCenterButton) {
-        const QSignalBlocker blocker(m_pinTargetWindowCenterButton);
-        m_pinTargetWindowCenterButton->setChecked(ProgramSettings::pinTargetWindowToScreenCenter());
-    }
-    if (m_pinSubTargetWindowCenterButton) {
-        const QSignalBlocker blocker(m_pinSubTargetWindowCenterButton);
-        m_pinSubTargetWindowCenterButton->setChecked(
-            ProgramSettings::pinSubTargetWindowToScreenCenter());
-    }
-    applyTargetWindowCenterPin();
-
-    const QString projectPath = m_profileManager->activeProjectPath();
-    Application::instance()->setProjectDirectory(m_profileManager->activeProjectDirectory());
-    if (QFileInfo::exists(projectPath)) {
-        loadProjectFromFile(projectPath, quiet);
-        Application::instance()->setProjectDirectory(m_profileManager->activeProjectDirectory());
-        updateTargetWindowControlsForActiveProfile();
-        if (scheduleTriggerRestore) {
-            scheduleRestorePersistedTriggerSessions();
-        }
-        if (!m_profileSwitchPipelineActive) {
-            onForegroundStateChanged(m_foregroundMonitor->currentState());
-        }
-        return;
-    }
-
-    prepareProjectUnload();
-    m_project = std::make_unique<Project>();
-    m_project->addFeature(QStringLiteral("예시 기능").toStdString());
-    m_projectFilePath = projectPath;
-    ScreenCapture::setTargetWindow(nullptr);
-    ScreenCapture::setTargetWindowTitle(L"");
-    m_featureList->setProject(m_project.get());
-    if (m_profileManager) {
-        m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
-    }
-    onFeatureSelectionChanged();
-    m_modified = false;
-    updateWindowTitle();
-    syncHotkeys();
-    if (m_deferTargetDetailsProfileRefresh) {
-        QTimer::singleShot(0, this, &MainWindow::updateTargetWindowDetails);
-    } else {
-        updateTargetWindowDetails();
-    }
-    updateTargetWindowControlsForActiveProfile();
-    autoSaveProject(quiet);
-    if (scheduleTriggerRestore) {
-        scheduleRestorePersistedTriggerSessions();
-    }
-    if (!m_profileSwitchPipelineActive) {
-        onForegroundStateChanged(m_foregroundMonitor->currentState());
-    }
+bool MainWindow::maybeSave(bool quiet) { return m_projectWorkspace->checkpoint(quiet); }
+bool MainWindow::saveActiveProfileSettings() { return m_projectWorkspace->saveSettings(); }
+void MainWindow::loadActiveProfile(bool quiet,bool scheduleTriggerRestore) {
+    if(!m_projectWorkspace->loadActive(quiet,scheduleTriggerRestore)) appendLog(m_projectWorkspace->lastError(),LogLineKind::Warning);
 }
 
 void MainWindow::refreshProfileList() {
-    if (!m_profileManager || !m_profileList) {
-        return;
-    }
-    m_refreshingProfileList = true;
-    m_profileList->clear();
-    int activeRow = -1;
-    const QString activeId = m_profileManager->activeProfileId();
-    const QString defaultId = m_profileManager->defaultProfileId();
-    const auto& profiles = m_profileManager->profiles();
-#ifdef _WIN32
-    bool needsLiveWindowIcons = false;
-    for (const ProfileManager::Profile& profile : profiles) {
-        if (profile.id == defaultId || profile.targetWindowTitle.isEmpty()) {
-            continue;
-        }
-        if (m_profileManager->linkedTargetProcessPath(profile.id).isEmpty()) {
-            needsLiveWindowIcons = true;
-            break;
-        }
-    }
-    const QVector<TargetWindowListEntry> windows =
-        needsLiveWindowIcons ? collectTargetWindowListEntries() : QVector<TargetWindowListEntry>{};
-    const auto resolveProfileIcon = [this, &defaultId, &windows](const ProfileManager::Profile& profile) {
-        if (profile.id == defaultId) {
-            return windowIcon();
-        }
-        const QIcon cachedIcon = m_profileManager->linkedTargetIcon(profile.id);
-        if (!cachedIcon.isNull()) {
-            return cachedIcon;
-        }
-        const QString storedProcessPath = m_profileManager->linkedTargetProcessPath(profile.id);
-        if (!storedProcessPath.isEmpty() && QFileInfo::exists(storedProcessPath)) {
-            const QIcon liveIcon = iconForProcessPath(storedProcessPath.toStdWString());
-            if (!liveIcon.isNull()) {
-                m_profileManager->cacheLinkedTargetIcon(profile.id, liveIcon);
-                return liveIcon;
-            }
-        }
-        const QString targetTitle = profile.targetWindowTitle;
-        if (!targetTitle.isEmpty()) {
-            for (const TargetWindowListEntry& entry : windows) {
-                if (!QString::fromStdWString(entry.title).contains(targetTitle, Qt::CaseInsensitive)) {
-                    continue;
-                }
-                if (storedProcessPath.isEmpty() && !entry.processPath.isEmpty()) {
-                    m_profileManager->updateProfileTargetBinding(profile.id, targetTitle, entry.processPath);
-                }
-                if (!entry.icon.isNull()) {
-                    m_profileManager->cacheLinkedTargetIcon(profile.id, entry.icon);
-                    return entry.icon;
-                }
-            }
-        }
-        return windowIcon();
-    };
-#endif
-    m_profileList->setDefaultProfileId(defaultId);
-    constexpr int kDefaultProfileRole = Qt::UserRole + 2;
-    for (int i = 0; i < static_cast<int>(profiles.size()); ++i) {
-        const ProfileManager::Profile& profile = profiles[static_cast<size_t>(i)];
-        const bool isDefaultProfile = profile.id == defaultId;
-        const QString displayName = isDefaultProfile ? QStringLiteral("기본") : profile.name;
-#ifdef _WIN32
-        auto* item = new QListWidgetItem(resolveProfileIcon(profile), displayName, m_profileList);
-#else
-        auto* item = new QListWidgetItem(windowIcon(), displayName, m_profileList);
-#endif
-        item->setData(Qt::UserRole, profile.id);
-        item->setData(kDefaultProfileRole, isDefaultProfile);
-        if (isDefaultProfile) {
-            item->setFlags(item->flags() & ~Qt::ItemIsDragEnabled);
-        }
-        const QString targetTitle = isDefaultProfile ? QString() : profile.targetWindowTitle;
-        QString targetTooltip;
-        if (isDefaultProfile) {
-            targetTooltip = tr("시스템 기본 프로필\n이름·순서 변경 불가 · 타겟 미지정 · 연결된 프로그램이 없을 때 자동 선택");
-        } else if (targetTitle.isEmpty()) {
-            targetTooltip = tr("타겟 없음");
-        } else {
-            const QString storedProcessPath = m_profileManager->linkedTargetProcessPath(profile.id);
-            const QString processName =
-                storedProcessPath.isEmpty() ? QString() : QFileInfo(storedProcessPath).fileName();
-            targetTooltip = processName.isEmpty()
-                                ? tr("타겟: %1").arg(targetTitle)
-                                : tr("타겟: %1\n프로세스: %2").arg(targetTitle, processName);
-        }
-        item->setToolTip(targetTooltip);
-        if (profile.id == activeId) {
-            activeRow = i;
-        }
-    }
-    if (activeRow >= 0) {
-        const QSignalBlocker blocker(m_profileList);
-        m_profileList->setCurrentRow(activeRow);
-    }
-    if (m_deleteProfileButton) {
-        const bool canDeleteSelected = m_profileList->currentItem()
-                                       && !m_profileManager->isDefaultProfile(
-                                           m_profileList->currentItem()->data(Qt::UserRole).toString());
-        m_deleteProfileButton->setEnabled(profiles.size() > 1 && canDeleteSelected);
-    }
+    if (!m_profileManager || !m_profileListPresenter) return;
+    const QScopedValueRollback<bool> refreshing(m_refreshingProfileList, true);
+    const auto snapshot=ProfilePresentationSnapshot::list(*m_profileManager);
+    m_profileListPresenter->refresh(snapshot.rows,snapshot.activeId,windowIcon());
     updateTargetWindowControlsForActiveProfile();
-    m_refreshingProfileList = false;
 }
 
 void MainWindow::syncProfileListSelection() {
-    if (!m_profileManager || !m_profileList) {
-        return;
-    }
-    const QSignalBlocker blocker(m_profileList);
-    const QString activeId = m_profileManager->activeProfileId();
-    for (int row = 0; row < m_profileList->count(); ++row) {
-        QListWidgetItem* item = m_profileList->item(row);
-        if (item && item->data(Qt::UserRole).toString() == activeId) {
-            m_profileList->setCurrentRow(row);
-            return;
-        }
-    }
+    if (m_profileManager && m_profileListPresenter)
+        m_profileListPresenter->syncSelection(m_profileManager->activeProfileId());
 }
 
 void MainWindow::setProfileSwitchUiLocked(bool locked) {
@@ -5978,180 +1979,11 @@ void MainWindow::setProfileSwitchUiLocked(bool locked) {
 }
 
 void MainWindow::schedulePostProfileSwitchForegroundReconcile(bool allowAutoProfileSwitch) {
-    if (m_postSwitchForegroundReconcileScheduled) {
-        return;
-    }
-    m_postSwitchForegroundReconcileScheduled = true;
-    QTimer::singleShot(0, this, [this, allowAutoProfileSwitch]() {
-        m_postSwitchForegroundReconcileScheduled = false;
-        if (allowAutoProfileSwitch) {
-            applyProfileSwitchFromForegroundState(m_foregroundMonitor->currentState());
-        } else if (m_foregroundMonitor) {
-            m_foregroundMonitor->syncFromDesktopForeground();
-        }
-        finishForegroundSessionGate();
-    });
+    m_foregroundSessions->postSwitch(allowAutoProfileSwitch);
 }
 
-void MainWindow::abortProfileSwitchPipeline(bool resyncSelection) {
-    m_switchingProfile = false;
-    m_profileSwitchPipelineActive = false;
-    m_deferTargetDetailsProfileRefresh = false;
-    setProfileSwitchUiLocked(false);
-    if (resyncSelection) {
-        syncProfileListSelection();
-    }
-    const QString deferred = m_profileSwitchCoordinator.deferredProfileSwitchId();
-    if (!deferred.isEmpty()) {
-        m_profileSwitchCoordinator.clearDeferredProfileSwitchId();
-        QTimer::singleShot(0, this, [this, deferred]() {
-            if (!m_profileManager || deferred == m_profileManager->activeProfileId()) {
-                return;
-            }
-            executeProfileSwitch(deferred, true);
-        });
-    }
-}
-
-void MainWindow::completeProfileSwitchPipeline(bool automatic) {
-    AppStutterOperationScope stutterScope(
-        "profile.switch.complete",
-        automatic ? QStringLiteral("auto") : QStringLiteral("manual"));
-    scheduleRunWarmup();
-
-    if (!automatic) {
-        const ProfileManager::Profile* profile = m_profileManager->activeProfile();
-        const QString name =
-            profile ? (m_profileManager->isDefaultProfile(profile->id) ? tr("기본") : profile->name)
-                    : QString();
-        showTransientStatus(tr("프로필 전환: %1").arg(name), 1200);
-    }
-
-    m_profileSwitchCoordinator.markAutomaticProfileSwitchCommitted();
-    m_switchingProfile = false;
-    m_profileSwitchPipelineActive = false;
-    m_deferTargetDetailsProfileRefresh = false;
-    setProfileSwitchUiLocked(false);
-
-    QString deferredAutoId;
-    if (automatic) {
-        deferredAutoId = m_profileSwitchCoordinator.deferredProfileSwitchId();
-        if (!deferredAutoId.isEmpty()) {
-            m_profileSwitchCoordinator.clearDeferredProfileSwitchId();
-        }
-    } else {
-        m_profileSwitchCoordinator.clearDeferredProfileSwitchId();
-    }
-
-    QTimer::singleShot(0, this, [this, automatic, deferredAutoId]() {
-#ifdef _WIN32
-        if (!automatic && ProgramSettings::focusTargetWindowOnProfileSelect()
-            && !isActiveDefaultProfile()) {
-            syncTargetWindowTitleToCapture();
-            if (ScreenCapture::findTargetWindow()) {
-                ScreenCapture::activateTargetWindow();
-            }
-        }
-#endif
-        updateTargetWindowDetails();
-        QTimer::singleShot(0, this, [this, automatic]() {
-            restorePersistedTriggerSessions();
-            schedulePostProfileSwitchForegroundReconcile(automatic);
-        });
-        onForegroundStateChanged(m_foregroundMonitor->currentState());
-
-        if (automatic && !deferredAutoId.isEmpty() && m_profileManager
-            && deferredAutoId != m_profileManager->activeProfileId()) {
-            m_profileSwitchCoordinator.setDeferredProfileSwitchId(deferredAutoId);
-            m_profileSwitchCoordinator.scheduleDeferredProfileSwitchFlush(400);
-        }
-    });
-}
-
-bool MainWindow::executeProfileSwitch(const QString& profileId, bool automatic) {
-    AppStutterOperationScope stutterScope(
-        "profile.switch",
-        QStringLiteral("%1%2").arg(profileId, automatic ? QStringLiteral(" auto") : QString()));
-    if (!m_profileManager || profileId.isEmpty()
-        || profileId == m_profileManager->activeProfileId()) {
-        return false;
-    }
-    if (m_switchingProfile || m_profileSwitchPipelineActive) {
-        m_profileSwitchCoordinator.setDeferredProfileSwitchId(profileId);
-        return false;
-    }
-    if (ReorderableListWidget::isAnyListDragActive()) {
-        m_profileSwitchCoordinator.setDeferredProfileSwitchId(profileId);
-        QTimer::singleShot(50, this, &MainWindow::flushDeferredProfileSwitchIfIdle);
-        return false;
-    }
-
-    if (!automatic) {
-        m_profileSwitchCoordinator.clearDeferredProfileSwitchId();
-    }
-
-    ReorderableListWidget::cancelActiveListDrags();
-
-    m_switchingProfile = true;
-    m_profileSwitchPipelineActive = true;
-    m_deferTargetDetailsProfileRefresh = true;
-
-    CrashReporter::noteBreadcrumb(QStringLiteral("profile"),
-                                  QStringLiteral("switch committed %1%2")
-                                      .arg(profileId,
-                                           automatic ? QStringLiteral(" (auto)") : QString()));
-    setProfileSwitchUiLocked(true);
-
-    if (m_profileList) {
-        for (int row = 0; row < m_profileList->count(); ++row) {
-            QListWidgetItem* item = m_profileList->item(row);
-            if (item && item->data(Qt::UserRole).toString() == profileId) {
-                const QSignalBlocker blocker(m_profileList);
-                m_profileList->setCurrentRow(row);
-                break;
-            }
-        }
-    }
-
-    if (!maybeSave(true)) {
-        abortProfileSwitchPipeline(true);
-        return false;
-    }
-
-    saveActiveProfileSettings();
-
-    detachUiForProfileSwitch();
-
-    if (!m_profileManager->setActiveProfile(profileId)) {
-        abortProfileSwitchPipeline(true);
-        return false;
-    }
-
-    if (!automatic) {
-        m_profileSwitchCoordinator.onManualProfileSwitchCommitted(
-            profileId, m_profileManager->isDefaultProfile(profileId));
-    }
-
-    QTimer::singleShot(0, this, [this, profileId, automatic]() {
-        loadActiveProfile(true, false);
-
-#ifdef _WIN32
-        if (automatic) {
-            if (!adoptForegroundLinkedCaptureIfMatched()) {
-                syncEffectiveTargetWindowTitleToCapture();
-            }
-        } else {
-            m_targetWindowController.clearLastProfileLinkedForeground();
-        }
-#endif
-        syncMemoDialogProfile();
-        syncProfileListSelection();
-
-        QTimer::singleShot(0, this, [this, automatic]() {
-            completeProfileSwitchPipeline(automatic);
-        });
-    });
-    return true;
+bool MainWindow::executeProfileSwitch(const QString& profileId,bool automatic) {
+    return m_profileTransition->start(profileId,automatic);
 }
 
 bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
@@ -6167,48 +1999,11 @@ bool MainWindow::switchToProfile(const QString& profileId, bool automatic) {
 }
 
 void MainWindow::onForegroundAltModifierReleased() {
-#ifdef _WIN32
-    flushDeferredProfileSwitchIfIdle();
-    if (m_hotkeyManager) {
-        m_hotkeyManager->resetHookLatchState();
-    }
-#else
-    Q_UNUSED(this);
-#endif
+    m_foregroundSessions->altReleased();
 }
 
 void MainWindow::onForegroundStateChanged(const ForegroundWindowState& state) {
-#ifdef _WIN32
-    if (m_profileManager && !m_switchingProfile && !m_profileSwitchPipelineActive && state.rootHwnd
-        && !state.pipbong && !state.shellTransient
-        && m_profileSwitchCoordinator.deferredProfileSwitchId().isEmpty()) {
-        const ProfileForegroundResolver::ResolveResult resolved =
-            ProfileForegroundResolver::resolve(*m_profileManager, state);
-        if (resolved.profileId == m_profileManager->activeProfileId()) {
-            applyForegroundCaptureHints(state.rootHwnd, state.title);
-            finishForegroundSessionGate();
-            return;
-        }
-    }
-#endif
-
-    applyProfileSwitchFromForegroundState(state);
-#ifdef _WIN32
-    if (!state.pipbong) {
-        if (!adoptForegroundLinkedCaptureIfMatched()) {
-            syncEffectiveTargetWindowTitleToCapture();
-        }
-        maybeResetHotkeyLatchForForeground(state.rootHwnd);
-    } else {
-        m_lastHotkeyLatchResetForegroundHwnd = nullptr;
-    }
-    if (!m_switchingProfile && !m_profileSwitchPipelineActive) {
-        finishForegroundSessionGate();
-    }
-#else
-    syncEffectiveTargetWindowTitleToCapture();
-    Q_UNUSED(state);
-#endif
+    m_foregroundSessions->changed(state);
 }
 
 void MainWindow::applyForegroundCaptureHints(HWND hwnd, const QString& foregroundTitle) {
@@ -6216,708 +2011,97 @@ void MainWindow::applyForegroundCaptureHints(HWND hwnd, const QString& foregroun
 }
 
 void MainWindow::handlePipbongForegroundFocus() {
-#ifdef _WIN32
-    constexpr int kRestoreLinkedProfileWindowMs = 2500;
-    const QString restoreId = m_profileSwitchCoordinator.lastLinkedForegroundProfileId();
-    if (!restoreId.isEmpty()
-        && m_profileManager->activeProfileId() == m_profileManager->defaultProfileId()
-        && restoreId != m_profileManager->defaultProfileId()
-        && m_profileSwitchCoordinator.shouldRestoreLinkedProfileOnPipbongFocus(
-            kRestoreLinkedProfileWindowMs)) {
-        executeProfileSwitch(restoreId, true);
-    }
-    if (!m_switchingProfile && !m_profileSwitchPipelineActive) {
-        finishForegroundSessionGate();
-    }
-#else
-    Q_UNUSED(this);
-#endif
+    m_foregroundSessions->pipbongFocused();
 }
 
 void MainWindow::applyProfileSwitchFromForegroundState(const ForegroundWindowState& state) {
-    m_profileSwitchCoordinator.applyFromForegroundState(state);
+    m_foregroundSessions->applySwitch(state);
 }
 
 void MainWindow::finishForegroundSessionGate() {
-    RunSessionController::FinishGateCallbacks callbacks;
-    callbacks.switchingProfile = [this]() { return m_switchingProfile; };
-    callbacks.profileSwitchPipelineActive = [this]() { return m_profileSwitchPipelineActive; };
-#ifdef _WIN32
-    callbacks.flushDeferredProfileSwitchIfIdle = [this]() {
-        if (!isAltTabModifierHeld()) {
-            flushDeferredProfileSwitchIfIdle();
-        }
-    };
-#else
-    callbacks.flushDeferredProfileSwitchIfIdle = [this]() { flushDeferredProfileSwitchIfIdle(); };
-#endif
-    callbacks.scheduleEnsureTriggerMonitorEnginesRunning = [this]() {
-        scheduleEnsureTriggerMonitorEnginesRunning();
-    };
-    callbacks.updateTargetWindowDetails = [this]() { updateTargetWindowDetails(); };
-    m_runSessionController.finishForegroundSessionGate(callbacks);
+    m_foregroundSessions->finishGate();
 }
 
 void MainWindow::maybeResetHotkeyLatchForForeground(HWND foregroundHwnd) {
-#ifdef _WIN32
-    if (!m_hotkeyManager || !foregroundHwnd || !IsWindow(foregroundHwnd)
-        || isPipbongProcessForeground(foregroundHwnd)
-        || isShellTransientForegroundWindow(foregroundHwnd)) {
-        if (!foregroundHwnd || isPipbongProcessForeground(foregroundHwnd)) {
-            m_lastHotkeyLatchResetForegroundHwnd = nullptr;
-        }
-        return;
-    }
-    if (!profileMainOrSubForegroundActive() && !foregroundProfileMatchesActive()) {
-        return;
-    }
-    if (foregroundHwnd == m_lastHotkeyLatchResetForegroundHwnd) {
-        return;
-    }
-    m_lastHotkeyLatchResetForegroundHwnd = foregroundHwnd;
-    m_hotkeyManager->resetHookLatchState();
-#else
-    Q_UNUSED(foregroundHwnd);
-#endif
+    m_foregroundSessions->resetLatchFor(foregroundHwnd);
 }
 
 void MainWindow::ensureForegroundReadyForFeatureHotkey() {
-#ifdef _WIN32
-    if (!m_profileManager || ProgramSettings::runWithoutTargetWindow()) {
-        return;
-    }
-    flushDeferredProfileSwitchIfIdle();
-    switchToForegroundLinkedProfileIfNeeded(true);
-    if (!adoptForegroundLinkedCaptureIfMatched()) {
-        syncEffectiveTargetWindowTitleToCapture();
-    }
-    maybeResetHotkeyLatchForForeground(m_foregroundMonitor->currentRootHwnd());
-#else
-    Q_UNUSED(this);
-#endif
+    m_foregroundSessions->ensureHotkeyReady();
 }
 
 void MainWindow::reconcileRunSessionsWithForegroundGate() {
+    synchronizeRunWorkerState();
     m_runSessionController.reconcileWithForegroundGate();
 }
 
-void MainWindow::loadProjectFromFile(const QString& path, bool quiet) {
-    QString projectDirectory;
-    std::unique_ptr<Project> loaded;
-    if (m_profileManager) {
-        loaded = m_profileManager->cloneCachedProject(m_profileManager->activeProfileId(), path,
-                                                     &projectDirectory);
-    }
-    if (!loaded) {
-        loaded = JsonSerializer::loadFromFile(path, &projectDirectory);
-        if (!loaded) {
-            QMessageBox::critical(this, tr("프로젝트 열기"), tr("프로젝트를 불러오지 못했습니다."));
-            return;
-        }
-        if (m_profileManager) {
-            if (auto cacheClone = loaded->clone()) {
-                m_profileManager->storeCachedProject(m_profileManager->activeProfileId(),
-                                                     path,
-                                                     std::move(cacheClone),
-                                                     projectDirectory);
-            }
-        }
-    }
-    if (projectDirectory.isEmpty() && m_profileManager) {
-        projectDirectory = m_profileManager->activeProjectDirectory();
-    }
-
-    prepareProjectUnload();
-    m_project = std::move(loaded);
-    m_runSessionController.setProject(m_project.get());
-    m_projectFilePath = path;
-    if (!projectDirectory.isEmpty()) {
-        Application::instance()->setProjectDirectory(projectDirectory);
-    }
-
-    ScreenCapture::setTargetWindow(nullptr);
-    syncTargetWindowTitleToCapture();
-
-    m_featureList->setProject(m_project.get());
-    if (m_profileManager) {
-        m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
-    }
-    restoreSelectedFeaturePreference();
-    if (m_profileSwitchPipelineActive) {
-        QTimer::singleShot(0, this, [this]() {
-            if (!m_project) {
-                return;
-            }
-            refreshWorkflowEditor();
-        });
-    } else {
-        refreshWorkflowEditor();
-    }
-
-    m_modified = false;
-    updateWindowTitle();
-    if (m_profileSwitchPipelineActive) {
-        QTimer::singleShot(0, this, [this]() { syncHotkeys(); });
-    } else {
-        syncHotkeys();
-    }
-    if (m_deferTargetDetailsProfileRefresh) {
-        QTimer::singleShot(0, this, &MainWindow::updateTargetWindowDetails);
-    } else {
-        updateTargetWindowDetails();
-    }
-    updateTargetWindowControlsForActiveProfile();
-    if (m_profileManager) {
-        m_profileManager->setProfileTargetWindowTitleInMemory(
-            m_profileManager->activeProfileId(),
-            QString::fromStdString(m_project->targetWindowTitle()));
-    }
-
-    QSettings settings;
-    settings.setValue(QStringLiteral("project/lastFile"), m_projectFilePath);
-    if (!quiet) {
-        appendLog(tr("프로젝트 파일을 불러왔습니다: %1").arg(path), LogLineKind::Success);
-    }
+void MainWindow::loadProjectFromFile(const QString& path,bool quiet) {
+    if(m_projectWorkspace->load(path,quiet)) return;
+    appendLog(m_projectWorkspace->lastError(),LogLineKind::Warning);
+    if(!quiet) QMessageBox::critical(this,tr("프로젝트 열기"),m_projectWorkspace->lastError());
 }
 
-void MainWindow::updateWindowTitle() {
-    m_baseWindowTitle = QStringLiteral("PIPBONG %1").arg(QCoreApplication::applicationVersion());
-    if (!m_projectFilePath.isEmpty()) {
-        m_baseWindowTitle += QStringLiteral(" - ") + QFileInfo(m_projectFilePath).fileName();
-    } else {
-        m_baseWindowTitle += QStringLiteral(" - ") + tr("제목 없음");
-    }
-    if (m_modified) {
-        m_baseWindowTitle += QStringLiteral(" *");
-    }
-    syncWindowTitleDisplay();
-}
+void MainWindow::updateWindowTitle() {m_windowShell->setDocument(m_projectFilePath,m_modified);}
 
-std::wstring MainWindow::currentTargetWindowTitleW() const {
-    if (!m_project) {
-        return {};
-    }
-    return QString::fromStdString(m_project->targetWindowTitle()).toStdWString();
-}
+std::wstring MainWindow::currentTargetWindowTitleW() const {return ProfilePresentationSnapshot::documentTitle(m_project.get()).toStdWString();}
 
-std::wstring MainWindow::resolveEffectiveTargetTitleW() const {
-    const std::wstring mainTitle = currentTargetWindowTitleW();
-    if (!m_profileManager || isActiveDefaultProfile()) {
-        return mainTitle;
-    }
-
-    const QString profileId = m_profileManager->activeProfileId();
-    const QString subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
-    if (subBinding.isEmpty()) {
-        return mainTitle;
-    }
-
-    const QString mainBinding = QString::fromStdWString(mainTitle).trimmed();
-    if (mainBinding.isEmpty()) {
-        return subBinding.toStdWString();
-    }
-
+std::wstring MainWindow::resolveEffectiveTargetTitleW() const {return m_captureTargets->effective().toStdWString();}
+std::wstring MainWindow::resolveAutoRunCaptureTargetTitleW() const {return m_captureTargets->resolve().toStdWString();}
+std::wstring MainWindow::linkedTargetLookupTitleW() const {return m_captureTargets->lookup().toStdWString();}
 #ifdef _WIN32
-    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
-    if (!fg.rootHwnd) {
-        return mainTitle;
-    }
-    const QString& foregroundTitle = fg.title;
-    if (foregroundTitle.isEmpty()) {
-        return mainTitle;
-    }
-
-    const bool subHit = foregroundTitle.contains(subBinding, Qt::CaseInsensitive);
-    const bool mainHit =
-        !mainBinding.isEmpty() && foregroundTitle.contains(mainBinding, Qt::CaseInsensitive);
-    if (subHit && (!mainHit || subBinding.length() >= mainBinding.length())) {
-        return subBinding.toStdWString();
-    }
-#else
-    Q_UNUSED(mainBinding);
-#endif
-    return mainTitle;
-}
-
-std::wstring MainWindow::resolveAutoRunCaptureTargetTitleW() const {
-    const std::wstring mainTitle = currentTargetWindowTitleW();
-    if (!m_profileManager || isActiveDefaultProfile()) {
-        return mainTitle;
-    }
-
-    const QString profileId = m_profileManager->activeProfileId();
-    const QString subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
-    const QString mainBinding = QString::fromStdWString(mainTitle).trimmed();
-
-#ifdef _WIN32
-    const auto linkedCaptureBlockedByForeground = [&]() {
-        if (ProgramSettings::runWithoutTargetWindow() || isActiveDefaultProfile()) {
-            return false;
-        }
-        if (profileMainOrSubForegroundActive()) {
-            return false;
-        }
-        return !foregroundProfileMatchesActive();
-    };
-#endif
-
-    if (subBinding.isEmpty()) {
-#ifdef _WIN32
-        if (mainBinding.isEmpty() || linkedCaptureBlockedByForeground()) {
-            return {};
-        }
-#endif
-        return mainTitle;
-    }
-
-    if (mainBinding.isEmpty()) {
-#ifdef _WIN32
-        if (linkedCaptureBlockedByForeground()) {
-            return {};
-        }
-#endif
-        return subBinding.toStdWString();
-    }
-
-#ifdef _WIN32
-    if (linkedCaptureBlockedByForeground()) {
-        return {};
-    }
-    QString foregroundTitle;
-    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
-    if (fg.rootHwnd) {
-        foregroundTitle = fg.title;
-        const QString mainProcess = m_profileManager->linkedTargetProcessPath(profileId);
-        const QString subProcess = m_profileManager->subLinkedTargetProcessPath(profileId);
-        if (!fg.processPath.isEmpty()) {
-            const QString& proc = fg.processPath;
-            if (!mainProcess.isEmpty()
-                && proc.compare(mainProcess, Qt::CaseInsensitive) == 0) {
-                return mainTitle;
-            }
-            if (!subProcess.isEmpty()
-                && proc.compare(subProcess, Qt::CaseInsensitive) == 0) {
-                return subBinding.toStdWString();
-            }
-        }
-    }
-
-    const bool subHit = !foregroundTitle.isEmpty()
-                        && foregroundTitle.contains(subBinding, Qt::CaseInsensitive);
-    const bool mainHit = !foregroundTitle.isEmpty()
-                         && foregroundTitle.contains(mainBinding, Qt::CaseInsensitive);
-    if (subHit && (!mainHit || subBinding.length() >= mainBinding.length())) {
-        return subBinding.toStdWString();
-    }
-    if (mainHit) {
-        return mainTitle;
-    }
-    if (!mainBinding.isEmpty()) {
-        const QString mainProcess = m_profileManager->linkedTargetProcessPath(profileId);
-        HWND mainHwnd = ScreenCapture::findVisibleWindowMatchingTitle(mainTitle,
-                                                                      mainProcess.toStdWString());
-        if (mainHwnd && IsWindow(mainHwnd) && !IsIconic(mainHwnd)) {
-            return mainTitle;
-        }
-    }
-    if (!subBinding.isEmpty()) {
-        const QString subProcess = m_profileManager->subLinkedTargetProcessPath(profileId);
-        HWND subHwnd = ScreenCapture::findVisibleWindowMatchingTitle(subBinding.toStdWString(),
-                                                                    subProcess.toStdWString());
-        if (subHwnd && IsWindow(subHwnd) && !IsIconic(subHwnd)) {
-            return subBinding.toStdWString();
-        }
-    }
-    return {};
-#else
-    Q_UNUSED(mainBinding);
-    return mainTitle;
-#endif
-}
-
-std::wstring MainWindow::linkedTargetLookupTitleW() const {
-    const std::wstring mainTitle = currentTargetWindowTitleW();
-    if (!m_profileManager || isActiveDefaultProfile()) {
-        return mainTitle;
-    }
-    if (!mainTitle.empty()) {
-        return mainTitle;
-    }
-    const QString subBinding =
-        m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed();
-    if (!subBinding.isEmpty()) {
-        return subBinding.toStdWString();
-    }
-    return {};
-}
-
-#ifdef _WIN32
-void MainWindow::rememberProfileLinkedForeground(HWND hwnd, const QString& foregroundTitle) {
-    m_targetWindowController.rememberProfileLinkedForeground(hwnd, foregroundTitle);
-}
-
-bool MainWindow::adoptForegroundLinkedCaptureIfMatched() {
-    if (!m_profileManager || isActiveDefaultProfile()) {
-        return false;
-    }
-
-    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
-    HWND hwnd = fg.rootHwnd;
-    if (!hwnd || !IsWindow(hwnd) || fg.pipbong || fg.shellTransient) {
-        return false;
-    }
-
-    const QString profileId = m_profileManager->activeProfileId();
-    const QString mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
-    const QString subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
-    const QString mainProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
-    const QString subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
-
-    const QString foregroundTitle = fg.title;
-
-    ScreenCapture::TargetWindowInfo info;
-    if (!ScreenCapture::queryWindowInfo(hwnd, info)) {
-        return false;
-    }
-    const QString foregroundProcess = QString::fromStdWString(info.processPath);
-
-    const auto applyBinding = [&](const QString& binding, bool isSub) {
-        if (binding.isEmpty()) {
-            return false;
-        }
-        ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
-        ScreenCapture::setLinkedTargetProcessPaths(mainProcessPath.toStdWString(),
-                                                   subProcessPath.toStdWString());
-        ScreenCapture::invalidateTargetWindowCache();
-        ScreenCapture::setTargetWindowTitle(binding.toStdWString());
-        ScreenCapture::setTargetWindow(hwnd);
-        ScreenCapture::setForegroundHintWindow(hwnd);
-        m_targetWindowController.rememberProfileLinkedForeground(hwnd, foregroundTitle);
-        return true;
-    };
-
-    if (!subProcessPath.isEmpty() && !subBinding.isEmpty()
-        && foregroundProcess.compare(subProcessPath, Qt::CaseInsensitive) == 0) {
-        if (applyBinding(subBinding, true)) {
-            return true;
-        }
-    }
-    if (!mainProcessPath.isEmpty() && !mainBinding.isEmpty()
-        && foregroundProcess.compare(mainProcessPath, Qt::CaseInsensitive) == 0) {
-        if (applyBinding(mainBinding, false)) {
-            return true;
-        }
-    }
-
-    if (!subBinding.isEmpty()
-        && foregroundMatchesScopedSubTarget(foregroundTitle,
-                                            hwnd,
-                                            mainBinding,
-                                            subBinding,
-                                            mainProcessPath,
-                                            subProcessPath)) {
-        return applyBinding(subBinding, true);
-    }
-    if (!mainBinding.isEmpty()
-        && foregroundMatchesScopedMainTarget(foregroundTitle,
-                                             hwnd,
-                                             mainBinding,
-                                             subBinding,
-                                             mainProcessPath,
-                                             subProcessPath)) {
-        return applyBinding(mainBinding, false);
-    }
-    return false;
-}
-
-MainWindow::TargetDetailHwndResolve MainWindow::resolveTargetDetailDisplayHwnd(
-    const QString& mainBinding,
-    const QString& subBinding,
-    const QString& mainProcessPath,
-    const QString& subProcessPath) const {
-    TargetDetailHwndResolve result;
-
-    const auto classifyHwnd = [&](HWND hwnd) -> std::optional<bool> {
-        if (!hwnd || !IsWindow(hwnd)) {
-            return std::nullopt;
-        }
-        wchar_t titleBuffer[512]{};
-        GetWindowTextW(hwnd, titleBuffer, 512);
-        const QString title = QString::fromWCharArray(titleBuffer).trimmed();
-        if (!subBinding.isEmpty()
-            && foregroundMatchesScopedSubTarget(title,
-                                                hwnd,
-                                                mainBinding,
-                                                subBinding,
-                                                mainProcessPath,
-                                                subProcessPath)) {
-            return true;
-        }
-        if (!mainBinding.isEmpty()
-            && foregroundMatchesScopedMainTarget(title,
-                                                 hwnd,
-                                                 mainBinding,
-                                                 subBinding,
-                                                 mainProcessPath,
-                                                 subProcessPath)) {
-            return false;
-        }
-        if (!subBinding.isEmpty()
-            && foregroundHwndMatchesLinkedProcess(hwnd, {}, subProcessPath)) {
-            return true;
-        }
-        if (!mainBinding.isEmpty()
-            && foregroundHwndMatchesLinkedProcess(hwnd, mainProcessPath, {})) {
-            return false;
-        }
-        return std::nullopt;
-    };
-
-    const auto applyHwnd = [&](HWND hwnd, bool isSub) {
-        result.hwnd = hwnd;
-        result.isSubTarget = isSub;
-    };
-
-    HWND fgHwnd = m_foregroundMonitor->currentRootHwnd();
-    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
-    if (fgHwnd && !fg.pipbong) {
-        if (const std::optional<bool> role = classifyHwnd(fgHwnd)) {
-            applyHwnd(fgHwnd, *role);
-            return result;
-        }
-    }
-
-    if (fgHwnd && fg.pipbong && m_targetWindowController.lastProfileLinkedForegroundHwnd()
-        && IsWindow(m_targetWindowController.lastProfileLinkedForegroundHwnd())) {
-        applyHwnd(m_targetWindowController.lastProfileLinkedForegroundHwnd(),
-                  m_targetWindowController.lastProfileLinkedForegroundIsSub());
-        return result;
-    }
-
-    if (HWND hintHwnd = ScreenCapture::foregroundHintWindow()) {
-        if (const std::optional<bool> role = classifyHwnd(hintHwnd)) {
-            applyHwnd(hintHwnd, *role);
-            return result;
-        }
-    }
-
-    const HWND mainHwnd =
-        mainBinding.isEmpty() ? nullptr : findVisibleTopLevelWindowHwnd(mainBinding, mainProcessPath);
-    const HWND subHwnd =
-        subBinding.isEmpty() ? nullptr : findVisibleTopLevelWindowHwnd(subBinding, subProcessPath);
-
-    if (subHwnd && !mainHwnd) {
-        applyHwnd(subHwnd, true);
-        return result;
-    }
-    if (mainHwnd && !subHwnd) {
-        applyHwnd(mainHwnd, false);
-        return result;
-    }
-    if (mainHwnd && subHwnd) {
-        if (mainHwnd == subHwnd) {
-            if (const std::optional<bool> role = classifyHwnd(mainHwnd)) {
-                applyHwnd(mainHwnd, *role);
-            } else {
-                applyHwnd(mainHwnd, false);
-            }
-            return result;
-        }
-        const bool mainMin = IsIconic(mainHwnd) != FALSE;
-        const bool subMin = IsIconic(subHwnd) != FALSE;
-        if (mainMin && !subMin) {
-            applyHwnd(subHwnd, true);
-        } else if (subMin && !mainMin) {
-            applyHwnd(mainHwnd, false);
-        } else if (m_targetWindowController.lastProfileLinkedForegroundHwnd() == subHwnd) {
-            applyHwnd(subHwnd, true);
-        } else if (m_targetWindowController.lastProfileLinkedForegroundHwnd() == mainHwnd) {
-            applyHwnd(mainHwnd, false);
-        } else {
-            applyHwnd(subHwnd, true);
-        }
-        return result;
-    }
-    return result;
-}
-
-HWND MainWindow::findLinkedTargetHwndForDisplay(const QString& mainBinding,
-                                              const QString& subBinding,
-                                              const QString& processPath) const {
-    const QString binding = mainBinding.isEmpty() ? subBinding : mainBinding;
-    if (binding.isEmpty()) {
-        return nullptr;
-    }
-    return ScreenCapture::findVisibleWindowMatchingTitle(binding.toStdWString(),
-                                                         processPath.toStdWString());
-}
+void MainWindow::rememberProfileLinkedForeground(HWND hwnd,const QString& title) {m_targetWindowController.rememberProfileLinkedForeground(hwnd,title);}
+bool MainWindow::adoptForegroundLinkedCaptureIfMatched() {return m_captureTargets->adoptForeground();}
 #endif
 
 QString MainWindow::foregroundProfileIdForActiveWindow() const {
-#ifdef _WIN32
-    if (!m_profileManager) {
-        return {};
-    }
-    const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
-    if (fg.pipbong || fg.shellTransient || !fg.rootHwnd) {
-        return {};
-    }
-    return ProfileForegroundResolver::resolve(*m_profileManager, fg).profileId;
-#else
-    return {};
-#endif
+    return m_foregroundSessions->foregroundProfile();
 }
 
-ForegroundRunGate::ProfileBindings MainWindow::buildForegroundProfileBindings(
-    const QString& profileIdOverride) const {
-    ForegroundRunGate::ProfileBindings bindings;
-    if (!m_profileManager) {
-        return bindings;
-    }
-    const QString profileId =
-        profileIdOverride.isEmpty() ? m_profileManager->activeProfileId() : profileIdOverride;
-    bindings.activeProfileId = profileId;
-    bindings.activeIsDefault = m_profileManager->isDefaultProfile(profileId);
-    if (!bindings.activeIsDefault) {
-        bindings.mainBinding = m_profileManager->targetWindowTitle(profileId).trimmed();
-        if (bindings.mainBinding.isEmpty() && profileId == m_profileManager->activeProfileId()) {
-            bindings.mainBinding = QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
-        }
-        bindings.subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
-        bindings.mainProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
-        bindings.subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
-    }
-    return bindings;
+ForegroundRunGate::ProfileBindings MainWindow::buildForegroundProfileBindings(const QString& id) const {
+    return m_captureTargets->bindings(id);
 }
 
 ForegroundRunGate::GateInput MainWindow::buildForegroundGateInput(const Feature* feature,
                                                                   const QString& bindingsProfileId) const {
-    ForegroundRunGate::GateInput input;
-    input.bindings = buildForegroundProfileBindings(bindingsProfileId);
-    if (m_foregroundMonitor) {
-        input.foreground = m_foregroundMonitor->currentState();
-    }
-    input.runWithoutTargetWindow = ProgramSettings::runWithoutTargetWindow();
-    input.foregroundResolvedProfileId = foregroundProfileIdForActiveWindow();
-    if (m_profileManager && !input.foregroundResolvedProfileId.isEmpty()) {
-        input.foregroundResolvedIsDefault =
-            m_profileManager->isDefaultProfile(input.foregroundResolvedProfileId);
-    }
-    if (feature) {
-        input.triggerBackgroundVisible = triggerBackgroundRunGateActive(feature);
-    }
-    return input;
+    return m_foregroundSessions->gateInput(feature,bindingsProfileId);
 }
 
 QString MainWindow::profileIdForForegroundHwnd(HWND hwnd) const {
-#ifdef _WIN32
-    if (!hwnd || !IsWindow(hwnd) || !m_profileManager) {
-        return {};
-    }
-    ScreenCapture::TargetWindowInfo info;
-    if (!ScreenCapture::queryWindowInfo(hwnd, info) || info.processPath.empty()) {
-        return {};
-    }
-    return ProfileForegroundResolver::profileIdForProcessPath(
-        *m_profileManager, QString::fromStdWString(info.processPath));
-#else
-    Q_UNUSED(hwnd);
-    return {};
-#endif
+    return m_foregroundSessions->profileForWindow(hwnd);
 }
 
 bool MainWindow::foregroundProfileMatchesActive() const {
-    return ForegroundRunGate::foregroundProfileMatchesActive(buildForegroundGateInput());
+    return m_foregroundSessions->profileMatches();
 }
 
 bool MainWindow::switchToForegroundLinkedProfileIfNeeded(bool forceImmediate) {
-#ifdef _WIN32
-    Q_UNUSED(forceImmediate);
-    if (!m_profileManager || m_switchingProfile || m_profileSwitchPipelineActive) {
-        return false;
-    }
-    const QString before = m_profileManager->activeProfileId();
-    applyProfileSwitchFromForegroundState(m_foregroundMonitor->currentState());
-    return m_profileManager->activeProfileId() != before
-           || ForegroundRunGate::activeProfileForegroundBindingMatches(buildForegroundGateInput());
-#else
-    Q_UNUSED(forceImmediate);
-    return false;
-#endif
+    Q_UNUSED(forceImmediate);return m_foregroundSessions->switchToForeground();
 }
 
 bool MainWindow::profileMainOrSubForegroundActive() const {
-    return ForegroundRunGate::profileMainOrSubForegroundActive(buildForegroundGateInput());
+    return m_foregroundSessions->mainOrSub();
 }
 
 bool MainWindow::triggerBackgroundRunGateActive(const Feature* feature) const {
-    if (!feature || feature->runMode() != FeatureRunMode::Trigger
-        || !feature->triggerRunWithoutTargetForeground()) {
-        return false;
-    }
-    if (ProgramSettings::runWithoutTargetWindow()) {
-        return true;
-    }
-    if (isActiveDefaultProfile()) {
-        return false;
-    }
-    const std::wstring title = resolveRunCaptureTargetTitleW(feature);
-    return !title.empty() && ScreenCapture::hasVisibleWindowMatchingTitle(title);
+    return m_foregroundSessions->backgroundGate(feature);
 }
 
 bool MainWindow::runForegroundGateActive(const Feature* feature) const {
-    ForegroundRunGate::GateInput input = buildForegroundGateInput(feature);
-    ForegroundRunGate::FeatureGateOptions opts;
-    if (feature) {
-        opts.runMode = feature->runMode();
-        opts.triggerRunWithoutTargetForeground = feature->triggerRunWithoutTargetForeground();
-        opts.requireScopedTargetForeground = feature->requireScopedTargetForeground();
-        opts.captureTargetScope = feature->captureTargetScope();
-        input.feature = &opts;
-    }
-    return ForegroundRunGate::runForegroundGateActive(input);
+    return m_foregroundSessions->runGate(feature);
 }
 
 bool MainWindow::runForegroundGateActiveForSession(const FeatureRunSession& session,
                                                     Feature* feature) const {
-    if (!sessionBelongsToActiveProfile(session)) {
-        return true;
-    }
-    return runForegroundGateActive(feature);
+    return m_foregroundSessions->sessionGate(session,feature);
 }
 
 std::wstring MainWindow::resolveRunCaptureTargetTitleW(const Feature* feature) const {
-    const FeatureCaptureTargetScope scope =
-        feature ? feature->captureTargetScope() : FeatureCaptureTargetScope::Auto;
-    if (scope == FeatureCaptureTargetScope::MainOnly) {
-        return currentTargetWindowTitleW();
-    }
-    if (scope == FeatureCaptureTargetScope::SubOnly) {
-        if (!m_profileManager || isActiveDefaultProfile()) {
-            return {};
-        }
-        const QString subBinding =
-            m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed();
-        if (subBinding.isEmpty()) {
-            return {};
-        }
-        return subBinding.toStdWString();
-    }
-    return resolveAutoRunCaptureTargetTitleW();
+    return m_captureTargets->resolve(feature?feature->captureTargetScope():FeatureCaptureTargetScope::Auto,
+        feature && feature->runMode()==FeatureRunMode::Trigger && feature->triggerRunWithoutTargetForeground()).toStdWString();
 }
 
 bool MainWindow::scopedTargetForegroundActive(const Feature* feature) const {
-    if (!feature) {
-        return true;
-    }
-    ForegroundRunGate::GateInput input = buildForegroundGateInput(feature);
-    ForegroundRunGate::FeatureGateOptions opts;
-    opts.runMode = feature->runMode();
-    opts.triggerRunWithoutTargetForeground = feature->triggerRunWithoutTargetForeground();
-    opts.requireScopedTargetForeground = feature->requireScopedTargetForeground();
-    opts.captureTargetScope = feature->captureTargetScope();
-    input.feature = &opts;
-    return ForegroundRunGate::scopedTargetForegroundActive(input);
+    return m_foregroundSessions->scopedGate(feature);
 }
 
 bool MainWindow::deferRunUntilScopedTargetForeground(FeatureRunSession& session, Feature* feature) {
@@ -6928,592 +2112,75 @@ void MainWindow::resumeWaitingScopedTargetForegroundSessions() {
     m_runSessionController.resumeWaitingScopedTargetForegroundSessions();
 }
 
-std::wstring MainWindow::sessionCaptureTargetTitleW(FeatureRunSession& session,
-                                                    bool refreshCaptureBinding) {
-    if (refreshCaptureBinding) {
-        refreshSessionCaptureTarget(session);
-    }
-    if (!session.lockedCaptureTargetTitle.empty()) {
-        return session.lockedCaptureTargetTitle;
-    }
-    Feature* feature = featureForSession(session);
-    return resolveRunCaptureTargetTitleW(feature);
+std::wstring MainWindow::sessionCaptureTargetTitleW(FeatureRunSession& session,bool refresh) {
+    return m_captureTargets->sessionTitleForRun(session,refresh);
 }
-
 void MainWindow::refreshSessionCaptureTarget(FeatureRunSession& session) {
-    Feature* feature = featureForSession(session);
-    if (!feature) {
-        return;
-    }
-
-    const FeatureCaptureTargetScope scope = feature->captureTargetScope();
-    if (scope != FeatureCaptureTargetScope::Auto) {
-        if (session.lockedCaptureTargetTitle.empty()) {
-            session.lockedCaptureTargetTitle = resolveRunCaptureTargetTitleW(feature);
-        }
-        return;
-    }
-
-    const std::wstring resolved = resolveRunCaptureTargetTitleW(feature);
-    if (resolved.empty()) {
-        return;
-    }
-
-    const bool triggerWatchMayMigrate =
-        session.runningMode == FeatureRunMode::Trigger
-        && session.triggerPhase == TriggerSessionPhase::Monitoring;
-
-#ifdef _WIN32
-    const bool lockedMissing = [&]() {
-        if (session.lockedCaptureTargetTitle.empty()) {
-            return false;
-        }
-        std::wstring processPath;
-        if (m_profileManager && !isActiveDefaultProfile()) {
-            const QString profileId = m_profileManager->activeProfileId();
-            const QString locked =
-                QString::fromStdWString(session.lockedCaptureTargetTitle).trimmed();
-            const QString subBinding =
-                m_profileManager->subTargetWindowTitle(profileId).trimmed();
-            if (!subBinding.isEmpty()
-                && locked.contains(subBinding, Qt::CaseInsensitive)) {
-                processPath =
-                    m_profileManager->subLinkedTargetProcessPath(profileId).toStdWString();
-            } else {
-                processPath = m_profileManager->linkedTargetProcessPath(profileId).toStdWString();
-            }
-        }
-        return !ScreenCapture::findVisibleWindowMatchingTitle(session.lockedCaptureTargetTitle,
-                                                            processPath);
-    }();
-#else
-    const bool lockedMissing = false;
-#endif
-
-    bool shouldAdopt = session.lockedCaptureTargetTitle.empty() || lockedMissing;
-    if (!shouldAdopt && triggerWatchMayMigrate
-        && session.lockedCaptureTargetTitle != resolved) {
-        shouldAdopt = true;
-    }
-
-    if (shouldAdopt && session.lockedCaptureTargetTitle != resolved) {
-        CrashReporter::noteBreadcrumb(
-            QStringLiteral("capture"),
-            QStringLiteral("refreshSessionCaptureTarget adopt %1")
-                .arg(QString::fromStdWString(resolved)));
-        session.lockedCaptureTargetTitle = resolved;
-        applySessionCaptureTarget(resolved);
-        if (triggerWatchMayMigrate) {
-            if (session.sessionContext) {
-                session.sessionContext->setTargetWindowTitleForWorker(resolved);
-            }
-            scheduleEnsureTriggerMonitorEnginesRunning();
-        }
-    }
+    if(const auto* feature=featureForSession(session))m_captureTargets->refreshSession(session,*feature);
 }
+void MainWindow::applySessionCaptureTarget(const std::wstring& title) const {m_captureTargets->applyTitle(QString::fromStdWString(title));}
+void MainWindow::refreshCaptureTargetForEditing() {syncTargetWindowTitleToCapture();}
+void MainWindow::syncTargetWindowTitleToCapture() {syncEffectiveTargetWindowTitleToCapture();}
+void MainWindow::syncEffectiveTargetWindowTitleToCapture() {m_captureTargets->sync();}
 
-void MainWindow::applySessionCaptureTarget(const std::wstring& title) const {
-    QString subBinding;
-    QString mainProcessPath;
-    QString subProcessPath;
-    if (m_profileManager && !isActiveDefaultProfile()) {
-        const QString profileId = m_profileManager->activeProfileId();
-        subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
-        mainProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
-        subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
-    }
-    ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
-    ScreenCapture::setLinkedTargetProcessPaths(mainProcessPath.toStdWString(),
-                                               subProcessPath.toStdWString());
-    ScreenCapture::invalidateTargetWindowCache();
-    ScreenCapture::setTargetWindowTitle(title);
-#ifdef _WIN32
-    if (HWND hwnd = ScreenCapture::findTargetWindow()) {
-        ScreenCapture::setTargetWindow(hwnd);
-        ScreenCapture::setForegroundHintWindow(hwnd);
-    } else {
-        ScreenCapture::setTargetWindow(nullptr);
-    }
-#endif
-}
-
-void MainWindow::refreshCaptureTargetForEditing() {
-    syncTargetWindowTitleToCapture();
-}
-
-void MainWindow::syncTargetWindowTitleToCapture() {
-    syncEffectiveTargetWindowTitleToCapture();
-}
-
-void MainWindow::syncEffectiveTargetWindowTitleToCapture() {
-    QString subBinding;
-    QString mainProcessPath;
-    QString subProcessPath;
-    if (m_profileManager && !isActiveDefaultProfile()) {
-        const QString profileId = m_profileManager->activeProfileId();
-        subBinding = m_profileManager->subTargetWindowTitle(profileId).trimmed();
-        mainProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
-        subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
-    } else {
-        subBinding.clear();
-    }
-    ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
-    ScreenCapture::setLinkedTargetProcessPaths(mainProcessPath.toStdWString(),
-                                               subProcessPath.toStdWString());
-
-#ifdef _WIN32
-    if (adoptForegroundLinkedCaptureIfMatched()) {
-        for (auto& entry : runSessions()) {
-            FeatureRunSession& session = entry.second;
-            if (session.runningMode != FeatureRunMode::Trigger
-                || session.triggerPhase != TriggerSessionPhase::Monitoring) {
-                continue;
-            }
-            const std::wstring before = session.lockedCaptureTargetTitle;
-            refreshSessionCaptureTarget(session);
-            if (session.sessionContext && session.lockedCaptureTargetTitle != before
-                && !session.lockedCaptureTargetTitle.empty()) {
-                session.sessionContext->setTargetWindowTitleForWorker(session.lockedCaptureTargetTitle);
-            }
-            if (session.lockedCaptureTargetTitle != before) {
-                scheduleEnsureTriggerMonitorEnginesRunning();
-            }
-        }
-        return;
-    }
-#endif
-
-    std::wstring title = resolveAutoRunCaptureTargetTitleW();
-    if (title.empty()) {
-        title = linkedTargetLookupTitleW();
-    }
-    ScreenCapture::invalidateTargetWindowCache();
-    ScreenCapture::setTargetWindowTitle(title);
-#ifdef _WIN32
-    if (HWND hwnd = ScreenCapture::findTargetWindow()) {
-        ScreenCapture::setTargetWindow(hwnd);
-        ScreenCapture::setForegroundHintWindow(hwnd);
-    } else {
-        const ForegroundWindowState& fg = m_foregroundMonitor->currentState();
-        HWND foregroundHwnd = fg.rootHwnd;
-        if (foregroundHwnd && IsWindow(foregroundHwnd)) {
-            const QString foregroundTitle = fg.title;
-            const QString binding = QString::fromStdWString(title).trimmed();
-            if (!binding.isEmpty()
-                && foregroundTitle.contains(binding, Qt::CaseInsensitive)) {
-                ScreenCapture::setTargetWindow(foregroundHwnd);
-                ScreenCapture::setForegroundHintWindow(foregroundHwnd);
-            }
-        }
-    }
-#endif
-
-    for (auto& entry : runSessions()) {
-        FeatureRunSession& session = entry.second;
-        if (session.runningMode != FeatureRunMode::Trigger
-            || session.triggerPhase != TriggerSessionPhase::Monitoring) {
-            continue;
-        }
-        const std::wstring before = session.lockedCaptureTargetTitle;
-        refreshSessionCaptureTarget(session);
-        if (session.sessionContext && session.lockedCaptureTargetTitle != before
-            && !session.lockedCaptureTargetTitle.empty()) {
-            session.sessionContext->setTargetWindowTitleForWorker(session.lockedCaptureTargetTitle);
-        }
-        if (session.lockedCaptureTargetTitle != before) {
-            scheduleEnsureTriggerMonitorEnginesRunning();
-        }
-    }
-}
-
-bool MainWindow::isActiveDefaultProfile() const {
-    return m_profileManager
-           && m_profileManager->activeProfileId() == m_profileManager->defaultProfileId();
-}
+bool MainWindow::isActiveDefaultProfile() const {return ProfilePresentationSnapshot::isDefault(m_profileManager.get());}
 
 #ifdef _WIN32
 void MainWindow::healLinkedTargetProcessPathFromForeground(HWND hwnd, const QString& foregroundTitle) {
     m_targetWindowController.healLinkedTargetProcessPathFromForeground(hwnd, foregroundTitle);
 }
 
-void MainWindow::commitActiveProfileTargetWindow(HWND hwnd, const QString& title) {
-    if (!m_profileManager || !m_project || isActiveDefaultProfile()) {
-        return;
-    }
-
-    QString processPath;
-    if (hwnd && IsWindow(hwnd)) {
-        ScreenCapture::TargetWindowInfo info;
-        if (ScreenCapture::queryWindowInfo(hwnd, info)) {
-            processPath = QString::fromStdWString(info.processPath);
-        }
-    }
-
-    ScreenCapture::setTargetWindowTitle(title.toStdWString());
-    ScreenCapture::setTargetWindow(hwnd);
-    m_project->setTargetWindowTitle(title.toStdString());
-    const QString profileId = m_profileManager->activeProfileId();
-    m_profileManager->updateProfileTargetBinding(profileId, title, processPath);
-    QIcon bindIcon = iconForProcessPath(processPath.toStdWString());
-    if (bindIcon.isNull() && hwnd && IsWindow(hwnd)) {
-        ScreenCapture::TargetWindowInfo info;
-        if (ScreenCapture::queryWindowInfo(hwnd, info) && !info.processPath.empty()) {
-            bindIcon = iconForProcessPath(info.processPath);
-        }
-    }
-    if (!bindIcon.isNull()) {
-        m_profileManager->cacheLinkedTargetIcon(profileId, bindIcon);
-    }
-    scheduleAutoSave();
-}
-
-void MainWindow::commitActiveProfileSubTargetWindow(HWND hwnd, const QString& title) {
-    if (!m_profileManager || isActiveDefaultProfile()) {
-        return;
-    }
-
-    QString processPath;
-    if (hwnd && IsWindow(hwnd)) {
-        ScreenCapture::TargetWindowInfo info;
-        if (ScreenCapture::queryWindowInfo(hwnd, info)) {
-            processPath = QString::fromStdWString(info.processPath);
-        }
-    }
-
-    const QString profileId = m_profileManager->activeProfileId();
-    m_profileManager->updateProfileSubTargetBinding(profileId, title, processPath);
-}
 #endif
 
-void MainWindow::updateTargetWindowControlsForActiveProfile() {
-    const bool lockedDefault = isActiveDefaultProfile();
-    const QString lockedTooltip = tr("전역 기본 프로필은 타겟을 지정할 수 없습니다.");
+void MainWindow::updateTargetWindowControlsForActiveProfile() {if(m_targetPanel)m_targetPanel->applyControls(isActiveDefaultProfile());}
 
-    if (m_pickWindowButton) {
-        m_pickWindowButton->setEnabled(!lockedDefault);
-        m_pickWindowButton->setToolTip(lockedDefault
-                                           ? lockedTooltip
-                                           : tr("클릭한 뒤 메인 창을 눌러 지정합니다. 마우스를 올리면 초록색 테두리가 표시됩니다. "
-                                                "우클릭 또는 Esc로 취소."));
-    }
-    if (m_pickWindowListButton) {
-        m_pickWindowListButton->setEnabled(!lockedDefault);
-        m_pickWindowListButton->setToolTip(lockedDefault
-                                               ? lockedTooltip
-                                               : tr("메인 창 목록에서 선택합니다. 항목을 고르면 초록색 테두리 애니메이션이 표시됩니다."));
-    }
-    if (m_pickSubWindowButton) {
-        m_pickSubWindowButton->setEnabled(!lockedDefault);
-        m_pickSubWindowButton->setToolTip(lockedDefault
-                                              ? lockedTooltip
-                                              : tr("클릭한 뒤 서브 창을 눌러 지정합니다. 마우스를 올리면 파란색 테두리가 표시됩니다. "
-                                                   "우클릭 또는 Esc로 취소."));
-    }
-    if (m_pickSubWindowListButton) {
-        m_pickSubWindowListButton->setEnabled(!lockedDefault);
-        m_pickSubWindowListButton->setToolTip(lockedDefault
-                                                  ? lockedTooltip
-                                                  : tr("서브 창 목록에서 선택합니다. 항목을 고르면 파란색 테두리 애니메이션이 표시됩니다."));
-    }
-    if (m_showTargetWindowButton) {
-        m_showTargetWindowButton->setEnabled(!lockedDefault);
-        m_showTargetWindowButton->setToolTip(lockedDefault
-                                                 ? lockedTooltip
-                                                 : tr("지정된 메인 창 테두리를 잠시 깜빡여 표시합니다(초록색)."));
-    }
-    if (m_showSubTargetWindowButton) {
-        m_showSubTargetWindowButton->setEnabled(!lockedDefault);
-        m_showSubTargetWindowButton->setToolTip(lockedDefault
-                                                    ? lockedTooltip
-                                                    : tr("지정된 서브 창 테두리를 잠시 깜빡여 표시합니다(파란색)."));
-    }
-    if (m_pinTargetWindowCenterButton) {
+void MainWindow::updateTargetWindowDetails() {if(m_targetPanel)m_targetPanel->refresh();}
+TargetWindowDetailsController::Request MainWindow::targetDetailsRequest()const {
+    TargetWindowDetailsController::Request request;
+    request.revision=m_projectWorkspace?m_projectWorkspace->generation():0;
+    request.captureOwnedBySession = hasAnyRunningSession();
+    request.allowIdleUpdates = (!m_workspaceHistory || !m_workspaceHistory->isBusy())
+        && !(m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()));
+    request.deferProfileRefresh = m_deferTargetDetailsProfileRefresh;
 #ifdef _WIN32
-        m_pinTargetWindowCenterButton->setEnabled(!lockedDefault);
-        m_pinTargetWindowCenterButton->setToolTip(
-            lockedDefault ? lockedTooltip
-                          : tr("메인 창을 드래그해도 현재 모니터 중앙으로 자동 복귀합니다. 트리거 감시 중에도 동작합니다."));
-#else
-        m_pinTargetWindowCenterButton->setEnabled(false);
+    request.foreground = m_foregroundMonitor->currentRootHwnd();
+    request.pipbongForeground = m_foregroundMonitor->currentState().pipbong;
+    request.remembered = m_targetWindowController.lastProfileLinkedForegroundHwnd();
+    request.hint = ScreenCapture::foregroundHintWindow();
 #endif
-    }
-    if (m_pinSubTargetWindowCenterButton) {
-#ifdef _WIN32
-        m_pinSubTargetWindowCenterButton->setEnabled(!lockedDefault);
-        m_pinSubTargetWindowCenterButton->setToolTip(
-            lockedDefault ? lockedTooltip
-                          : tr("서브 창을 드래그해도 현재 모니터 중앙으로 자동 복귀합니다. 트리거 감시 중에도 동작합니다."));
-#else
-        m_pinSubTargetWindowCenterButton->setEnabled(false);
-#endif
-    }
+    return ProfilePresentationSnapshot::targetDetails(m_profileManager.get(),m_project.get(),std::move(request));
 }
 
-void MainWindow::updateTargetWindowDetails() {
-    if (!m_targetWindowDetailPanel) {
-        return;
-    }
+void MainWindow::syncUserInputInterruptForSession(FeatureRunSession& session, Feature*) {
+    m_inputInterrupts->sync(session);
+}
 
-    if (isActiveDefaultProfile()) {
-        m_targetWindowDetailPanel->showGlobalDefaultProfile();
-        return;
-    }
+void MainWindow::onUserInputInterrupt(const std::string& featureId,
+                                     const std::shared_ptr<ExecutionContext>& expected) {
+    if (auto* session = sessionFor(featureId)) m_inputInterrupts->interrupt(*session, expected);
+}
 
-#ifdef _WIN32
-    const QString savedTitle =
-        QString::fromStdString(m_project ? m_project->targetWindowTitle() : std::string{}).trimmed();
-    const QString subBinding =
-        m_profileManager
-            ? m_profileManager->subTargetWindowTitle(m_profileManager->activeProfileId()).trimmed()
-            : QString();
-
-    // While a feature session is running, do not rewrite global ScreenCapture target state from the
-    // UI thread — the worker owns it. Rewriting here when the main window closes and the sub
-    // launcher appears raced trigger polling and could terminate the process.
-    const bool sessionOwnsCapture = hasAnyRunningSession();
-    QString linkedProcessPath;
-    QString subProcessPath;
-    if (m_profileManager) {
-        const QString profileId = m_profileManager->activeProfileId();
-        linkedProcessPath = m_profileManager->linkedTargetProcessPath(profileId);
-        subProcessPath = m_profileManager->subLinkedTargetProcessPath(profileId);
-    }
-
-    if (sessionOwnsCapture) {
-        ScreenCapture::setSubTargetWindowTitle(subBinding.toStdWString());
-    } else {
-        syncTargetWindowTitleToCapture();
-    }
-
-    const TargetDetailHwndResolve resolved =
-        resolveTargetDetailDisplayHwnd(savedTitle, subBinding, linkedProcessPath, subProcessPath);
-    HWND hwnd = resolved.hwnd;
-    bool detailIsSubTarget = resolved.isSubTarget;
-
-    if (!sessionOwnsCapture && hwnd && IsWindow(hwnd)) {
-        ScreenCapture::setTargetWindow(hwnd);
-        if (detailIsSubTarget) {
-            ScreenCapture::setForegroundHintWindow(hwnd);
-        }
-    }
-
-    if (!hwnd || !IsWindow(hwnd)) {
-        const HWND lastHwnd = m_targetWindowController.lastProfileLinkedForegroundHwnd();
-        if (lastHwnd && IsWindow(lastHwnd)) {
-            wchar_t titleBuffer[512]{};
-            GetWindowTextW(lastHwnd, titleBuffer, 512);
-            const QString lastTitle = QString::fromWCharArray(titleBuffer).trimmed();
-            const bool lastIsSub = m_targetWindowController.lastProfileLinkedForegroundIsSub();
-            const bool lastMatchesActiveProfile =
-                lastIsSub
-                    ? (!subBinding.isEmpty()
-                       && foregroundMatchesScopedSubTarget(lastTitle,
-                                                           lastHwnd,
-                                                           savedTitle,
-                                                           subBinding,
-                                                           linkedProcessPath,
-                                                           subProcessPath))
-                    : (!savedTitle.isEmpty()
-                       && foregroundMatchesScopedMainTarget(lastTitle,
-                                                            lastHwnd,
-                                                            savedTitle,
-                                                            subBinding,
-                                                            linkedProcessPath,
-                                                            subProcessPath));
-            if (lastMatchesActiveProfile) {
-                hwnd = lastHwnd;
-                detailIsSubTarget = lastIsSub;
-            }
-        }
-    }
-
-    if (!hwnd || !IsWindow(hwnd)) {
-        if (savedTitle.isEmpty() && subBinding.isEmpty()) {
-            m_targetWindowDetailPanel->showMessage(tr("'타겟 지정'으로 타겟을 선택하세요."));
+void MainWindow::setupInputInterrupts() {
+    m_inputInterrupts = std::make_unique<InputInterruptController>();
+    InputInterruptController::Host host;
+    host.feature = [this](FeatureRunSession& session) { return featureForSession(session); };
+    host.disarm = [this](const FeatureRunSession& session) {
+        persistTriggerArmedState(QString::fromStdString(session.featureId), false);
+    };
+    host.changed = [this](const FeatureRunSession& session, const QString& name, InputInterruptController::Outcome outcome) {
+        using Outcome = InputInterruptController::Outcome;
+        if (outcome == Outcome::Stopped) {
+            appendSessionLog(session, tr("사용자 입력으로 실행을 멈췄습니다"), LogLineKind::Warning);
+            showTransientStatus(tr("[%1] 사용자 입력 — 정지").arg(name), 3000);
         } else {
-            const HWND subHwnd = subBinding.isEmpty()
-                                       ? nullptr
-                                       : findVisibleTopLevelWindowHwnd(subBinding, subProcessPath);
-            const HWND mainHwnd =
-                savedTitle.isEmpty() ? nullptr
-                                     : findVisibleTopLevelWindowHwnd(savedTitle, linkedProcessPath);
-            if (subHwnd && !mainHwnd) {
-                hwnd = subHwnd;
-                detailIsSubTarget = true;
-            } else if (mainHwnd && !subHwnd) {
-                hwnd = mainHwnd;
-                detailIsSubTarget = false;
-            } else {
-                const bool storedSubTarget = savedTitle.isEmpty() && !subBinding.isEmpty();
-                const QString displayTitle = storedSubTarget ? subBinding : savedTitle;
-                const QString& processPathForDisplay =
-                    storedSubTarget ? subProcessPath : linkedProcessPath;
-                const QString processName = processPathForDisplay.isEmpty()
-                                                ? QString()
-                                                : QFileInfo(processPathForDisplay).fileName();
-                m_targetWindowDetailPanel->showStoredTargetBinding(displayTitle,
-                                                                   processName,
-                                                                   processPathForDisplay,
-                                                                   storedSubTarget);
-                return;
-            }
+            const bool paused = outcome == Outcome::Paused;
+            appendSessionLog(session, paused ? tr("사용자 입력으로 잠시 멈춤") : tr("사용자 입력으로 다시 실행"),
+                paused ? LogLineKind::Warning : LogLineKind::Success);
+            reconcileMouseLocksFromRunningSessions();
+            updateRunUiState();
         }
-    }
-
-    if (!hwnd || !IsWindow(hwnd)) {
-        return;
-    }
-
-    ScreenCapture::TargetWindowInfo info;
-    if (!ScreenCapture::queryWindowInfo(hwnd, info)) {
-        m_targetWindowDetailPanel->showMessage(tr("타겟 정보를 읽을 수 없습니다."));
-        return;
-    }
-
-    const QString title = QString::fromStdWString(info.title);
-    const QString className = QString::fromStdWString(info.className);
-    QString processPath = QString::fromStdWString(info.processPath);
-    const int slash = processPath.lastIndexOf(QLatin1Char('\\'));
-    const QString processName =
-        slash >= 0 ? processPath.mid(slash + 1)
-                   : (processPath.isEmpty() ? tr("알 수 없음") : processPath);
-
-    QString stateText;
-    if (info.minimized) {
-        stateText = tr("● 최소화");
-    } else if (info.visible) {
-        stateText = tr("● 표시");
-    } else {
-        stateText = tr("● 숨김");
-    }
-
-    QString monitorText;
-    if (info.monitorNumber > 0 && info.monitorWidth > 0 && info.monitorHeight > 0) {
-        if (info.monitorDpi > 0) {
-            const int scalePercent = qRound(info.monitorDpi * 100.0 / 96.0);
-            monitorText = tr("%1번 · %2×%3 · %4%")
-                              .arg(info.monitorNumber)
-                              .arg(info.monitorWidth)
-                              .arg(info.monitorHeight)
-                              .arg(scalePercent);
-        } else {
-            monitorText = tr("%1번 · %2×%3")
-                              .arg(info.monitorNumber)
-                              .arg(info.monitorWidth)
-                              .arg(info.monitorHeight);
-        }
-    } else {
-        monitorText = tr("알 수 없음");
-    }
-
-    // Persist exe path once resolved so profile list icons survive settings saves
-    // and restarts (even if an earlier save wiped linkedTargetProcessPath).
-    const bool isSubTarget = detailIsSubTarget
-                             || targetWindowTitleMatchesSubTarget(title, savedTitle, subBinding);
-    if (m_profileManager && !processPath.isEmpty() && !isActiveDefaultProfile() && !sessionOwnsCapture) {
-        const QString profileId = m_profileManager->activeProfileId();
-        // Only refresh linked exe paths for bindings the user already configured — never
-        // infer a new main/sub title from ambient HWND/title (avoids cross-profile mixing).
-        if (isSubTarget && !subBinding.isEmpty()) {
-            const QString storedSubPath = m_profileManager->subLinkedTargetProcessPath(profileId);
-            if (storedSubPath.compare(processPath, Qt::CaseInsensitive) != 0) {
-                m_profileManager->updateProfileSubTargetBinding(profileId, subBinding, processPath);
-            }
-        } else if (!isSubTarget && !savedTitle.isEmpty()) {
-            const QString storedPath = m_profileManager->linkedTargetProcessPath(profileId);
-            if (storedPath.compare(processPath, Qt::CaseInsensitive) != 0) {
-                m_profileManager->updateProfileTargetBinding(profileId, savedTitle, processPath);
-                if (!m_deferTargetDetailsProfileRefresh) {
-                    refreshProfileList();
-                }
-            }
-        }
-    }
-
-    TargetWindowDetailData data;
-    data.hwnd = QStringLiteral("0x%1").arg(info.hwndValue, 0, 16);
-    data.title = title.isEmpty() ? tr("(제목 없음)") : title;
-    data.className = className.isEmpty() ? tr("(없음)") : className;
-    data.frameBounds =
-        tr("%1×%2 @ (%3, %4)").arg(info.width).arg(info.height).arg(info.x).arg(info.y);
-    data.clientSize = tr("%1×%2 px").arg(info.clientWidth).arg(info.clientHeight);
-    data.monitor = monitorText;
-    data.processName = processName;
-    data.processPath = processPath;
-    data.stateText = stateText;
-    data.subTarget = isSubTarget;
-    data.minimized = info.minimized;
-    data.visible = info.visible;
-    data.monitorDpi = info.monitorDpi;
-    m_targetWindowDetailPanel->showDetails(data);
-
-    if (m_workflowEditor && info.clientWidth > 0 && info.clientHeight > 0
-        && (info.clientWidth != m_lastWorkflowScaleClientWidth
-            || info.clientHeight != m_lastWorkflowScaleClientHeight)) {
-        m_lastWorkflowScaleClientWidth = info.clientWidth;
-        m_lastWorkflowScaleClientHeight = info.clientHeight;
-        refreshWorkflowEditor();
-    }
-#else
-    m_targetWindowDetailPanel->showMessage(tr("타겟 정보는 Windows에서만 표시됩니다."));
-#endif
-}
-
-void MainWindow::syncUserInputInterruptForSession(FeatureRunSession& session, Feature* feature) {
-    UserInputInterruptMonitor& monitor = UserInputInterruptMonitor::instance();
-    if (!feature || !session.sessionContext) {
-        monitor.unregisterSession(session.featureId);
-        return;
-    }
-    if (feature->userInputInterruptMode() == UserInputInterruptMode::None) {
-        monitor.unregisterSession(session.featureId);
-        return;
-    }
-    // Hold mode ends when the hotkey is released; polling other keys is unnecessary and
-    // used to require a second WH_KEYBOARD_LL hook alongside HotkeyManager during runs.
-    const bool keyboardInterrupt = feature->runMode() != FeatureRunMode::Hold;
-    monitor.registerSession(session.featureId,
-                            feature->userInputInterruptMode(),
-                            feature->hotkey(),
-                            session.sessionContext.get(),
-                            keyboardInterrupt);
-}
-
-void MainWindow::onUserInputInterrupt(const std::string& featureId) {
-    FeatureRunSession* session = sessionFor(featureId);
-    Feature* feature = m_project ? m_project->featureById(featureId) : nullptr;
-    if (!session || !feature || !session->sessionContext) {
-        return;
-    }
-
-    const UserInputInterruptMode mode = feature->userInputInterruptMode();
-    if (mode == UserInputInterruptMode::Stop) {
-        if (session->runningMode == FeatureRunMode::Trigger) {
-            session->disarmPersistedTrigger = true;
-            persistTriggerArmedState(QString::fromStdString(featureId), false);
-        }
-        session->userStopRequested = true;
-        session->repeatSession = false;
-        session->holdRunActive = false;
-        ++session->holdRepeatGeneration;
-        session->sessionContext->requestStop();
-        if (session->engine) {
-            session->engine->stop();
-        }
-        appendSessionLog(*session, tr("사용자 입력으로 실행을 멈췄습니다"), LogLineKind::Warning);
-        showTransientStatus(
-            tr("[%1] 사용자 입력 — 정지").arg(featureDisplayName(featureId)), 3000);
-        return;
-    }
-
-    if (mode == UserInputInterruptMode::Pause) {
-        session->sessionContext->togglePaused();
-        const bool paused = session->sessionContext->isPaused();
-        appendSessionLog(*session,
-                         paused ? tr("사용자 입력으로 잠시 멈춤") : tr("사용자 입력으로 다시 실행"),
-                         paused ? LogLineKind::Warning : LogLineKind::Success);
-        updateRunUiState();
-    }
+    };
+    m_inputInterrupts->setHost(std::move(host));
 }
 
 void MainWindow::scheduleRunWarmup() {
@@ -7540,300 +2207,289 @@ void MainWindow::prepareProjectUnload() {
     }
 }
 
-MainWindow::GlobalUiSnapshotScope MainWindow::resolveGlobalUiSnapshotScope(
-    const QString& reason,
-    GlobalUiSnapshotScope scope) {
-    if (scope != GlobalUiSnapshotScope::Auto) {
-        return scope;
-    }
-    if (reason == QStringLiteral("feature-toggle-enabled")) {
-        return GlobalUiSnapshotScope::ActiveProjectJsonOnly;
-    }
-    return GlobalUiSnapshotScope::FullWorkspace;
-}
-
-MainWindow::GlobalUiHistorySnapshot MainWindow::createActiveProjectJsonSnapshot(
-    const QString& reason) const {
-    GlobalUiHistorySnapshot snapshot;
-    if (!m_profileManager) {
-        return {};
-    }
-    const QString profileId = m_profileManager->activeProfileId();
-    const QString projectPath = m_profileManager->projectPath(profileId);
-    if (profileId.isEmpty() || !QFileInfo::exists(projectPath)) {
-        return {};
-    }
-
-    const QString tempRoot =
-        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-            .filePath(QStringLiteral("pipbong-global-history"));
-    const QString snapshotId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    const QString backupRoot = QDir(tempRoot).filePath(snapshotId);
-    if (!QDir().mkpath(backupRoot)) {
-        return {};
-    }
-
-    const QString backupProjectPath = QDir(backupRoot).filePath(QStringLiteral("project.json"));
-    if (QFileInfo::exists(backupProjectPath) && !QFile::remove(backupProjectPath)) {
-        removeDirectoryRecursive(backupRoot);
-        return {};
-    }
-    if (!QFile::copy(projectPath, backupProjectPath)) {
-        removeDirectoryRecursive(backupRoot);
-        return {};
-    }
-
-    snapshot.backupRootPath = backupRoot;
-    snapshot.reason = reason;
-    snapshot.scope = GlobalUiSnapshotScope::ActiveProjectJsonOnly;
-    snapshot.profileId = profileId;
-    return snapshot;
-}
-
-MainWindow::GlobalUiHistorySnapshot MainWindow::createGlobalUiSnapshot(
-    const QString& reason,
-    GlobalUiSnapshotScope scope) const {
-    const GlobalUiSnapshotScope resolved = resolveGlobalUiSnapshotScope(reason, scope);
-    if (resolved == GlobalUiSnapshotScope::ActiveProjectJsonOnly) {
-        return createActiveProjectJsonSnapshot(reason);
-    }
-
-    GlobalUiHistorySnapshot snapshot;
-    const QString tempRoot =
-        QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
-            .filePath(QStringLiteral("pipbong-global-history"));
-    const QString snapshotId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    const QString backupRoot = QDir(tempRoot).filePath(snapshotId);
-    const QString profilesSourceDir =
-        m_profileManager ? m_profileManager->profilesDirectory()
-                         : QDir(Application::dataDirectory()).filePath(QStringLiteral("profiles"));
-    const QString librarySourceDir =
-        QDir(Application::dataDirectory()).filePath(QStringLiteral("featureLibrary"));
-    const QString profilesBackupDir = QDir(backupRoot).filePath(QStringLiteral("profiles"));
-    const QString libraryBackupDir = QDir(backupRoot).filePath(QStringLiteral("featureLibrary"));
-
-    bool ok = QDir().mkpath(backupRoot);
-    if (!ok) {
-        return {};
-    }
-    if (QDir(profilesSourceDir).exists()) {
-        ok = copyDirectoryRecursive(profilesSourceDir, profilesBackupDir);
-    }
-    if (ok && QDir(librarySourceDir).exists()) {
-        ok = copyDirectoryRecursive(librarySourceDir, libraryBackupDir);
-    }
-    if (!ok) {
-        removeDirectoryRecursive(backupRoot);
-        return {};
-    }
-
-    snapshot.backupRootPath = backupRoot;
-    snapshot.reason = reason;
-    snapshot.scope = GlobalUiSnapshotScope::FullWorkspace;
-    return snapshot;
-}
-
-bool MainWindow::copyDirectoryRecursive(const QString& sourceDir, const QString& targetDir) {
-    QDir source(sourceDir);
-    if (!source.exists()) {
-        return true;
-    }
-    if (!QDir().mkpath(targetDir)) {
-        return false;
-    }
-    const QFileInfoList entries =
-        source.entryInfoList(QDir::NoDotAndDotDot | QDir::Files | QDir::Dirs | QDir::Hidden | QDir::System);
-    for (const QFileInfo& entry : entries) {
-        const QString sourcePath = entry.absoluteFilePath();
-        const QString targetPath = QDir(targetDir).filePath(entry.fileName());
-        if (entry.isDir()) {
-            if (!copyDirectoryRecursive(sourcePath, targetPath)) {
-                return false;
+void MainWindow::setupWorkspaceHistory() {
+    WorkspaceHistoryActions::HostCallbacks actions;
+    actions.canBegin = [this](bool restoring) {
+        return m_profileManager->storageReady() && (!restoring || !FeatureHotkeyGate::isFeatureHotkeysBlocked())
+            && !m_switchingProfile && !m_profileSwitchPipelineActive
+            && !(m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()))
+            && !(m_updateController && m_updateController->installInProgress());
+    };
+    actions.reportError = [this](const QString& error) {
+        appendLog(error,LogLineKind::Warning);showTransientStatus(error,5000);
+    };
+    actions.memo = [this] { return m_auxiliaryTools->memo(); };
+    actions.suspendAutoSave = [this] { m_autoSaveTimer->stop(); };
+    actions.finished = [this] {
+        if ((m_workspaceHistory && m_workspaceHistory->isBusy())
+            || (m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()))) return;
+        if (m_modified) m_autoSaveTimer->start(800);
+        scheduleProfilePackageSeal();
+        schedulePostProfileSwitchForegroundReconcile(true);
+    };
+    auto& host=actions.history;
+    host.paths = [this](const QString& requestedProfile) {
+        WorkspaceHistoryController::Paths paths;
+        paths.dataRoot = Application::dataDirectory();
+        paths.profilesDirectory = m_profileManager->profilesDirectory();
+        paths.libraryDirectory = QDir(paths.dataRoot).filePath(QStringLiteral("featureLibrary"));
+        paths.profileId = requestedProfile.isEmpty() ? m_profileManager->activeProfileId() : requestedProfile;
+        paths.projectPath = m_profileManager->projectPath(paths.profileId);
+        return paths;
+    };
+    host.prepare = [this](bool restoring) {
+        if (restoring) stopAllSessions();
+        return maybeSave(true) && saveActiveProfileSettings();
+    };
+    host.restored = [this](WorkspaceHistoryController::Scope scope, const QString& profileId) {
+        // Input was blocked and current edits were checkpointed before the transaction.
+        // Reload committed files without flushing stale runtime feedback over them.
+        m_modified = false;
+        if (scope == WorkspaceHistoryController::Scope::Project) {
+            m_profileManager->invalidateCachedProject(profileId);
+            if (m_profileManager->activeProfileId() == profileId) {
+                loadProjectFromFile(m_profileManager->projectPath(profileId), true);
             }
-            continue;
+            m_packageController->schedule(m_profileManager->profileDirectory(profileId),
+                                          m_profileManager->profilePackagePath(profileId));
+        } else {
+            m_packageController->discardPending();
+            m_profileManager->initialize();
+            refreshProfileList();
+            loadActiveProfile(true);
+            refreshFeatureLibraryPanel();
+            syncProfileListSelection();
+            syncMemoDialogProfile();
+            scheduleProfilePackageSeal();
         }
-        if (QFileInfo::exists(targetPath) && !QFile::remove(targetPath)) {
-            return false;
+        showTransientStatus(tr("실행 취소/다시 실행 적용됨"), 1200);
+    };
+    m_workspaceHistory = std::make_unique<WorkspaceHistoryActions>(this,*m_packageController,std::move(actions));
+}
+
+bool MainWindow::pushGlobalUiUndoSnapshot(const QString& reason) {return m_workspaceHistory && m_workspaceHistory->push(reason);}
+void MainWindow::onGlobalUndoRequested() {if(m_workspaceHistory)m_workspaceHistory->undo();}
+void MainWindow::onGlobalRedoRequested() {if(m_workspaceHistory)m_workspaceHistory->redo();}
+
+void MainWindow::setupProjectWorkspace() {
+    m_projectWorkspace->setPackages(m_packageController.get());
+    ProjectWorkspaceController::HostCallbacks host;
+    host.mayReplace=[this] {
+        if(!m_profileManager->storageReady())return false;
+        if(m_shutdownCoordinator && m_shutdownCoordinator->ready()) return false;
+        if(m_workspaceHistory && m_workspaceHistory->isBusy()) return m_workspaceHistory->isReloading();
+        return !FeatureHotkeyGate::isFeatureHotkeysBlocked();
+    };
+    host.mayWrite=[this] {
+        return m_profileManager->storageReady() && !(m_shutdownCoordinator && m_shutdownCoordinator->ready())
+            && (!m_workspaceHistory || !m_workspaceHistory->isBusy() || m_workspaceHistory->isPreparing());
+    };
+    host.maySchedule=[this] {
+        return m_profileManager->storageReady() && (!m_workspaceHistory || !m_workspaceHistory->isBusy())
+            && !(m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()));
+    };
+    host.beforeReplace=[this] { prepareProjectUnload(); };
+    host.changed=[this] { updateWindowTitle(); };
+    host.currentDirectory=[] { return Application::instance()->projectDirectory(); };
+    host.directoryChanged=[](const QString& path) { Application::instance()->setProjectDirectory(path); };
+    host.installed=[this](const ProjectWorkspaceController::Change& change) {
+        onWorkspaceInstalled(change.fresh,change.clearTarget,change.quiet,change.restoreTriggers);
+    };
+    host.status=[this](const QString& text) { showTransientStatus(text,2000); };
+    host.warning=[this](const QString& text) { appendLog(text,LogLineKind::Warning); };
+    m_projectWorkspace->setHost(std::move(host));
+    ProfileTransitionController::AutomaticCallbacks automatic;
+    automatic.defer=[this](const QString& id) { m_profileSwitchCoordinator.setDeferredProfileSwitchId(id); };
+    automatic.schedule=[this](int delay) { m_profileSwitchCoordinator.scheduleDeferredProfileSwitchFlush(delay); };
+    automatic.committed=[this] { m_profileSwitchCoordinator.markAutomaticProfileSwitchCommitted(); };
+    automatic.manualCommitted=[this](const QString& id,bool global) { m_profileSwitchCoordinator.onManualProfileSwitchCommitted(id,global); };
+    automatic.hasDeferred=[this] { return !m_profileSwitchCoordinator.deferredProfileSwitchId().isEmpty(); };
+    automatic.clearDeferred=[this] { m_profileSwitchCoordinator.clearDeferredProfileSwitchId(); };
+    m_profileTransition->setAutomatic(std::move(automatic));
+    ProfileTransitionController::HostCallbacks transition;
+    transition.canBegin=[this](bool automatic) {
+        return (!m_workspaceHistory || !m_workspaceHistory->isBusy())
+            && !(m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()))
+            && !(m_updateController && m_updateController->installInProgress())
+            && !FeatureHotkeyGate::isFeatureHotkeysBlocked() && (!automatic || !QApplication::activePopupWidget());
+    };
+    transition.dragActive=[] { return ReorderableListWidget::isAnyListDragActive(); };
+    transition.cancelDrags=[] { ReorderableListWidget::cancelActiveListDrags(); };
+    transition.saveMemo=[this] { return !m_auxiliaryTools || m_auxiliaryTools->saveMemo(); };
+    transition.lockUi=[this](bool locked) { setProfileSwitchUiLocked(locked); };
+    transition.selectProfile=[this](const QString& id) {
+        for(int row=0;row<m_profileList->count();++row) if(auto* item=m_profileList->item(row);item && item->data(Qt::UserRole).toString()==id) {
+            const QSignalBlocker block(m_profileList);m_profileList->setCurrentRow(row);break;
         }
-        if (!QFile::copy(sourcePath, targetPath)) {
-            return false;
+    };
+    transition.resyncSelection=[this] { syncProfileListSelection(); };
+    transition.detach=[this] { detachUiForProfileSwitch(); };
+    transition.loaded=[this](bool automatic) {
+#ifdef _WIN32
+        if(automatic) { if(!adoptForegroundLinkedCaptureIfMatched()) syncEffectiveTargetWindowTitleToCapture(); }
+        else m_targetWindowController.clearLastProfileLinkedForeground();
+#endif
+        syncMemoDialogProfile();syncProfileListSelection();
+    };
+    transition.completed=[this](bool automatic) {
+        scheduleRunWarmup();
+        if(!automatic) if(const auto* profile=m_profileManager->activeProfile())
+            showTransientStatus(tr("프로필 전환: %1").arg(m_profileManager->isDefaultProfile(profile->id)?tr("기본"):profile->name),1200);
+    };
+    transition.finishViews=[this](bool automatic) {
+#ifdef _WIN32
+        if(!automatic && !FeatureHotkeyGate::isFeatureHotkeysBlocked()
+            && ProgramSettings::focusTargetWindowOnProfileSelect() && !isActiveDefaultProfile()) {
+            syncTargetWindowTitleToCapture();if(ScreenCapture::findTargetWindow()) ScreenCapture::activateTargetWindow();
         }
-    }
-    return true;
+#endif
+        updateTargetWindowDetails();
+    };
+    transition.restoreTriggersAndReconcile=[this](bool automatic) { restorePersistedTriggerSessions();schedulePostProfileSwitchForegroundReconcile(automatic); };
+    transition.foregroundChanged=[this] { onForegroundStateChanged(m_foregroundMonitor->currentState()); };
+    transition.warning=[this](const QString& text) { appendLog(text,LogLineKind::Warning);showTransientStatus(text,5000); };
+    m_profileTransition->setHost(std::move(transition));
 }
 
-void MainWindow::removeDirectoryRecursive(const QString& path) {
-    if (path.isEmpty()) {
-        return;
-    }
-    QDir dir(path);
-    if (!dir.exists()) {
-        return;
-    }
-    dir.removeRecursively();
+void MainWindow::onWorkspaceInstalled(bool fresh,bool clearTarget,bool quiet,bool restoreTriggers) {
+    m_runSessionController.setProject(m_project.get());
+    ScreenCapture::setTargetWindow(nullptr);
+    if(clearTarget) ScreenCapture::setTargetWindowTitle(L"");else syncTargetWindowTitleToCapture();
+    applyTargetWindowCenterPin();
+    m_featureList->setProject(m_project.get());m_featureList->setActiveProfileId(m_profileManager->activeProfileId());
+    if(fresh) onFeatureSelectionChanged();else restoreSelectedFeaturePreference();
+    updateWindowTitle();
+    if(m_profileSwitchPipelineActive) {
+        QTimer::singleShot(0,this,[this] { refreshWorkflowEditor();syncHotkeys(); });
+    } else { refreshWorkflowEditor();syncHotkeys(); }
+    if(m_deferTargetDetailsProfileRefresh) QTimer::singleShot(0,this,&MainWindow::updateTargetWindowDetails);
+    else updateTargetWindowDetails();
+    updateTargetWindowControlsForActiveProfile();
+    if(restoreTriggers) scheduleRestorePersistedTriggerSessions();
+    if(!m_profileSwitchPipelineActive && restoreTriggers) onForegroundStateChanged(m_foregroundMonitor->currentState());
+    if(!quiet) appendLog(tr("프로젝트 파일을 불러왔습니다: %1").arg(m_projectFilePath),LogLineKind::Success);
 }
 
-void MainWindow::clearGlobalUiRedoHistory() {
-    for (const GlobalUiHistorySnapshot& snapshot : m_globalUiRedoHistory) {
-        removeDirectoryRecursive(snapshot.backupRootPath);
-    }
-    m_globalUiRedoHistory.clear();
+void MainWindow::setupTargetActions() {
+    m_targetActions=std::make_unique<TargetWindowActionsController>(this);
+    TargetWindowActionsController::Host host;
+    host.snapshot=[this] {
+        TargetWindowActionsController::Snapshot value;
+        value.profileId=m_projectWorkspace->state().profileId;
+        value.generation=m_projectWorkspace->generation();value.globalDefault=isActiveDefaultProfile();
+        value.mainTitle=QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
+        value.subTitle=m_profileManager->subTargetWindowTitle(value.profileId).trimmed();
+        value.mainProcessPath=m_profileManager->linkedTargetProcessPath(value.profileId);
+        value.subProcessPath=m_profileManager->subLinkedTargetProcessPath(value.profileId);
+#ifdef _WIN32
+        value.preferred=ScreenCapture::targetWindow();
+#endif
+        return value;
+    };
+    host.blockedReason=[this](bool changing) {
+        if(FeatureHotkeyGate::isFeatureHotkeysBlocked())return tr("편집이나 창 선택을 마친 뒤 다시 시도해 주세요.");
+        if(m_profileSwitchPipelineActive || (m_workspaceHistory && m_workspaceHistory->isBusy())
+            || (m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()))
+            || (m_updateController && m_updateController->installInProgress()))
+            return tr("현재 저장·전환 작업을 마친 뒤 다시 시도해 주세요.");
+        if(changing && !SessionRunPolicy::allowsTargetBindingChange(RunLifecycleCoordinator::policyInputsFromSessions(runSessions())))
+            return tr("실행 중인 기능을 중지한 뒤 타겟을 지정해 주세요.");
+        return QString();
+    };
+    host.checkpoint=[this] { return pushGlobalUiUndoSnapshot(QStringLiteral("target-binding")); };
+    host.commit=[this](const TargetWindowActionsController::Snapshot& source,TargetWindowBindingRole role,
+                       const TargetWindowActionsController::Selection& value) {
+        return m_projectWorkspace->commitTargetBinding(source.profileId,source.generation,
+            role==TargetWindowBindingRole::Sub,value.title,value.processPath)?QString():m_projectWorkspace->lastError();
+    };
+    host.committed=[this](const TargetWindowActionsController::Selection& value,TargetWindowBindingRole role) {
+        syncTargetWindowTitleToCapture();synchronizeRunWorkerState();
+        updateTargetWindowDetails();refreshProfileList();
+        appendLog((role==TargetWindowBindingRole::Sub?tr("서브 창을 지정했습니다: %1"):tr("타겟을 지정했습니다: %1")).arg(value.title),LogLineKind::Success);
+        if(role==TargetWindowBindingRole::Main) {scheduleRunWarmup();syncTargetWindowCenterPin();}
+    };
+    host.persistent=[this](const QString& text) {setPersistentStatus(text);};
+    host.status=[this](const QString& text) {showTransientStatus(text,3000);};
+    host.warning=[this](const QString& text) {appendLog(text,LogLineKind::Warning);showTransientStatus(text,6000);};
+    m_targetActions->setHost(std::move(host));
 }
 
-void MainWindow::clearGlobalUiUndoHistory() {
-    for (const GlobalUiHistorySnapshot& snapshot : m_globalUiUndoHistory) {
-        removeDirectoryRecursive(snapshot.backupRootPath);
-    }
-    m_globalUiUndoHistory.clear();
+void MainWindow::setupTargetCenterPin() {
+    m_centerPin=std::make_unique<TargetCenterPinController>(this);
+    TargetCenterPinController::Host host;
+    host.snapshot=[this] {
+        TargetCenterPinController::Snapshot value;
+        value.profileId=m_projectWorkspace->state().profileId;value.generation=m_projectWorkspace->generation();
+        value.globalDefault=isActiveDefaultProfile();value.mainTitle=QString::fromStdWString(currentTargetWindowTitleW()).trimmed();
+        value.subTitle=m_profileManager->subTargetWindowTitle(value.profileId).trimmed();
+        value.mainPath=m_profileManager->linkedTargetProcessPath(value.profileId);
+        value.subPath=m_profileManager->subLinkedTargetProcessPath(value.profileId);
+        value.main=ProgramSettings::pinTargetWindowToScreenCenter();value.sub=ProgramSettings::pinSubTargetWindowToScreenCenter();
+        value.blocked=FeatureHotkeyGate::isFeatureHotkeysBlocked() || m_profileSwitchPipelineActive
+            || (m_workspaceHistory && m_workspaceHistory->isBusy())
+            || (m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()))
+            || (m_updateController && m_updateController->installInProgress());
+        value.movementAllowed=SessionRunPolicy::allowsTargetCenterPin(RunLifecycleCoordinator::policyInputsFromSessions(runSessions()));
+        return value;
+    };
+    host.save=[this](const TargetCenterPinController::Snapshot& source,bool main,bool sub) {
+        return m_projectWorkspace->saveCenterPinOptions(source.profileId,source.generation,main,sub)?QString():m_projectWorkspace->lastError();
+    };
+    host.view=[this](bool main,bool sub) {
+        const QSignalBlocker one(m_pinTargetWindowCenterButton),two(m_pinSubTargetWindowCenterButton);
+        m_pinTargetWindowCenterButton->setChecked(main);m_pinSubTargetWindowCenterButton->setChecked(sub);
+    };
+    host.changed=[this]{updateTargetWindowDetails();};
+    host.status=[this](const QString& text){showTransientStatus(text,4000);};
+    host.warning=[this](const QString& text){appendLog(text,LogLineKind::Warning);showTransientStatus(text,6000);};
+    m_centerPin->setHost(std::move(host));m_centerPin->reconcile();
 }
 
-bool MainWindow::pushGlobalUiUndoSnapshot(const QString& reason) {
-    if (m_restoringGlobalUiHistory) {
-        return false;
-    }
-    const GlobalUiHistorySnapshot snapshot = createGlobalUiSnapshot(reason);
-    if (snapshot.backupRootPath.isEmpty()) {
-        return false;
-    }
-    m_globalUiUndoHistory.push_back(snapshot);
-    constexpr int kMaxGlobalUiHistoryDepth = 20;
-    if (static_cast<int>(m_globalUiUndoHistory.size()) > kMaxGlobalUiHistoryDepth) {
-        removeDirectoryRecursive(m_globalUiUndoHistory.front().backupRootPath);
-        m_globalUiUndoHistory.erase(m_globalUiUndoHistory.begin());
-    }
-    clearGlobalUiRedoHistory();
-    return true;
+void MainWindow::setupCaptureTargets() {
+    m_captureTargets=std::make_unique<CaptureTargetController>(*m_profileManager);
+    m_captureTargets->setSessions(&runSessions());
+    CaptureTargetController::Host host;
+    host.mainTitle=[this]{return QString::fromStdWString(currentTargetWindowTitleW());};
+    host.foreground=[this]{return m_foregroundMonitor->currentState();};
+    host.foregroundAllowed=[this](const QString& id){return ForegroundRunGate::foregroundProfileMatchesActive(buildForegroundGateInput(nullptr,id));};
+    host.mayApply=[this]{return !hasAnyRunningSession() && (!m_workspaceHistory || !m_workspaceHistory->isBusy())
+        && !(m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready()));};
+    host.feature=[this](FeatureRunSession& session){return featureForSession(session);};
+#ifdef _WIN32
+    host.remember=[this](HWND hwnd,const QString& title){m_targetWindowController.rememberProfileLinkedForeground(hwnd,title);};
+#endif
+    host.monitorChanged=[this]{scheduleEnsureTriggerMonitorEnginesRunning();};
+    host.sessionChanged=[](const FeatureRunSession& session){CrashReporter::noteBreadcrumb(QStringLiteral("capture"),
+        QStringLiteral("session target adopt %1").arg(QString::fromStdWString(session.lockedCaptureTargetTitle)));};
+    m_captureTargets->setHost(std::move(host));
 }
 
-bool MainWindow::restoreActiveProjectJsonSnapshot(const GlobalUiHistorySnapshot& snapshot) {
-    if (snapshot.backupRootPath.isEmpty() || snapshot.profileId.isEmpty() || !m_profileManager) {
-        return false;
-    }
-
-    const QString backupProjectPath =
-        QDir(snapshot.backupRootPath).filePath(QStringLiteral("project.json"));
-    const QString projectPath = m_profileManager->projectPath(snapshot.profileId);
-    if (!QFileInfo::exists(backupProjectPath) || projectPath.isEmpty()) {
-        return false;
-    }
-
-    stopAllSessions();
-    maybeSave(true);
-
-    struct RestoreGuard {
-        MainWindow* window = nullptr;
-        ~RestoreGuard() {
-            if (window) {
-                window->m_restoringGlobalUiHistory = false;
-            }
-        }
-    } guard{this};
-    m_restoringGlobalUiHistory = true;
-
-    m_profileManager->invalidateCachedProject(snapshot.profileId);
-    if (QFileInfo::exists(projectPath) && !QFile::remove(projectPath)) {
-        return false;
-    }
-    if (!QFile::copy(backupProjectPath, projectPath)) {
-        return false;
-    }
-
-    if (m_profileManager->activeProfileId() == snapshot.profileId) {
-        loadProjectFromFile(projectPath, true);
-    }
-    showTransientStatus(tr("실행 취소/다시 실행 적용됨"), 1200);
-    return true;
-}
-
-bool MainWindow::restoreGlobalUiSnapshot(const GlobalUiHistorySnapshot& snapshot) {
-    if (snapshot.scope == GlobalUiSnapshotScope::ActiveProjectJsonOnly) {
-        return restoreActiveProjectJsonSnapshot(snapshot);
-    }
-    if (snapshot.backupRootPath.isEmpty() || !m_profileManager) {
-        return false;
-    }
-
-    const QString profilesSourceDir = QDir(snapshot.backupRootPath).filePath(QStringLiteral("profiles"));
-    const QString librarySourceDir = QDir(snapshot.backupRootPath).filePath(QStringLiteral("featureLibrary"));
-    const QString profilesTargetDir = m_profileManager->profilesDirectory();
-    const QString libraryTargetDir =
-        QDir(Application::dataDirectory()).filePath(QStringLiteral("featureLibrary"));
-
-    stopAllSessions();
-    maybeSave(true);
-
-    struct RestoreGuard {
-        MainWindow* window = nullptr;
-        ~RestoreGuard() {
-            if (window) {
-                window->m_restoringGlobalUiHistory = false;
-            }
-        }
-    } guard{this};
-    m_restoringGlobalUiHistory = true;
-
-    removeDirectoryRecursive(profilesTargetDir);
-    removeDirectoryRecursive(libraryTargetDir);
-    if (QDir(profilesSourceDir).exists() && !copyDirectoryRecursive(profilesSourceDir, profilesTargetDir)) {
-        return false;
-    }
-    if (QDir(librarySourceDir).exists() && !copyDirectoryRecursive(librarySourceDir, libraryTargetDir)) {
-        return false;
-    }
-
-    m_profileManager->initialize();
-    refreshProfileList();
-    loadActiveProfile(true);
-    refreshFeatureLibraryPanel();
-    syncProfileListSelection();
-    showTransientStatus(tr("실행 취소/다시 실행 적용됨"), 1200);
-    return true;
-}
-
-void MainWindow::onGlobalUndoRequested() {
-    if (m_globalUiUndoHistory.empty()) {
-        return;
-    }
-    const GlobalUiHistorySnapshot target = m_globalUiUndoHistory.back();
-    const GlobalUiHistorySnapshot redoSnapshot =
-        createGlobalUiSnapshot(QStringLiteral("redo"), target.scope);
-    if (redoSnapshot.backupRootPath.isEmpty()) {
-        return;
-    }
-    m_globalUiUndoHistory.pop_back();
-    if (!restoreGlobalUiSnapshot(target)) {
-        removeDirectoryRecursive(redoSnapshot.backupRootPath);
-        return;
-    }
-    m_globalUiRedoHistory.push_back(redoSnapshot);
-    constexpr int kMaxGlobalUiHistoryDepth = 20;
-    if (static_cast<int>(m_globalUiRedoHistory.size()) > kMaxGlobalUiHistoryDepth) {
-        removeDirectoryRecursive(m_globalUiRedoHistory.front().backupRootPath);
-        m_globalUiRedoHistory.erase(m_globalUiRedoHistory.begin());
-    }
-    removeDirectoryRecursive(target.backupRootPath);
-}
-
-void MainWindow::onGlobalRedoRequested() {
-    if (m_globalUiRedoHistory.empty()) {
-        return;
-    }
-    const GlobalUiHistorySnapshot target = m_globalUiRedoHistory.back();
-    const GlobalUiHistorySnapshot undoSnapshot =
-        createGlobalUiSnapshot(QStringLiteral("undo"), target.scope);
-    if (undoSnapshot.backupRootPath.isEmpty()) {
-        return;
-    }
-    m_globalUiRedoHistory.pop_back();
-    if (!restoreGlobalUiSnapshot(target)) {
-        removeDirectoryRecursive(undoSnapshot.backupRootPath);
-        return;
-    }
-    m_globalUiUndoHistory.push_back(undoSnapshot);
-    constexpr int kMaxGlobalUiHistoryDepth = 20;
-    if (static_cast<int>(m_globalUiUndoHistory.size()) > kMaxGlobalUiHistoryDepth) {
-        removeDirectoryRecursive(m_globalUiUndoHistory.front().backupRootPath);
-        m_globalUiUndoHistory.erase(m_globalUiUndoHistory.begin());
-    }
-    removeDirectoryRecursive(target.backupRootPath);
+void MainWindow::setupForegroundSessions() {
+    m_foregroundSessions=std::make_unique<ForegroundSessionController>(*m_profileManager,*m_captureTargets,this);
+    ForegroundSessionController::Host host;
+    host.snapshot=[this] {
+        ForegroundSessionController::Snapshot value;
+        value.switching=m_switchingProfile;value.pipeline=m_profileSwitchPipelineActive;
+        value.historyBusy=!m_profileManager->storageReady() || (m_workspaceHistory && m_workspaceHistory->isBusy()) || (m_profileActions && m_profileActions->busy());
+        value.runWithout=ProgramSettings::runWithoutTargetWindow();
+        value.shutdown=m_shutdownCoordinator && (m_shutdownCoordinator->busy() || m_shutdownCoordinator->ready());
+        value.deferred=m_profileSwitchCoordinator.deferredProfileSwitchId();
+        value.lastLinked=m_profileSwitchCoordinator.lastLinkedForegroundProfileId();
+        value.restoreRecent=m_profileSwitchCoordinator.shouldRestoreLinkedProfileOnPipbongFocus(2500);
+        return value;
+    };
+    host.foreground=[this]{return m_foregroundMonitor?m_foregroundMonitor->currentState():ForegroundWindowState{};};
+    host.syncDesktop=[this]{if(m_foregroundMonitor)m_foregroundMonitor->syncFromDesktopForeground();};
+    host.modifierHeld=[]{return isAltTabModifierHeld();};
+    host.synchronize=[this]{synchronizeRunWorkerState();};
+    host.flushDeferred=[this]{flushDeferredProfileSwitchIfIdle();};
+    host.ensureTriggers=[this]{scheduleEnsureTriggerMonitorEnginesRunning();};
+    host.updateDetails=[this]{updateTargetWindowDetails();};
+    host.resetLatch=[this]{if(m_hotkeyManager)m_hotkeyManager->resetHookLatchState();};
+    host.reconcileSessions=[this]{m_runSessionController.reconcileWithForegroundGate();};
+    host.resumeSessions=[this]{m_runSessionController.resumeWaitingScopedTargetForegroundSessions();};
+    host.applySwitch=[this](const auto& state){m_profileSwitchCoordinator.applyFromForegroundState(state);};
+    host.executeSwitch=[this](const QString& id,bool automatic){return executeProfileSwitch(id,automatic);};
+    host.captureHints=[this](HWND hwnd,const QString& title){m_targetWindowController.applyForegroundCaptureHints(hwnd,title);};
+    m_foregroundSessions->setHost(std::move(host));
 }

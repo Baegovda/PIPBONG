@@ -414,8 +414,6 @@ bool createNativeOverlay(OverlayState& state) {
 void ScreenRegionOverlay::dismissAll() {
 #ifdef _WIN32
     g_deferredAfterHostRestore = {};
-    MatchTestOverlay::dismissAll();
-    RoiPreviewOverlay::dismissAll();
     if (g_state) {
         finishPick(false, {});
         return;

@@ -21,7 +21,7 @@ Windows용 화면 자동화 프로그램입니다. 타겟을 지정한 뒤, 블�
 
 ## 빌드
 
-Windows 10/11, Visual Studio 2022, CMake 3.20+, vcpkg.
+Windows 10/11, Visual Studio 2022, CMake 3.25+, vcpkg.
 
 ```powershell
 .\scripts\build-release.ps1

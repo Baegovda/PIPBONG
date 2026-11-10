@@ -17,6 +17,7 @@ public:
     void syncFromWindowTitle();
     void setAlwaysOnTopCheckBox(QCheckBox* checkBox);
     bool hitTestCaptionDrag(const QPoint& globalPos) const;
+    bool hitTestCaptionAtWindowPoint(QPointF logicalClientPoint) const;
 
 protected:
     void showEvent(QShowEvent* event) override;

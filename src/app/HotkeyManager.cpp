@@ -236,6 +236,8 @@ void HotkeyManager::unregisterAll() {
     }
 #endif
     m_idToFeatureId.clear();
+    for (auto& entry : m_holdBindings) entry.registered->store(false, std::memory_order_relaxed);
+    for (auto& entry : m_mouseBindings) entry.registered->store(false, std::memory_order_relaxed);
     m_holdBindings.clear();
     m_toggleBindings.clear();
     m_mouseBindings.clear();
@@ -421,6 +423,22 @@ bool HotkeyManager::isHoldBindingStillActiveForRun(const std::string& featureId)
     (void)featureId;
 #endif
     return false;
+}
+
+std::function<bool()> HotkeyManager::holdStateReader(const std::string& featureId) const {
+    for (const auto& entry : m_holdBindings) {
+        if (entry.featureId == featureId) {
+            const HoldStateSnapshot snapshot{entry.binding, entry.allowExtraModifiers, entry.keyDown.state(), entry.registered};
+            return [snapshot] { return snapshot.active(); };
+        }
+    }
+    for (const auto& entry : m_mouseBindings) {
+        if (entry.featureId == featureId && entry.holdMode) {
+            const HoldStateSnapshot snapshot{entry.binding, entry.allowExtraModifiers, entry.buttonDown.state(), entry.registered};
+            return [snapshot] { return snapshot.active(); };
+        }
+    }
+    return [] { return false; };
 }
 
 bool HotkeyManager::reconcileHoldBindingDown(const std::string& featureId) {

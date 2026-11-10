@@ -26,6 +26,7 @@ struct TargetWindowListEntry {
 #endif
     std::wstring title;
     QString processPath;
+    unsigned long processId = 0;
     QString displayText;
     QIcon icon;
 };
@@ -44,6 +45,8 @@ struct TargetWindowListPickResult {
     HWND hwnd = nullptr;
 #endif
     QString title;
+    QString processPath;
+    unsigned long processId = 0;
 };
 
 bool targetWindowTitleMatchesMainBinding(const QString& windowTitle, const QString& mainBinding);

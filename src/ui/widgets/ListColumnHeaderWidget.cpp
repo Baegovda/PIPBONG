@@ -9,6 +9,7 @@
 #include <climits>
 #include <QPainter>
 #include <QPalette>
+#include <QLinearGradient>
 
 namespace {
 
@@ -66,12 +67,20 @@ void ListColumnHeaderWidget::paintHeaderChrome(QPainter* painter, const QRect& r
     } else {
         headerBg = headerBg.lighter(102);
     }
-    painter->fillRect(rect, headerBg);
+    QLinearGradient glass(rect.topLeft(), rect.bottomRight());
+    glass.setColorAt(0, headerBg.lighter(112));
+    glass.setColorAt(.5, headerBg);
+    glass.setColorAt(1, pal.color(QPalette::Base).lighter(108));
+    painter->fillRect(rect, glass);
+    if (darkThemeFromPalette(pal)) {
+        painter->fillRect(QRect(rect.left(), rect.top(), rect.width(), 1), QColor(246, 238, 255, 35));
+    }
 
     QColor bottomLine = pal.color(QPalette::Mid);
     if (darkThemeFromPalette(pal) && bottomLine.lightness() < 90) {
         bottomLine = bottomLine.lighter(140);
     }
+    bottomLine.setAlpha(90);
     painter->setPen(QPen(bottomLine, 1));
     painter->drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom());
 }
@@ -87,7 +96,7 @@ void ListColumnHeaderWidget::paintDividerGuides(QPainter* painter,
     } else if (!dark) {
         lineColor = lineColor.darker(115);
     }
-    lineColor.setAlpha(dark ? 170 : 150);
+    lineColor.setAlpha(dark ? 95 : 150);
 
     const int lineTop = 3;
     const int lineBottom = qMax(lineTop + 1, height - 3);
@@ -131,6 +140,7 @@ QColor ListColumnHeaderWidget::headerTextColor(const QPalette& pal) {
     const QColor highlight = pal.color(QPalette::Highlight);
     const bool darkTheme = darkThemeFromPalette(pal);
 
+    if (darkTheme) return secondaryHintTextColor(pal);
     if (highlight.isValid() && highlight != windowText) {
         if (darkTheme) {
             QColor accent = highlight.lighter(155);

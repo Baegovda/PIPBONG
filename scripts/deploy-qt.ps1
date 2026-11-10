@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "build-common.ps1")
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
@@ -6,7 +7,7 @@ if (-not (Test-Path "build\CMakeCache.txt")) {
     cmake --preset default
 }
 
-Stop-Process -Name PIPBONG -Force -ErrorAction SilentlyContinue
+Stop-RepoReleaseProcess -RepoRoot $repoRoot
 
 cmake --build build --config Release --target deploy-qt
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

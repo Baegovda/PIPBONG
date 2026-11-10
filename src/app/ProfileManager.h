@@ -1,4 +1,5 @@
 #pragma once
+#include "storage/ProfilePackageImport.h"
 
 #include "app/ProgramSettings.h"
 
@@ -25,6 +26,8 @@ public:
     explicit ProfileManager(const QString& dataDirectory);
 
     bool initialize();
+    bool storageReady() const { return m_storageReady; }
+    const QStringList& startupWarnings() const { return m_startupWarnings; }
     const std::vector<Profile>& profiles() const { return m_profiles; }
     QString activeProfileId() const { return m_activeProfileId; }
     QString defaultProfileId() const { return m_defaultProfileId; }
@@ -51,19 +54,21 @@ public:
     bool setSubTargetWindowTitle(const QString& id, const QString& title);
     bool updateProfileTargetBinding(const QString& id,
                                     const QString& title,
-                                    const QString& processPath);
+                                    const QString& processPath, bool replaceProcessPath = false);
     bool updateProfileSubTargetBinding(const QString& id,
                                        const QString& title,
-                                       const QString& processPath);
+                                       const QString& processPath, bool replaceProcessPath = false);
     void setProfileTargetWindowTitleInMemory(const QString& id, const QString& title);
     void setProfileSubTargetWindowTitleInMemory(const QString& id, const QString& title);
 
     bool setActiveProfile(const QString& id);
     bool setDefaultProfile(const QString& id);
     bool reorderProfiles(const QStringList& orderedIds);
-    QString addProfile(const QString& name);
+    QString addProfile(const QString& name, bool activate = true);
     bool renameProfile(const QString& id, const QString& name);
-    bool removeProfile(const QString& id);
+    struct Edit { QString name, mainTitle, subTitle, mainProcessPath, subProcessPath; bool makeDefault=false; };
+    bool applyEdit(const QString& id,const Edit& edit,QString* error=nullptr);
+    bool removeProfile(const QString& id, QString* error = nullptr);
     bool isDefaultProfile(const QString& id) const { return id == m_defaultProfileId; }
 
     /// Ensures workspace folder exists; unpacks the local @c .pipbong when @c project.json is missing.
@@ -71,6 +76,8 @@ public:
     bool sealProfilePackage(const QString& id) const;
     /// Imports a shared @c .pipbong as a new profile; returns new profile id or empty on failure.
     QString importProfileFromPackage(const QString& packagePath, const QString& preferredName = {});
+    ProfileImportRequest importRequest(const QString& packagePath,const QString& preferredName={})const;
+    QString commitImportedProfile(const std::shared_ptr<PreparedProfileImport>&,QString* error=nullptr);
 
     ProgramSettings::ProfileSettings loadSettings(const QString& id) const;
     /// When @p replaceLinkedProcessPath / @p replaceSubLinkedProcessPath are false
@@ -121,6 +128,8 @@ private:
     static QString createProfileId();
 
     QString m_dataDirectory;
+    bool m_storageReady=true;
+    QStringList m_startupWarnings;
     std::vector<Profile> m_profiles;
     QString m_activeProfileId;
     QString m_defaultProfileId;

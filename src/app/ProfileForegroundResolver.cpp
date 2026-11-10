@@ -1,3 +1,4 @@
+#include "app/ForegroundRunGate.h"
 #include "ProfileForegroundResolver.h"
 
 #include "core/capture/ScreenCapture.h"
@@ -133,6 +134,7 @@ QString profileIdForTitleBinding(const ProfileManager& profileManager,
             if (!trimmed.contains(binding, Qt::CaseInsensitive) || binding.length() <= bestLength) {
                 return;
             }
+            if (!linkedProc.isEmpty() && processPath.isEmpty()) return;
             if (!processPath.isEmpty()) {
                 if (!linkedProc.isEmpty()) {
                     if (processPath.compare(linkedProc, Qt::CaseInsensitive) != 0) {
@@ -167,19 +169,14 @@ void healProfileBindingsFromForeground(ProfileManager& profileManager,
         }
         const QString mainTitle = profile.targetWindowTitle.trimmed();
         const QString subTitle = profile.subTargetWindowTitle.trimmed();
-        if (!mainTitle.isEmpty() && fgTitle.contains(mainTitle, Qt::CaseInsensitive)) {
-            const QString stored = profileManager.linkedTargetProcessPath(profile.id);
-            if (stored.compare(fgPath, Qt::CaseInsensitive) != 0) {
-                profileManager.updateProfileTargetBinding(profile.id, mainTitle, fgPath);
-            }
-            continue;
-        }
-        if (!subTitle.isEmpty() && fgTitle.contains(subTitle, Qt::CaseInsensitive)) {
-            const QString stored = profileManager.subLinkedTargetProcessPath(profile.id);
-            if (stored.compare(fgPath, Qt::CaseInsensitive) != 0) {
-                profileManager.updateProfileSubTargetBinding(profile.id, subTitle, fgPath);
-            }
-        }
+        const bool sub=ForegroundRunGate::preferSubTitle(fgTitle,mainTitle,subTitle);
+        const auto& title=sub?subTitle:mainTitle;
+        if(title.isEmpty() || !fgTitle.contains(title,Qt::CaseInsensitive)
+            || linkedProcessPathOwnedByOtherProfile(profileManager,fgPath,profile.id))continue;
+        const auto stored=sub?profileManager.subLinkedTargetProcessPath(profile.id):profileManager.linkedTargetProcessPath(profile.id);
+        if(!stored.isEmpty())continue;
+        if(sub)profileManager.updateProfileSubTargetBinding(profile.id,title,fgPath);
+        else profileManager.updateProfileTargetBinding(profile.id,title,fgPath);
     }
 #else
     Q_UNUSED(profileManager);

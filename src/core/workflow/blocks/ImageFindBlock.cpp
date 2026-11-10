@@ -1464,9 +1464,6 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
         ctx.setImageFindPollAttempt(pollAttemptCount);
         lapStart = std::chrono::steady_clock::now();
 
-        if (!workflowDryRunEnvironment()) {
-            WorkflowMatchFeedbackOverlay::hideBeforeCapture();
-        }
         if (triggerMonitorPoll) {
             WorkflowRoiFlashOverlay::dismissAll();
         }
@@ -1514,8 +1511,18 @@ BlockResult ImageFindBlock::execute(ExecutionContext& ctx) {
                 return result;
             }
             const auto captureStart = std::chrono::steady_clock::now();
-            const cv::Mat haystack = ScreenCapture::captureSearchAreaForImageFind(
-                runtimeSearchArea, activeRegion, runtimePercentRegion);
+            cv::Mat haystack;
+            {
+                auto guard=workflowDryRunEnvironment()?WorkflowMatchFeedbackOverlay::CaptureLease{{},true}:
+                    WorkflowMatchFeedbackOverlay::prepareCapture();
+                if(!guard.ready) {
+                    accumulateMatchWork();BlockResult result;result.success=false;
+                    result.message="포인터 표시를 숨기지 못해 화면 감지를 중단했어요. 잠시 후 다시 실행해 주세요.";
+                    result.imageFindMatchDurationMs=matchWorkMs;result.imageFindPollAttempts=pollAttemptCount;return result;
+                }
+                haystack = ScreenCapture::captureSearchAreaForImageFind(
+                    runtimeSearchArea, activeRegion, runtimePercentRegion);
+            }
             pollCaptureUs += std::chrono::duration_cast<std::chrono::microseconds>(
                                  std::chrono::steady_clock::now() - captureStart)
                                  .count();

@@ -6,6 +6,8 @@
 
 #include <opencv2/imgproc.hpp>
 #include <QSettings>
+#include <QCoreApplication>
+#include <QThread>
 #include <QString>
 
 #ifdef _WIN32
@@ -280,7 +282,7 @@ void ScreenCapture::setLinkedTargetProcessPaths(const std::wstring& mainProcessP
 bool windowTitleContainsBinding(HWND hwnd, const std::wstring& binding);
 bool processPathMatchesBinding(const std::wstring& actual, const std::wstring& expected);
 HWND findVisibleWindowMatchingTitleImpl(const std::wstring& binding,
-                                        const std::wstring& processPath);
+                                        const std::wstring& processPath, bool preferUiCache = true);
 
 HWND ScreenCapture::findTargetWindow() {
     if (s_targetWindow && !IsWindow(s_targetWindow)) {
@@ -397,6 +399,11 @@ void ScreenCapture::activateTargetWindow() {
     restoreForegroundWindow(hwnd);
 }
 
+void ScreenCapture::activateTargetWindow(const std::wstring& title, const std::wstring& processPath) {
+    const HWND hwnd = findVisibleWindowMatchingTitle(title, processPath);
+    if (hwnd && GetForegroundWindow() != hwnd) restoreForegroundWindow(hwnd);
+}
+
 bool ScreenCapture::hasVisibleWindowMatchingTitle(const std::wstring& binding) {
     if (binding.empty()) {
         return false;
@@ -447,21 +454,19 @@ bool processPathMatchesBinding(const std::wstring& actual, const std::wstring& e
 }
 
 HWND findVisibleWindowMatchingTitleImpl(const std::wstring& binding,
-                                        const std::wstring& processPath) {
+                                        const std::wstring& processPath, bool preferUiCache) {
     if (binding.empty()) {
         return nullptr;
     }
 
-    if (ScreenCapture::targetWindow() && IsWindow(ScreenCapture::targetWindow())
-        && windowTitleContainsBinding(ScreenCapture::targetWindow(), binding)) {
-        if (processPath.empty()) {
-            return ScreenCapture::targetWindow();
-        }
+    // GUI helpers may prefer the selected window. Worker lookups must not read
+    // that mutable global cache; their ExecutionContext already owns a cache.
+    const HWND cached = preferUiCache ? ScreenCapture::targetWindow() : nullptr;
+    if (cached && IsWindow(cached) && windowTitleContainsBinding(cached, binding)) {
+        if (processPath.empty()) return cached;
         ScreenCapture::TargetWindowInfo info;
-        if (ScreenCapture::queryWindowInfo(ScreenCapture::targetWindow(), info)
-            && processPathMatchesBinding(info.processPath, processPath)) {
-            return ScreenCapture::targetWindow();
-        }
+        if (ScreenCapture::queryWindowInfo(cached, info)
+            && processPathMatchesBinding(info.processPath, processPath)) return cached;
     }
 
     struct EnumData {
@@ -498,7 +503,7 @@ HWND findVisibleWindowMatchingTitleImpl(const std::wstring& binding,
     if (data.pathMatch) {
         return data.pathMatch;
     }
-    return data.titleMatch;
+    return processPath.empty() ? data.titleMatch : nullptr;
 }
 
 HWND ScreenCapture::findVisibleWindowMatchingTitle(const std::wstring& binding) {
@@ -507,7 +512,9 @@ HWND ScreenCapture::findVisibleWindowMatchingTitle(const std::wstring& binding) 
 
 HWND ScreenCapture::findVisibleWindowMatchingTitle(const std::wstring& binding,
                                                    const std::wstring& processPath) {
-    return findVisibleWindowMatchingTitleImpl(binding, processPath);
+    const auto* app = QCoreApplication::instance();
+    const bool onGuiThread = app && QThread::currentThread() == app->thread();
+    return findVisibleWindowMatchingTitleImpl(binding, processPath, onGuiThread);
 }
 
 void ScreenCapture::warmupCapture() {

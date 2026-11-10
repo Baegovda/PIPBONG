@@ -4,6 +4,7 @@
 #include "ui/UiThemeColors.h"
 
 #include <QCloseEvent>
+#include <QMessageBox>
 #include <QEvent>
 #include <QFont>
 #include <QGuiApplication>
@@ -132,23 +133,25 @@ MemoDialog::MemoDialog(QWidget* parent)
     m_saveTimer = new QTimer(this);
     m_saveTimer->setSingleShot(true);
     m_saveTimer->setInterval(600);
-    connect(m_saveTimer, &QTimer::timeout, this, &MemoDialog::saveNow);
+    connect(m_saveTimer, &QTimer::timeout, this, [this] { if (!m_autoSaveSuspended) saveNow(); });
     connect(m_editor, &QTextEdit::textChanged, this, &MemoDialog::scheduleSave);
 
     updateChrome();
 }
 
-void MemoDialog::setProfile(const QString& profileId,
+bool MemoDialog::setProfile(const QString& profileId,
                             const QString& profileDirectory,
                             const QString& profileDisplayName) {
     if (profileId == m_profileId && profileDirectory == m_profileDirectory) {
         m_profileDisplayName = profileDisplayName;
         updateWindowTitle();
         updateChrome();
-        return;
+        return true;
     }
 
-    saveNow();
+    if (!saveNow()) return false;
+    QString text;
+    if (!ProfileMemoStore::load(profileDirectory, &text)) return false;
 
     m_profileId = profileId;
     m_profileDirectory = profileDirectory;
@@ -157,25 +160,46 @@ void MemoDialog::setProfile(const QString& profileId,
     updateChrome();
 
     m_loading = true;
-    QString text;
-    ProfileMemoStore::load(profileDirectory, &text);
     m_editor->setPlainText(text);
     m_loading = false;
+    m_lastSavedText = text;
+    m_hasSavedText = true;
+    return true;
 }
 
-void MemoDialog::saveNow() {
+bool MemoDialog::saveNow() {
     if (m_loading || m_profileDirectory.isEmpty()) {
-        return;
+        return true;
     }
     m_saveTimer->stop();
-    ProfileMemoStore::save(m_profileDirectory, m_editor->toPlainText());
+    const QString text = m_editor->toPlainText();
+    if (m_hasSavedText && text == m_lastSavedText) return true;
+    if (!ProfileMemoStore::save(m_profileDirectory, text)) return false;
+    m_lastSavedText = text;
+    m_hasSavedText = true;
+    return true;
 }
 
 void MemoDialog::scheduleSave() {
-    if (m_loading || m_profileDirectory.isEmpty()) {
+    if (m_loading || m_autoSaveSuspended || m_profileDirectory.isEmpty()) {
         return;
     }
     m_saveTimer->start();
+}
+
+void MemoDialog::setAutoSaveSuspended(bool suspended) {
+    m_autoSaveSuspended = suspended;
+    if (suspended) m_saveTimer->stop();
+    else if (!m_profileDirectory.isEmpty() && (!m_hasSavedText || m_editor->toPlainText() != m_lastSavedText)) m_saveTimer->start();
+}
+
+void MemoDialog::prepareForWorkspaceReload() {
+    m_saveTimer->stop();
+    m_loading = true;
+    m_editor->clear();
+    m_loading = false;
+    m_profileId.clear(); m_profileDirectory.clear(); m_profileDisplayName.clear();
+    m_lastSavedText.clear(); m_hasSavedText = false;
 }
 
 void MemoDialog::prepareForApplicationShutdown() {
@@ -196,7 +220,11 @@ void MemoDialog::changeEvent(QEvent* event) {
 }
 
 void MemoDialog::closeEvent(QCloseEvent* event) {
-    saveNow();
+    if (!saveNow()) {
+        event->ignore();
+        QMessageBox::warning(this, tr("메모 저장"), tr("메모를 저장하지 못했어요. 저장 위치와 여유 공간을 확인해 주세요."));
+        return;
+    }
     persistPlacement();
     persistOpenState(m_preserveOpenStateOnClose);
     m_preserveOpenStateOnClose = false;

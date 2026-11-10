@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QSet>
 #include <QUuid>
+#include <QSaveFile>
 
 #include <set>
 #include <algorithm>
@@ -50,6 +51,30 @@ void copyTemplateWithMetadata(const QString& srcTemplatePath, const QString& dst
         return;
     }
     copyFileOverwrite(metaSrc, dstTemplatePath + QStringLiteral(".capture.json"), outOk);
+}
+
+bool sameFileBytes(const QString& first, const QString& second) {
+    QFile a(first), b(second);
+    if (!a.exists() || !b.exists()) return a.exists() == b.exists();
+    if (a.size() != b.size() || !a.open(QIODevice::ReadOnly) || !b.open(QIODevice::ReadOnly)) return false;
+    while (!a.atEnd()) {
+        if (a.read(1024 * 1024) != b.read(1024 * 1024)) return false;
+    }
+    return a.error() == QFileDevice::NoError && b.error() == QFileDevice::NoError;
+}
+
+bool copyInsideRoot(const QString& path, const QString& root) {
+    const QString base = QDir::cleanPath(QFileInfo(root).absoluteFilePath());
+    const QString absolute = QDir::cleanPath(QFileInfo(path).absoluteFilePath());
+    if (!absolute.startsWith(base + QLatin1Char('/'), Qt::CaseInsensitive)) return false;
+    QFileInfo current(absolute);
+    while (current.absoluteFilePath().compare(base, Qt::CaseInsensitive) != 0) {
+        if (current.isSymLink() || current.isJunction()) return false;
+        const QString parent = current.absolutePath();
+        if (parent == current.absoluteFilePath()) return false;
+        current.setFile(parent);
+    }
+    return !current.isSymLink() && !current.isJunction();
 }
 
 int countTemplatesRecursive(const nlohmann::json& j) {
@@ -176,12 +201,12 @@ bool FeatureLibraryManager::saveEntryOrder(const QStringList& orderedIds) const 
     }
     j["entryIds"] = std::move(ids);
 
-    QFile file(manifestPath());
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    QSaveFile file(manifestPath());
+    if (!file.open(QIODevice::WriteOnly)) {
         return false;
     }
-    file.write(QString::fromStdString(j.dump(2)).toUtf8());
-    return true;
+    const QByteArray serialized = QString::fromStdString(j.dump(2)).toUtf8();
+    return file.write(serialized) == serialized.size() && file.commit();
 }
 
 void FeatureLibraryManager::appendEntryToOrder(const QString& entryId) const {
@@ -206,6 +231,7 @@ void FeatureLibraryManager::removeEntryFromOrder(const QString& entryId) const {
 }
 
 bool FeatureLibraryManager::reorderEntries(const QStringList& orderedIds) {
+    m_revision.fetch_add(1,std::memory_order_relaxed);
     if (orderedIds.isEmpty()) {
         return false;
     }
@@ -338,7 +364,8 @@ std::unique_ptr<Feature> FeatureLibraryManager::loadEntryFeature(const QString& 
     }
 
     auto feature = std::make_unique<Feature>();
-    JsonSerializer::featureFromJson(featureJson, *feature);
+    try { JsonSerializer::featureFromJson(featureJson, *feature); }
+    catch (const std::exception&) { return nullptr; }
     return feature;
 }
 
@@ -351,6 +378,7 @@ bool FeatureLibraryManager::saveFeatureToLibrary(const Feature& feature,
                                                   const QString& entryNameOverride,
                                                   QString* outEntryId,
                                                   QStringList* missingTemplatePaths) {
+    m_revision.fetch_add(1,std::memory_order_relaxed);
     const QString entryId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QString dir = entryDir(entryId);
     QDir().mkpath(dir);
@@ -370,6 +398,10 @@ bool FeatureLibraryManager::saveFeatureToLibrary(const Feature& feature,
     for (const QString& relPath : relTemplatePaths) {
         const QString src = QDir(sourceProjectDirectory).filePath(relPath);
         const QString dst = QDir(dir).filePath(relPath);
+        if (!copyInsideRoot(src, sourceProjectDirectory) || !copyInsideRoot(dst, dir)) {
+            if (missingTemplatePaths) missingTemplatePaths->push_back(relPath);
+            continue;
+        }
         if (!QFileInfo(src).exists()) {
             if (missingTemplatePaths) {
                 missingTemplatePaths->push_back(relPath);
@@ -384,12 +416,12 @@ bool FeatureLibraryManager::saveFeatureToLibrary(const Feature& feature,
     }
 
     const QString featureJsonOutPath = featureJsonPath(entryId);
-    QFile outFile(featureJsonOutPath);
-    if (!outFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    QSaveFile outFile(featureJsonOutPath);
+    if (!outFile.open(QIODevice::WriteOnly)) {
         return false;
     }
-    outFile.write(QString::fromStdString(featureJson.dump(2)).toUtf8());
-    outFile.close();
+    const QByteArray serialized = QString::fromStdString(featureJson.dump(2)).toUtf8();
+    if (outFile.write(serialized) != serialized.size() || !outFile.commit()) return false;
 
     if (outEntryId) {
         *outEntryId = entryId;
@@ -418,7 +450,8 @@ FeatureLibraryManager::ImportResult FeatureLibraryManager::importEntryToProfile(
     }
 
     auto temp = std::make_unique<Feature>();
-    JsonSerializer::featureFromJson(featureJson, *temp);
+    try { JsonSerializer::featureFromJson(featureJson, *temp); }
+    catch (const std::exception&) { return res; }
 
     // New profile feature id; preserve hotkey and all options stored in the library entry.
     res.feature = temp->duplicateAsNewInstance(/*preserveHotkey=*/true);
@@ -427,48 +460,61 @@ FeatureLibraryManager::ImportResult FeatureLibraryManager::importEntryToProfile(
         res.feature->setName(res.importedName.toStdString());
     }
 
-    // Copy referenced templates into this profile's templates folder.
-    const std::vector<QString> relTemplatePaths =
-        res.feature ? templatePathsFromFeature(*res.feature) : templatePathsFromFeatureJson(featureJson);
-    for (const QString& relPath : relTemplatePaths) {
-        const QString src = QDir(dir).filePath(relPath);
-        const QString dst = QDir(targetProjectDirectory).filePath(relPath);
-        if (!QFileInfo(src).exists()) {
-            res.missingTemplatePaths.push_back(relPath);
-            continue;
-        }
-        bool ok = true;
-        copyTemplateWithMetadata(src, dst, ok);
-        if (!ok) {
-            res.missingTemplatePaths.push_back(relPath);
-        }
-    }
+    if (res.feature) res.missingTemplatePaths = copyFeatureTemplatesBetweenDirectories(*res.feature, dir, targetProjectDirectory);
+
     return res;
 }
 
 QStringList FeatureLibraryManager::copyFeatureTemplatesBetweenDirectories(
-    const Feature& feature,
-    const QString& sourceProjectDirectory,
-    const QString& targetProjectDirectory) {
+    Feature& feature, const QString& sourceProjectDirectory, const QString& targetProjectDirectory) {
     QStringList missing;
-    const std::vector<QString> relTemplatePaths = templatePathsFromFeature(feature);
-    for (const QString& relPath : relTemplatePaths) {
-        const QString src = QDir(sourceProjectDirectory).filePath(relPath);
-        const QString dst = QDir(targetProjectDirectory).filePath(relPath);
-        if (!QFileInfo(src).exists()) {
-            missing.push_back(relPath);
+    QHash<QString, QString> remaps;
+    const QString metadataSuffix = QStringLiteral(".capture.json");
+    for (const QString& relPath : templatePathsFromFeature(feature)) {
+        const QString source = QDir(sourceProjectDirectory).filePath(relPath);
+        QString destination = QDir(targetProjectDirectory).filePath(relPath);
+        if (!copyInsideRoot(source, sourceProjectDirectory) || !copyInsideRoot(destination, targetProjectDirectory)) {
+            missing.append(relPath);
             continue;
         }
-        bool ok = true;
-        copyTemplateWithMetadata(src, dst, ok);
-        if (!ok) {
-            missing.push_back(relPath);
+        if (QFileInfo(source).isFile() && sameFileBytes(source, destination)
+            && sameFileBytes(source + metadataSuffix, destination + metadataSuffix)) continue;
+        QString newRelative = relPath;
+        if (QFileInfo::exists(destination) || QFileInfo::exists(destination + metadataSuffix)) {
+            const QFileInfo original(relPath);
+            const QString name = original.completeBaseName() + QLatin1Char('-') + QUuid::createUuid().toString(QUuid::WithoutBraces)
+                + (original.suffix().isEmpty() ? QString() : QLatin1Char('.') + original.suffix());
+            newRelative = QDir(original.path()).filePath(name);
+            destination = QDir(targetProjectDirectory).filePath(newRelative);
+        }
+        remaps.insert(relPath, newRelative);
+        if (!QFileInfo::exists(source) || !QDir().mkpath(QFileInfo(destination).absolutePath()) || !QFile::copy(source, destination)) {
+            missing.append(newRelative);
+            continue;
+        }
+        if (QFileInfo::exists(source + metadataSuffix) && !QFile::copy(source + metadataSuffix, destination + metadataSuffix)) missing.append(newRelative);
+    }
+    for (auto& block : feature.workflow().blocks()) {
+        auto* image = dynamic_cast<ImageFindBlock*>(block.get());
+        if (!image) continue;
+        for (std::string& path : image->templatePaths) {
+            const QString original = QString::fromStdString(path);
+            if (!remaps.contains(original)) continue;
+            const std::string replacement = remaps.value(original).toStdString();
+            auto label = image->templateLabels.find(path);
+            if (label != image->templateLabels.end() && replacement != path) {
+                const std::string text = label->second;
+                image->templateLabels.erase(label);
+                image->templateLabels[replacement] = text;
+            }
+            path = replacement;
         }
     }
     return missing;
 }
 
 bool FeatureLibraryManager::removeEntry(const QString& entryId) {
+    m_revision.fetch_add(1,std::memory_order_relaxed);
     if (entryId.isEmpty()) {
         return false;
     }

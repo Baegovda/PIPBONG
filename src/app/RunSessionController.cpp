@@ -5,6 +5,8 @@
 #include "model/Project.h"
 
 #include <QTimer>
+#include <QPointer>
+#include <vector>
 
 RunSessionController::RunSessionController(QObject* parent)
     : QObject(parent) {}
@@ -33,6 +35,7 @@ void RunSessionController::reconcileWithForegroundGate() {
     bool needRunUiRefresh = false;
     for (auto& entry : *m_runSessions) {
         FeatureRunSession& session = entry.second;
+        if(!SessionRunPolicy::allowsPreparedLaunch(session.awaitingFirstTemplateRoi))continue;
         if (session.userStopRequested) {
             continue;
         }
@@ -115,9 +118,19 @@ void RunSessionController::resumeWaitingScopedTargetForegroundSessions() {
     }
 
     bool stillWaiting = false;
-    for (auto& entry : *m_runSessions) {
-        FeatureRunSession& session = entry.second;
+    const QPointer<RunSessionController> life(this);
+    std::vector<std::string> ids;
+    for(const auto& entry:*m_runSessions)ids.push_back(entry.first);
+    for (const auto& id : ids) {
+        if(!life || !m_runSessions)return;
+        const auto found=m_runSessions->find(id);if(found==m_runSessions->end())continue;
+        FeatureRunSession& session = found->second;
+        if(!SessionRunPolicy::allowsPreparedLaunch(session.awaitingFirstTemplateRoi))continue;
         if (!session.waitingForScopedTargetForeground) {
+            continue;
+        }
+        if (session.userStopRequested) {
+            session.waitingForScopedTargetForeground = false;
             continue;
         }
 
@@ -168,27 +181,7 @@ void RunSessionController::resumeWaitingScopedTargetForegroundSessions() {
         }
     }
 
-    if (stillWaiting) {
+    if (life && stillWaiting) {
         scheduleScopedTargetForegroundResumePoll();
-    }
-}
-
-void RunSessionController::finishForegroundSessionGate(const FinishGateCallbacks& callbacks) {
-    if (callbacks.switchingProfile && callbacks.switchingProfile()) {
-        return;
-    }
-    if (callbacks.profileSwitchPipelineActive && callbacks.profileSwitchPipelineActive()) {
-        return;
-    }
-    if (callbacks.flushDeferredProfileSwitchIfIdle) {
-        callbacks.flushDeferredProfileSwitchIfIdle();
-    }
-    reconcileWithForegroundGate();
-    resumeWaitingScopedTargetForegroundSessions();
-    if (callbacks.scheduleEnsureTriggerMonitorEnginesRunning) {
-        callbacks.scheduleEnsureTriggerMonitorEnginesRunning();
-    }
-    if (callbacks.updateTargetWindowDetails) {
-        callbacks.updateTargetWindowDetails();
     }
 }

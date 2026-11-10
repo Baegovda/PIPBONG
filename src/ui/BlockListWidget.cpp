@@ -300,6 +300,9 @@ int blockListDividerHandleAt(const QPoint& pos, const BlockListColumnEdges& edge
     int bestColumn = 0;
     int bestDistance = INT_MAX;
     for (const Candidate& candidate : candidates) {
+        if (candidate.x <= 0) {
+            continue;
+        }
         if (!UiResizeHandle::isWithinHorizontalGrab(pos.x(), candidate.x)) {
             continue;
         }
@@ -326,6 +329,7 @@ QList<int> blockListDividerXs(const BlockListColumnEdges& edges, bool roiVisible
     if (roiVisible) {
         xs.append(edges.roiCorrectionDividerX);
     }
+    xs.erase(std::remove_if(xs.begin(), xs.end(), [](int x) { return x <= 0; }), xs.end());
     return xs;
 }
 
@@ -333,7 +337,7 @@ void initBlockListColumnHeader(BlockListWidget* table) {
     table->setColumnCount(kColumnCount);
     table->setHorizontalHeaderLabels({QStringLiteral("#"),
                                     BlockListWidget::tr("종류"),
-                                    BlockListWidget::tr("아이콘"),
+                                    BlockListWidget::tr("표시"),
                                     BlockListWidget::tr("동작"),
                                     BlockListWidget::tr("시간"),
                                     BlockListWidget::tr("탐색"),
@@ -1348,7 +1352,7 @@ BlockListWidget::BlockListWidget(QWidget* parent)
     setReorderEnabled(true);
     setAlternatingRowColors(false);
     setShowGrid(false);
-    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
     m_flashAnimation = new QVariantAnimation(this);
     m_flashAnimation->setStartValue(1.0);
@@ -1388,6 +1392,7 @@ BlockListWidget::BlockListWidget(QWidget* parent)
     });
     connect(horizontalScrollBar(), &QScrollBar::valueChanged, this, [this](int) {
         updateLoopRegionChrome();
+        if (m_columnHeader) m_columnHeader->syncToLayout();
     });
 
     connect(this, &QTableWidget::itemChanged, this, [this](QTableWidgetItem* changedItem) {
@@ -1482,15 +1487,14 @@ void BlockListWidget::restoreRowHeight(const QSettings& settings, const QString&
 }
 
 int BlockListWidget::totalFixedColumnWidth(bool includeSummaryWidth, int summaryWidth) const {
-    int total = m_columnLayout.indexWidth + m_columnLayout.previewWidth + m_columnLayout.actionWidth
-                + m_columnLayout.durationWidth + m_columnLayout.matchDurationWidth
-                + m_columnLayout.attemptsWidth + m_columnLayout.returnPrevWidth + m_columnLayout.retryWidth
-                + m_columnLayout.scoreWidth + m_columnLayout.matchWidth;
-    if (m_roiCorrectionColumnVisible) {
-        total += m_columnLayout.roiCorrectionWidth;
-    }
-    if (includeSummaryWidth) {
-        total += summaryWidth;
+    int total = 0;
+    for (int col = 0; col < kColumnCount; ++col) {
+        if (isColumnHidden(col)) continue;
+        if (col == kColSummary) {
+            if (includeSummaryWidth) total += summaryWidth;
+        } else {
+            total += columnWidthFromLayout(m_columnLayout, col);
+        }
     }
     return total;
 }
@@ -1740,7 +1744,7 @@ void BlockListWidget::wireListColumnHeader(ListColumnHeaderWidget* header, Block
         ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.action,
                                                    BlockListWidget::tr("종류"), align);
         ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.preview,
-                                                   BlockListWidget::tr("아이콘"), align);
+                                                   BlockListWidget::tr("표시"), align);
         ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.summary,
                                                    BlockListWidget::tr("동작"), align);
         ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.duration,
@@ -1760,7 +1764,9 @@ void BlockListWidget::wireListColumnHeader(ListColumnHeaderWidget* header, Block
                                                        BlockListWidget::tr("ROI"), align);
         }
         ListColumnHeaderWidget::drawElidedCellText(ctx.painter, edges.cols.match,
-                                                   BlockListWidget::tr("매칭"), align);
+                                                   table->detailedColumnsVisible()
+                                                       ? BlockListWidget::tr("매칭")
+                                                       : BlockListWidget::tr("결과"), align);
     });
 
     header->setDividerXsProvider([table](const QRect& rect) {
@@ -1805,9 +1811,21 @@ void BlockListWidget::wireListColumnHeader(ListColumnHeaderWidget* header, Block
 void BlockListWidget::setRoiCorrectionColumnVisible(bool visible) {
     m_roiCorrectionColumnVisible = visible;
     if (QHeaderView* header = horizontalHeader()) {
-        header->setSectionHidden(kColRoiCorrection, !visible);
+        header->setSectionHidden(kColRoiCorrection, !visible || !m_detailedColumnsVisible);
     }
     applyColumnLayoutToTable(true);
+    if (m_columnHeader) m_columnHeader->syncToLayout();
+}
+
+void BlockListWidget::setDetailedColumnsVisible(bool visible) {
+    m_detailedColumnsVisible = visible;
+    for (int column : {kColMatchDuration, kColAttempts, kColReturnPrev, kColRetryAfterNext, kColScore}) {
+        setColumnHidden(column, !visible);
+    }
+    setColumnHidden(kColRoiCorrection, !visible || !m_roiCorrectionColumnVisible);
+    applyColumnLayoutToTable(true);
+    if (m_columnHeader) m_columnHeader->syncToLayout();
+    viewport()->update();
 }
 
 void BlockListWidget::setBlockRoiCorrection(int row, bool enabled, bool interactive) {

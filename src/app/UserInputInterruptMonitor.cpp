@@ -64,6 +64,7 @@ UserInputInterruptMonitor& UserInputInterruptMonitor::instance() {
 
 void UserInputInterruptMonitor::setHandler(InterruptHandler handler) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    ++m_handlerRevision;
     m_handler = std::move(handler);
 }
 
@@ -75,9 +76,13 @@ void UserInputInterruptMonitor::setHotkeyExemptionCheck(std::function<bool(int v
 void UserInputInterruptMonitor::registerSession(const std::string& featureId,
                                                 UserInputInterruptMode mode,
                                                 const HotkeyBinding& featureHotkey,
-                                                ExecutionContext* context,
+                                                const std::shared_ptr<ExecutionContext>& context,
                                                 bool keyboardInterrupt) {
-    if (featureId.empty() || !context) {
+    if (featureId.empty()) {
+        return;
+    }
+    if (!context || mode == UserInputInterruptMode::None) {
+        unregisterSession(featureId);
         return;
     }
 
@@ -89,8 +94,13 @@ void UserInputInterruptMonitor::registerSession(const std::string& featureId,
         entry.context = context;
         entry.keyboardInterrupt = keyboardInterrupt;
         const auto existing = m_sessions.find(featureId);
-        if (existing != m_sessions.end()) {
+        if (existing != m_sessions.end() && existing->second.context.lock() == context
+            && existing->second.mode == mode && existing->second.featureHotkey == featureHotkey
+            && existing->second.keyboardInterrupt == keyboardInterrupt) {
             entry.lastInterruptAt = existing->second.lastInterruptAt;
+            entry.registration = existing->second.registration;
+        } else {
+            entry.registration = ++m_nextRegistration;
         }
         m_sessions[featureId] = entry;
     }
@@ -201,7 +211,7 @@ bool UserInputInterruptMonitor::shouldSuppressUserInputInterruptOnAnySession(int
     std::lock_guard<std::mutex> lock(m_mutex);
     for (const auto& [featureId, entry] : m_sessions) {
         (void)featureId;
-        if (entry.context && entry.context->shouldSuppressUserInputInterrupt(virtualKey)) {
+        if (const auto context = entry.context.lock(); context && context->shouldSuppressUserInputInterrupt(virtualKey)) {
             return true;
         }
     }
@@ -258,14 +268,14 @@ void UserInputInterruptMonitor::notifyPhysicalInput(int virtualKey) {
         return;
     }
 
-    Q_UNUSED(virtualKey);
-
-    std::vector<std::string> targets;
-    InterruptHandler handler;
+    struct Target { std::string id; std::uint64_t registration; };
+    std::vector<Target> targets;
+    std::uint64_t revision;
     std::function<bool(int)> hotkeyExemptionCheck;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        handler = m_handler;
+        if (!m_handler) return;
+        revision = m_handlerRevision;
         hotkeyExemptionCheck = m_hotkeyExemptionCheck;
 
         if (hotkeyExemptionCheck && hotkeyExemptionCheck(virtualKey)) {
@@ -273,27 +283,42 @@ void UserInputInterruptMonitor::notifyPhysicalInput(int virtualKey) {
         }
 
         const auto now = std::chrono::steady_clock::now();
+        const bool mouse = virtualKey == 1 || virtualKey == 2 || virtualKey == 4 || virtualKey == 5 || virtualKey == 6;
         for (auto& [featureId, entry] : m_sessions) {
-            if (!entry.context) {
+            const auto context = entry.context.lock();
+            if (!context || context->shouldStop() || entry.mode == UserInputInterruptMode::None
+                || (!mouse && !entry.keyboardInterrupt)) {
                 continue;
             }
             if (now - entry.lastInterruptAt < kInterruptCooldown) {
                 continue;
             }
             entry.lastInterruptAt = now;
-            targets.push_back(featureId);
+            targets.push_back({featureId, entry.registration});
         }
     }
 
-    if (!handler || targets.empty()) {
+    if (targets.empty() || !QCoreApplication::instance()) {
         return;
     }
 
-    for (const std::string& featureId : targets) {
-        const std::string capturedId = featureId;
+    for (const auto& target : targets) {
         QMetaObject::invokeMethod(
             QCoreApplication::instance(),
-            [handler, capturedId]() { handler(capturedId); },
+            [this, target, revision]() {
+                InterruptHandler handler;
+                std::shared_ptr<ExecutionContext> context;
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    const auto found = m_sessions.find(target.id);
+                    if (revision != m_handlerRevision || found == m_sessions.end()
+                        || found->second.registration != target.registration) return;
+                    context = found->second.context.lock();
+                    if (!context || context->shouldStop()) return;
+                    handler = m_handler;
+                }
+                if (handler) handler(target.id, context);
+            },
             Qt::QueuedConnection);
     }
 }

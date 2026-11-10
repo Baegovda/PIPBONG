@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -57,22 +58,45 @@ QString updaterExecutablePath() {
 
 } // namespace
 
-UpdateChecker::UpdateChecker(QWidget* parentWidget)
+UpdateChecker::UpdateChecker(QWidget* parentWidget, QNetworkAccessManager* network)
     : QObject(parentWidget)
     , m_parentWidget(parentWidget)
-    , m_network(new QNetworkAccessManager(this)) {}
+    , m_network(network ? network : new QNetworkAccessManager(this)) {}
+
+bool UpdateChecker::verifyDownload(const ReleaseInfo& release, const QByteArray& payload) {
+    return release.assetSizeBytes > 0 && payload.size() == release.assetSizeBytes
+        && release.assetSha256.size() == 64
+        && QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex()
+            == release.assetSha256.toLatin1();
+}
 
 void UpdateChecker::checkForUpdates(CheckUiMode mode) {
+    if (m_downloading) return;
+    cancelActiveReply();
     m_checkUiMode = mode;
-    if (m_activeReply) {
-        m_activeReply->abort();
-        m_activeReply->deleteLater();
-        m_activeReply = nullptr;
-    }
 
     QNetworkReply* reply = m_network->get(makeGitHubRequest(QUrl(githubLatestReleaseApiUrl())));
     m_activeReply = reply;
-    connect(reply, &QNetworkReply::finished, this, &UpdateChecker::onCheckReplyFinished);
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        if (m_activeReply == reply) onCheckReplyFinished();
+    });
+}
+
+void UpdateChecker::cancelActiveReply() {
+    QNetworkReply* old = m_activeReply;
+    m_activeReply = nullptr;
+    if (!old) return;
+    disconnect(old, nullptr, this, nullptr);
+    old->abort();
+    old->deleteLater();
+}
+
+void UpdateChecker::failInstall(const QString& message) {
+    m_downloading = false;
+    m_downloadDirectory.reset();
+    if (m_downloadProgressDialog) m_downloadProgressDialog->close();
+    emit installFailed();
+    if (m_parentWidget) QMessageBox::warning(m_parentWidget, tr("업데이트"), message);
 }
 
 bool UpdateChecker::hasPendingUpdate() const {
@@ -124,7 +148,11 @@ void UpdateChecker::onCheckReplyFinished() {
                 }
                 release.downloadUrl =
                     QString::fromStdString(asset.value("browser_download_url", std::string()));
-                release.assetSizeBytes = asset.value("size", 0);
+                release.assetSizeBytes = asset.value("size", qint64{0});
+                const QString digest = QString::fromStdString(asset.value("digest", std::string()));
+                if (digest.startsWith(QStringLiteral("sha256:"))) {
+                    release.assetSha256 = digest.mid(7).toLower();
+                }
                 break;
             }
         }
@@ -158,9 +186,10 @@ void UpdateChecker::finishCheck(bool success,
         }
     }
 
+    const CheckUiMode completedMode = m_checkUiMode;
     emit checkFinished(success, updateAvailable, errorMessage);
 
-    if (m_checkUiMode == CheckUiMode::Silent || !m_parentWidget) {
+    if (completedMode == CheckUiMode::Silent || !m_parentWidget) {
         return;
     }
 
@@ -194,10 +223,9 @@ void UpdateChecker::finishCheck(bool success,
 }
 
 void UpdateChecker::downloadAndInstall(const ReleaseInfo& release) {
+    if (m_downloading) return;
     if (!QFileInfo::exists(updaterExecutablePath())) {
-        QMessageBox::warning(
-            m_parentWidget,
-            tr("업데이트"),
+        failInstall(
             tr("업데이터(%1)를 찾을 수 없습니다.\n"
                "프로그램 폴더에 PIPBONGUpdater.exe가 있는지 확인하거나,\n"
                "GitHub 릴리즈에서 PIPBONG-win64.zip을 수동으로 받아 주세요.")
@@ -206,28 +234,34 @@ void UpdateChecker::downloadAndInstall(const ReleaseInfo& release) {
     }
 
     const QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    m_pendingDownloadPath =
-        QDir(tempDir).filePath(QStringLiteral("PIPBONG-win64.zip"));
-    QFile::remove(m_pendingDownloadPath);
+    m_downloadDirectory = std::make_unique<QTemporaryDir>(QDir(tempDir).filePath(QStringLiteral("PIPBONG-update-XXXXXX")));
+    if (!m_downloadDirectory->isValid()) {
+        failInstall(tr("업데이트 임시 폴더를 만들지 못했어요."));
+        return;
+    }
+    m_pendingDownloadPath = m_downloadDirectory->filePath(QStringLiteral("PIPBONG-win64.zip"));
     m_pendingRelease = release;
 
-    if (m_activeReply) {
-        m_activeReply->abort();
-        m_activeReply->deleteLater();
-        m_activeReply = nullptr;
-    }
+    cancelActiveReply();
 
     if (m_downloadProgressDialog) {
         m_downloadProgressDialog->close();
         m_downloadProgressDialog = nullptr;
     }
 
-    m_downloadProgressDialog = new QProgressDialog(tr("업데이트 다운로드 중…"), tr("취소"), 0, 100, m_parentWidget);
-    m_downloadProgressDialog->setWindowModality(Qt::WindowModal);
-    m_downloadProgressDialog->setMinimumDuration(0);
-    m_downloadProgressDialog->setValue(0);
-    m_downloadProgressDialog->setAttribute(Qt::WA_DeleteOnClose);
-    connect(m_downloadProgressDialog, &QObject::destroyed, this, [this]() { m_downloadProgressDialog = nullptr; });
+    m_downloading = true;
+    emit installStarted();
+    if (m_parentWidget) {
+        auto* dialog = new QProgressDialog(tr("업데이트 다운로드 중…"), tr("취소"), 0, 100, m_parentWidget);
+        m_downloadProgressDialog = dialog;
+        dialog->setWindowModality(Qt::WindowModal);
+        dialog->setMinimumDuration(0);
+        dialog->setValue(0);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(dialog, &QObject::destroyed, this, [this, dialog]() {
+            if (m_downloadProgressDialog == dialog) m_downloadProgressDialog = nullptr;
+        });
+    }
 
     QNetworkReply* reply = m_network->get(makeGitHubRequest(QUrl(release.downloadUrl)));
     m_activeReply = reply;
@@ -239,8 +273,10 @@ void UpdateChecker::downloadAndInstall(const ReleaseInfo& release) {
         m_downloadProgressDialog->setMaximum(static_cast<int>(total));
         m_downloadProgressDialog->setValue(static_cast<int>(received));
     });
-    connect(m_downloadProgressDialog, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
-    connect(reply, &QNetworkReply::finished, this, &UpdateChecker::onDownloadFinished);
+    if (m_downloadProgressDialog) connect(m_downloadProgressDialog, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        if (m_activeReply == reply) onDownloadFinished();
+    });
 }
 
 void UpdateChecker::onDownloadFinished() {
@@ -253,32 +289,42 @@ void UpdateChecker::onDownloadFinished() {
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
-        QMessageBox::warning(m_parentWidget,
-                             tr("업데이트"),
-                             tr("다운로드에 실패했습니다.\n%1").arg(reply->errorString()));
         QFile::remove(m_pendingDownloadPath);
+        failInstall(tr("다운로드에 실패했습니다.\n%1").arg(reply->errorString()));
         return;
     }
 
     QFile file(m_pendingDownloadPath);
     if (!file.open(QIODevice::WriteOnly)) {
-        QMessageBox::warning(m_parentWidget,
-                             tr("업데이트"),
-                             tr("다운로드 파일을 저장하지 못했습니다.\n%1").arg(file.errorString()));
+        failInstall(tr("다운로드 파일을 저장하지 못했습니다.\n%1").arg(file.errorString()));
         return;
     }
-    file.write(reply->readAll());
+    const QByteArray payload = reply->readAll();
+    if (!verifyDownload(m_pendingRelease, payload)) {
+        file.close();
+        QFile::remove(m_pendingDownloadPath);
+        failInstall(tr("업데이트 파일 검증에 실패했습니다. 다시 다운로드해 주세요."));
+        return;
+    }
+    if (file.write(payload) != payload.size() || !file.flush()) {
+        file.close();
+        QFile::remove(m_pendingDownloadPath);
+        failInstall(tr("업데이트 파일을 저장하지 못했습니다."));
+        return;
+    }
     file.close();
 
     const QFileInfo downloaded(m_pendingDownloadPath);
     if (!downloaded.exists() || downloaded.size() < 5 * 1024 * 1024) {
-        QMessageBox::warning(m_parentWidget,
-                             tr("업데이트"),
-                             tr("다운로드한 파일이 올바르지 않습니다."));
         QFile::remove(m_pendingDownloadPath);
+        failInstall(tr("다운로드한 파일이 올바르지 않습니다."));
         return;
     }
 
+    if (m_installPreflight && !m_installPreflight()) {
+        failInstall(tr("현재 내용을 저장하지 못해 업데이트 설치를 중단했어요. 저장 위치와 여유 공간을 확인해 주세요."));
+        return;
+    }
     const QString installDir = QCoreApplication::applicationDirPath();
     const QString updaterExe = updaterExecutablePath();
 #ifdef _WIN32
@@ -287,7 +333,7 @@ void UpdateChecker::onDownloadFinished() {
     const QString pid = QString::number(QCoreApplication::applicationPid());
 #endif
 
-    const bool started = QProcess::startDetached(
+    const bool started = launchUpdater(
         updaterExe,
         {QStringLiteral("--install-zip"),
          QDir::toNativeSeparators(m_pendingDownloadPath),
@@ -295,11 +341,10 @@ void UpdateChecker::onDownloadFinished() {
          pid});
 
     if (!started) {
-        QMessageBox::warning(m_parentWidget,
-                             tr("업데이트"),
-                             tr("업데이터를 실행하지 못했습니다."));
+        failInstall(tr("업데이터를 실행하지 못했습니다."));
         return;
     }
+    m_downloadDirectory->setAutoRemove(false); // Detached updater reads after app exit.
 
     if (m_downloadProgressDialog) {
         m_downloadProgressDialog->close();
@@ -308,4 +353,8 @@ void UpdateChecker::onDownloadFinished() {
 
     // Defer shutdown so the download dialog and network reply handlers finish cleanly.
     QTimer::singleShot(0, this, [this]() { emit readyToRestartForUpdate(); });
+}
+
+bool UpdateChecker::launchUpdater(const QString& executable, const QStringList& arguments) {
+    return QProcess::startDetached(executable, arguments);
 }

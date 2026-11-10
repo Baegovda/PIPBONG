@@ -1,4 +1,5 @@
 #include "storage/JsonSerializer.h"
+#include "storage/ProjectHistoryStore.h"
 
 #include "core/workflow/BlockFactory.h"
 #include "core/workflow/WorkflowLoopRegion.h"
@@ -15,6 +16,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QSaveFile>
 
 #include <fstream>
 
@@ -197,12 +199,21 @@ bool JsonSerializer::saveToFile(const Project& project,
     QDir().mkpath(QFileInfo(filePath).absolutePath());
     QDir().mkpath(projectDirectory);
 
-    std::ofstream out(filePath.toStdString(), std::ios::binary);
-    if (!out.is_open()) {
+    QSaveFile out(filePath);
+    if (!out.open(QIODevice::WriteOnly)) {
         return false;
     }
-    out << root.dump(2);
-    return true;
+    const std::string serialized = root.dump(2);
+    if (out.write(serialized.data(), static_cast<qint64>(serialized.size()))
+        != static_cast<qint64>(serialized.size())) {
+        out.cancelWriting();
+        return false;
+    }
+    if (!ProjectHistoryStore::preserveBeforeSave(filePath, QByteArray::fromStdString(serialized))) {
+        out.cancelWriting();
+        return false;
+    }
+    return out.commit();
 }
 
 std::unique_ptr<Project> JsonSerializer::loadFromFile(const QString& filePath,
@@ -212,48 +223,54 @@ std::unique_ptr<Project> JsonSerializer::loadFromFile(const QString& filePath,
         return nullptr;
     }
 
-    nlohmann::json root;
     try {
-        root = nlohmann::json::parse(file.readAll().constData());
-    } catch (...) {
+        const auto root = nlohmann::json::parse(file.readAll().constData());
+
+        if (!root.is_object()
+            || (root.contains("features") && !root["features"].is_array())
+            || (root.contains("featureGroups") && !root["featureGroups"].is_array())
+            || root.value("version", 1) != 1) {
+            return nullptr;
+        }
+
+        auto project = std::make_unique<Project>();
+        project->setTargetWindowTitle(root.value("targetWindowTitle", ""));
+
+        QString projectDirectory;
+        if (root.contains("projectDirectory")) {
+            projectDirectory = QString::fromStdString(root.value("projectDirectory", ""));
+        }
+        if (projectDirectory.isEmpty()) {
+            projectDirectory = QFileInfo(filePath).absolutePath();
+        }
+
+        if (root.contains("featureGroups") && root["featureGroups"].is_array()) {
+            for (const auto& groupJson : root["featureGroups"]) {
+                FeatureGroup group(groupJson.value("name", "그룹"));
+                if (groupJson.contains("id")) {
+                    group.setId(groupJson.value("id", group.id()));
+                }
+                project->featureGroups().push_back(std::move(group));
+            }
+        }
+
+        if (root.contains("features") && root["features"].is_array()) {
+            for (const auto& featureJson : root["features"]) {
+                auto feature = std::make_unique<Feature>();
+                featureFromJsonImpl(featureJson, *feature);
+                project->features().push_back(std::move(feature));
+            }
+        }
+
+        FeatureGroupMutation::repairOnLoad(*project);
+
+        if (projectDirectoryOut) {
+            *projectDirectoryOut = projectDirectory;
+        }
+        return project;
+    } catch (const std::exception&) {
         return nullptr;
     }
-
-    auto project = std::make_unique<Project>();
-    project->setTargetWindowTitle(root.value("targetWindowTitle", ""));
-
-    QString projectDirectory;
-    if (root.contains("projectDirectory")) {
-        projectDirectory = QString::fromStdString(root.value("projectDirectory", ""));
-    }
-    if (projectDirectory.isEmpty()) {
-        projectDirectory = QFileInfo(filePath).absolutePath();
-    }
-    if (projectDirectoryOut) {
-        *projectDirectoryOut = projectDirectory;
-    }
-
-    if (root.contains("featureGroups") && root["featureGroups"].is_array()) {
-        for (const auto& groupJson : root["featureGroups"]) {
-            FeatureGroup group(groupJson.value("name", "그룹"));
-            if (groupJson.contains("id")) {
-                group.setId(groupJson.value("id", group.id()));
-            }
-            project->featureGroups().push_back(std::move(group));
-        }
-    }
-
-    if (root.contains("features") && root["features"].is_array()) {
-        for (const auto& featureJson : root["features"]) {
-            auto feature = std::make_unique<Feature>();
-            featureFromJsonImpl(featureJson, *feature);
-            project->features().push_back(std::move(feature));
-        }
-    }
-
-    FeatureGroupMutation::repairOnLoad(*project);
-
-    return project;
 }
 
 nlohmann::json JsonSerializer::workflowToJson(const Workflow& workflow) {

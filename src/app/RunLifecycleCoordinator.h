@@ -30,7 +30,7 @@ public:
     static const FeatureRunSession* sessionForId(const std::map<std::string, FeatureRunSession>& sessions,
                                                  const std::string& featureId);
 
-    /// Resolve session from `WorkflowEngine` signal sender (active map + abandoned-engine fallback).
+    /// Resolve session from `WorkflowEngine` signal sender (current engine identity only; abandoned senders are ignored).
     static FeatureRunSession* sessionForEngine(class MainWindow& window, const QObject* sender);
 
     /// Hold retap: block new physical start while engine or mux lane is still active.
@@ -103,7 +103,7 @@ public:
                                  const std::string& featureId,
                                  bool success,
                                  const QString& message,
-                                 bool deferUiUpdate);
+                                 bool deferUiUpdate = false);
 
     enum class ExistingSessionReconcileOutcome {
         NoExistingSession,
@@ -158,6 +158,49 @@ public:
                                 Feature* feature,
                                 bool fromHotkey,
                                 bool skipTargetActivationOnStart);
+
+    // Launch and teardown entry points shared with MainWindow.
+    static void abandonSessionEngine(class MainWindow& window, FeatureRunSession& session);
+    static std::wstring captureTargetProcessPath(class MainWindow& window,
+        const FeatureRunSession& session, const Feature& feature, const std::wstring& title);
+    static void schedulePruneAbandonedEngines(class MainWindow& window);
+    static void onEngineFinished(class MainWindow& window,
+                                               const QObject* engineSender,
+                                               const bool success,
+                                               const QString& message);
+    static void continueRepeatSession(class MainWindow& window,
+                                                    FeatureRunSession& session,
+                                                    Feature* feature,
+                                                    bool success,
+                                                    const QString& message);
+    static void scheduleRepeatIteration(class MainWindow& window,
+                                                      FeatureRunSession& session,
+                                                      Feature* feature,
+                                                      bool success,
+                                                      const QString& message);
+    static void scheduleTriggerCooldown(class MainWindow& window,
+                                                      FeatureRunSession& session,
+                                                      Feature* feature);
+    static void scheduleDeferredTriggerMonitorRestart(class MainWindow& window,
+                                                                    FeatureRunSession& session,
+                                                                    Feature* feature,
+                                                                    int delayMs);
+    static void handleTriggerEngineFinished(class MainWindow& window,
+                                                          FeatureRunSession& session,
+                                                          Feature* feature,
+                                                          bool success,
+                                                          const QString& message);
+    static void launchWorkflowRun(class MainWindow& window,
+                                                FeatureRunSession& session,
+                                                Feature* feature,
+                                                bool repeatIteration);
+    static void launchTriggerMonitor(class MainWindow& window,
+                                                   FeatureRunSession& session,
+                                                   Feature* feature,
+                                                   bool firstSessionStart);
+    static void launchTriggerActionRun(class MainWindow& window,
+                                                     FeatureRunSession& session,
+                                                     Feature* feature);
 
 private:
     static void finalizeDeferredStopSessions(class MainWindow& window);

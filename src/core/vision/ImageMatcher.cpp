@@ -13,6 +13,9 @@
 #include <cmath>
 
 #include <numeric>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 
 
 
@@ -718,11 +721,17 @@ PreparedTemplate ImageMatcher::loadTemplate(const std::string& path) {
 
 
 
-    templ.bgr = cv::imread(path, cv::IMREAD_COLOR);
+    // Open the UTF-8 application path as a native filesystem path. OpenCV's
+    // narrow filename API cannot reliably open Korean names on Windows.
+    std::ifstream file(std::filesystem::u8path(path),std::ios::binary);
+    if(!file)return templ;
+    const std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)),{});
+    if(file.bad() || bytes.empty())return templ;
+    templ.bgr = cv::imdecode(bytes, cv::IMREAD_COLOR);
 
     if (templ.bgr.empty()) {
 
-        templ.bgr = cv::imread(path, cv::IMREAD_UNCHANGED);
+        templ.bgr = cv::imdecode(bytes, cv::IMREAD_UNCHANGED);
 
     }
 

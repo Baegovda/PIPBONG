@@ -1,6 +1,7 @@
 #include "app/SessionRunPolicy.h"
 
 namespace SessionRunPolicy {
+bool allowsPreparedLaunch(bool awaitingFirstTemplateRoi){return !awaitingFirstTemplateRoi;}
 
 bool isSessionActive(const SessionRunPolicyInput& session) {
     if (session.engineRunning) {
@@ -80,6 +81,19 @@ bool hasAnyRunningSession(const std::vector<SessionRunPolicyInput>& sessions) {
     }
     return false;
 }
+bool allowsTargetBindingChange(const std::vector<SessionRunPolicyInput>& sessions) {
+    return !hasAnyRunningSession(sessions);
+}
+bool allowsTargetCenterPin(const std::vector<SessionRunPolicyInput>& sessions) {
+    for(const auto& session:sessions)if(isInActiveWorkflowRun(session) || isCapturingWorkflowBurst(session))return false;
+    return true;
+}
+bool shouldAdoptCaptureTarget(const SessionRunPolicyInput& session,bool lockedEmpty,bool lockedMissing,bool differs) {
+    const bool monitor=session.runningMode==FeatureRunMode::Trigger && session.triggerPhase==TriggerSessionPhase::Monitoring;
+    if(session.runningMode==FeatureRunMode::Trigger && session.triggerPhase==TriggerSessionPhase::RunningAction && !lockedEmpty)return false;
+    if(!monitor && session.engineRunning)return false;
+    return lockedEmpty || lockedMissing || (monitor && differs);
+}
 
 WorkflowRefreshDecision workflowRefreshOnProjectEdit(const SessionRunPolicyInput& session) {
     if (!isSessionActive(session)) {
@@ -124,6 +138,13 @@ int countActiveRepeatSessions(const std::vector<SessionRunPolicyInput>& sessions
         }
     }
     return count;
+}
+
+int fastRepeatUiFlushIntervalMs(int active) {
+    if (active >= 4) return 160;
+    if (active >= 3) return 120;
+    if (active >= 2) return 100;
+    return 80;
 }
 
 bool shouldCoalesceRunUiUpdates(const std::vector<SessionRunPolicyInput>& sessions) {

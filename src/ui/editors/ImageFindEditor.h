@@ -52,6 +52,7 @@ class AnimatedTwoWaySwitch;
 
 
 class ImageFindEditor : public QDialog {
+    friend class RoiPreviewOwnershipChecks;
 
     Q_OBJECT
 
@@ -80,6 +81,7 @@ public:
     void refreshTemplateCaptureHotkeyHook();
 
     void setResolutionTrackingActive(bool active);
+    void dismissRoiPreviewOverlay();
 
 
 
@@ -153,7 +155,6 @@ private:
 
     void showRoiPreviewOverlay(bool silentErrors = false);
 
-    void dismissRoiPreviewOverlay();
 
     void confirmFromRoiOverlay();
 
@@ -240,6 +241,7 @@ private:
 
     QPushButton* m_removeRoiButton = nullptr;
 
+    RoiPreviewOverlay::Owner m_roiPreviewOwner=std::make_shared<int>(0);
     QPushButton* m_roiPreviewButton = nullptr;
 
     QLabel* m_templatePreviewLabel = nullptr;

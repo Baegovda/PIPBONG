@@ -2,6 +2,7 @@
 
 #include <string>
 #include <unordered_set>
+#include <functional>
 
 enum class MouseButton {
     Left,
@@ -143,13 +144,49 @@ public:
     /// Untracked mouse button UP for a hold hotkey VK (side buttons, etc.).
     static void forceHotkeyMouseButtonUp(int virtualKey);
     /// Deliver swallowed Hold hotkey release to the target client when possible (PostMessage).
-    static void releaseHoldHotkeyToTarget(HWND hwnd, int virtualKey);
+    static void releaseHoldHotkeyToTarget(HWND hwnd, int virtualKey,
+                                         unsigned long expectedProcessId=0,
+                                         const std::wstring& expectedProcessPath={});
+#ifdef _WIN32
+    /// Read-only identity check; does not activate a window or emit input.
+    static bool holdReleaseTargetMatches(HWND hwnd,unsigned long processId,const std::wstring& processPath);
+    struct HoldReleaseBackendForTest {
+        std::function<bool(HWND,unsigned long,const std::wstring&)> validate;
+        std::function<bool(HWND,int&,int&)> clientPoint;
+        std::function<WPARAM()> mouseState;
+        std::function<bool(HWND,UINT,WPARAM,LPARAM)> post;
+    };
+    class ScopedHoldReleaseBackendForTest {
+    public:
+        explicit ScopedHoldReleaseBackendForTest(const HoldReleaseBackendForTest& backend);
+        ~ScopedHoldReleaseBackendForTest();
+        ScopedHoldReleaseBackendForTest(const ScopedHoldReleaseBackendForTest&)=delete;
+        ScopedHoldReleaseBackendForTest& operator=(const ScopedHoldReleaseBackendForTest&)=delete;
+    private:
+        const HoldReleaseBackendForTest* m_previous;
+    };
+#endif
     /// Brief untracked UP then DOWN so games feel a gap while the finger still holds
     /// (restores down state so a later physical KEYUP can end Hold mode).
     static void pulseHeldKeyGap(int virtualKey);
     static void sendText(const std::wstring& text);
 
 #ifdef _WIN32
+    struct KeyboardBackendForTest {
+        std::function<bool(int)> keyDown;
+        std::function<void(const INPUT*, unsigned)> record;
+    };
+    /// Thread-local, scoped substitute for keyboard-state reads and SendInput.
+    /// Tests exercise production guards/teardown without sending OS input.
+    class ScopedKeyboardBackendForTest {
+    public:
+        explicit ScopedKeyboardBackendForTest(const KeyboardBackendForTest& backend);
+        ~ScopedKeyboardBackendForTest();
+        ScopedKeyboardBackendForTest(const ScopedKeyboardBackendForTest&) = delete;
+        ScopedKeyboardBackendForTest& operator=(const ScopedKeyboardBackendForTest&) = delete;
+    private:
+        const KeyboardBackendForTest* m_previous;
+    };
     static SessionModifierSnapshot captureSessionModifierSnapshot();
     static void setActiveExecutionContext(ExecutionContext* context);
     static ExecutionContext* activeExecutionContext();

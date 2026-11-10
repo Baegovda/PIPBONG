@@ -71,6 +71,8 @@ ProfileEditDialog::ProfileEditDialog(const QString& profileName,
     if (m_subTargetWindowTitleEdit) {
         m_subTargetWindowTitleEdit->setText(subTargetWindowTitle);
     }
+    connect(m_targetWindowTitleEdit,&QLineEdit::textEdited,this,[this]{m_linkedTargetProcessPath.clear();refreshTargetBindingDetails();});
+    connect(m_subTargetWindowTitleEdit,&QLineEdit::textEdited,this,[this]{m_subLinkedTargetProcessPath.clear();refreshTargetBindingDetails();});
     if (m_defaultProfileCheck) {
         m_defaultProfileCheck->setChecked(defaultProfile);
     }
@@ -100,6 +102,8 @@ ProfileEditDialog::Result ProfileEditDialog::result() const {
         out.defaultProfile || !m_subTargetWindowTitleEdit
             ? QString()
             : m_subTargetWindowTitleEdit->text().trimmed();
+    out.linkedTargetProcessPath=out.targetWindowTitle.isEmpty()?QString():m_linkedTargetProcessPath;
+    out.subLinkedTargetProcessPath=out.subTargetWindowTitle.isEmpty()?QString():m_subLinkedTargetProcessPath;
     return out;
 }
 
@@ -147,6 +151,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
         profileForm->setSpacing(6);
 
         m_nameEdit = new QLineEdit(profileGroup);
+        m_nameEdit->setObjectName(QStringLiteral("profileNameEdit"));
         m_nameEdit->setPlaceholderText(tr("프로필 이름"));
         profileForm->addRow(tr("이름"), m_nameEdit);
 
@@ -171,6 +176,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     linkedLayout->addWidget(mainCaption);
 
     m_targetWindowTitleEdit = new QLineEdit(m_linkedProgramSection);
+    m_targetWindowTitleEdit->setObjectName(QStringLiteral("profileMainTargetEdit"));
     m_targetWindowTitleEdit->setPlaceholderText(tr("타겟 제목 또는 일부 문자열"));
     m_targetWindowTitleEdit->setToolTip(
         tr("기능 실행 시 기본으로 이 제목을 기준으로 타겟을 찾습니다. 비워두면 타겟 미지정 상태로 저장됩니다."));
@@ -223,6 +229,7 @@ void ProfileEditDialog::setupUi(const QString& currentTargetWindowTitle) {
     linkedLayout->addWidget(subCaption);
 
     m_subTargetWindowTitleEdit = new QLineEdit(m_linkedProgramSection);
+    m_subTargetWindowTitleEdit->setObjectName(QStringLiteral("profileSubTargetEdit"));
     m_subTargetWindowTitleEdit->setPlaceholderText(tr("예: 런처 창 제목 또는 일부 문자열"));
     m_subTargetWindowTitleEdit->setToolTip(
         tr("같은 프로필로 자동 전환되는 추가 감지 창입니다. 이 창이 포커스일 때 기능을 실행하면 서브 타겟이 적용됩니다."));

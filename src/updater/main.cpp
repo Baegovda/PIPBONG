@@ -186,7 +186,10 @@ bool runProcess(const std::wstring& commandLine, DWORD timeoutMs) {
         return false;
     }
 
-    WaitForSingleObject(processInfo.hProcess, timeoutMs);
+    if (WaitForSingleObject(processInfo.hProcess, timeoutMs) != WAIT_OBJECT_0) {
+        TerminateProcess(processInfo.hProcess, 1);
+        WaitForSingleObject(processInfo.hProcess, 5000);
+    }
     DWORD exitCode = 1;
     GetExitCodeProcess(processInfo.hProcess, &exitCode);
     CloseHandle(processInfo.hThread);
@@ -231,28 +234,73 @@ bool installFromZip(const std::filesystem::path& zipFile, const std::filesystem:
         }
     }
 
-    error.clear();
-    for (const auto& entry :
-         fs::recursive_directory_iterator(contentRoot, fs::directory_options::skip_permission_denied, error)) {
-        if (!entry.is_regular_file(error)) {
-            continue;
-        }
-        const fs::path relative = fs::relative(entry.path(), contentRoot, error);
-        if (error) {
-            continue;
-        }
-        const fs::path destination = installDir / relative;
-        if (!runningUpdater.empty() && pathsReferToSameFile(destination, runningUpdater)) {
-            continue;
-        }
-        fs::create_directories(destination.parent_path(), error);
-        error.clear();
-        fs::copy_file(entry.path(), destination, fs::copy_options::overwrite_existing, error);
-        if (error) {
+    // Validate the complete payload before touching the installed application.
+    for (const auto* required : {L"PIPBONG.exe", L"Qt6Core.dll", L"Qt6Gui.dll",
+                                 L"Qt6Widgets.dll", L"platforms/qwindows.dll"}) {
+        if (!fs::is_regular_file(contentRoot / required, error) || error) {
             fs::remove_all(extractDir, error);
             return false;
         }
     }
+    struct Replacement {
+        fs::path source;
+        fs::path destination;
+        fs::path backup;
+        bool existed = false;
+        bool attempted = false;
+    };
+    const fs::path backupDir = installDir / (L".pipbong-update-backup-" + std::to_wstring(GetCurrentProcessId()));
+    // Preserve a backup left by an interrupted update for manual recovery.
+    if (fs::exists(backupDir, error) || error) return false;
+    std::vector<Replacement> replacements;
+    for (fs::recursive_directory_iterator it(contentRoot, error), end; it != end && !error; it.increment(error)) {
+        if (it->is_symlink(error) || error) return false;
+        if (!it->is_regular_file(error)) continue;
+        const fs::path relative = it->path().lexically_relative(contentRoot);
+        if (relative.empty() || relative.is_absolute()) return false;
+        for (const auto& component : relative) {
+            if (component == L".." || component.wstring().find(L".pipbong-update-") == 0) return false;
+        }
+        const fs::path destination = installDir / relative;
+        if (!runningUpdater.empty() && pathsReferToSameFile(destination, runningUpdater)) continue;
+        replacements.push_back({it->path(), destination, backupDir / relative, fs::exists(destination, error)});
+        if (error) return false;
+    }
+    if (error) return false;
+    // Back up every overwritten file before starting the first replacement.
+    for (const auto& file : replacements) {
+        if (!file.existed) continue;
+        fs::create_directories(file.backup.parent_path(), error);
+        if (!error) fs::copy_file(file.destination, file.backup, fs::copy_options::none, error);
+        if (error) {
+            fs::remove_all(backupDir, error);
+            fs::remove_all(extractDir, error);
+            return false;
+        }
+    }
+    for (auto& file : replacements) {
+        fs::create_directories(file.destination.parent_path(), error);
+        if (!error) {
+            file.attempted = true;
+            fs::copy_file(file.source, file.destination, fs::copy_options::overwrite_existing, error);
+        }
+        if (!error) continue;
+        bool rollbackOk = true;
+        for (auto it = replacements.rbegin(); it != replacements.rend(); ++it) {
+            if (!it->attempted) continue;
+            std::error_code restoreError;
+            if (it->existed) {
+                fs::copy_file(it->backup, it->destination, fs::copy_options::overwrite_existing, restoreError);
+            } else {
+                fs::remove(it->destination, restoreError);
+            }
+            rollbackOk = rollbackOk && !restoreError;
+        }
+        if (rollbackOk) fs::remove_all(backupDir, error);
+        fs::remove_all(extractDir, error);
+        return false;
+    }
+    fs::remove_all(backupDir, error);
 
     fs::remove_all(extractDir, error);
     fs::remove(zipFile, error);

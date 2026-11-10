@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDialog>
+#include <functional>
 
 class QCheckBox;
 class QComboBox;
@@ -12,8 +13,10 @@ class ProgramSettingsDialog : public QDialog {
     Q_OBJECT
 public:
     explicit ProgramSettingsDialog(QWidget* parent = nullptr);
+    void setCommitAllowed(std::function<bool()> allowed){m_commitAllowed=std::move(allowed);}
 
 private:
+    std::function<bool()> m_commitAllowed;
     void setupUi();
     void updateClickFeedbackSummary();
     void updateWindowSelectionFeedbackSummary();

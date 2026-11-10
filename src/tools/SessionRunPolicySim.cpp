@@ -404,6 +404,37 @@ int main(int argc, char** argv) {
     }
 
     logLine("PIPBONG SessionRunPolicySim");
+    expectScenario(!SessionRunPolicy::shouldAdoptCaptureTarget(repeatInfinite(true),false,true,true),"live repeat target stays locked","실행 중 반복 타겟 고정");
+    expectScenario(SessionRunPolicy::shouldAdoptCaptureTarget(repeatInfinite(false),false,true,true),"idle missing target can change","대기 중 사라진 타겟 전환");
+    expectScenario(!SessionRunPolicy::shouldAdoptCaptureTarget(repeatInfinite(false),false,false,true),"idle existing target stays locked","대기 중 기존 타겟 유지");
+    expectScenario(SessionRunPolicy::shouldAdoptCaptureTarget(triggerWatch(true),false,false,true),"watch target pair can migrate","감시 타겟 쌍 전환");
+    expectScenario(!SessionRunPolicy::shouldAdoptCaptureTarget(triggerAction(true),false,true,true),"trigger action target stays locked","트리거 동작 타겟 고정");
+    expectScenario(!SessionRunPolicy::shouldAdoptCaptureTarget(triggerAction(false),false,true,true),"queued trigger action keeps target","트리거 동작 준비 중 타겟 고정");
+    expectScenario(SessionRunPolicy::allowsTargetCenterPin({}),"idle center pin","대기 중 중앙 고정 허용");
+    SessionRunPolicyInput pinRepeat;pinRepeat.repeatSession=true;
+    expectScenario(!SessionRunPolicy::allowsTargetCenterPin({pinRepeat}),"repeat blocks center pin","반복 중 중앙 이동 차단");
+    SessionRunPolicyInput pinHold;pinHold.runningMode=FeatureRunMode::Hold;pinHold.holdRunActive=true;
+    expectScenario(!SessionRunPolicy::allowsTargetCenterPin({pinHold}),"hold blocks center pin","누름 실행 중 중앙 이동 차단");
+    SessionRunPolicyInput pinTrigger;pinTrigger.runningMode=FeatureRunMode::Trigger;pinTrigger.repeatSession=true;pinTrigger.engineRunning=true;pinTrigger.triggerPhase=TriggerSessionPhase::Monitoring;
+    expectScenario(SessionRunPolicy::allowsTargetCenterPin({pinTrigger}),"trigger watch permits center pin","트리거 감시 중 중앙 고정 허용");
+    pinTrigger.triggerPhase=TriggerSessionPhase::RunningAction;
+    expectScenario(!SessionRunPolicy::allowsTargetCenterPin({pinTrigger}),"trigger action blocks center pin","트리거 동작 중 중앙 이동 차단");
+    pinTrigger.triggerPhase=TriggerSessionPhase::Cooldown;pinTrigger.engineRunning=false;
+    expectScenario(SessionRunPolicy::allowsTargetCenterPin({pinTrigger}),"idle cooldown permits center pin","동작 종료 후 재감시 대기 허용");
+    expectScenario(!SessionRunPolicy::allowsTargetCenterPin({pinTrigger,pinRepeat}),"background burst blocks all center pin","다른 세션 실행 중 중앙 이동 차단");
+    expectScenario(SessionRunPolicy::allowsTargetBindingChange({}),"idle permits target binding changes","대기 중 타겟 변경 허용");
+    for(auto mode : {FeatureRunMode::RepeatCount,FeatureRunMode::RepeatInfinite,FeatureRunMode::Hold,FeatureRunMode::Trigger}) {
+        SessionRunPolicyInput active;active.runningMode=mode;
+        active.repeatSession=mode!=FeatureRunMode::Hold;active.holdRunActive=mode==FeatureRunMode::Hold;
+        expectScenario(!SessionRunPolicy::allowsTargetBindingChange({active}),"active session pins target binding","실행 세션 중 타겟 변경 차단");
+    }
+    SessionRunPolicyInput preparing;preparing.engineRunning=true;
+    expectScenario(!SessionRunPolicy::allowsTargetBindingChange({preparing}),"live engine pins target binding","엔진 실행 중 타겟 변경 차단");
+    expectScenario(SessionRunPolicy::allowsTargetBindingChange({SessionRunPolicyInput{}}),"inactive session permits binding","비활성 세션 타겟 변경 허용");
+    expectScenario(SessionRunPolicy::fastRepeatUiFlushIntervalMs(1) == 80, "one repeat UI interval", "단일 반복 UI 간격");
+    expectScenario(SessionRunPolicy::fastRepeatUiFlushIntervalMs(2) == 100, "two repeat UI interval", "두 반복 UI 간격");
+    expectScenario(SessionRunPolicy::fastRepeatUiFlushIntervalMs(3) == 120, "three repeat UI interval", "세 반복 UI 간격");
+    expectScenario(SessionRunPolicy::fastRepeatUiFlushIntervalMs(4) == 160, "four repeat UI interval", "네 반복 UI 간격");
     runManualScenarios();
     runHoldBurstScenarios();
     runMultiSessionRoadmapScenarios();

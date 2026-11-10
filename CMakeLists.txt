@@ -1,5 +1,6 @@
-cmake_minimum_required(VERSION 3.20)
-project(PIPBONG VERSION 0.8.401 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.25)
+project(PIPBONG VERSION 0.8.402 LANGUAGES CXX)
+enable_testing()
 
 find_package(Git QUIET)
 set(PIPBONG_GIT_SHA "unknown")
@@ -28,20 +29,122 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Network Concurrent)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
+if(MSVC)
+    # A portable ZIP must not depend on a developer machine's installed VC CRT.
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+    include(InstallRequiredSystemLibraries)
+    if(NOT CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+        message(FATAL_ERROR "MSVC redistributable runtime files were not found")
+    endif()
+endif()
+
 set(PIPBONG_SOURCES
     src/main.cpp
+    src/app/WorkspaceHistoryActions.cpp
+    src/ui/widgets/WorkspaceHistoryActivity.cpp
+    src/tools/ProjectWorkspaceUiChecks.cpp
+    src/tools/TargetWindowDetailsUiChecks.cpp
+    src/tools/FeatureLibraryActionsChecks.cpp
+    src/tools/WorkspaceHistoryUiChecks.cpp
+    src/tools/WorkspaceHistoryActionsChecks.cpp
+    src/tools/UiLayoutChecks.cpp
+    src/tools/ProfileListUiChecks.cpp
+    src/tools/ProfileMutationChecks.cpp
+    src/tools/ProfileRecoveryChecks.cpp
+    src/tools/ProfileActionsChecks.cpp
+    src/tools/ProfileStorageEdgesChecks.cpp
+    src/tools/ProfileActionsUiChecks.cpp
+    src/ui/ProfileListPresenter.cpp
+    src/app/ProfilePresentationSnapshot.cpp
+    src/ui/MainWorkspaceView.cpp
+    src/tools/MainWorkspaceChecks.cpp
+    src/ui/WindowShellController.cpp
+    src/tools/WindowShellChecks.cpp
+    src/ui/AuxiliaryToolsController.cpp
+    src/tools/AuxiliaryToolsChecks.cpp
+    src/ui/WorkflowExecutionPresenter.cpp
+    src/tools/WorkflowExecutionChecks.cpp
+    src/tools/WorkflowToolbarChecks.cpp
     src/app/Application.cpp
+    src/app/FeatureTransferController.cpp
+    src/app/FeatureBatchController.cpp
+    src/tools/FeatureBatchChecks.cpp
+    src/tools/FeatureBatchUiChecks.cpp
+    src/tools/FeatureTransferChecks.cpp
+    src/tools/FeatureTransferLifetimeChecks.cpp
+    src/ui/UiAppearance.cpp
+    src/app/ProjectRecoveryController.cpp
+    src/storage/ProjectHistoryStore.cpp
+    src/app/UpdateUiController.cpp
+    src/app/ProfilePackageController.cpp
+    src/app/ShutdownCoordinator.cpp
+    src/app/TargetWindowDetailsController.cpp
+    src/app/CaptureTargetController.cpp
+    src/app/RunContextController.cpp
+    src/app/ProjectWorkspaceController.cpp
+    src/app/ProfileTransitionController.cpp
+    src/app/ProfileActionsController.cpp
+    src/core/diagnostics/GuiContextCache.cpp
+    src/ui/TargetPanelController.cpp
+    src/ui/FeatureLibraryActionsController.cpp
+    src/ui/DocumentActionsController.cpp
+    src/ui/WorkspaceEditorController.cpp
+    src/tools/WorkspaceEditorChecks.cpp
+    src/tools/PointerFeedbackChecks.cpp
+    src/tools/DocumentActionsChecks.cpp
+    src/app/WindowDiagnosticsController.cpp
+    src/tools/WindowDiagnosticsChecks.cpp
+    src/tools/NativeCaptionProbe.cpp
+    src/ui/WindowChromeController.cpp
+    src/tools/WindowChromeChecks.cpp
+    src/app/ProgramSettingsController.cpp
+    src/tools/ProgramSettingsChecks.cpp
+    src/app/HoldTapSessionController.cpp
+    src/tools/HoldTapSessionChecks.cpp
+    src/app/RunSessionResourcesController.cpp
+    src/tools/RunSessionResourcesChecks.cpp
+    src/app/WorkerRepeatController.cpp
+    src/app/RunUiPublisher.cpp
+    src/storage/WorkspaceHistoryStore.cpp
+    src/app/WorkspaceHistoryController.cpp
+    src/app/TargetWindowActionsController.cpp
+    src/tools/TargetWindowActionsChecks.cpp
     src/app/MainWindow.cpp
     src/app/TemplateCaptureHotkeySettings.cpp
     src/app/ClickCursorHotkeySettings.cpp
     src/app/ClickContinuousInputHotkeySettings.cpp
     src/app/HotkeyManager.cpp
+    src/app/FirstTemplateRoiController.cpp
+    src/tools/FirstTemplateRoiChecks.cpp
+    src/tools/RoiPreviewOwnershipChecks.cpp
+    src/app/FeatureHotkeyController.cpp
+    src/app/TriggerMonitorController.cpp
+    src/app/TriggerPreemptionController.cpp
+    src/tools/TriggerMonitorChecks.cpp
+    src/tools/TriggerPreemptionChecks.cpp
+    src/tools/FeatureHotkeyChecks.cpp
     src/app/FeatureHotkeyGate.cpp
     src/app/UserInputInterruptMonitor.cpp
+    src/app/InputInterruptController.cpp
+    src/app/SessionMouseLockController.cpp
+    src/app/ForegroundSessionController.cpp
+    src/app/SessionInputCleanupController.cpp
+    src/tools/SessionInputCleanupUiChecks.cpp
+    src/tools/ForegroundSessionChecks.cpp
+    src/tools/InputInterruptChecks.cpp
+    src/tools/InputInterruptUiChecks.cpp
+    src/tools/SessionMouseLockUiChecks.cpp
+    src/app/MouseLockClaims.cpp
     src/app/MouseCenterLock.cpp
+    src/app/TargetCenterPinController.cpp
+    src/tools/CaptureTargetUiChecks.cpp
+    src/tools/TargetCenterPinUiChecks.cpp
     src/app/TargetWindowCenterPin.cpp
     src/app/ProgramSettings.cpp
     src/app/ProfileManager.cpp
+    src/storage/ProfileRemovalTransaction.cpp
+    src/storage/ProfileRemovalRecovery.cpp
+    src/storage/ProfileMetadataTransaction.cpp
     src/app/ForegroundWindowMonitor.cpp
     src/app/ForegroundWindowState.cpp
     src/app/ProfileForegroundResolver.cpp
@@ -118,6 +221,7 @@ set(PIPBONG_SOURCES
     src/ui/diagnostics/ProcessIconCache.cpp
     src/ui/memo/MemoDialog.cpp
     src/storage/JsonSerializer.cpp
+    src/storage/ProfilePackageImport.cpp
     src/storage/ProjectPackage.cpp
     src/storage/ProfileMemoStore.cpp
     src/ui/LogPanelWidget.cpp
@@ -188,6 +292,13 @@ endif()
 
 add_executable(PIPBONG WIN32 ${PIPBONG_SOURCES})
 
+add_library(PIPBONGSessionBoundaryCheck OBJECT src/tools/SessionBoundaryCheck.cpp)
+set_target_properties(PIPBONGSessionBoundaryCheck PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+target_include_directories(PIPBONGSessionBoundaryCheck PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(PIPBONGSessionBoundaryCheck PRIVATE Qt6::Core Qt6::Gui nlohmann_json::nlohmann_json)
+target_compile_definitions(PIPBONGSessionBoundaryCheck PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+add_dependencies(PIPBONG PIPBONGSessionBoundaryCheck)
+
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app/PipbongVersion.h.in
     ${CMAKE_CURRENT_BINARY_DIR}/generated/PipbongVersion.h
@@ -223,6 +334,11 @@ if(WIN32)
             DEPENDS PIPBONG
             COMMENT "Deploying Qt runtime DLLs next to PIPBONG.exe"
         )
+        if(MSVC)
+            add_custom_command(TARGET deploy-qt POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
+                        "$<TARGET_FILE_DIR:PIPBONG>")
+        endif()
     endif()
 endif()
 
@@ -239,6 +355,14 @@ target_compile_definitions(PIPBONG PRIVATE
 
 if(WIN32)
     add_executable(PIPBONGUpdater WIN32 src/updater/main.cpp)
+    add_executable(PIPBONGUpdaterSim src/tools/UpdaterTransactionSim.cpp)
+    target_link_libraries(PIPBONGUpdaterSim PRIVATE shell32)
+    target_compile_definitions(PIPBONGUpdaterSim PRIVATE NOMINMAX UNICODE _UNICODE)
+    add_dependencies(PIPBONG PIPBONGUpdaterSim)
+    add_custom_command(TARGET PIPBONG POST_BUILD
+        COMMAND "$<TARGET_FILE:PIPBONGUpdaterSim>"
+        COMMENT "Updater transaction regression")
+    add_test(NAME UpdaterTransaction COMMAND PIPBONGUpdaterSim)
     target_link_libraries(PIPBONGUpdater PRIVATE shell32)
     target_compile_definitions(PIPBONGUpdater PRIVATE
         WIN32_LEAN_AND_MEAN
@@ -269,7 +393,31 @@ if(MSVC)
 endif()
 
 add_executable(PIPBONGWorkflowDryRunSim
+    src/app/ProfileManager.cpp
+    src/storage/ProfileRemovalTransaction.cpp
+    src/storage/ProfileRemovalRecovery.cpp
+    src/storage/ProfileMetadataTransaction.cpp
+    src/app/ProgramSettings.cpp
+    src/app/WindowsLaunchAtStartup.cpp
+    src/app/WindowsRunAsAdmin.cpp
     src/tools/WorkflowDryRunSim.cpp
+    src/tools/ReliabilityChecks.cpp
+    src/tools/RuntimeStressChecks.cpp
+    src/core/workflow/HoldKeyTapMultiplexer.cpp
+    src/storage/ProjectHistoryStore.cpp
+    src/app/UpdateChecker.cpp
+    src/core/workflow/WorkflowEngine.cpp
+    src/storage/JsonSerializer.cpp
+    src/ui/calculator/FormulaEvaluator.cpp
+    src/ui/FeatureRunModeTheme.cpp
+    src/model/Project.cpp
+    src/model/Feature.cpp
+    src/model/FeatureGroup.cpp
+    src/model/FeatureGroupMutation.cpp
+    src/model/FeatureRunMode.cpp
+    src/model/FeatureCaptureTargetScope.cpp
+    src/model/TriggerListAnimationSettings.cpp
+    src/model/UserInputInterruptMode.cpp
     src/core/workflow/WorkflowRunner.cpp
     src/core/workflow/Workflow.cpp
     src/core/workflow/WorkflowLoopRegion.cpp
@@ -289,6 +437,7 @@ add_executable(PIPBONGWorkflowDryRunSim
     src/core/vision/TemplateCache.cpp
     src/core/vision/TemplateCaptureMetadata.cpp
     src/app/PointerFeedbackSettings.cpp
+    src/app/MouseLockClaims.cpp
     src/app/MouseCenterLock.cpp
     src/core/diagnostics/DiagnosticHub.cpp
     src/ui/editors/WorkflowMatchFeedbackOverlay.cpp
@@ -296,6 +445,46 @@ add_executable(PIPBONGWorkflowDryRunSim
     src/ui/ClickPointerFeedbackRenderer.cpp
     src/core/diagnostics/LiveSessionLog.cpp
     src/ui/OpenCvQtUtil.cpp
+    src/app/UpdateUiController.cpp
+    src/app/ProfilePackageController.cpp
+    src/app/ShutdownCoordinator.cpp
+    src/app/TargetWindowDetailsController.cpp
+    src/app/CaptureTargetController.cpp
+    src/app/RunContextController.cpp
+    src/app/ProjectWorkspaceController.cpp
+    src/app/ProfileTransitionController.cpp
+    src/app/WorkerRepeatController.cpp
+    src/app/RunUiPublisher.cpp
+    src/app/SessionRunPolicy.cpp
+    src/storage/WorkspaceHistoryStore.cpp
+    src/app/WorkspaceHistoryController.cpp
+    src/tools/ShutdownChecks.cpp
+    src/tools/RunUiPublisherChecks.cpp
+    src/app/ForegroundRunGateWin32.cpp
+    src/tools/TargetWindowDetailsChecks.cpp
+    src/app/TargetCenterPinController.cpp
+    src/app/TargetWindowCenterPin.cpp
+    src/tools/TargetCenterPinChecks.cpp
+    src/tools/SessionMouseLockChecks.cpp
+    src/app/SessionInputCleanupController.cpp
+    src/tools/SessionInputCleanupChecks.cpp
+    src/app/SessionMouseLockController.cpp
+    src/tools/TargetBindingChecks.cpp
+    src/tools/ProjectWorkspaceChecks.cpp
+    src/tools/ProfilePackageImportChecks.cpp
+    src/app/ForegroundRunGate.cpp
+    src/app/ProfileForegroundResolver.cpp
+    src/app/TargetWindowController.cpp
+    src/tools/CaptureTargetChecks.cpp
+    src/tools/RunContextChecks.cpp
+    src/tools/WorkerRepeatChecks.cpp
+    src/core/input/HotkeyBinding.cpp
+    src/tools/WorkspaceHistoryChecks.cpp
+    src/tools/UpdateControllerChecks.cpp
+    src/tools/InputStateChecks.cpp
+    src/tools/ProfilePackageChecks.cpp
+    src/storage/ProfilePackageImport.cpp
+    src/storage/ProjectPackage.cpp
 )
 target_include_directories(PIPBONGWorkflowDryRunSim PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -303,6 +492,8 @@ target_include_directories(PIPBONGWorkflowDryRunSim PRIVATE
     ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(PIPBONGWorkflowDryRunSim PRIVATE
     Qt6::Core
+    Qt6::Concurrent
+    Qt6::Network
     Qt6::Gui
     Qt6::Widgets
     nlohmann_json::nlohmann_json
@@ -310,6 +501,9 @@ target_link_libraries(PIPBONGWorkflowDryRunSim PRIVATE
     opencv_imgproc
     opencv_imgcodecs
 )
+if(WIN32)
+    add_dependencies(PIPBONGWorkflowDryRunSim PIPBONGUpdater)
+endif()
 if(MSVC)
     target_compile_options(PIPBONGWorkflowDryRunSim PRIVATE /utf-8)
     target_compile_definitions(PIPBONGWorkflowDryRunSim PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
@@ -378,3 +572,21 @@ if(PIPBONG_RUN_WORKFLOW_DRY_RUN_ON_BUILD)
         COMMENT "WorkflowDryRunSim regression (automatic after PIPBONG link)"
     )
 endif()
+
+add_test(NAME SessionRunPolicy COMMAND PIPBONGPolicySim)
+add_test(NAME FeatureGroupLayout COMMAND FeatureGroupLayoutSim)
+add_test(NAME WorkflowAndReliability COMMAND PIPBONGWorkflowDryRunSim)
+set_tests_properties(SessionRunPolicy FeatureGroupLayout WorkflowAndReliability
+                     PROPERTIES TIMEOUT 30)
+
+add_test(NAME WorkflowUiLayout COMMAND PIPBONG)
+set_tests_properties(WorkflowUiLayout PROPERTIES TIMEOUT 30
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;PIPBONG_SELF_TEST_UI=1;PIPBONG_DATA_DIR=${CMAKE_BINARY_DIR}/ui-test")
+add_custom_command(TARGET PIPBONG POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:PIPBONG>/platforms"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:Qt6::QOffscreenIntegrationPlugin>"
+            "$<TARGET_FILE_DIR:PIPBONG>/platforms/"
+    COMMAND ${CMAKE_COMMAND} -E env "QT_QPA_PLATFORM=offscreen"
+            "PIPBONG_SELF_TEST_UI=1" "PIPBONG_DATA_DIR=${CMAKE_BINARY_DIR}/ui-test"
+            "$<TARGET_FILE:PIPBONG>"
+    COMMENT "Workflow UI layout regression (offscreen; no native input)")

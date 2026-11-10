@@ -136,6 +136,8 @@ LRESULT CALLBACK templateCaptureHotkeyHookProc(int code, WPARAM wParam, LPARAM l
 }
 
 void installTemplateCaptureHotkeyHookIfNeeded(ImageFindEditor* editor) {
+    if(qEnvironmentVariableIntValue("PIPBONG_SELF_TEST_UI")==1 || qEnvironmentVariableIntValue("PIPBONG_SMOKE_TEST")==1
+        || qEnvironmentVariableIntValue("PIPBONG_WORKFLOW_DRY_RUN")==1)return;
     uninstallTemplateCaptureHotkeyHook();
     if (!editor || !editor->isTemplateCaptureHotkeyHookActive()
         || TemplateCaptureHotkeySettings::binding().isEmpty()) {
@@ -202,13 +204,13 @@ ImageFindEditor::~ImageFindEditor() {
     syncTemplateCaptureHotkeyHook();
     ScreenRegionOverlay::dismissAll();
     MatchTestOverlay::dismissAll();
-    RoiPreviewOverlay::dismissAll();
+    RoiPreviewOverlay::dismiss(m_roiPreviewOwner);
 }
 
 void ImageFindEditor::setBlock(ImageFindBlock* block) {
     MatchTestOverlay::dismissAll();
     updateMatchTestButton(false);
-    RoiPreviewOverlay::dismissAll();
+    RoiPreviewOverlay::dismiss(m_roiPreviewOwner);
     updateRoiPreviewButton(false);
     m_roiPickActive = false;
     updatePickRoiButton(false);
@@ -227,7 +229,7 @@ void ImageFindEditor::reload() {
     refreshRoiList();
     updatePreview();
     updateMatchTestButton(MatchTestOverlay::isVisible());
-    updateRoiPreviewButton(RoiPreviewOverlay::isVisible());
+    updateRoiPreviewButton(RoiPreviewOverlay::isVisible(m_roiPreviewOwner));
     updateTemplateHotkeyDisplay();
     syncTemplateCaptureHotkeyHook();
     if (m_roiCorrectionCheck) {
@@ -634,8 +636,8 @@ void ImageFindEditor::setupUi() {
         if (m_removeRoiButton) {
             m_removeRoiButton->setEnabled(row >= 0);
         }
-        if (RoiPreviewOverlay::isEditable()) {
-            RoiPreviewOverlay::setActiveRoiIndex(row);
+        if (RoiPreviewOverlay::isEditable(m_roiPreviewOwner)) {
+            RoiPreviewOverlay::setActiveRoiIndex(row,m_roiPreviewOwner);
         }
     });
     connect(m_roiPreviewButton, &QPushButton::clicked, this, &ImageFindEditor::onRoiPreview);
@@ -887,10 +889,12 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
     }
 #endif
 
-    if (RoiPreviewOverlay::isVisible()) {
-        RoiPreviewOverlay::dismissAll();
+    if (RoiPreviewOverlay::isVisible(m_roiPreviewOwner)) {
+        RoiPreviewOverlay::dismiss(m_roiPreviewOwner);
     }
 
+    m_roiPreviewOwner=std::make_shared<int>(0);
+    const std::weak_ptr<void> previewOwner=m_roiPreviewOwner;
     QPointer<ImageFindEditor> self = this;
     const std::vector<CaptureRegion> physicalRegions = physicalCustomRegionsForDisplay(*m_block);
     const CaptureRegion physicalLegacy = physicalRegions.empty()
@@ -902,17 +906,18 @@ void ImageFindEditor::showRoiPreviewOverlay(bool silentErrors) {
         m_block->percentRegion,
         physicalRegions,
         this,
-        [self](bool overlayVisible) {
-            if (self) {
+        [self,previewOwner](bool overlayVisible) {
+            if (self && !previewOwner.owner_before(self->m_roiPreviewOwner) && !self->m_roiPreviewOwner.owner_before(previewOwner)) {
                 self->updateRoiPreviewButton(overlayVisible);
             }
         },
         makeRoiPreviewEditableOptions());
-    updateRoiPreviewButton(visible);
+    if(self)self->updateRoiPreviewButton(visible);
 }
 
 RoiPreviewOverlay::EditableOptions ImageFindEditor::makeRoiPreviewEditableOptions() {
     RoiPreviewOverlay::EditableOptions options;
+    options.owner=m_roiPreviewOwner;
     if (!m_block) {
         return options;
     }
@@ -990,7 +995,7 @@ void ImageFindEditor::confirmFromRoiOverlay() {
 }
 
 void ImageFindEditor::dismissRoiPreviewOverlay() {
-    RoiPreviewOverlay::dismissAll();
+    RoiPreviewOverlay::dismiss(m_roiPreviewOwner);
     updateRoiPreviewButton(false);
 }
 
@@ -1018,7 +1023,7 @@ void ImageFindEditor::onCaptureTemplate() {
 
     MatchTestOverlay::dismissAll();
     updateMatchTestButton(false);
-    RoiPreviewOverlay::dismissAll();
+    RoiPreviewOverlay::dismiss(m_roiPreviewOwner);
     updateRoiPreviewButton(false);
 
     QPointer<ImageFindEditor> self = this;
@@ -1114,7 +1119,7 @@ void ImageFindEditor::startRoiPick() {
     }
 #endif
 
-    RoiPreviewOverlay::dismissAll();
+    RoiPreviewOverlay::dismiss(m_roiPreviewOwner);
     updateRoiPreviewButton(false);
 
     QPointer<ImageFindEditor> self = this;
@@ -1210,7 +1215,7 @@ void ImageFindEditor::onRoiPreview() {
         return;
     }
 
-    if (RoiPreviewOverlay::isVisible()) {
+    if (RoiPreviewOverlay::isVisible(m_roiPreviewOwner)) {
         dismissRoiPreviewOverlay();
         return;
     }

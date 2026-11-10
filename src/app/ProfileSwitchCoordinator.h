@@ -10,6 +10,7 @@
 
 class ProfileManager;
 class ForegroundWindowMonitor;
+class QTimer;
 
 class ProfileSwitchCoordinator : public QObject {
     Q_OBJECT
@@ -19,7 +20,11 @@ public:
         std::function<bool()> isSwitchingProfile;
         std::function<bool()> isPipelineActive;
         std::function<void()> schedulePruneAbandonedEngines;
-        std::function<void(const QString& profileId, bool automatic)> executeProfileSwitch;
+        std::function<bool(const QString& profileId, bool automatic)> executeProfileSwitch;
+        std::function<bool()> isWorkspacePinned;
+        /// Injectable read-only foreground source; production uses the monitor.
+        std::function<ForegroundWindowState()> foregroundState;
+        std::function<bool()> transitionModifierHeld;
         std::function<void(HWND hwnd, const QString& title)> applyForegroundCaptureHints;
         std::function<void()> onPipbongForegroundFocus;
         std::function<void()> flushDeferredProfileSwitchIfIdle;
@@ -63,6 +68,9 @@ public:
 private:
     void scheduleDeferredFlush(int delayMs);
     bool foregroundStableForAutoSwitchMs(int requiredMs) const;
+    ForegroundWindowState readForeground(const ForegroundWindowState& fallback = {});
+    void observeForeground(const ForegroundWindowState& state);
+    QTimer* m_deferredFlushTimer = nullptr;
 
     ProfileManager* m_profileManager = nullptr;
     ForegroundWindowMonitor* m_foregroundMonitor = nullptr;

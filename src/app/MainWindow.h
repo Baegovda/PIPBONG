@@ -1,17 +1,20 @@
 #pragma once
 
 #include "app/FeatureRunSession.h"
+#include "app/FeatureBatchController.h"
 #include "app/PointerFeedbackSettings.h"
 #include "app/ForegroundWindowState.h"
 #include "app/ForegroundRunGate.h"
 #include "app/ProfileManager.h"
+#include "app/ProfileActionsController.h"
 #include "app/ProfileSwitchCoordinator.h"
 #include "app/RunSessionRegistry.h"
 #include "app/RunSessionController.h"
 #include "app/TargetWindowController.h"
+#include "app/TargetWindowDetailsController.h"
 #include "core/workflow/ExecutionContext.h"
 #include "model/UserInputInterruptMode.h"
-#include "ui/BlockListWidget.h"
+#include "model/WorkflowExecutionHighlight.h"
 #include "ui/LogPanelWidget.h"
 
 #include <QByteArray>
@@ -37,16 +40,6 @@ class ForegroundWindowMonitor;
 
 enum class FeatureRunVisualKind;
 
-struct WorkerFastRepeatUiCoalesce {
-    QMutex mutex;
-    bool flushScheduled = false;
-    int pendingIterations = 0;
-    qint64 pendingTotalElapsedMs = 0;
-    bool pendingLastSuccess = false;
-    qint64 pendingLastElapsedMs = 0;
-    QString pendingLastMessage;
-};
-
 class QPixmap;
 class QIcon;
 class QToolButton;
@@ -55,8 +48,29 @@ class FeatureListPanel;
 class WorkflowEditorPanel;
 class WorkflowEngine;
 class Project;
+class ProjectWorkspaceController;
+class ProfileTransitionController;
+class TargetWindowActionsController;
+class TargetCenterPinController;
+class CaptureTargetController;
+class InputInterruptController;
+class FeatureHotkeyController;
+class TriggerMonitorController;
+class TriggerPreemptionController;
+class WorkflowExecutionPresenter;
+class SessionMouseLockController;
+class ForegroundSessionController;
+class SessionInputCleanupController;
 class HotkeyManager;
 class HoldKeyTapMultiplexer;
+class HoldTapSessionController;
+class WindowChromeController;
+class ProgramSettingsController;
+class WindowDiagnosticsController;
+class WorkspaceEditorController;
+class DocumentActionsController;
+class FeatureLibraryActionsController;
+class TargetPanelController;
 class Feature;
 class FeatureLibraryManager;
 class UiStateManager;
@@ -73,16 +87,59 @@ class QMenu;
 class QListWidget;
 class QMimeData;
 class ProfileListWidget;
+class ProfileListPresenter;
 class TargetWindowDetailPanel;
 class CustomTitleBar;
-class CalculatorDialog;
-class SpikeWatchDialog;
-class MemoDialog;
-class UpdateChecker;
+class AuxiliaryToolsController;
+class WindowShellController;
+class MainWorkspaceView;
+class FirstTemplateRoiController;
+class RunSessionResourcesController;
+class WorkspaceHistoryActions;
+class UpdateUiController;
+class WorkspaceHistoryController;
+class ShutdownCoordinator;
+class FeatureTransferController;
+class RunUiPublisher;
+class ProfilePackageController;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
     friend class RunLifecycleCoordinator;
+    friend class RunLifecycleBoundaryChecks;
+    friend class WorkspaceHistoryUiChecks;
+    friend class ProjectWorkspaceUiChecks;
+    friend class TargetWindowDetailsUiChecks;
+    friend class TargetWindowActionsChecks;
+    friend class TargetCenterPinUiChecks;
+    friend class CaptureTargetUiChecks;
+    friend class InputInterruptUiChecks;
+    friend class SessionMouseLockUiChecks;
+    friend class ForegroundSessionUiChecks;
+    friend class SessionInputCleanupUiChecks;
+    friend class ProfileListUiChecks;
+    friend class ProfileActionsUiChecks;
+    friend class FeatureBatchUiChecks;
+    friend class FeatureLibraryActionsChecks;
+    friend class FeatureTransferLifetimeChecks;
+    friend class FeatureHotkeyUiChecks;
+    friend class TriggerMonitorUiChecks;
+    friend class TriggerPreemptionUiChecks;
+    friend class WorkflowExecutionUiChecks;
+    friend class WorkflowToolbarUiChecks;
+    friend class AuxiliaryToolsUiChecks;
+    friend class WindowShellUiChecks;
+    friend class MainWorkspaceUiChecks;
+    friend class FirstTemplateRoiChecks;
+    friend class RunSessionResourcesChecks;
+    friend class HoldTapSessionChecks;
+    friend class WindowChromeChecks;
+    friend class ProgramSettingsChecks;
+    friend class WindowDiagnosticsController;
+    friend class WindowDiagnosticsChecks;
+    friend class WorkspaceEditorChecks;
+    friend class DocumentActionsChecks;
+    friend class NativeCaptionProbe;
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
@@ -91,6 +148,8 @@ public:
     void showPendingCrashReportIfAny();
     /// Refreshes main/sub target bindings in ScreenCapture before block editors or overlays open.
     void refreshCaptureTargetForEditing();
+    /// Persistence must succeed before the caller closes or restarts the app.
+    bool prepareForShutdown();
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -121,10 +180,7 @@ private slots:
     void onExitRequested();
     void onCheckForUpdates();
     void onUpdateButtonClicked();
-    void onUpdateCheckFinished(bool success, bool updateAvailable, const QString& errorMessage);
     void onReadyToRestartForUpdate();
-    void runSilentUpdateCheck();
-    void refreshUpdateButtonState();
     void maybeStartAutomaticUpdate();
     void onProgramSettings();
     void onCalculator();
@@ -175,20 +231,16 @@ private slots:
     void syncHotkeys();
 
 private:
-    enum class GlobalUiSnapshotScope {
-        Auto,
-        FullWorkspace,
-        ActiveProjectJsonOnly,
-    };
-
-    struct GlobalUiHistorySnapshot {
-        QString backupRootPath;
-        QString reason;
-        GlobalUiSnapshotScope scope = GlobalUiSnapshotScope::FullWorkspace;
-        QString profileId;
-    };
-
     void setupUi();
+    void setupRunUiPublisher();
+    void setupRunResources();
+    void setupHoldTapSessions();
+    void setupProgramSettings();
+    void setupWorkspaceEditor();
+    void setupFeatureHotkeys();
+    void setupTriggerMonitor();
+    void setupTriggerPreemption();
+    void setupWorkflowExecutionPresenter();
     void setupUpdateChecker();
     void applyUpdateCheckInterval();
     void engageFeatureMouseLock(FeatureRunSession& session);
@@ -215,24 +267,18 @@ private:
     QHash<QString, FeatureRunVisualKind> buildFeatureListRunVisualKinds() const;
     void refreshFeatureListHoldVisuals();
     void scheduleFeatureListHoldVisualRefresh();
-    void scheduleWorkerFastRepeatUiFlush();
-    void flushAllPendingWorkerFastRepeatUi();
     int concurrentActiveRepeatSessionCount() const;
-    bool shouldPublishFastRepeatLoopLog(const FeatureRunSession& session) const;
     void connectSessionEngine(FeatureRunSession& session);
     FeatureRunSession* sessionFor(const std::string& featureId);
     const FeatureRunSession* sessionFor(const std::string& featureId) const;
     std::map<std::string, FeatureRunSession>& runSessions();
     const std::map<std::string, FeatureRunSession>& runSessions() const;
     FeatureRunSession* sessionForEngine(const QObject* sender);
-    void onHoldKeyTapLaneFinished(const QString& featureId, bool success, const QString& message);
     bool isFeatureRunning(const std::string& featureId) const;
     bool isFeatureInActiveWorkflowRun(const std::string& featureId) const;
     bool hasAnyRunningSession() const;
     bool hasAnyActiveWorkflowEngine() const;
-    bool hasAnyActiveWorkflowBurst() const;
     bool hasAnyCapturingWorkflowBurstExcept(const std::string& excludeFeatureId) const;
-    bool applyCenterPinToEnabledTargets(bool forceSnap);
     QSet<QString> activeWorkflowFeatureIds() const;
     QSet<QString> runningFeatureIds() const;
     QString featureDisplayName(const std::string& featureId) const;
@@ -256,18 +302,9 @@ private:
     void refreshFeatureLibraryPanel();
     bool importLibraryEntry(const QString& entryId);
     bool importLibraryEntries(const QStringList& entryIds);
-    bool importLibraryEntryToProfile(const QString& entryId,
-                                     const QString& profileId,
-                                     int insertIndex,
-                                     bool refreshListUi = true,
-                                     QString* insertedFeatureId = nullptr);
-    bool saveFeatureToLibraryFromDrag(const QString& featureId, const QString& profileId);
-    bool copyFeatureBetweenProfiles(const QString& featureId,
-                                    const QString& sourceProfileId,
-                                    const QString& targetProfileId,
-                                    int insertIndex);
-    bool removeFeatureFromProfile(const QString& profileId, const QString& featureId);
-    bool canTransferFeatures() const;
+    void setupFeatureTransfers();
+    void setupProfileActions();
+    void showProfileActionResult(const ProfileActionsController::Result&);
     void onFeatureDroppedOnFeatureList(const QMimeData* mime, int insertIndex);
     void onFeatureDroppedOnLibrary(const QMimeData* mime);
     void onLibraryEntriesReordered(int fromRow, int toRow);
@@ -275,44 +312,44 @@ private:
     void onFeatureDroppedOnProfile(const QString& targetProfileId, const QMimeData* mime);
     void syncProfileListSelection();
     void syncMemoDialogProfile();
-    void updateAuxiliaryToolButtonStates();
-    void wireAuxiliaryDialogVisibility(QWidget* dialog);
     bool switchToProfile(const QString& profileId, bool automatic = false);
     bool executeProfileSwitch(const QString& profileId, bool automatic);
-    void completeProfileSwitchPipeline(bool automatic);
-    void abortProfileSwitchPipeline(bool resyncSelection = true);
+    void setupProjectWorkspace();
+    void setupTargetActions();
+    void setupTargetCenterPin();
+    void setupCaptureTargets();
+    void setupInputInterrupts();
+    void setupSessionMouseLocks();
+    void setupForegroundSessions();
+    void onWorkspaceInstalled(bool fresh, bool clearTarget, bool quiet, bool restoreTriggers);
     void setProfileSwitchUiLocked(bool locked);
     void schedulePostProfileSwitchForegroundReconcile(bool allowAutoProfileSwitch);
-    void saveActiveProfileSettings();
-    bool profileSettingsEqual(const ProgramSettings::ProfileSettings& a,
-                              const ProgramSettings::ProfileSettings& b) const;
+    bool saveActiveProfileSettings();
     void applyProfileSwitchFromForegroundState(const ForegroundWindowState& state);
 #ifdef _WIN32
     void applyForegroundCaptureHints(HWND hwnd, const QString& foregroundTitle);
     void handlePipbongForegroundFocus();
 #endif
     void updateWindowTitle();
-    void syncWindowTitleDisplay();
     void refreshWorkflowEditor();
     void scheduleAutoSave();
     void autoSaveProject(bool quiet = false);
     void scheduleProfilePackageSeal();
     void sealActiveProfilePackage(bool synchronous = false);
     bool ensureProjectFilePath();
-    void prepareForShutdown();
+    void setupShutdownCoordinator();
+    void finalizeShutdown();
     void setupTrayIcon();
     void applyCloseToTrayPolicy();
-    void hideToTray();
-    void showFromTray();
     void requestApplicationQuit();
     void startFeatureRun(Feature* feature,
                          bool fromHotkey = false,
                          bool skipTargetActivationOnStart = false);
+    void setupFirstTemplateRoi();
     bool tryBeginFirstTemplateRoiEdit(FeatureRunSession& session, Feature* feature);
     void selectRunningFeatureForDisplay(Feature* feature);
     void launchWorkflowRun(FeatureRunSession& session, Feature* feature, bool repeatIteration = false);
     void launchHoldKeyTapRun(FeatureRunSession& session, Feature* feature, int virtualKey);
-    void deferHoldSessionUiAfterStart(const std::string& featureId);
     void ensureRunSessionResources(FeatureRunSession& session,
                                    Feature* feature,
                                    bool refreshWorkflow = false,
@@ -358,19 +395,17 @@ private:
     Feature* featureForSession(FeatureRunSession& session);
     const Feature* featureForSession(const FeatureRunSession& session) const;
     void pruneSessionOwnerProjects();
-    void releaseHoldHotkeyInputToTarget(FeatureRunSession& session, Feature* feature);
+    void releaseHoldHotkeyInputToTarget(FeatureRunSession& session);
     void restoreRunStartCursorPosition(const FeatureRunSession& session);
+    void captureRunStartCursorPosition(FeatureRunSession& session);
     void applyRunningBlockVisuals(FeatureRunSession& session,
                                   int index,
-                                  BlockListWidget::ExecutionHighlight highlight);
+                                  WorkflowExecutionHighlight highlight);
     void updateTargetWindowDetails();
     void updateTargetWindowControlsForActiveProfile();
+    TargetWindowDetailsController::Request targetDetailsRequest()const;
 #ifdef _WIN32
-    void commitActiveProfileTargetWindow(HWND hwnd, const QString& title);
-    void commitActiveProfileSubTargetWindow(HWND hwnd, const QString& title);
     void healLinkedTargetProcessPathFromForeground(HWND hwnd, const QString& foregroundTitle);
-    enum class TargetWindowListPickMode { Main, Sub };
-    void pickTargetWindowFromList(TargetWindowListPickMode mode);
 #endif
     bool isActiveDefaultProfile() const;
     std::wstring currentTargetWindowTitleW() const;
@@ -410,23 +445,10 @@ private:
     void applySessionCaptureTarget(const std::wstring& title) const;
     void syncTargetWindowTitleToCapture();
 #ifdef _WIN32
-    struct TargetDetailHwndResolve {
-        HWND hwnd = nullptr;
-        bool isSubTarget = false;
-    };
-    TargetDetailHwndResolve resolveTargetDetailDisplayHwnd(const QString& mainBinding,
-                                                           const QString& subBinding,
-                                                           const QString& mainProcessPath,
-                                                           const QString& subProcessPath) const;
     void rememberProfileLinkedForeground(HWND hwnd, const QString& foregroundTitle);
     /// Bind ScreenCapture to the desktop foreground HWND when its process path matches the active profile's linked main/sub exe (authoritative over title heuristics).
     bool adoptForegroundLinkedCaptureIfMatched();
     QString profileIdForForegroundHwnd(HWND hwnd) const;
-    HWND findMainTargetHwndForCenterPin() const;
-    HWND findSubTargetHwndForCenterPin() const;
-    HWND findLinkedTargetHwndForDisplay(const QString& mainBinding,
-                                        const QString& subBinding,
-                                        const QString& processPath) const;
 #endif
     /// Applies resolveEffectiveTargetTitleW() to ScreenCapture (used at feature run start).
     void syncEffectiveTargetWindowTitleToCapture();
@@ -436,53 +458,47 @@ private:
     void scheduleRunWarmup();
     void prepareProjectUnload();
     bool pushGlobalUiUndoSnapshot(const QString& reason);
-    void clearGlobalUiRedoHistory();
-    void clearGlobalUiUndoHistory();
-    bool restoreGlobalUiSnapshot(const GlobalUiHistorySnapshot& snapshot);
-    GlobalUiHistorySnapshot createGlobalUiSnapshot(const QString& reason,
-                                                   GlobalUiSnapshotScope scope = GlobalUiSnapshotScope::Auto) const;
-    GlobalUiHistorySnapshot createActiveProjectJsonSnapshot(const QString& reason) const;
-    bool restoreActiveProjectJsonSnapshot(const GlobalUiHistorySnapshot& snapshot);
-    static GlobalUiSnapshotScope resolveGlobalUiSnapshotScope(const QString& reason,
-                                                                GlobalUiSnapshotScope scope);
-    static bool copyDirectoryRecursive(const QString& sourceDir, const QString& targetDir);
-    static void removeDirectoryRecursive(const QString& path);
+    void setupWorkspaceHistory();
     void onGlobalUndoRequested();
     void onGlobalRedoRequested();
     void onEngineSessionPrepared(std::shared_ptr<Workflow> workflow, std::shared_ptr<ExecutionContext> context);
-    void applyAlwaysOnTop(bool enabled);
     void restoreAlwaysOnTopPreference();
     void applyTargetWindowCenterPin();
-    QString alwaysOnTopPreferenceKey() const;
     void showTransientStatus(const QString& message, int timeoutMs = 3000);
     void setPersistentStatus(const QString& message);
     void clearStatusMessage();
-    void refreshTitleBarStatus();
     void logLoopCompletion(FeatureRunSession& session, bool success, const QString& message);
-    void accumulateLoopCompletionStats(FeatureRunSession& session,
-                                         bool success,
-                                         std::int64_t elapsedOverrideMs = -1);
     void configureWorkerFastRepeat(FeatureRunSession& session, Feature* feature);
+    void synchronizeRunWorkerState();
     void flushWorkerFastRepeatUi(const std::string& featureId);
-    WorkerFastRepeatUiCoalesce& fastRepeatUiCoalesceFor(const std::string& featureId);
     void publishLoopCompletionUi(FeatureRunSession& session, bool success, const QString& message);
     void     syncLoopTimingToWorkflowEditor(const FeatureRunSession* session);
 
-    void onUserInputInterrupt(const std::string& featureId);
+    void onUserInputInterrupt(const std::string& featureId, const std::shared_ptr<ExecutionContext>& expected);
     void syncUserInputInterruptForSession(FeatureRunSession& session, Feature* feature);
-    bool shouldSuppressFeatureHotkeyExecution(const Feature* feature = nullptr) const;
-    void notifyFeatureHotkeySuppressed();
 
-    QString buildCrashReportContextSnapshot() const;
 
-    std::unique_ptr<Project> m_project;
     std::unique_ptr<ProfileManager> m_profileManager;
-    QString m_projectFilePath;
-    QString m_baseWindowTitle;
+    std::unique_ptr<TriggerMonitorController> m_triggerMonitor;
+    ProfileSwitchCoordinator m_profileSwitchCoordinator;
+    std::unique_ptr<ProjectWorkspaceController> m_projectWorkspace;
+    std::unique_ptr<ProfileTransitionController> m_profileTransition;
+    std::unique_ptr<ProfileActionsController> m_profileActions;
+    // View aliases; authoritative document and transition state live in controllers.
+    std::shared_ptr<Project>& m_project;
+    QString& m_projectFilePath;
+    bool& m_modified;
+    bool& m_switchingProfile;
+    bool& m_profileSwitchPipelineActive;
+    bool& m_deferTargetDetailsProfileRefresh;
 
+    std::unique_ptr<FirstTemplateRoiController> m_firstTemplateRoi;
+    std::unique_ptr<MainWorkspaceView> m_workspaceView;
+    // View aliases for application signal wiring; the component owns assembly/state.
     FeatureListPanel* m_featureList = nullptr;
     QWidget* m_profilePanel = nullptr;
     ProfileListWidget* m_profileList = nullptr;
+    std::unique_ptr<ProfileListPresenter> m_profileListPresenter;
     QPushButton* m_addProfileButton = nullptr;
     QPushButton* m_renameProfileButton = nullptr;
     QPushButton* m_deleteProfileButton = nullptr;
@@ -513,69 +529,59 @@ private:
     HoldKeyTapMultiplexer* m_holdKeyTapMux = nullptr;
     UiStateManager* m_uiState = nullptr;
     std::unique_ptr<FeatureLibraryManager> m_featureLibraryManager;
-    std::unique_ptr<Feature> m_libraryPreviewFeature;
+    std::unique_ptr<FeatureBatchController> m_featureBatches;
+    std::shared_ptr<Feature> m_libraryPreviewFeature;
     QString m_libraryPreviewEntryId;
     QTimer* m_autoSaveTimer = nullptr;
-    QTimer* m_profilePackageSealTimer = nullptr;
-    std::atomic_bool m_profilePackageSealRunning{false};
-    QTimer* m_statusClearTimer = nullptr;
-    QTimer* m_updateCheckTimer = nullptr;
-    QTimer* m_mouseLockSyncTimer = nullptr;
-    QTimer* m_workerFastRepeatUiFlushTimer = nullptr;
+    std::unique_ptr<ProfilePackageController> m_packageController;
+    std::unique_ptr<DocumentActionsController> m_documentActions;
     QTimer* m_runUiDebounceTimer = nullptr;
-    QTimer* m_targetWindowCenterPinTimer = nullptr;
-    QTimer* m_targetWindowDetailRefreshTimer = nullptr;
-    int m_lastWorkflowScaleClientWidth = 0;
-    int m_lastWorkflowScaleClientHeight = 0;
     std::unique_ptr<ForegroundWindowMonitor> m_foregroundMonitor;
-    ProfileSwitchCoordinator m_profileSwitchCoordinator;
     TargetWindowController m_targetWindowController;
+    std::unique_ptr<CaptureTargetController> m_captureTargets;
+    std::unique_ptr<InputInterruptController> m_inputInterrupts;
+    std::unique_ptr<FeatureHotkeyController> m_featureHotkeys;
+    std::unique_ptr<SessionMouseLockController> m_mouseLocks;
+    std::unique_ptr<ForegroundSessionController> m_foregroundSessions;
+    std::unique_ptr<SessionInputCleanupController> m_inputCleanup;
+    TargetWindowDetailsController m_targetDetails;
+    std::unique_ptr<TargetPanelController> m_targetPanel;
+    std::unique_ptr<TargetWindowActionsController> m_targetActions;
+    std::unique_ptr<TargetCenterPinController> m_centerPin;
     RunSessionController m_runSessionController;
-    UpdateChecker* m_updateChecker = nullptr;
-    bool m_initialUpdateCheckDone = false;
-    bool m_lastUpdateCheckWasSilent = false;
-    bool m_autoUpdateDeferred = false;
-    bool m_autoUpdateInstallStarted = false;
-    QString m_persistentStatusMessage;
-    QString m_transientStatusMessage;
+    std::unique_ptr<UpdateUiController> m_updateController;
     RunSessionRegistry m_runSessionRegistry;
+    // Declared after the registry: the controller releases leases in its destructor.
+    std::unique_ptr<TriggerPreemptionController> m_triggerPreemption;
     /// Project snapshots for sessions running on non-active profiles after a profile switch.
     mutable std::unordered_map<QString, std::shared_ptr<Project>> m_sessionOwnerProjects;
-    std::map<std::string, std::unique_ptr<WorkerFastRepeatUiCoalesce>> m_fastRepeatUiCoalesce;
-    QPointer<CalculatorDialog> m_calculatorDialog;
-    QPointer<SpikeWatchDialog> m_spikeWatchDialog;
-    QPointer<MemoDialog> m_memoDialog;
-    QSystemTrayIcon* m_trayIcon = nullptr;
-    QMenu* m_trayMenu = nullptr;
-    bool m_forceQuit = false;
-    bool m_trayMinimizeNotified = false;
-    bool m_modified = false;
+    std::unique_ptr<RunUiPublisher> m_runUiPublisher;
+    std::unique_ptr<RunSessionResourcesController> m_runResources;
+    std::unique_ptr<HoldTapSessionController> m_holdTapSessions;
+    std::unique_ptr<WorkflowExecutionPresenter> m_executionPresenter;
+    std::unique_ptr<AuxiliaryToolsController> m_auxiliaryTools;
+    std::unique_ptr<WindowShellController> m_windowShell;
+    std::unique_ptr<WindowChromeController> m_windowChrome;
+    std::unique_ptr<ProgramSettingsController> m_programSettings;
+    std::unique_ptr<WindowDiagnosticsController> m_diagnostics;
+    std::unique_ptr<WorkspaceEditorController> m_workspaceEditor;
     bool m_refreshingProfileList = false;
-    bool m_switchingProfile = false;
-    bool m_profileSwitchPipelineActive = false;
-    bool m_postSwitchForegroundReconcileScheduled = false;
-    bool m_deferTargetDetailsProfileRefresh = false;
-    bool m_lastPersistedProfileSettingsValid = false;
-    QString m_lastPersistedProfileSettingsProfileId;
-    ProgramSettings::ProfileSettings m_lastPersistedProfileSettings{};
-    bool m_restoringGlobalUiHistory = false;
-    bool m_suppressTriggerArmedPersist = false;
-    bool m_restoreTriggerSessionsScheduled = false;
-    std::vector<GlobalUiHistorySnapshot> m_globalUiUndoHistory;
-    std::vector<GlobalUiHistorySnapshot> m_globalUiRedoHistory;
+    bool& m_suppressTriggerArmedPersist;
+    std::unique_ptr<WorkspaceHistoryActions> m_workspaceHistory;
+    std::unique_ptr<ShutdownCoordinator> m_shutdownCoordinator;
+    std::unique_ptr<FeatureTransferController> m_featureTransfers;
+    std::unique_ptr<FeatureLibraryActionsController> m_libraryActions;
     std::vector<std::unique_ptr<WorkflowEngine>> m_abandonedEngines;
     std::unordered_map<const WorkflowEngine*, std::string> m_abandonedEngineFeatureIds;
 #ifdef _WIN32
-    HWND m_lastHotkeyLatchResetForegroundHwnd = nullptr;
 #endif
-    bool m_ensureTriggerMonitorPending = false;
     bool m_pruneAbandonedEnginesPending = false;
     bool m_holdVisualRefreshScheduled = false;
     int m_holdBurstDepth = 0;
     bool m_holdBurstScopeDrainScheduled = false;
     QElapsedTimer m_holdBurstForegroundPrepTimer;
     bool m_holdBurstForegroundPrepared = false;
-    bool m_holdBurstTargetActivated = false;
+    std::shared_ptr<std::atomic<bool>> m_holdBurstTargetActivated = std::make_shared<std::atomic<bool>>(false);
     bool m_holdBurstCaptureTitleValid = false;
     bool m_holdBurstCaptureAppliedToCapture = false;
     std::wstring m_holdBurstCaptureTitle;

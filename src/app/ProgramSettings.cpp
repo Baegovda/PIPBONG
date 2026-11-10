@@ -211,6 +211,7 @@ void ProgramSettings::applyProfileSettings(const ProfileSettings& settings) {
 }
 
 void ProgramSettings::syncWindowsStartupRegistration() {
+    if (!qEnvironmentVariableIsEmpty("PIPBONG_DATA_DIR")) return;
 #ifdef _WIN32
     const bool shouldRegister = launchAtWindowsStartup();
     if (shouldRegister != WindowsLaunchAtStartup::isRegistered()) {
@@ -220,6 +221,7 @@ void ProgramSettings::syncWindowsStartupRegistration() {
 }
 
 void ProgramSettings::syncWindowsRunAsAdminRegistration() {
+    if (!qEnvironmentVariableIsEmpty("PIPBONG_DATA_DIR")) return;
 #ifdef _WIN32
     const bool shouldRegister = runAsAdministrator();
     if (shouldRegister != WindowsRunAsAdmin::isRegistered()) {

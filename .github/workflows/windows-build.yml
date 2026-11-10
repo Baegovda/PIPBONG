@@ -1,0 +1,33 @@
+name: Windows build and regression
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release-build:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .vcpkg-binary-cache
+          key: windows-x64-vcpkg-${{ hashFiles('vcpkg.json') }}
+      - name: Build app, updater and run required regression tools
+        shell: powershell
+        run: |
+          $env:VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT
+          $cache = Join-Path $env:GITHUB_WORKSPACE '.vcpkg-binary-cache'
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          $env:VCPKG_BINARY_SOURCES = "clear;files,$cache,readwrite"
+          & ./scripts/build-release.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./scripts/test-release-policy.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./scripts/test-build-process-scope.ps1
+          if (-not $?) { exit 1 }
+          & ./scripts/test-build-parallelism.ps1
+          if (-not $?) { exit 1 }

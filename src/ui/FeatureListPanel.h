@@ -8,6 +8,7 @@
 #include <memory>
 #include <set>
 #include <vector>
+#include <utility>
 
 class QListWidgetItem;
 class QMimeData;
@@ -106,6 +107,7 @@ public:
 
     /// Live session query (e.g. MainWindow::isFeatureInActiveWorkflowRun) — used before cached run-state UI updates.
     void setActiveWorkflowRunQuery(std::function<bool(const QString& featureId)> query);
+    void setMutationCheckpoint(std::function<bool(const QString&)> checkpoint) { m_mutationCheckpoint = std::move(checkpoint); }
 
     void setFeatureRunVisualKinds(const QHash<QString, FeatureRunVisualKind>& kinds);
 
@@ -255,6 +257,8 @@ private:
     bool isFeatureEditableAt(int index) const;
 
     void refreshListMutationPolicy();
+    bool checkpointMutation(const QString& reason);
+    std::function<bool(const QString&)> m_mutationCheckpoint;
 
     void updateFeatureEditButtonState();
 

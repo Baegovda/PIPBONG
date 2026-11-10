@@ -1,4 +1,5 @@
 #pragma once
+#include "model/WorkflowExecutionHighlight.h"
 
 
 
@@ -76,34 +77,13 @@ struct BlockListColumnLayout {
 
 
 class BlockListWidget : public QTableWidget {
+    friend class WorkflowExecutionUiChecks;
 
     Q_OBJECT
 
 public:
 
-    enum class ExecutionHighlight {
-
-        None,
-
-        Running,
-
-        TriggerWatch,
-
-        TriggerCooldown,
-
-        ImageFindMiss,
-
-        Success,
-
-        Failed,
-
-        ReturnToPrevious,
-
-        ClipboardCopy,
-
-        ClipboardPaste
-
-    };
+    using ExecutionHighlight = WorkflowExecutionHighlight;
 
 
 
@@ -113,6 +93,8 @@ public:
     static constexpr int LastDataColumn = 11;
 
     void setRoiCorrectionColumnVisible(bool visible);
+    void setDetailedColumnsVisible(bool visible);
+    bool detailedColumnsVisible() const { return m_detailedColumnsVisible; }
 
     void setBlockRoiCorrection(int row, bool enabled, bool interactive);
 
@@ -386,6 +368,7 @@ private:
     void syncColumnLayoutFromTable(BlockListColumnLayout& layout) const;
 
     bool m_roiCorrectionColumnVisible = false;
+    bool m_detailedColumnsVisible = true;
     BlockListColumnLayout m_columnLayout;
     bool m_restoringColumnLayout = false;
     BlockListColumnLayout m_headerDragStartLayout;

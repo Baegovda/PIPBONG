@@ -16,6 +16,7 @@ public:
         QString name;
         QString targetWindowTitle;
         QString subTargetWindowTitle;
+        QString linkedTargetProcessPath,subLinkedTargetProcessPath;
         bool defaultProfile = false;
     };
 

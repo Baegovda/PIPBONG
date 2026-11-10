@@ -1,4 +1,5 @@
 #include "ui/ProgramSettingsDialog.h"
+#include <QPointer>
 
 #include "app/PointerFeedbackSettings.h"
 #include "app/ProgramSettings.h"
@@ -308,6 +309,9 @@ void ProgramSettingsDialog::setupUi() {
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     localizeDialogButtons(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, [this]() {
+        const auto allowed=m_commitAllowed;const QPointer<ProgramSettingsDialog> life(this);
+        const bool commit=!allowed || allowed();if(!life)return;
+        if(!commit){reject();return;}
         ProgramSettings::setAutoSelectRunningFeature(m_autoSelectRunningFeatureCheck->isChecked());
         ProgramSettings::setFocusTargetWindowOnProfileSelect(
             m_focusTargetWindowOnProfileSelectCheck->isChecked());

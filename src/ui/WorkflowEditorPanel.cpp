@@ -1,4 +1,5 @@
 #include "ui/WorkflowEditorPanel.h"
+#include <QPointer>
 
 #include "ui/widgets/ListColumnHeaderWidget.h"
 #include "ui/widgets/WorkflowRunStatusBar.h"
@@ -47,6 +48,7 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QSettings>
+#include <QCheckBox>
 #include <QSizePolicy>
 #include <QTimer>
 
@@ -757,6 +759,12 @@ void WorkflowEditorPanel::setupUi() {
     blockListLayout->setContentsMargins(0, 0, 0, 0);
     blockListLayout->setSpacing(0);
 
+    m_emptyHintLabel = new QLabel(blockListFrame);
+    m_emptyHintLabel->setWordWrap(true);
+    m_emptyHintLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
+    m_emptyHintLabel->setContentsMargins(10, 10, 10, 10);
+    blockListLayout->addWidget(m_emptyHintLabel);
+
     m_blockListHeader = new ListColumnHeaderWidget(blockListFrame);
     BlockListWidget::wireListColumnHeader(m_blockListHeader, m_blockList);
     blockListLayout->addWidget(m_blockListHeader);
@@ -816,6 +824,7 @@ void WorkflowEditorPanel::setupUi() {
     toolsLayout->setSpacing(4);
 
     auto* addGroup = new QGroupBox(tr("블록 추가"), toolsPane);
+    addGroup->setObjectName(QStringLiteral("workflowAddBlocks"));
     addGroup->setStyleSheet(QStringLiteral(
         "QGroupBox {"
         "  border: none;"
@@ -889,7 +898,21 @@ void WorkflowEditorPanel::setupUi() {
 
     workflowLayout->addWidget(m_workflowSplitter, 1);
 
-    layout->addWidget(m_runStatusBar);
+    auto* statusLayout = new QHBoxLayout;
+    statusLayout->addWidget(m_runStatusBar, 1);
+    auto* detailedColumns = new QCheckBox(tr("상세 열 표시"), this);
+    detailedColumns->setObjectName(QStringLiteral("workflowDetailedColumns"));
+    detailedColumns->setToolTip(tr("탐색 시간, 시도·재시도 횟수, 기준/감지 점수와 ROI 열을 표시합니다."));
+    QSettings viewSettings;
+    detailedColumns->setChecked(viewSettings.value(QStringLiteral("workflowEditor/detailedColumns"), false).toBool());
+    m_blockList->setDetailedColumnsVisible(detailedColumns->isChecked());
+    connect(detailedColumns, &QCheckBox::toggled, this, [this](bool checked) {
+        m_blockList->setDetailedColumnsVisible(checked);
+        QSettings settings;
+        settings.setValue(QStringLiteral("workflowEditor/detailedColumns"), checked);
+    });
+    statusLayout->addWidget(detailedColumns);
+    layout->addLayout(statusLayout);
     layout->addWidget(workflowPane, 1);
 
     connect(m_removeAllWaitButton, &QPushButton::clicked, this, &WorkflowEditorPanel::onRemoveAllWaitBlocks);
@@ -936,7 +959,7 @@ void WorkflowEditorPanel::resizeEvent(QResizeEvent* event) {
 
 void WorkflowEditorPanel::clearBlockMatchResults() {
     if (m_feature) {
-        m_featureRunFeedback.erase(m_feature->id());
+        m_featureRunFeedback.erase(feedbackKey(m_boundFeatureId));
     }
     clearCurrentRunFeedbackVectors();
     m_blockList->clearBlockMatchResults();
@@ -959,7 +982,7 @@ void WorkflowEditorPanel::clearCurrentRunFeedbackVectors() {
 
 void WorkflowEditorPanel::persistRunFeedbackForCurrentFeature() {
     if (m_feature) {
-        saveRunFeedbackForFeature(m_feature->id());
+        saveRunFeedbackForFeature(m_boundFeatureId);
     }
 }
 
@@ -995,11 +1018,11 @@ void WorkflowEditorPanel::saveRunFeedbackForFeature(const std::string& featureId
         feedback.rowMatchLockedSuccess[i] = m_blockList->isMatchSuccessLocked(i);
     }
 
-    m_featureRunFeedback[featureId] = std::move(feedback);
+    m_featureRunFeedback[feedbackKey(featureId)] = std::move(feedback);
 }
 
 void WorkflowEditorPanel::restoreRunFeedbackForFeature(const std::string& featureId) {
-    const auto it = m_featureRunFeedback.find(featureId);
+    const auto it = m_featureRunFeedback.find(feedbackKey(featureId));
     if (it == m_featureRunFeedback.end()) {
         clearCurrentRunFeedbackVectors();
         m_activeBlockIndex = -1;
@@ -1187,37 +1210,62 @@ void WorkflowEditorPanel::setBlockImageFindFailureHandlingCounts(int blockIndex,
         blockIndex, returnToPreviousCount, retryAfterNextCount);
 }
 
+std::string WorkflowEditorPanel::feedbackKey(const std::string& id)const {
+    const auto scope=m_feedbackScope.toUtf8().toStdString();
+    return std::to_string(scope.size())+":"+scope+id;
+}
 void WorkflowEditorPanel::setFeature(Feature* feature) {
-    if (m_feature && m_feature != feature) {
-        saveRunFeedbackForFeature(m_feature->id());
+    auto lifetime=feature==m_feature?m_featureLifetime:std::shared_ptr<void>{};
+    bindFeature(feature,std::move(lifetime),m_feedbackScope);
+}
+void WorkflowEditorPanel::bindFeature(Feature* feature,std::shared_ptr<void> lifetime,const QString& scope) {
+    const auto epoch=++m_bindingEpoch;const QPointer<WorkflowEditorPanel> life(this);
+    const auto current=[life,epoch]{return life && life->m_bindingEpoch==epoch;};
+    const auto priorLifetime=m_featureLifetime;
+    if(m_feature)saveRunFeedbackForFeature(m_boundFeatureId);
+    if(m_feature!=feature || m_feedbackScope!=scope) {
+        // Preview/removed models may have already been retired by the host.
+        // Cleanup reads the cached ID and treats the prior binding as detached.
+        m_feature=nullptr;
         setLoopRegionPickMode(false);
-        stopClickBlockSelectionPreview();
-        stopImageFindSelectionRoiPreview();
+        if(!current())return;
+        stopClickBlockSelectionPreview();if(!current())return;
+        stopImageFindSelectionRoiPreview();if(!current())return;
     }
-
+    m_feedbackScope=scope;m_featureLifetime=std::move(lifetime);
+    m_boundFeatureId=feature?feature->id():std::string();
     m_feature = feature;
     clearWorkflowHistory();
+    if(!current())return;
 
     if (m_blockList) {
         m_blockList->setFeatureRunMode(feature ? feature->runMode() : FeatureRunMode::RepeatCount);
+        if(!current())return;
     }
 
     if (m_feature) {
         restoreRunFeedbackForFeature(m_feature->id());
+        if(!current())return;
     } else {
         clearBlockMatchResults();
+        if(!current())return;
         clearExecutionHighlight();
+        if(!current())return;
         setLoopRegionPickMode(false);
+        if(!current())return;
     }
 
     refresh();
+    if(!current())return;
 
     if (m_feature) {
-        const auto it = m_featureRunFeedback.find(m_feature->id());
+        const auto it = m_featureRunFeedback.find(feedbackKey(m_boundFeatureId));
         if (it != m_featureRunFeedback.end()) {
-            for (int i = 0; i < it->second.rowMatchLockedSuccess.size(); ++i) {
-                if (it->second.rowMatchLockedSuccess[i]) {
+            const auto locked=it->second.rowMatchLockedSuccess;
+            for (int i = 0; i < locked.size(); ++i) {
+                if (locked[i]) {
                     markBlockMatchSuccess(i);
+                    if(!current())return;
                 }
             }
         }
@@ -1288,6 +1336,13 @@ void WorkflowEditorPanel::setProjectDirectory(const QString& directory, bool ref
 }
 
 void WorkflowEditorPanel::refresh() {
+    const bool empty = !m_feature || m_feature->workflow().blocks().empty();
+    m_emptyHintLabel->setVisible(empty);
+    if (empty) {
+        m_emptyHintLabel->setText(m_feature
+            ? tr("아래 ‘블록 추가’에서 첫 동작을 선택하세요. 블록은 위에서 아래 순서로 실행돼요.")
+            : tr("기능 목록의 ‘추가’를 눌러 첫 기능을 만드세요. 기능을 선택하면 블록을 추가할 수 있어요."));
+    }
     m_blockList->setBlockCount(0);
     m_blockList->clearLoopRegionVisuals();
     if (!m_feature) {

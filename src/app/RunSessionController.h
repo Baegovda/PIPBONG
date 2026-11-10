@@ -42,16 +42,6 @@ public:
     void resumeWaitingScopedTargetForegroundSessions();
     void scheduleScopedTargetForegroundResumePoll();
 
-    struct FinishGateCallbacks {
-        std::function<bool()> switchingProfile;
-        std::function<bool()> profileSwitchPipelineActive;
-        std::function<void()> flushDeferredProfileSwitchIfIdle;
-        std::function<void()> scheduleEnsureTriggerMonitorEnginesRunning;
-        std::function<void()> updateTargetWindowDetails;
-    };
-
-    void finishForegroundSessionGate(const FinishGateCallbacks& callbacks);
-
 private:
     Project* m_project = nullptr;
     std::map<std::string, FeatureRunSession>* m_runSessions = nullptr;

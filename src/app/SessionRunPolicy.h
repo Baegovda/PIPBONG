@@ -30,6 +30,8 @@ enum class WorkflowRefreshDecision {
 };
 
 namespace SessionRunPolicy {
+/// First-ROI UI gate, in addition to existing stop/target/engine launch gates.
+bool allowsPreparedLaunch(bool awaitingFirstTemplateRoi);
 
 bool isSessionActive(const SessionRunPolicyInput& session);
 bool isInActiveWorkflowRun(const SessionRunPolicyInput& session);
@@ -40,6 +42,11 @@ bool hasAnyActiveWorkflowEngine(const std::vector<SessionRunPolicyInput>& sessio
 bool isCapturingWorkflowBurst(const SessionRunPolicyInput& session);
 bool hasAnyCapturingWorkflowBurst(const std::vector<SessionRunPolicyInput>& sessions);
 bool hasAnyRunningSession(const std::vector<SessionRunPolicyInput>& sessions);
+/// Explicit target rebinding waits until all repeat/hold/trigger sessions are inactive.
+bool allowsTargetBindingChange(const std::vector<SessionRunPolicyInput>& sessions);
+/// No center movement during active workflow bursts, including other profiles. Monitor/cooldown is allowed.
+bool allowsTargetCenterPin(const std::vector<SessionRunPolicyInput>& sessions);
+bool shouldAdoptCaptureTarget(const SessionRunPolicyInput& session,bool lockedEmpty,bool lockedMissing,bool differs);
 
 WorkflowRefreshDecision workflowRefreshOnProjectEdit(const SessionRunPolicyInput& session);
 
@@ -50,6 +57,7 @@ bool shouldContinueSession(const SessionRunPolicyInput& session, bool holdBindin
 
 /// Active sessions with `repeatSession` set (Hold / infinite / N-repeat loop gap UI coalesce).
 int countActiveRepeatSessions(const std::vector<SessionRunPolicyInput>& sessions);
+int fastRepeatUiFlushIntervalMs(int activeRepeatSessions);
 
 /// Coalesce run UI refreshes when multiple sessions or 2+ active repeat loops compete (§8.21 R2.3).
 bool shouldCoalesceRunUiUpdates(const std::vector<SessionRunPolicyInput>& sessions);

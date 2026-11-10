@@ -7,6 +7,8 @@
 #include <chrono>
 #include <functional>
 #include <mutex>
+#include <memory>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 
@@ -14,7 +16,7 @@ class ExecutionContext;
 
 class UserInputInterruptMonitor {
 public:
-    using InterruptHandler = std::function<void(const std::string& featureId)>;
+    using InterruptHandler = std::function<void(const std::string&, const std::shared_ptr<ExecutionContext>&)>;
 
     static UserInputInterruptMonitor& instance();
 
@@ -24,7 +26,7 @@ public:
     void registerSession(const std::string& featureId,
                          UserInputInterruptMode mode,
                          const HotkeyBinding& featureHotkey,
-                         ExecutionContext* context,
+                         const std::shared_ptr<ExecutionContext>& context,
                          bool keyboardInterrupt = true);
     void unregisterSession(const std::string& featureId);
     void unregisterAll();
@@ -39,7 +41,8 @@ private:
     struct SessionEntry {
         UserInputInterruptMode mode = UserInputInterruptMode::Stop;
         HotkeyBinding featureHotkey;
-        ExecutionContext* context = nullptr;
+        std::weak_ptr<ExecutionContext> context;
+        std::uint64_t registration = 0;
         bool keyboardInterrupt = true;
         std::chrono::steady_clock::time_point lastInterruptAt{};
     };
@@ -56,4 +59,5 @@ private:
     std::array<bool, 5> m_mouseButtonWasDown{};
     std::array<bool, 256> m_keyboardWasDown{};
     bool m_keyboardPollEnabled = false;
+    std::uint64_t m_nextRegistration = 0, m_handlerRevision = 0;
 };

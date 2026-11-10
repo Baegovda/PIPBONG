@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QLoggingCategory>
 #include <QStandardPaths>
 #include <QTimer>
@@ -154,6 +155,8 @@ QString findRepoRootDirectory() {
 }
 
 QString appDataOutputDirectory() {
+    const QString isolatedData = qEnvironmentVariable("PIPBONG_DATA_DIR");
+    if (!isolatedData.isEmpty()) return QDir(isolatedData).filePath(QStringLiteral("app-stutter"));
     const QString base =
         QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
     return QDir(base).filePath(QStringLiteral("PIPBONG/PIPBONG/app-stutter"));
@@ -281,9 +284,6 @@ void recordGuiStallLocked(qint64 gapMs) {
     }
     pushEventLocked(severity, detail, gapMs * 1000);
 
-    if (gapMs >= kGuiStallCriticalMs) {
-        writeReportFiles(QStringLiteral("critical_stall"));
-    }
 }
 
 void cpuMonitorLoop() {
@@ -568,17 +568,21 @@ QString buildMarkdownReport(const QString& reason) {
 
 bool writeReportFiles(const QString& reason) {
     const QString content = buildMarkdownReport(reason);
+    const QByteArray bytes = content.toUtf8();
     bool anyWritten = false;
     for (const QString& path : AppStutterProfiler::allReportPaths()) {
         const QFileInfo info(path);
         QDir().mkpath(info.absolutePath());
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             qCWarning(lcAppStutter) << "Failed to write app stutter report:" << path
                                     << file.errorString();
             continue;
         }
-        file.write(content.toUtf8());
+        if (file.write(bytes) != bytes.size() || !file.commit()) {
+            qCWarning(lcAppStutter) << "Failed to commit app stutter report:" << path << file.errorString();
+            continue;
+        }
         anyWritten = true;
         qCInfo(lcAppStutter) << "Wrote app stutter report (" << reason << "):" << path;
     }
@@ -689,14 +693,21 @@ void AppStutterProfiler::noteGuiPulse() {
         return;
     }
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    std::lock_guard<std::mutex> lock(g_mutex);
-    ++g_guiPulseCount;
-    if (g_hasGuiPulse) {
-        const qint64 gapMs = nowMs - g_lastGuiPulseMs;
-        recordGuiStallLocked(gapMs);
+    bool critical = false;
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        ++g_guiPulseCount;
+        if (g_hasGuiPulse) {
+            const qint64 gapMs = nowMs - g_lastGuiPulseMs;
+            recordGuiStallLocked(gapMs);
+            critical = gapMs >= kGuiStallCriticalMs;
+        }
+        g_lastGuiPulseMs = nowMs;
+        g_hasGuiPulse = true;
     }
-    g_lastGuiPulseMs = nowMs;
-    g_hasGuiPulse = true;
+    // Report construction takes g_mutex itself. Never recurse into it while
+    // updating counters: a recovered long GUI stall must not crash diagnostics.
+    if (critical) writeReportFiles(QStringLiteral("critical_stall"));
 }
 
 void AppStutterProfiler::setActiveFeatureSessionCount(int count) {

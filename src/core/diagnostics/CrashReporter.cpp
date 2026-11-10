@@ -10,6 +10,7 @@
 #include <csignal>
 
 #include "core/diagnostics/CrashReporter.h"
+#include "core/diagnostics/GuiContextCache.h"
 #include "core/diagnostics/CrashManifestBuilder.h"
 #include "core/diagnostics/AppStutterProfiler.h"
 #include "core/diagnostics/LiveSessionLog.h"
@@ -80,9 +81,7 @@ std::atomic<qint64> g_guiHangGraceUntilMs{0};
 std::atomic<unsigned long> g_mainThreadId{0};
 PVOID g_vectoredExceptionHandle = nullptr;
 
-std::mutex g_contextMutex;
-CrashContextProvider g_contextProvider;
-QString g_cachedContextSnapshot;
+GuiContextCache g_contextCache;
 
 std::mutex g_userActionMutex;
 QString g_lastUserAction;
@@ -166,24 +165,8 @@ void appendRecentLogLine(const QString& line) {
     LiveSessionLog::appendLine(line);
 }
 
-void refreshContextCacheFromProvider() {
-    CrashContextProvider provider;
-    {
-        std::lock_guard<std::mutex> lock(g_contextMutex);
-        provider = g_contextProvider;
-    }
-    if (!provider) {
-        return;
-    }
-    const QString snapshot = provider();
-    std::lock_guard<std::mutex> lock(g_contextMutex);
-    g_cachedContextSnapshot = snapshot;
-}
-
-QString cachedContextSnapshot() {
-    std::lock_guard<std::mutex> lock(g_contextMutex);
-    return g_cachedContextSnapshot;
-}
+void refreshContextCacheFromProvider() {g_contextCache.refresh();}
+QString cachedContextSnapshot() {return g_contextCache.cached();}
 
 #ifdef _WIN32
 CrashArtifacts writeCrashArtifacts(CrashReportKind kind,
@@ -292,7 +275,8 @@ void qtMessageHandler(QtMsgType type, const QMessageLogContext& context, const Q
 }
 
 QString crashRootDirectoryPath() {
-    QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString base = qEnvironmentVariable("PIPBONG_DATA_DIR");
+    if (base.isEmpty()) base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (base.isEmpty()) {
         wchar_t localAppData[MAX_PATH]{};
         if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, localAppData))) {
@@ -329,6 +313,7 @@ QString currentExecutablePath() {
 }
 
 void notifyCrashReportSaved(const QString& folderPath, bool immediateHang) {
+    if (!CrashReporter::interactiveReportsAllowed()) return;
     const QString message =
         immediateHang
             ? (folderPath.isEmpty()
@@ -354,6 +339,7 @@ void notifyCrashReportSaved(const QString& folderPath, bool immediateHang) {
 }
 
 void launchDetachedCrashReportViewer(const QString& folderPath) {
+    if (!CrashReporter::interactiveReportsAllowed()) return;
     const QString executablePath = currentExecutablePath();
     if (executablePath.isEmpty() || folderPath.isEmpty()) {
         notifyCrashReportSaved(folderPath, false);
@@ -404,6 +390,7 @@ void showCrashReportDialogOnGuiThread(const QString& reportText,
 }
 
 void presentCrashReport(const CrashArtifacts& artifacts, bool allowInProcessUi) {
+    if (!CrashReporter::interactiveReportsAllowed()) return;
     if (artifacts.reportText.trimmed().isEmpty()) {
         return;
     }
@@ -464,11 +451,12 @@ void reportGuiThreadHang(qint64 silentMs) {
         g_writingCrashReport.store(false);
         return;
     }
-    launchDetachedCrashReportViewer(artifacts.folderPath);
-    notifyCrashReportSaved(artifacts.folderPath, true);
     AppStutterProfiler::flushReport(QStringLiteral("hang"));
     completeHangCrashArtifactHeavy(artifacts);
     g_writingCrashReport.store(false);
+    // Complete the evidence before presentation. A successful viewer launch is
+    // sufficient; a second system-modal MessageBox used to block this watchdog.
+    launchDetachedCrashReportViewer(artifacts.folderPath);
 }
 
 void guiHangWatchdogThreadMain() {
@@ -1095,6 +1083,13 @@ void CrashReporter::install() {
     crashRootDirectoryPath();
 }
 
+bool CrashReporter::interactiveReportsAllowed() {
+    const bool isolated = !qEnvironmentVariableIsEmpty("PIPBONG_DATA_DIR");
+    const bool inspection = qEnvironmentVariableIntValue("PIPBONG_SMOKE_TEST") == 1
+        || qEnvironmentVariableIntValue("PIPBONG_SELF_TEST_UI") == 1;
+    return !(isolated && inspection);
+}
+
 void CrashReporter::installGuiHangWatchdog() {
 #ifdef _WIN32
     QCoreApplication* app = QCoreApplication::instance();
@@ -1122,13 +1117,10 @@ void CrashReporter::installGuiHangWatchdog() {
 #endif
 }
 
-void CrashReporter::setContextProvider(CrashContextProvider provider) {
-    {
-        std::lock_guard<std::mutex> lock(g_contextMutex);
-        g_contextProvider = std::move(provider);
-    }
-    refreshContextCacheFromProvider();
-}
+quint64 CrashReporter::setContextProvider(CrashContextProvider provider) {return g_contextCache.set(std::move(provider));}
+bool CrashReporter::clearContextProvider(quint64 token) {return g_contextCache.retire(token);}
+bool CrashReporter::refreshContext() {return g_contextCache.refresh();}
+QString CrashReporter::cachedContext() {return g_contextCache.cached();}
 
 void CrashReporter::noteUserAction(const QString& description) {
     if (description.trimmed().isEmpty()) {

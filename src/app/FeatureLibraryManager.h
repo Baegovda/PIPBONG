@@ -4,6 +4,7 @@
 #include <QString>
 #include <QStringList>
 #include <vector>
+#include <atomic>
 
 #include <nlohmann/json.hpp>
 
@@ -26,6 +27,8 @@ public:
     explicit FeatureLibraryManager(const QString& dataDirectory);
 
     std::vector<Entry> listEntries() const;
+    // Advances before each local mutation attempt, including partially failed I/O.
+    quint64 revision()const{return m_revision.load(std::memory_order_relaxed);}
 
     /// Persists manifest entry order (must include every existing entry id).
     bool reorderEntries(const QStringList& orderedIds);
@@ -52,7 +55,8 @@ public:
     QString entryProjectDirectory(const QString& entryId) const;
 
     /// Copies referenced templates from one profile project directory to another.
-    static QStringList copyFeatureTemplatesBetweenDirectories(const Feature& feature,
+    /// Preserves existing target assets; remaps copied feature paths on collision.
+    static QStringList copyFeatureTemplatesBetweenDirectories(Feature& feature,
                                                                const QString& sourceProjectDirectory,
                                                                const QString& targetProjectDirectory);
 
@@ -60,6 +64,7 @@ public:
     bool removeEntry(const QString& entryId);
 
 private:
+    std::atomic<quint64> m_revision{0};
     QString m_libraryRootDir;
     QString m_entriesDir;
 

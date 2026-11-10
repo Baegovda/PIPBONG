@@ -1019,7 +1019,7 @@ bool createPreviewOverlay(PreviewState& state) {
 
 } // namespace
 
-bool RoiPreviewOverlay::isVisible() {
+bool RoiPreviewOverlay::nativeVisible() {
 #ifdef _WIN32
     return g_state && g_state->hwnd;
 #else
@@ -1027,7 +1027,7 @@ bool RoiPreviewOverlay::isVisible() {
 #endif
 }
 
-bool RoiPreviewOverlay::isEditable() {
+bool RoiPreviewOverlay::nativeEditable() {
 #ifdef _WIN32
     return g_state && g_state->hwnd && g_state->editable;
 #else
@@ -1035,17 +1035,25 @@ bool RoiPreviewOverlay::isEditable() {
 #endif
 }
 
-bool RoiPreviewOverlay::show(SearchArea searchArea,
-                             const CaptureRegion& customRegion,
-                             const PercentRegion& percentRegion,
-                             const std::vector<CaptureRegion>& customRegions,
-                             QWidget* hostWidget,
-                             VisibilityHandler onVisibilityChanged,
-                             const EditableOptions& editable) {
+bool RoiPreviewOverlay::nativeShow(const NativeRequest& request) {
+    const auto searchArea=request.searchArea;
+    const auto& customRegion=request.customRegion;
+    const auto& percentRegion=request.percentRegion;
+    const auto& customRegions=request.customRegions;
+    QWidget* hostWidget=request.host.data();
+    auto onVisibilityChanged=request.visibility;
+    const auto& editable=request.editable;
 #ifdef _WIN32
     MatchTestOverlay::dismissAll();
-    dismissAll();
+    if(!request.current())return false;
+    nativeDismiss();
+    if(!request.current())return false;
 
+    QRect targetPhysical;
+    if(editable.fixedTargetBounds){
+        targetPhysical=*editable.fixedTargetBounds;
+        if(!targetPhysical.isValid())return false;
+    }else{
     if (!ScreenCapture::findTargetWindow()) {
         QMessageBox::warning(messageBoxParent(hostWidget),
                              QObject::tr("ROI 미리보기"),
@@ -1062,7 +1070,8 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
         return false;
     }
 
-    const QRect targetPhysical(target.x, target.y, target.width, target.height);
+        targetPhysical=QRect(target.x,target.y,target.width,target.height);
+    }
     std::vector<QRect> roiClientRects;
 
     auto appendRoiClient = [&](const CaptureRegion& region) {
@@ -1108,6 +1117,7 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
         return false;
     }
 
+    if(!request.current())return false;
     g_state = std::make_unique<PreviewState>();
     g_state->physicalBounds = targetPhysical;
     g_state->roiClientRects = std::move(roiClientRects);
@@ -1154,18 +1164,6 @@ bool RoiPreviewOverlay::show(SearchArea searchArea,
 #endif
 }
 
-bool RoiPreviewOverlay::hide() {
-#ifdef _WIN32
-    if (!isVisible()) {
-        return false;
-    }
-    dismissAll();
-    return true;
-#else
-    return false;
-#endif
-}
-
 bool RoiPreviewOverlay::toggle(SearchArea searchArea,
                                const CaptureRegion& customRegion,
                                const PercentRegion& percentRegion,
@@ -1173,8 +1171,8 @@ bool RoiPreviewOverlay::toggle(SearchArea searchArea,
                                QWidget* hostWidget,
                                VisibilityHandler onVisibilityChanged,
                                const EditableOptions& editable) {
-    if (isVisible()) {
-        hide();
+    if (isVisible(editable.owner)) {
+        hide(editable.owner);
         return false;
     }
     return show(searchArea,
@@ -1186,7 +1184,7 @@ bool RoiPreviewOverlay::toggle(SearchArea searchArea,
                 editable);
 }
 
-void RoiPreviewOverlay::setActiveRoiIndex(int index) {
+void RoiPreviewOverlay::nativeSelect(int index) {
 #ifdef _WIN32
     if (!g_state || !g_state->hwnd || !g_state->editable) {
         return;
@@ -1199,8 +1197,90 @@ void RoiPreviewOverlay::setActiveRoiIndex(int index) {
 #endif
 }
 
-void RoiPreviewOverlay::dismissAll() {
+void RoiPreviewOverlay::nativeDismiss() {
 #ifdef _WIN32
     destroyPreviewWindow();
 #endif
+}
+
+struct RoiPreviewOverlay::Control {
+    Backend backend;
+    quint64 generation=0, current=0;
+    std::weak_ptr<void> owner;
+    bool owned=false,published=false;
+    bool allows(const Owner& candidate)const {
+        return !candidate || (current && owned && !owner.expired()
+            && !owner.owner_before(candidate) && !candidate.owner_before(owner));
+    }
+    void retire(){++generation;current=0;owner.reset();owned=false;published=false;}
+};
+std::shared_ptr<RoiPreviewOverlay::Control> RoiPreviewOverlay::control(){
+    static auto state=[] {
+        auto value=std::make_shared<Control>();
+        value->backend={nativeShow,nativeVisible,nativeEditable,nativeDismiss,nativeSelect};
+        return value;
+    }();
+    return state;
+}
+RoiPreviewOverlay::Backend RoiPreviewOverlay::replaceBackendForChecks(Backend backend){
+    auto state=control();auto old=state->backend;state->retire();state->backend=std::move(backend);return old;
+}
+bool RoiPreviewOverlay::isVisible(const Owner& owner){
+    const Owner candidate=owner;
+    const auto state=control();if(!state->allows(candidate) || (candidate && !state->published))return false;
+    const auto generation=state->generation;const auto query=state->backend.visible;
+    const bool visible=query && query();
+    return generation==state->generation && state->allows(candidate) && visible;
+}
+bool RoiPreviewOverlay::isEditable(const Owner& owner){
+    const Owner candidate=owner;
+    const auto state=control();if(!state->allows(candidate) || (candidate && !state->published))return false;
+    const auto generation=state->generation;const auto query=state->backend.editable;
+    const bool editable=query && query();
+    return generation==state->generation && state->allows(candidate) && editable;
+}
+bool RoiPreviewOverlay::show(SearchArea area,const CaptureRegion& region,const PercentRegion& percent,
+    const std::vector<CaptureRegion>& regions,QWidget* host,VisibilityHandler visibility,const EditableOptions& editable){
+    const auto state=control();const auto backend=state->backend;
+    const quint64 id=++state->generation;state->current=id;state->owner=editable.owner;state->owned=bool(editable.owner);state->published=false;
+    const std::weak_ptr<Control> weak=state;const std::weak_ptr<void> owner=editable.owner;const bool owned=bool(editable.owner);
+    NativeRequest request{area,region,percent,regions,host,{},editable,{}};
+    request.current=[weak,id,owner,owned]{const auto value=weak.lock();return value && value->current==id && (!owned || !owner.expired());};
+    request.visibility=[weak,id,owner,owned,callback=std::move(visibility)](bool visible){
+        const auto value=weak.lock();if(!value)return;
+        if(visible && value->current!=id)return;
+        if(visible)value->published=true;
+        if(!visible && value->current==id)value->retire();
+        // A replaced request still receives its cancellation, but cannot retire
+        // the newer native window or publish a stale positive visibility edge.
+        if((!owned || !owner.expired()) && callback)callback(visible);
+    };
+    const auto current=request.current;
+    request.editable.owner.reset(); // The backend envelope must not retain the caller lease.
+    if(request.editable.onRoiEdited){const auto callback=request.editable.onRoiEdited;request.editable.onRoiEdited=[current,callback](int i,const CaptureRegion& r){if(current())callback(i,r);};}
+    if(request.editable.onRoiSelected){const auto callback=request.editable.onRoiSelected;request.editable.onRoiSelected=[current,callback](int i){if(current())callback(i);};}
+    const auto guarded=[current](std::function<void()> callback)->std::function<void()>{return callback?std::function<void()>([current,callback]{if(current())callback();}):std::function<void()>();};
+    request.editable.onConfirm=guarded(request.editable.onConfirm);
+    request.editable.onAdd=guarded(request.editable.onAdd);
+    request.editable.onDelete=guarded(request.editable.onDelete);
+    const bool shown=backend.show && backend.show(request);
+    if(state->current!=id)return false;
+    if(!shown || !current()){state->retire();if(backend.dismiss)backend.dismiss();return false;}
+    state->published=true;
+    return true;
+}
+void RoiPreviewOverlay::dismiss(const Owner& owner){
+    const Owner candidate=owner;
+    const auto state=control();if(!state->allows(candidate))return;
+    const auto dismiss=state->backend.dismiss;state->retire();if(dismiss)dismiss();
+}
+void RoiPreviewOverlay::dismissAll(){dismiss({});}
+bool RoiPreviewOverlay::hide(const Owner& owner){
+    const Owner candidate=owner;
+    const auto state=control();const auto generation=state->generation;
+    const bool visible=isVisible(candidate);if(generation==state->generation)dismiss(candidate);return visible;
+}
+void RoiPreviewOverlay::setActiveRoiIndex(int index,const Owner& owner){
+    const auto state=control();if(!state->allows(owner) || (owner && !state->published))return;
+    const auto select=state->backend.select;if(select)select(index);
 }

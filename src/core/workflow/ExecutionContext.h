@@ -15,6 +15,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -76,11 +77,15 @@ public:
 
     void requestStop();
     bool shouldStop() const;
-    void resetStop();
+    /// Worker continuation passes false so a current manual/trigger pause survives restart.
+    void resetStop(bool resetPause=true);
 
     void setPaused(bool paused);
     bool isPaused() const;
     void togglePaused();
+    /// Trigger pause lease: manual pause/toggle/reset invalidates the returned token.
+    std::optional<std::uint64_t> pauseIfRunning();
+    bool resumeIfPauseUnchanged(std::uint64_t token);
 
     /// Sleeps in small steps; returns false when stop is requested.
     bool interruptibleSleepMs(int delayMs);
@@ -136,6 +141,8 @@ public:
     void clearLastMatch();
 
     void setLastMatchAttempt(double matchThreshold, double peakConfidence, const cv::Point& clientPoint, bool hasClientPoint);
+    struct MatchAttemptSnapshot {bool present=false;double confidence=0,threshold=0;bool hasPoint=false;cv::Point point;};
+    MatchAttemptSnapshot matchAttemptSnapshot()const;
     bool hasLastMatchAttempt() const;
     double lastMatchAttemptConfidence() const;
     double lastMatchAttemptThreshold() const;
@@ -187,8 +194,10 @@ public:
     void clearRememberedPositions();
 
     void setTargetWindowTitle(const std::wstring& title);
-    /// Updates the bound title only; ScreenCapture HWND/title sync happens on the worker thread.
+    /// Title-only binding for callers without a process constraint; clears a previous process path.
     void setTargetWindowTitleForWorker(const std::wstring& title);
+    void setTargetWindowBindingForWorker(const std::wstring& title, const std::wstring& processPath);
+    std::pair<std::wstring, std::wstring> targetWindowBinding() const;
     std::wstring targetWindowTitle() const;
 
 #ifdef _WIN32
@@ -232,9 +241,10 @@ private:
     std::optional<WorkerFastRepeatCallbacks> m_workerFastRepeat;
     std::atomic<int> m_workerRepeatRemaining{0};
     std::atomic<bool> m_stopRequested{false};
-    std::atomic<bool> m_paused{false};
+    // Paused flag in bit0, intent generation in the remaining bits. One CAS protects both.
+    std::atomic<std::uint64_t> m_pauseState{0};
     int m_imageFindMaxMissAttempts = 0;
-    int m_imageFindPollAttempt = 0;
+    std::atomic<int> m_imageFindPollAttempt{0};
     bool m_detectionFailedThisRun = false;
     std::unordered_set<int> m_imageFindDeferRetryUsedBlockIndexes;
     std::unordered_map<int, int> m_imageFindReturnToPreviousCounts;
@@ -248,6 +258,7 @@ private:
     double m_lastMatchThreshold = 0.0;
     cv::Mat m_lastMatchPreview;
     bool m_hasLastMatchAttempt = false;
+    mutable std::mutex m_matchAttemptMutex;
     double m_lastMatchAttemptConfidence = 0.0;
     double m_lastMatchAttemptThreshold = 0.0;
     bool m_hasLastMatchAttemptPoint = false;
@@ -258,7 +269,7 @@ private:
     bool m_roiCorrectionSessionEligible = false;
     bool m_featureRoiCorrectionGlobal = false;
     int m_featureRoiCorrectionExpandPercent = 110;
-    int m_runLoopNumber = 1;
+    std::atomic<int> m_runLoopNumber{1};
     int m_activeBlockIndex = -1;
     std::unordered_map<int, PercentRegion> m_correctedRoisByBlockIndex;
     struct RememberedImageFindPositions {
@@ -266,11 +277,14 @@ private:
     };
     std::unordered_map<int, RememberedImageFindPositions> m_rememberedPositionsByBlockIndex;
     std::wstring m_targetWindowTitle;
+    std::wstring m_targetProcessPath;
+    mutable std::mutex m_targetBindingMutex;
     std::string m_projectDirectory;
     ScopedTargetPollGate m_scopedTargetPollGate;
     ScopedTargetPollGate m_triggerMonitorYieldGate;
 #ifdef _WIN32
     mutable HWND m_cachedTargetWindow = nullptr;
+    void refreshTargetWindowHandleLocked() const;
     bool m_runKeyboardSessionActive = false;
     SessionModifierSnapshot m_runKeyboardSessionStart;
     std::unordered_set<int> m_pipbongHeldVirtualKeys;
@@ -279,6 +293,7 @@ private:
     std::unordered_set<int> m_pipbongEverInjectedMouseButtons;
     mutable std::mutex m_syntheticInputMutex;
     std::unordered_map<int, std::chrono::steady_clock::time_point> m_syntheticInputSuppressUntil;
-    void extendSyntheticInputSuppress(int virtualKey);
+    void extendSyntheticInputSuppressLocked(int virtualKey);
+    void releaseRunInput(bool ending);
 #endif
 };

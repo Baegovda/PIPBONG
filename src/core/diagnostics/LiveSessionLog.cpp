@@ -60,6 +60,12 @@ QString findRepoRootDirectory() {
 }
 
 QString appDataLiveSessionDirectory() {
+    const QString isolatedData = qEnvironmentVariable("PIPBONG_DATA_DIR");
+    if (!isolatedData.isEmpty()) {
+        const QString path = QDir(isolatedData).filePath(QStringLiteral("live-session"));
+        QDir().mkpath(path);
+        return path;
+    }
     const QString base =
         QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
     if (base.isEmpty()) {

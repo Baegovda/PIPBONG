@@ -11,6 +11,7 @@
 #endif
 
 namespace ForegroundRunGate {
+bool preferSubTitle(const QString& title,const QString& main,const QString& sub);
 
 struct ProfileBindings {
     QString activeProfileId;

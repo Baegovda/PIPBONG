@@ -60,6 +60,8 @@ public:
     static bool allowsRunWithoutTargetWindow();
     /// Brings the resolved target window to the foreground for reliable capture during workflow runs.
     static void activateTargetWindow();
+    /// Session-specific activation without reading or replacing global target bindings.
+    static void activateTargetWindow(const std::wstring& title, const std::wstring& processPath);
     /// True when a visible top-level window title contains `binding` (case-sensitive substring).
     static bool hasVisibleWindowMatchingTitle(const std::wstring& binding);
     /// First visible top-level window whose title contains `binding` (substring match).

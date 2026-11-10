@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/input/HotkeyBinding.h"
+#include "core/input/HoldStateSnapshot.h"
 
 #include <QObject>
 
@@ -41,8 +42,10 @@ public:
                                               const HotkeyBinding& binding);
 
     bool isHoldBindingDown(const std::string& featureId) const;
-    /** Poll-safe: hook latch and/or physical down — no hold-ended emit (same-key tap pulses). */
+    /** GUI/hook-thread query, no hold-ended emit. Worker callers use holdStateReader. */
     bool isHoldBindingStillActiveForRun(const std::string& featureId) const;
+    /// Construct on the GUI/hook owner thread; returned reader is worker/lifetime safe.
+    std::function<bool()> holdStateReader(const std::string& featureId) const;
     /** Clears stale hook state when the binding is no longer physically down; may emit hold ended. */
     bool reconcileHoldBindingDown(const std::string& featureId);
     /** Reset toggle armed / hold / mouse latch after Alt+Tab drops key-up events. */
@@ -70,7 +73,8 @@ private:
         std::string featureId;
         HotkeyBinding binding;
         bool allowExtraModifiers = false;
-        bool keyDown = false;
+        SharedHoldLatch keyDown;
+        std::shared_ptr<std::atomic<bool>> registered = std::make_shared<std::atomic<bool>>(true);
         /// Incremented to cancel a pending deferred hold-end recheck (multi-key rollover).
         quint32 pendingHoldEndGeneration = 0;
     };
@@ -87,7 +91,8 @@ private:
         HotkeyBinding binding;
         bool allowExtraModifiers = false;
         bool holdMode = false;
-        bool buttonDown = false;
+        SharedHoldLatch buttonDown;
+        std::shared_ptr<std::atomic<bool>> registered = std::make_shared<std::atomic<bool>>(true);
         quint32 pendingHoldEndGeneration = 0;
     };
 

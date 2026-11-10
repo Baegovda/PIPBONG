@@ -1,6 +1,24 @@
 # Shared helpers for incremental Release builds — stale vcpkg lock / stuck configure recovery.
 $ErrorActionPreference = "Stop"
 
+function Stop-RepoReleaseProcess {
+    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+    $targetExecutable = [IO.Path]::GetFullPath((Join-Path $RepoRoot 'build\Release\PIPBONG.exe'))
+    foreach ($targetProcess in @(Get-Process -Name PIPBONG -ErrorAction SilentlyContinue)) {
+        try {
+            $candidateExecutable = $targetProcess.Path
+            if ([string]::IsNullOrWhiteSpace($candidateExecutable)) { continue }
+            $candidateExecutable = [IO.Path]::GetFullPath($candidateExecutable)
+        } catch {
+            # An unknown executable must never be treated as our build output.
+            continue
+        }
+        if ([StringComparer]::OrdinalIgnoreCase.Equals($candidateExecutable, $targetExecutable)) {
+            Stop-Process -InputObject $targetProcess -Force -ErrorAction Stop
+        }
+    }
+}
+
 function Get-RepoVcpkgLockHolders {
     param(
         [Parameter(Mandatory = $true)]
@@ -95,12 +113,31 @@ function Wait-ForRepoVcpkgLock {
     return $false
 }
 
+function Get-SafeMsvcCompileCount {
+    param([int]$LogicalProcessors,[long]$FreeMemoryKiB)
+    $cpuBudget = [Math]::Max(1,[Math]::Floor($LogicalProcessors / 2.0))
+    $memoryBudget = [Math]::Max(1,[Math]::Floor($FreeMemoryKiB / (1536.0 * 1024)))
+    return [int][Math]::Min(8,[Math]::Min($cpuBudget,$memoryBudget))
+}
+
+function Enable-BoundedMsvcCompilation {
+    # Preserve explicit user/compiler choices and incompatible modes in either environment variable.
+    $compilerOptions = "$env:CL $env:_CL_"
+    if ($compilerOptions -match '(?i)(?:^|\s)[/-](?:MP\d*|E|EP|Gm|showIncludes|Yc\S*|link)(?:\s|$)') { return }
+    $availableKiB = 0
+    try { $availableKiB = [long](Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).FreePhysicalMemory } catch {}
+    $compileCount = Get-SafeMsvcCompileCount -LogicalProcessors ([Environment]::ProcessorCount) -FreeMemoryKiB $availableKiB
+    $env:CL = ("$env:CL /MP$compileCount /FS").Trim()
+    Write-Host "MSVC compile parallelism: /MP$compileCount /FS (bounded by CPU and available memory)" -ForegroundColor DarkGray
+}
+
 function Prepare-IncrementalBuildEnvironment {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RepoRoot
     )
 
+    Enable-BoundedMsvcCompilation
     $lock = Join-Path $RepoRoot "build\vcpkg_installed\vcpkg\vcpkg-running.lock"
     if (Test-Path $lock) {
         if (-not (Wait-ForRepoVcpkgLock -RepoRoot $RepoRoot)) {

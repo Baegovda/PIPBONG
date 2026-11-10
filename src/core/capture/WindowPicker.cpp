@@ -22,6 +22,8 @@ struct PickState {
     HCURSOR crossCursor = nullptr;
     WindowPicker::Completion callback;
     QPointer<QWidget> host;
+    bool hostBound=false;
+    QMetaObject::Connection hostDestroyed;
     TargetWindowBindingRole role = TargetWindowBindingRole::Main;
 };
 
@@ -72,6 +74,7 @@ std::wstring windowTitleFromHandle(HWND hwnd) {
 }
 
 void teardownHooks(PickState& state) {
+    QObject::disconnect(state.hostDestroyed);
     if (state.mouseHook) {
         UnhookWindowsHookEx(state.mouseHook);
         state.mouseHook = nullptr;
@@ -92,15 +95,14 @@ void finishPick(WindowPicker::Result result) {
     }
 
     WindowPicker::Completion callback = std::move(g_state->callback);
+    QPointer<QWidget> host = g_state->host;
+    const bool hostBound=g_state->hostBound;
     teardownHooks(*g_state);
     g_state.reset();
     WindowPickerHoverOverlay::dismissAll();
 
-    QTimer::singleShot(0, qApp, [callback = std::move(callback), result = std::move(result)]() mutable {
-        if (callback) {
-            callback(result);
-        }
-    });
+    // A destroyed owner must not turn into an unowned callback.
+    if(!hostBound || host) WindowPicker::dispatchCompletion(host,std::move(callback),std::move(result));
 }
 
 LRESULT CALLBACK mouseHookProc(int code, WPARAM wParam, LPARAM lParam) {
@@ -123,6 +125,7 @@ LRESULT CALLBACK mouseHookProc(int code, WPARAM wParam, LPARAM lParam) {
         if (isPickableWindow(hwnd)) {
             result.accepted = true;
             result.hwnd = hwnd;
+            GetWindowThreadProcessId(hwnd,&result.processId);
             result.title = windowTitleFromHandle(hwnd);
         }
         finishPick(result);
@@ -164,7 +167,11 @@ void WindowPicker::startPick(QWidget* hostWidget, Completion callback, TargetWin
     auto state = std::make_unique<PickState>();
     state->callback = std::move(callback);
     state->host = hostWidget;
+    state->hostBound = hostWidget!=nullptr;
     state->role = role;
+    if(hostWidget) state->hostDestroyed=QObject::connect(hostWidget,&QObject::destroyed,qApp,[] {
+        if(g_state && !g_state->host)WindowPicker::cancelPick();
+    });
     state->crossCursor = LoadCursorW(nullptr, IDC_CROSS);
 
     state->mouseHook = SetWindowsHookExW(WH_MOUSE_LL, mouseHookProc, GetModuleHandleW(nullptr), 0);
@@ -172,9 +179,7 @@ void WindowPicker::startPick(QWidget* hostWidget, Completion callback, TargetWin
     if (!state->mouseHook || !state->keyboardHook) {
         teardownHooks(*state);
         WindowPicker::Result failed;
-        if (callback) {
-            QTimer::singleShot(0, qApp, [callback, failed]() { callback(failed); });
-        }
+        dispatchCompletion(hostWidget,std::move(state->callback),failed);
         return;
     }
 
@@ -186,6 +191,14 @@ void WindowPicker::startPick(QWidget* hostWidget, Completion callback, TargetWin
         callback({});
     }
 #endif
+}
+
+void WindowPicker::dispatchCompletion(QWidget* owner,Completion callback,Result result) {
+    const bool bound=owner!=nullptr;
+    QPointer<QWidget> guard(owner);
+    QTimer::singleShot(0,qApp,[guard,bound,callback=std::move(callback),result=std::move(result)] {
+        if(callback && (!bound || guard))callback(result);
+    });
 }
 
 void WindowPicker::cancelPick() {

@@ -36,7 +36,7 @@ QPushButton* makeTitleBarButton(const QString& text, const char* objectName, QWi
 CustomTitleBar::CustomTitleBar(QMainWindow* window)
     : m_window(window) {
     setObjectName(QStringLiteral("customTitleBar"));
-    setFixedHeight(36);
+    setFixedHeight(42);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setAttribute(Qt::WA_StyledBackground, true);
 
@@ -113,8 +113,9 @@ void CustomTitleBar::setupUi() {
     // causes stack overflow 0xC00000FD). See AGENTS.md §8.4 and qt-changeevent-stylesheet.mdc.
     setStyleSheet(QStringLiteral(
         "QWidget#customTitleBar {"
-        "  background-color: palette(window);"
-        "  border-bottom: 1px solid palette(mid);"
+        "  background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 rgba(188,176,208,32),stop:0.45 rgba(134,140,157,19),stop:1 rgba(150,186,177,23));"
+        "  border-top: 1px solid rgba(252,244,255,45);"
+        "  border-bottom: 1px solid rgba(224,228,243,27);"
         "}"
         "QLabel#titleBarAppBadge {"
         "  background: transparent;"
@@ -128,6 +129,7 @@ void CustomTitleBar::setupUi() {
         "  color: palette(window-text);"
         "  background: transparent;"
         "  font-size: 12px;"
+        "  font-weight: 600;"
         "}"
         "QMenuBar#titleBarMenuBar {"
         "  background: transparent;"
@@ -196,6 +198,12 @@ bool CustomTitleBar::hitTestCaptionDrag(const QPoint& globalPos) const {
     }
     const QPoint local = m_dragRegion->mapFromGlobal(globalPos);
     return m_dragRegion->rect().contains(local);
+}
+
+bool CustomTitleBar::hitTestCaptionAtWindowPoint(QPointF logicalClientPoint) const {
+    if(!m_dragRegion || !m_window)return false;
+    const QPointF local=m_dragRegion->mapFrom(m_window,logicalClientPoint);
+    return local.x()>=0 && local.y()>=0 && local.x()<m_dragRegion->width() && local.y()<m_dragRegion->height();
 }
 
 void CustomTitleBar::syncFromWindowTitle() {
