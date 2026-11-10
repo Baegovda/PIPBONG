@@ -2035,6 +2035,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [0.8.402] - 2026-11-10
 
+- PowerShell scripts containing non-ASCII text declare UTF-8 with BOM so Windows PowerShell on English CI runners does not misparse punctuation before the build.
+
 - Release publication accepts a notes file, requires an existing pushed tag, and delegates process stopping to the checkout-scoped build helper instead of terminating every PIPBONG process.
 
 - Profile export materializes referenced relative/external-root and absolute ImageFind templates plus capture sidecars into private staging, rewrites only the staged JSON to portable relative paths, preserves equal-name files and deduplicates repeated canonical references. Source documents/assets remain untouched; missing templates fail before atomic archive replacement. Ordinary internal-relative packages keep the direct tar path. Import-cache preparation supplies its actual staged asset root, rejecting absolute/escaping archive references instead of reading unrelated local files. MainWindow remains2,495 lines.

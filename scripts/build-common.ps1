@@ -1,4 +1,4 @@
-# Shared helpers for incremental Release builds — stale vcpkg lock / stuck configure recovery.
+﻿# Shared helpers for incremental Release builds — stale vcpkg lock / stuck configure recovery.
 $ErrorActionPreference = "Stop"
 
 function Stop-RepoReleaseProcess {

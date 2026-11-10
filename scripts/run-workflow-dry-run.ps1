@@ -1,4 +1,4 @@
-# Build and run PIPBONGWorkflowDryRunSim (AGENTS.md §8.21 R6.4).
+﻿# Build and run PIPBONGWorkflowDryRunSim (AGENTS.md §8.21 R6.4).
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 . (Join-Path $root 'scripts\build-common.ps1')

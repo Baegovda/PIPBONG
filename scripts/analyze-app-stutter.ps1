@@ -1,4 +1,4 @@
-# Summarize app-stutter/latest.md for AI / human review.
+﻿# Summarize app-stutter/latest.md for AI / human review.
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 

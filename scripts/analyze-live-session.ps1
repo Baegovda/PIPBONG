@@ -1,4 +1,4 @@
-# Tail the always-on PIPBONG live session log (응답없음 / force-kill analysis).
+﻿# Tail the always-on PIPBONG live session log (응답없음 / force-kill analysis).
 param(
     [int] $Tail = 200
 )

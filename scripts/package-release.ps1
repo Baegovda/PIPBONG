@@ -1,4 +1,4 @@
-# Builds a staged Release folder and ZIP for distribution (dynamic DLL layout).
+﻿# Builds a staged Release folder and ZIP for distribution (dynamic DLL layout).
 param(
     [switch]$SkipBuild
 )

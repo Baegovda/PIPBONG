@@ -1,4 +1,4 @@
-# Invoked from CMake POST_BUILD after PIPBONG links (and from run-policy-sim.ps1).
+﻿# Invoked from CMake POST_BUILD after PIPBONG links (and from run-policy-sim.ps1).
 param(
     [Parameter(Mandatory = $true)]
     [string]$SimExe,

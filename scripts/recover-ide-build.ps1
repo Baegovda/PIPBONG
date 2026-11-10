@@ -1,4 +1,4 @@
-# One-click recovery when CMake Tools / vcpkg lock / stuck configure breaks the IDE build path.
+﻿# One-click recovery when CMake Tools / vcpkg lock / stuck configure breaks the IDE build path.
 # Default: PIPBONG-local only (safe with a second Cursor window on another project).
 # Use -KillGlobalBuildProcesses only when no other project is building.
 param(

@@ -1,4 +1,4 @@
-# PIPBONG: F5 must run Build and Run task (Start-Process) — never CodeLLDB.
+﻿# PIPBONG: F5 must run Build and Run task (Start-Process) — never CodeLLDB.
 # Bindings are gated on config.pipbong.f5BuildAndRun (set in this repo's .vscode/settings.json)
 # so a second Cursor window on another project keeps its own F5 / debug behavior.
 $ErrorActionPreference = "Stop"

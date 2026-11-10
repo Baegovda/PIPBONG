@@ -1,4 +1,4 @@
-# Canonical incremental Release build — Ctrl+Shift+B, F5, AI task close.
+﻿# Canonical incremental Release build — Ctrl+Shift+B, F5, AI task close.
 # Never runs cmake --preset when build/ already exists (no vcpkg reinstall loop).
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "build-common.ps1")

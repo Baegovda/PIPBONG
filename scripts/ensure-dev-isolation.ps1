@@ -1,4 +1,4 @@
-# Verify PIPBONG dev isolation for dual-Cursor / parallel-project workflows.
+﻿# Verify PIPBONG dev isolation for dual-Cursor / parallel-project workflows.
 # Run once per machine after opening this repo in its own Cursor window.
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "build-common.ps1")

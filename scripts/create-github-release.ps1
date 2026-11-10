@@ -1,4 +1,4 @@
-# Packages dynamic Release build and publishes a GitHub Release for the current CMake version.
+﻿# Packages dynamic Release build and publishes a GitHub Release for the current CMake version.
 param(
     [string]$Notes = "",
     [string]$NotesFile = ""

@@ -1,4 +1,4 @@
-# Incremental Release build, then start PIPBONG.exe (detached). Used by F5 task — no launch.json / debugger.
+﻿# Incremental Release build, then start PIPBONG.exe (detached). Used by F5 task — no launch.json / debugger.
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
